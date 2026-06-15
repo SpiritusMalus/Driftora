@@ -1,4 +1,17 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Network: the single external call (LLM food parsing). -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Voice food logging. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <!-- Gentle local reminders. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <!-- Steps via Health Connect. -->
+    <uses-permission android:name="android.permission.health.READ_STEPS"/>
+
     <application
         android:label="health_routine"
         android:name="${applicationName}"
@@ -40,6 +53,15 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- Speech recognizer for voice food logging. -->
+        <intent>
+            <action android:name="android.speech.RecognitionService"/>
+        </intent>
+        <!-- Health Connect app + permissions rationale (steps). -->
+        <package android:name="com.google.android.apps.healthdata"/>
+        <intent>
+            <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE"/>
         </intent>
     </queries>
 </manifest>

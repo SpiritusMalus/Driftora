@@ -1,0 +1,12 @@
+{
+  "@@locale": "en",
+  "appTitle": "HealthRoutine",
+  "homeTitle": "Today",
+  "homeGreeting": "Your day at a glance",
+  "sectionNutrition": "Nutrition",
+  "sectionSteps": "Steps",
+  "sectionDiary": "Thought diary",
+  "sectionWins": "Wins",
+  "comingSoon": "Coming soon",
+  "emptyHomeHint": "Nothing here yet — entries will appear once you start."
+}

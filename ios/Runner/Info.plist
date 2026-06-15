@@ -2,6 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Доступ к данным о шагах нужен, чтобы показывать вашу активность и её пользу для здоровья.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Распознавание речи используется для голосового ввода еды.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Микрофон нужен для голосового ввода того, что вы съели.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

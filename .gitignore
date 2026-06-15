@@ -43,3 +43,9 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Secrets — never commit the Anthropic API key or dart-define files
+*.env
+.env*
+**/dart_defines*.json
+**/secrets.dart
