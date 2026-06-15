@@ -1,25 +1,27 @@
 import { Ionicons } from '@expo/vector-icons';
 import { type ComponentProps } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { type ThemeColors } from '@/lib/theme/colors';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
-/// A dashboard section tile used on the Home screen.
+/// A dashboard section tile. Tappable when [onPress] is provided.
 export function SectionCard({
   icon,
   title,
   subtitle,
   theme,
+  onPress,
 }: {
   icon: IoniconName;
   title: string;
   subtitle: string;
   theme: ThemeColors;
+  onPress?: () => void;
 }) {
-  return (
-    <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
+  const content = (
+    <>
       <View style={[styles.iconWrap, { backgroundColor: theme.iconBg }]}>
         <Ionicons name={icon} size={22} color={theme.icon} />
       </View>
@@ -28,6 +30,29 @@ export function SectionCard({
         <Text style={[styles.subtitle, { color: theme.subtle }]}>{subtitle}</Text>
       </View>
       <Ionicons name="chevron-forward" size={20} color={theme.subtle} />
+    </>
+  );
+
+  if (onPress) {
+    return (
+      <Pressable
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.card,
+          {
+            backgroundColor: theme.card,
+            borderColor: theme.border,
+            opacity: pressed ? 0.6 : 1,
+          },
+        ]}
+      >
+        {content}
+      </Pressable>
+    );
+  }
+  return (
+    <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
+      {content}
     </View>
   );
 }

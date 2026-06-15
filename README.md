@@ -25,11 +25,16 @@ default**.
 (steps) · `@react-native-voice/voice` (ru-RU STT) · `expo-notifications` ·
 **i18next** (ru default) · Anthropic Claude for food parsing.
 
-## Status — M0 (scaffold) ✅
+## Status — M1 (food log, offline stub) ✅
 
-App boots to an empty Russian Home dashboard; encrypted DB schema + all tables in
-place; `tsc` typechecks; unit/DB tests green. Features land in M1–M4
-(food → steps → diary → wins/reminders).
+- **M0:** encrypted DB schema + all tables, Russian Home dashboard, calm theme.
+- **M1:** text → **offline stub parser** → editable БЖУ confirm sheet → save →
+  Home shows today's totals vs targets. The real Anthropic parser
+  (`claude-haiku-4-5`, tool use / structured output) is interface-ready but
+  **not wired** — live LLM calls are intentionally off for now.
+
+`tsc` clean · `expo-doctor` 21/21 · 14 Jest tests green · Metro bundle builds.
+Next: voice input, then M2 (steps) → M3 (diary) → M4 (wins/reminders).
 
 ## Setup & run
 
@@ -62,15 +67,18 @@ voice) that are **not in Expo Go**, so you need a **dev build**:
 
 ```
 app/                 Expo Router routes
-  _layout.tsx        root: i18n, theme, opens the encrypted DB on launch
-  index.tsx          Home dashboard (empty skeleton)
+  _layout.tsx        root: i18n, theme, DatabaseProvider
+  index.tsx          Home dashboard (today's macro totals vs targets)
+  food/log.tsx       text → stub parse → editable БЖУ → save
 components/          shared UI (SectionCard)
 lib/
   core/
-    db/              drizzle schema, encrypted op-sqlite client, key store, settings
-    services/        health, speech, llm food parser, notifications (interfaces)
+    db/              drizzle schema, encrypted op-sqlite client, key store,
+                     DatabaseProvider, settings + food queries
+    services/        food parser (interface + offline stub); health, speech,
+                     notifications (interfaces)
     insights/        honest steps→meaning rules (sourced)
   i18n/              i18next setup + ru/en locales
   theme/             calm color palette
-__tests__/           stepInsight + db (better-sqlite3) tests
+__tests__/           stepInsight, db, stubFoodParser, food (better-sqlite3)
 ```

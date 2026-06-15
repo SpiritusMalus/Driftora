@@ -1,29 +1,66 @@
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, StyleSheet, Text, useColorScheme } from 'react-native';
 
 import { SectionCard } from '@/components/SectionCard';
+import { useDatabase } from '@/lib/core/db/DatabaseProvider';
+import { todayMacroTotals, type MacroTotals } from '@/lib/core/db/food';
+import { ensureSettings } from '@/lib/core/db/settings';
 import { colors } from '@/lib/theme/colors';
 
-/// Home dashboard. In M0 it's an empty skeleton; later milestones fill the
-/// sections with today's macros, steps, the last win, etc.
+/// Home dashboard. The nutrition card shows today's totals vs targets once the
+/// (device-only) database is available; other sections land in later milestones.
 export default function HomeScreen() {
   const { t } = useTranslation();
   const scheme = useColorScheme();
   const theme = scheme === 'dark' ? colors.dark : colors.light;
+  const router = useRouter();
+  const db = useDatabase();
+
+  const [totals, setTotals] = useState<MacroTotals | null>(null);
+  const [targets, setTargets] = useState<{ kcal: number; proteinG: number } | null>(null);
+  const [hideCalories, setHideCalories] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      void (async () => {
+        if (!db) return;
+        const [tot, settings] = await Promise.all([
+          todayMacroTotals(db),
+          ensureSettings(db),
+        ]);
+        if (!active) return;
+        setTotals(tot);
+        setTargets({ kcal: settings.targetKcal, proteinG: settings.targetProteinG });
+        setHideCalories(settings.hideCalories);
+      })();
+      return () => {
+        active = false;
+      };
+    }, [db]),
+  );
+
+  const nutritionSubtitle = (() => {
+    if (!totals || !targets) return t('home.comingSoon');
+    const protein = `${t('macros.protein')} ${totals.proteinG}/${targets.proteinG} ${t('units.g')}`;
+    if (hideCalories) return protein;
+    return `${totals.kcal}/${targets.kcal} ${t('units.kcal')} · ${protein}`;
+  })();
 
   return (
     <ScrollView
       style={{ backgroundColor: theme.background }}
       contentContainerStyle={styles.content}
     >
-      <Text style={[styles.greeting, { color: theme.subtle }]}>
-        {t('home.greeting')}
-      </Text>
+      <Text style={[styles.greeting, { color: theme.subtle }]}>{t('home.greeting')}</Text>
       <SectionCard
         icon="restaurant-outline"
         title={t('home.sections.nutrition')}
-        subtitle={t('home.comingSoon')}
+        subtitle={nutritionSubtitle}
         theme={theme}
+        onPress={() => router.push('/food/log')}
       />
       <SectionCard
         icon="walk-outline"
@@ -43,9 +80,7 @@ export default function HomeScreen() {
         subtitle={t('home.comingSoon')}
         theme={theme}
       />
-      <Text style={[styles.hint, { color: theme.subtle }]}>
-        {t('home.emptyHint')}
-      </Text>
+      <Text style={[styles.hint, { color: theme.subtle }]}>{t('home.emptyHint')}</Text>
     </ScrollView>
   );
 }
