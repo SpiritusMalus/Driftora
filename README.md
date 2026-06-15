@@ -19,58 +19,58 @@ default**.
 
 ## Stack
 
-Flutter (stable) · Riverpod · go_router · **Drift (SQLite) + SQLCipher** (encrypted,
-key in `flutter_secure_storage`) · `health` (HealthKit / Health Connect) ·
-`speech_to_text` (ru-RU) · `flutter_local_notifications` · `fl_chart` · Anthropic
-Claude for food parsing.
+**Expo (SDK 56) / React Native / TypeScript** · **Expo Router** (file-based) ·
+**Drizzle ORM + op-sqlite (SQLCipher)** encrypted at rest, key in
+`expo-secure-store` · `react-native-health` / `react-native-health-connect`
+(steps) · `@react-native-voice/voice` (ru-RU STT) · `expo-notifications` ·
+**i18next** (ru default) · Anthropic Claude for food parsing.
 
 ## Status — M0 (scaffold) ✅
 
 App boots to an empty Russian Home dashboard; encrypted DB schema + all tables in
-place; `flutter analyze` clean; tests green. Features land in M1–M4 (food → steps →
-diary → wins/reminders).
+place; `tsc` typechecks; unit/DB tests green. Features land in M1–M4
+(food → steps → diary → wins/reminders).
 
 ## Setup & run
 
-Requires the Flutter SDK (this repo was built with Flutter 3.44 / Dart 3.12).
+Requires Node ≥ 20 (built with Node 26) and the Expo CLI (via `npx`).
 
 ```bash
-flutter pub get
-flutter gen-l10n                                            # ru/en localizations
-dart run build_runner build --delete-conflicting-outputs   # drift code
-flutter analyze
-flutter test
+npm install
+npm run typecheck      # tsc --noEmit
+npm test               # jest (logic + DB via better-sqlite3)
 ```
 
-The LLM API key is **never committed**. It's read from `--dart-define` at run time
-(wired up in M1):
+The food-parsing API key is **never committed** — read at runtime from an env
+var (wired in M1), e.g. via `app.config` + `expo-constants` or EAS secrets.
 
-```bash
-flutter run --dart-define=ANTHROPIC_API_KEY=sk-ant-...
-```
+### Running on a device
 
-### Toolchain notes
+The app uses native modules (op-sqlite/SQLCipher, HealthKit/Health Connect,
+voice) that are **not in Expo Go**, so you need a **dev build**:
 
-- **Encryption:** SQLCipher is provided by the `sqlite3` v3 build hook in
-  `pubspec.yaml` (`hooks: user_defines: sqlite3: source: sqlcipher`). The old
-  `sqlcipher_flutter_libs` package is discontinued (now a no-op). The encrypted
-  on-device open lives in `lib/core/db/connection.dart` and is **not yet verified
-  on a real device** — validate it on the first iOS/Android build.
-- **To build on a device** you still need: iOS → full Xcode + CocoaPods
-  (`sudo gem install cocoapods`); Android → the Android SDK (Android Studio).
-  `flutter doctor` lists what's missing. Unit/widget tests run without either.
+- **Local:** `npx expo run:ios` / `npx expo run:android` — needs Xcode + CocoaPods
+  (iOS) or the Android SDK. `npx expo-doctor` reports what's missing.
+- **Cloud (no local Xcode):** `eas build --profile development` builds in the
+  cloud; install the resulting dev build on your phone.
+
+> The encrypted on-device DB path (`lib/core/db/client.ts`) is wired per current
+> op-sqlite/SQLCipher docs but **not yet verified on a real device** — validate on
+> the first dev build. Host tests exercise the schema via better-sqlite3.
 
 ## Layout
 
 ```
+app/                 Expo Router routes
+  _layout.tsx        root: i18n, theme, opens the encrypted DB on launch
+  index.tsx          Home dashboard (empty skeleton)
+components/          shared UI (SectionCard)
 lib/
-  app/       theme, go_router, root app (ru l10n)
   core/
-    db/       drift schema, encrypted connection, key store, provider
-    services/ health, speech, llm food parser, notifications (interfaces)
-    insights/ honest steps→meaning rules (sourced)
-  features/   food · activity · diary · wins · home · settings
-  shared/     reusable widgets
-  l10n/       app_ru.arb (template) · app_en.arb
-test/         unit (insights, db) + widget (home) tests
+    db/              drizzle schema, encrypted op-sqlite client, key store, settings
+    services/        health, speech, llm food parser, notifications (interfaces)
+    insights/        honest steps→meaning rules (sourced)
+  i18n/              i18next setup + ru/en locales
+  theme/             calm color palette
+__tests__/           stepInsight + db (better-sqlite3) tests
 ```

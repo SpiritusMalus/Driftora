@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "name": "HealthRoutine",
+    "slug": "health-routine",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "healthroutine",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSHealthShareUsageDescription": "Доступ к данным о шагах нужен, чтобы показывать вашу активность и её пользу для здоровья.",
+        "NSSpeechRecognitionUsageDescription": "Распознавание речи используется для голосового ввода еды.",
+        "NSMicrophoneUsageDescription": "Микрофон нужен для голосового ввода того, что вы съели."
+      },
+      "entitlements": {
+        "com.apple.developer.healthkit": true
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.POST_NOTIFICATIONS"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-localization",
+      "expo-font"
+    ]
+  }
+}
