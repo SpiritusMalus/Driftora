@@ -1,5 +1,10 @@
-/// Idempotent DDL for the M0 schema. Kept in sync with `schema.ts` by hand for
-/// now; proper drizzle-kit migrations are introduced when the schema evolves.
+/// Idempotent DDL for the M0 schema. This is a second source of truth alongside
+/// the Drizzle defs in `schema.ts` (Drizzle drives types + queries; this DDL
+/// actually creates the tables). The two are hand-synced, but drift is guarded:
+/// `__tests__/schemaConsistency.test.ts` builds these tables and asserts they
+/// match the Drizzle schema, so a divergence fails in jest instead of crashing
+/// on-device. Move to drizzle-kit migrations once the schema first evolves on
+/// shipped devices (CREATE TABLE IF NOT EXISTS cannot ALTER an existing table).
 export const INIT_SQL = `
 CREATE TABLE IF NOT EXISTS food_entries (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
