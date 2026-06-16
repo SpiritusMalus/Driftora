@@ -29,4 +29,72 @@ export const en = {
     needHelp: 'Could not recognize it. Add more detail.',
     dbUnavailable: 'The database is only available in a device dev build.',
   },
+  diary: {
+    listTitle: 'Thought diary',
+    newTitle: 'New entry',
+    entryTitle: 'Entry',
+    add: 'New entry',
+    empty: 'No entries yet. The first one is the hardest — and the most useful.',
+    notFound: 'Entry not found.',
+    emptyValue: '—',
+    dbUnavailable: 'The diary is available in a device dev build.',
+    back: 'Back',
+    next: 'Next',
+    save: 'Save',
+    saving: 'Saving…',
+    progress: 'Step {{current}} of {{total}}',
+    count: 'Entries',
+    cta: 'Record a thought',
+    moodShort: 'Mood',
+    fields: {
+      mood: 'Mood right now (0–10)',
+    },
+    emotion: {
+      name: 'Emotion',
+      intensity: 'Intensity',
+      scale: 'Emotion intensity — from 0 to 100.',
+      add: 'Add',
+    },
+    reaction: {
+      body: 'Body',
+      bodyPlaceholder: 'e.g. tightness in the chest',
+      behavior: 'Behavior',
+      behaviorPlaceholder: 'e.g. went quiet and left',
+    },
+    evidence: {
+      for: 'For',
+      forPlaceholder: 'Facts that support the thought',
+      against: 'Against',
+      againstPlaceholder: 'Facts that contradict the thought',
+    },
+    reframePlaceholder: 'e.g. one setback does not undo my work',
+    steps: {
+      situation: {
+        title: 'Situation',
+        hint: 'What happened? Describe the facts without judgment.',
+        placeholder: 'e.g. got criticized in a meeting',
+      },
+      thoughts: {
+        title: 'Thoughts',
+        hint: 'What automatic thoughts went through your mind?',
+        placeholder: 'e.g. “I failed completely”',
+      },
+      emotions: {
+        title: 'Emotions',
+        hint: 'Name the emotions and rate their intensity.',
+      },
+      reaction: {
+        title: 'Reaction',
+        hint: 'What did you feel in your body, and how did you act?',
+      },
+      evidence: {
+        title: 'Evidence',
+        hint: 'Facts for and against the anxious thought.',
+      },
+      reframe: {
+        title: 'Balanced view',
+        hint: 'A more balanced thought — and your mood right now.',
+      },
+    },
+  },
 } as const;

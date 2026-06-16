@@ -5,6 +5,7 @@ import { ScrollView, StyleSheet, Text, useColorScheme } from 'react-native';
 
 import { SectionCard } from '@/components/SectionCard';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
+import { countDiaryEntries } from '@/lib/core/db/diary';
 import { todayMacroTotals, type MacroTotals } from '@/lib/core/db/food';
 import { ensureSettings } from '@/lib/core/db/settings';
 import { syncDaySteps } from '@/lib/core/db/steps';
@@ -26,15 +27,17 @@ export default function HomeScreen() {
   const [hideCalories, setHideCalories] = useState(false);
   const [steps, setSteps] = useState<number | null>(null);
   const [stepsMeaning, setStepsMeaning] = useState<string | null>(null);
+  const [diaryCount, setDiaryCount] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
       let active = true;
       void (async () => {
         if (!db) return;
-        const [tot, settings] = await Promise.all([
+        const [tot, settings, diaryN] = await Promise.all([
           todayMacroTotals(db),
           ensureSettings(db),
+          countDiaryEntries(db),
         ]);
         const stepCount = await syncDaySteps(db, getHealthService());
         if (!active) return;
@@ -43,6 +46,7 @@ export default function HomeScreen() {
         setHideCalories(settings.hideCalories);
         setSteps(stepCount);
         setStepsMeaning(stepInsight(stepCount, settings.stepsGoal));
+        setDiaryCount(diaryN);
       })();
       return () => {
         active = false;
@@ -84,8 +88,9 @@ export default function HomeScreen() {
       <SectionCard
         icon="sparkles-outline"
         title={t('home.sections.diary')}
-        subtitle={t('home.comingSoon')}
+        subtitle={diaryCount > 0 ? `${t('diary.count')}: ${diaryCount}` : t('diary.cta')}
         theme={theme}
+        onPress={() => router.push('/diary')}
       />
       <SectionCard
         icon="trophy-outline"

@@ -24,6 +24,9 @@ export default function RootLayout() {
         >
           <Stack.Screen name="index" options={{ title: t('home.title') }} />
           <Stack.Screen name="food/log" options={{ title: t('food.title') }} />
+          <Stack.Screen name="diary/index" options={{ title: t('diary.listTitle') }} />
+          <Stack.Screen name="diary/new" options={{ title: t('diary.newTitle') }} />
+          <Stack.Screen name="diary/[id]" options={{ title: t('diary.entryTitle') }} />
         </Stack>
       </SafeAreaProvider>
     </DatabaseProvider>
