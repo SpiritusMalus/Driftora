@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Pressable,
@@ -12,7 +12,9 @@ import {
 } from 'react-native';
 
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
-import { saveParsedEntry } from '@/lib/core/db/food';
+import { saveParsedEntry, todayMacroTotals } from '@/lib/core/db/food';
+import { ensureSettings } from '@/lib/core/db/settings';
+import { proteinInsight } from '@/lib/core/insights/proteinInsight';
 import type { FoodParseResult, ParsedFoodItem } from '@/lib/core/services/foodParser';
 import { getFoodParser } from '@/lib/core/services/foodParserProvider';
 import { colors, type ThemeColors } from '@/lib/theme/colors';
@@ -36,6 +38,24 @@ export default function FoodLogScreen() {
   const [parsing, setParsing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<FoodParseResult | null>(null);
+  // Today's protein-so-far + personal target, for the honest "what it means"
+  // line shown once a meal is parsed (the meaning-rules library).
+  const [proteinTarget, setProteinTarget] = useState(0);
+  const [todayProteinG, setTodayProteinG] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      if (!db) return;
+      const [settings, totals] = await Promise.all([ensureSettings(db), todayMacroTotals(db)]);
+      if (!active) return;
+      setProteinTarget(settings.targetProteinG);
+      setTodayProteinG(totals.proteinG);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [db]);
 
   const labels: MacroLabels = {
     kcal: t('units.kcal'),
@@ -118,6 +138,11 @@ export default function FoodLogScreen() {
               {result.kcal} {labels.kcal} · {labels.protein} {result.proteinG} {t('units.g')}
             </Text>
           </View>
+          {proteinTarget > 0 ? (
+            <Text style={[styles.proteinNote, { color: theme.subtle }]}>
+              {proteinInsight(todayProteinG + result.proteinG, proteinTarget)}
+            </Text>
+          ) : null}
           <Text style={[styles.stubNote, { color: theme.subtle }]}>{t('food.stubNote')}</Text>
           <PrimaryButton
             label={saving ? t('food.saving') : t('food.save')}
@@ -281,4 +306,5 @@ const styles = StyleSheet.create({
   totalLabel: { fontSize: 15, fontWeight: '600' },
   totalValue: { fontSize: 14 },
   stubNote: { fontSize: 11, fontStyle: 'italic', marginBottom: 12 },
+  proteinNote: { fontSize: 12, marginTop: 4, marginBottom: 8, lineHeight: 17 },
 });
