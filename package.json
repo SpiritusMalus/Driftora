@@ -2,6 +2,9 @@
   "name": "health-routine",
   "version": "1.0.0",
   "main": "expo-router/entry",
+  "op-sqlite": {
+    "sqlcipher": true
+  },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
     "@op-engineering/op-sqlite": "^16.2.2",
