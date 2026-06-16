@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, ScrollView, StyleSheet, Text, useColorScheme } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, useColorScheme, View } from 'react-native';
 
 import { SectionCard } from '@/components/SectionCard';
 import { runAutoWins } from '@/lib/core/db/autoWins';
@@ -10,7 +10,7 @@ import { bodyMindInsightFromDb } from '@/lib/core/db/bodyMind';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { countDiaryEntries } from '@/lib/core/db/diary';
 import { todayMacroTotals, type MacroTotals } from '@/lib/core/db/food';
-import { countWins, ensureSettings } from '@/lib/core/db/settings';
+import { countWins, ensureSettings, updateSettings } from '@/lib/core/db/settings';
 import { syncDaySteps } from '@/lib/core/db/steps';
 import { latestWeight } from '@/lib/core/db/weight';
 import { type BodyMindResult } from '@/lib/core/insights/bodyMind';
@@ -36,6 +36,7 @@ export default function HomeScreen() {
   const [winsCount, setWinsCount] = useState(0);
   const [bodyMind, setBodyMind] = useState<BodyMindResult | null>(null);
   const [weightKg, setWeightKg] = useState<number | null>(null);
+  const [paused, setPaused] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -59,6 +60,7 @@ export default function HomeScreen() {
             stepsGoal: settings.stepsGoal,
             proteinG: tot.proteinG,
             proteinTargetG: settings.targetProteinG,
+            paused: settings.paused,
           },
           {
             stepsGoal: t('wins.auto.stepsGoal', { steps: stepCount }),
@@ -75,12 +77,19 @@ export default function HomeScreen() {
         setWinsCount(winsN + awarded.length);
         setBodyMind(bodyMindResult);
         setWeightKg(weightRow ? weightRow.weightKg : null);
+        setPaused(settings.paused);
       })();
       return () => {
         active = false;
       };
     }, [db, t]),
   );
+
+  async function onResume() {
+    if (!db) return;
+    await updateSettings(db, { paused: false });
+    setPaused(false);
+  }
 
   const nutritionSubtitle = (() => {
     if (!totals || !targets) return t('home.comingSoon');
@@ -127,6 +136,18 @@ export default function HomeScreen() {
         contentContainerStyle={styles.content}
       >
         <Text style={[styles.greeting, { color: theme.subtle }]}>{t('home.greeting')}</Text>
+        {paused ? (
+          <View style={[styles.pauseBanner, { backgroundColor: theme.iconBg, borderColor: theme.border }]}>
+            <Text style={[styles.pauseTitle, { color: theme.text }]}>{t('home.paused.title')}</Text>
+            <Text style={[styles.pauseBody, { color: theme.subtle }]}>{t('home.paused.body')}</Text>
+            <Pressable
+              onPress={onResume}
+              style={({ pressed }) => [styles.pauseBtn, { borderColor: theme.primary, opacity: pressed ? 0.6 : 1 }]}
+            >
+              <Text style={[styles.pauseBtnText, { color: theme.primary }]}>{t('home.paused.resume')}</Text>
+            </Pressable>
+          </View>
+        ) : null}
         <SectionCard
           icon="restaurant-outline"
           title={t('home.sections.nutrition')}
@@ -179,4 +200,21 @@ const styles = StyleSheet.create({
   content: { padding: 16 },
   greeting: { fontSize: 15, marginBottom: 16 },
   hint: { fontSize: 12, textAlign: 'center', marginTop: 16 },
+  pauseBanner: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+  },
+  pauseTitle: { fontSize: 16, fontWeight: '600' },
+  pauseBody: { fontSize: 13, marginTop: 6, lineHeight: 18 },
+  pauseBtn: {
+    alignSelf: 'flex-start',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    marginTop: 12,
+  },
+  pauseBtnText: { fontSize: 14, fontWeight: '600' },
 });

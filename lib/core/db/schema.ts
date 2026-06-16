@@ -80,6 +80,8 @@ export const appSettings = sqliteTable('app_settings', {
   reminderTimes: text('reminder_times').notNull().default('[]'),
   hideCalories: integer('hide_calories', { mode: 'boolean' }).notNull().default(false),
   llmDiaryAssist: integer('llm_diary_assist', { mode: 'boolean' }).notNull().default(false),
+  // "Take a break" — mutes auto-wins and target pressure without losing data.
+  paused: integer('paused', { mode: 'boolean' }).notNull().default(false),
 });
 
 export type AppSettings = typeof appSettings.$inferSelect;

@@ -53,6 +53,10 @@ describe('earnedAutoWinKinds', () => {
       AUTO_WIN_PROTEIN_GOAL,
     ]);
   });
+
+  it('awards nothing while on a break (paused)', () => {
+    expect(earnedAutoWinKinds(facts({ steps: 8000, proteinG: 130, paused: true }))).toEqual([]);
+  });
 });
 
 describe('awardOncePerDay', () => {

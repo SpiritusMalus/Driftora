@@ -15,6 +15,11 @@ export const en = {
     },
     steps: { unit: 'steps' },
     bodyMind: { basis: 'Based on {{days}} days with mood + steps' },
+    paused: {
+      title: 'You are on a break',
+      body: 'Goals and auto-wins are off. Your data is safe — pick it back up whenever you are ready.',
+      resume: 'Resume goals',
+    },
   },
   units: { kcal: 'kcal', g: 'g' },
   macros: { protein: 'Protein', fat: 'Fat', carbs: 'Carbs' },
@@ -129,6 +134,9 @@ export const en = {
   },
   settings: {
     title: 'Settings',
+    breakTitle: 'Break',
+    pause: 'Take a break',
+    pauseNote: 'Mutes goals, reminders and auto-wins — no guilt. Your entries stay; resume any time.',
     targets: 'Daily targets',
     targetKcal: 'Calories (kcal)',
     targetProtein: 'Protein (g)',

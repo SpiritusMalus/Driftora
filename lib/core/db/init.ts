@@ -65,7 +65,8 @@ CREATE TABLE IF NOT EXISTS app_settings (
   steps_goal INTEGER NOT NULL DEFAULT 7000,
   reminder_times TEXT NOT NULL DEFAULT '[]',
   hide_calories INTEGER NOT NULL DEFAULT 0,
-  llm_diary_assist INTEGER NOT NULL DEFAULT 0
+  llm_diary_assist INTEGER NOT NULL DEFAULT 0,
+  paused INTEGER NOT NULL DEFAULT 0
 );
 `;
 
