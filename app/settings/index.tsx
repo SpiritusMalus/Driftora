@@ -14,6 +14,7 @@ import {
 
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { ensureSettings, parseReminderTimes, updateSettings } from '@/lib/core/db/settings';
+import { nextReminder } from '@/lib/core/services/reminderSchedule';
 import { colors, type ThemeColors } from '@/lib/theme/colors';
 
 const TIME_RE = /^([01]?\d|2[0-3]):[0-5]\d$/;
@@ -142,6 +143,18 @@ export default function SettingsScreen() {
         </Pressable>
       </View>
       <Text style={[styles.note, { color: theme.subtle }]}>{t('settings.remindersNote')}</Text>
+      {(() => {
+        const next = nextReminder(reminders);
+        if (!next) return null;
+        const pad = (n: number) => String(n).padStart(2, '0');
+        const isToday = next.getDate() === new Date().getDate();
+        const when = `${isToday ? t('settings.today') : t('settings.tomorrow')} ${pad(next.getHours())}:${pad(next.getMinutes())}`;
+        return (
+          <Text style={[styles.note, { color: theme.subtle }]}>
+            {t('settings.nextReminder', { when })}
+          </Text>
+        );
+      })()}
 
       <Text style={[styles.section, { color: theme.subtle }]}>{t('settings.flags')}</Text>
       <ToggleRow label={t('settings.hideCalories')} value={hideCalories} onChange={(v) => { setHideCalories(v); dirty(); }} theme={theme} />

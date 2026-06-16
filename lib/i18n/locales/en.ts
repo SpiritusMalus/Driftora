@@ -179,6 +179,9 @@ export const en = {
     reminderAdd: 'Time (HH:mm)',
     reminderAddBtn: 'Add',
     remindersNote: 'Times are saved; the reminders themselves fire in a device dev build.',
+    nextReminder: 'Next: {{when}}',
+    today: 'today',
+    tomorrow: 'tomorrow',
     flags: 'Privacy & mode',
     hideCalories: 'Hide calories (focus on protein and habits)',
     llmDiaryAssist: 'AI help in the diary (optional, off by default)',
@@ -196,6 +199,7 @@ export const en = {
     empty: 'No wins yet — mark your first one, however small.',
     count: 'Wins',
     cta: 'Mark a win',
+    share: 'Share',
     dbUnavailable: 'Wins are available in a device dev build.',
     auto: {
       stepsGoal: 'Daily step goal reached — {{steps}} steps 🎉',
