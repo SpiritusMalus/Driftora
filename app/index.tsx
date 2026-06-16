@@ -1,13 +1,14 @@
-import { useFocusEffect, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ScrollView, StyleSheet, Text, useColorScheme } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, useColorScheme } from 'react-native';
 
 import { SectionCard } from '@/components/SectionCard';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { countDiaryEntries } from '@/lib/core/db/diary';
 import { todayMacroTotals, type MacroTotals } from '@/lib/core/db/food';
-import { ensureSettings } from '@/lib/core/db/settings';
+import { countWins, ensureSettings } from '@/lib/core/db/settings';
 import { syncDaySteps } from '@/lib/core/db/steps';
 import { stepInsight } from '@/lib/core/insights/stepInsight';
 import { getHealthService } from '@/lib/core/services/healthProvider';
@@ -28,16 +29,18 @@ export default function HomeScreen() {
   const [steps, setSteps] = useState<number | null>(null);
   const [stepsMeaning, setStepsMeaning] = useState<string | null>(null);
   const [diaryCount, setDiaryCount] = useState(0);
+  const [winsCount, setWinsCount] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
       let active = true;
       void (async () => {
         if (!db) return;
-        const [tot, settings, diaryN] = await Promise.all([
+        const [tot, settings, diaryN, winsN] = await Promise.all([
           todayMacroTotals(db),
           ensureSettings(db),
           countDiaryEntries(db),
+          countWins(db),
         ]);
         const stepCount = await syncDaySteps(db, getHealthService());
         if (!active) return;
@@ -47,6 +50,7 @@ export default function HomeScreen() {
         setSteps(stepCount);
         setStepsMeaning(stepInsight(stepCount, settings.stepsGoal));
         setDiaryCount(diaryN);
+        setWinsCount(winsN);
       })();
       return () => {
         active = false;
@@ -67,39 +71,55 @@ export default function HomeScreen() {
       : `${steps} ${t('home.steps.unit')}\n${stepsMeaning}`;
 
   return (
-    <ScrollView
-      style={{ backgroundColor: theme.background }}
-      contentContainerStyle={styles.content}
-    >
-      <Text style={[styles.greeting, { color: theme.subtle }]}>{t('home.greeting')}</Text>
-      <SectionCard
-        icon="restaurant-outline"
-        title={t('home.sections.nutrition')}
-        subtitle={nutritionSubtitle}
-        theme={theme}
-        onPress={() => router.push('/food/log')}
+    <>
+      <Stack.Screen
+        options={{
+          headerRight: () => (
+            <Pressable
+              onPress={() => router.push('/settings')}
+              hitSlop={8}
+              style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1, paddingHorizontal: 4 })}
+            >
+              <Ionicons name="settings-outline" size={22} color={theme.text} />
+            </Pressable>
+          ),
+        }}
       />
-      <SectionCard
-        icon="walk-outline"
-        title={t('home.sections.steps')}
-        subtitle={stepsSubtitle}
-        theme={theme}
-      />
-      <SectionCard
-        icon="sparkles-outline"
-        title={t('home.sections.diary')}
-        subtitle={diaryCount > 0 ? `${t('diary.count')}: ${diaryCount}` : t('diary.cta')}
-        theme={theme}
-        onPress={() => router.push('/diary')}
-      />
-      <SectionCard
-        icon="trophy-outline"
-        title={t('home.sections.wins')}
-        subtitle={t('home.comingSoon')}
-        theme={theme}
-      />
-      <Text style={[styles.hint, { color: theme.subtle }]}>{t('home.emptyHint')}</Text>
-    </ScrollView>
+      <ScrollView
+        style={{ backgroundColor: theme.background }}
+        contentContainerStyle={styles.content}
+      >
+        <Text style={[styles.greeting, { color: theme.subtle }]}>{t('home.greeting')}</Text>
+        <SectionCard
+          icon="restaurant-outline"
+          title={t('home.sections.nutrition')}
+          subtitle={nutritionSubtitle}
+          theme={theme}
+          onPress={() => router.push('/food/log')}
+        />
+        <SectionCard
+          icon="walk-outline"
+          title={t('home.sections.steps')}
+          subtitle={stepsSubtitle}
+          theme={theme}
+        />
+        <SectionCard
+          icon="sparkles-outline"
+          title={t('home.sections.diary')}
+          subtitle={diaryCount > 0 ? `${t('diary.count')}: ${diaryCount}` : t('diary.cta')}
+          theme={theme}
+          onPress={() => router.push('/diary')}
+        />
+        <SectionCard
+          icon="trophy-outline"
+          title={t('home.sections.wins')}
+          subtitle={winsCount > 0 ? `${t('wins.count')}: ${winsCount}` : t('wins.cta')}
+          theme={theme}
+          onPress={() => router.push('/wins')}
+        />
+        <Text style={[styles.hint, { color: theme.subtle }]}>{t('home.emptyHint')}</Text>
+      </ScrollView>
+    </>
   );
 }
 
