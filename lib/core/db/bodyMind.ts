@@ -6,7 +6,7 @@ import {
   type BodyMindResult,
   type MoodStepDay,
 } from '../insights/bodyMind';
-import { diaryEntries, stepsDays } from './schema';
+import { diaryEntries, moods, stepsDays } from './schema';
 import { dayKey } from './steps';
 
 /// Accepts any drizzle SQLite database (op-sqlite async on device,
@@ -26,20 +26,29 @@ export async function gatherMoodStepDays(db: AnyDb): Promise<MoodStepDay[]> {
     .from(diaryEntries)
     .where(isNotNull(diaryEntries.mood))) as { ts: Date; mood: number | null }[];
 
+  const moodRows = (await db
+    .select({ ts: moods.ts, value: moods.value })
+    .from(moods)) as { ts: Date; value: number }[];
+
   const stepRows = (await db
     .select({ date: stepsDays.date, steps: stepsDays.steps })
     .from(stepsDays)) as { date: string; steps: number }[];
 
-  // Average diary mood per local day (skip any stray null moods defensively).
+  // Average ALL moods per local day — diary moods + standalone check-ins — so a
+  // one-tap mood feeds the same insight as a full thought record.
   const moodByDay = new Map<string, { sum: number; count: number }>();
-  for (const row of diaryRows) {
-    if (row.mood == null) continue;
-    const day = dayKey(row.ts);
+  const addMood = (ts: Date, value: number) => {
+    const day = dayKey(ts);
     const acc = moodByDay.get(day) ?? { sum: 0, count: 0 };
-    acc.sum += Number(row.mood);
+    acc.sum += Number(value);
     acc.count += 1;
     moodByDay.set(day, acc);
+  };
+  for (const row of diaryRows) {
+    if (row.mood == null) continue; // defensive; the query already filters nulls
+    addMood(row.ts, row.mood);
   }
+  for (const row of moodRows) addMood(row.ts, row.value);
 
   const stepsByDay = new Map<string, number>();
   for (const row of stepRows) stepsByDay.set(row.date, Number(row.steps));

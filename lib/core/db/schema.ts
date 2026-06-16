@@ -43,6 +43,14 @@ export const weights = sqliteTable('weights', {
   ts: integer('ts', { mode: 'timestamp' }).notNull(),
 });
 
+/// A standalone quick mood check-in (0–10), separate from the full СМЭР diary —
+/// low-friction (one tap) so it can feed the Body↔Mind insight daily.
+export const moods = sqliteTable('moods', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  ts: integer('ts', { mode: 'timestamp' }).notNull(),
+  value: integer('value').notNull(), // 0–10
+});
+
 /// A СМЭР (CBT) thought record. `emotions` is a JSON array of
 /// `{ name: string, intensity: 0..100 }`.
 export const diaryEntries = sqliteTable('diary_entries', {
@@ -96,3 +104,4 @@ export type Win = typeof wins.$inferSelect;
 export type FoodEntry = typeof foodEntries.$inferSelect;
 export type DiaryEntry = typeof diaryEntries.$inferSelect;
 export type WeightRow = typeof weights.$inferSelect;
+export type MoodRow = typeof moods.$inferSelect;
