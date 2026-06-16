@@ -1,0 +1,83 @@
+import { describe, expect, it } from '@jest/globals';
+import BetterSqlite3 from 'better-sqlite3';
+import { drizzle } from 'drizzle-orm/better-sqlite3';
+
+import { deriveQuickMeals, quickMeals } from '@/lib/core/db/food';
+import { applySchema } from '@/lib/core/db/init';
+import * as schema from '@/lib/core/db/schema';
+
+const e = (rawText: string, day: number, kcal: number, proteinG: number) => ({
+  rawText,
+  ts: new Date(2026, 5, day, 12),
+  kcal,
+  proteinG,
+  fatG: 0,
+  carbG: 0,
+});
+
+describe('deriveQuickMeals', () => {
+  it('groups case/space-insensitively, keeps latest macros, and ranks each list', () => {
+    // Deliberately unsorted; "ОВСЯНКА" must merge into "Овсянка".
+    const entries = [
+      e('Банан', 13, 90, 1),
+      e('Овсянка', 12, 310, 22),
+      e('Кофе', 11, 10, 0),
+      e('ОВСЯНКА', 9, 300, 20),
+      e('Овсянка', 15, 320, 25), // latest for the oat group
+      e('Кофе', 14, 12, 1),
+      e('Овсянка', 10, 305, 21),
+    ];
+
+    const { recents, favorites } = deriveQuickMeals(entries);
+
+    // recents: distinct, newest-first by latest occurrence.
+    expect(recents.map((m) => m.rawText)).toEqual(['Овсянка', 'Кофе', 'Банан']);
+    expect(recents[0]).toEqual({
+      rawText: 'Овсянка',
+      kcal: 320,
+      proteinG: 25,
+      fatG: 0,
+      carbG: 0,
+      count: 4,
+    });
+
+    // favorites: only repeats (count ≥ 2), most-repeated first.
+    expect(favorites.map((m) => m.rawText)).toEqual(['Овсянка', 'Кофе']);
+    expect(favorites.map((m) => m.count)).toEqual([4, 2]);
+  });
+
+  it('respects the list limits', () => {
+    const entries = [e('a', 1, 1, 1), e('b', 2, 1, 1), e('c', 3, 1, 1)];
+    expect(deriveQuickMeals(entries, { recentLimit: 2 }).recents).toHaveLength(2);
+  });
+});
+
+describe('quickMeals (db)', () => {
+  it('reads only confirmed entries', async () => {
+    const sqlite = new BetterSqlite3(':memory:');
+    const db = drizzle(sqlite, { schema });
+    await applySchema((s) => sqlite.exec(s));
+
+    const insert = (rawText: string, day: number, confirmed: boolean) =>
+      db.insert(schema.foodEntries).values({
+        ts: new Date(2026, 5, day, 12),
+        rawText,
+        source: 'text',
+        kcal: 200,
+        proteinG: 15,
+        fatG: 5,
+        carbG: 10,
+        confirmed,
+      });
+
+    await insert('Овсянка', 10, true);
+    await insert('Овсянка', 12, true);
+    await insert('Кофе', 11, true);
+    await insert('Черновик', 13, false); // unconfirmed → excluded
+
+    const { recents, favorites } = await quickMeals(db);
+    expect(recents.map((m) => m.rawText).sort()).toEqual(['Кофе', 'Овсянка']);
+    expect(favorites.map((m) => m.rawText)).toEqual(['Овсянка']);
+    sqlite.close();
+  });
+});

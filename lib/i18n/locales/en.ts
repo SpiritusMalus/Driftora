@@ -56,6 +56,8 @@ export const en = {
     stubNote: 'Offline estimate (stub) for now. AI parsing comes later.',
     needHelp: 'Could not recognize it. Add more detail.',
     dbUnavailable: 'The database is only available in a device dev build.',
+    favorites: 'Favorites',
+    recent: 'Recent',
   },
   diary: {
     listTitle: 'Thought diary',

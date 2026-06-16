@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
-import { saveParsedEntry, todayMacroTotals } from '@/lib/core/db/food';
+import { quickMeals, saveParsedEntry, todayMacroTotals, type QuickMeal } from '@/lib/core/db/food';
 import { ensureSettings } from '@/lib/core/db/settings';
 import { proteinInsight } from '@/lib/core/insights/proteinInsight';
 import type { FoodParseResult, ParsedFoodItem } from '@/lib/core/services/foodParser';
@@ -42,20 +42,55 @@ export default function FoodLogScreen() {
   // line shown once a meal is parsed (the meaning-rules library).
   const [proteinTarget, setProteinTarget] = useState(0);
   const [todayProteinG, setTodayProteinG] = useState(0);
+  const [quick, setQuick] = useState<{ recents: QuickMeal[]; favorites: QuickMeal[] }>({
+    recents: [],
+    favorites: [],
+  });
 
   useEffect(() => {
     let active = true;
     void (async () => {
       if (!db) return;
-      const [settings, totals] = await Promise.all([ensureSettings(db), todayMacroTotals(db)]);
+      const [settings, totals, quickAdd] = await Promise.all([
+        ensureSettings(db),
+        todayMacroTotals(db),
+        quickMeals(db),
+      ]);
       if (!active) return;
       setProteinTarget(settings.targetProteinG);
       setTodayProteinG(totals.proteinG);
+      setQuick(quickAdd);
     })();
     return () => {
       active = false;
     };
   }, [db]);
+
+  /// One tap re-loads a past meal into the editable confirm list (no typing, no
+  /// parse) — the user still reviews and saves.
+  function onQuickPick(meal: QuickMeal) {
+    setText(meal.rawText);
+    setResult({
+      items: [
+        {
+          name: meal.rawText,
+          qtyG: null,
+          kcal: meal.kcal,
+          proteinG: meal.proteinG,
+          fatG: meal.fatG,
+          carbG: meal.carbG,
+          assumptions: '',
+        },
+      ],
+      kcal: meal.kcal,
+      proteinG: meal.proteinG,
+      fatG: meal.fatG,
+      carbG: meal.carbG,
+      confidence: 'high',
+      needsClarification: false,
+      clarifyQuestion: null,
+    });
+  }
 
   const labels: MacroLabels = {
     kcal: t('units.kcal'),
@@ -116,6 +151,42 @@ export default function FoodLogScreen() {
         disabled={parsing || text.trim().length === 0}
         theme={theme}
       />
+
+      {result == null && (quick.favorites.length > 0 || quick.recents.length > 0) ? (
+        <View style={styles.quick}>
+          {(
+            [
+              { label: t('food.favorites'), meals: quick.favorites },
+              { label: t('food.recent'), meals: quick.recents },
+            ] as const
+          ).map((group) =>
+            group.meals.length === 0 ? null : (
+              <View key={group.label} style={styles.quickGroup}>
+                <Text style={[styles.quickLabel, { color: theme.subtle }]}>{group.label}</Text>
+                <View style={styles.quickWrap}>
+                  {group.meals.map((m, i) => (
+                    <Pressable
+                      key={i}
+                      onPress={() => onQuickPick(m)}
+                      style={({ pressed }) => [
+                        styles.chip,
+                        { backgroundColor: theme.card, borderColor: theme.border, opacity: pressed ? 0.6 : 1 },
+                      ]}
+                    >
+                      <Text numberOfLines={1} style={[styles.chipText, { color: theme.text }]}>
+                        {m.rawText}
+                      </Text>
+                      <Text style={[styles.chipMacro, { color: theme.subtle }]}>
+                        {t('macros.protein')} {Math.round(m.proteinG)} {t('units.g')}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            ),
+          )}
+        </View>
+      ) : null}
 
       {result == null ? (
         <Text style={[styles.hint, { color: theme.subtle }]}>{t('food.empty')}</Text>
@@ -307,4 +378,16 @@ const styles = StyleSheet.create({
   totalValue: { fontSize: 14 },
   stubNote: { fontSize: 11, fontStyle: 'italic', marginBottom: 12 },
   proteinNote: { fontSize: 12, marginTop: 4, marginBottom: 8, lineHeight: 17 },
+  quick: { marginTop: 16 },
+  quickGroup: { marginBottom: 14 },
+  quickLabel: { fontSize: 12, marginBottom: 8, fontWeight: '600' },
+  quickWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  chipText: { fontSize: 14, fontWeight: '600', maxWidth: 240 },
+  chipMacro: { fontSize: 11, marginTop: 2 },
 });
