@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import {
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -41,6 +42,10 @@ export default function WinsScreen() {
       };
     }, [db]),
   );
+
+  async function onShare(message: string) {
+    await Share.share({ message });
+  }
 
   async function onAdd() {
     const message = text.trim();
@@ -89,8 +94,17 @@ export default function WinsScreen() {
       ) : (
         items.map((w) => (
           <View key={w.id} style={[styles.row, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Text style={[styles.message, { color: theme.text }]}>{w.message}</Text>
-            <Text style={[styles.date, { color: theme.subtle }]}>{formatDate(w.ts)}</Text>
+            <View style={styles.rowBody}>
+              <Text style={[styles.message, { color: theme.text }]}>{w.message}</Text>
+              <Text style={[styles.date, { color: theme.subtle }]}>{formatDate(w.ts)}</Text>
+            </View>
+            <Pressable
+              onPress={() => onShare(w.message)}
+              hitSlop={8}
+              style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1, paddingLeft: 12 })}
+            >
+              <Text style={[styles.share, { color: theme.primary }]}>{t('wins.share')}</Text>
+            </Pressable>
           </View>
         ))
       )}
@@ -117,11 +131,15 @@ const styles = StyleSheet.create({
   addText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
   hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
   row: {
+    flexDirection: 'row',
+    alignItems: 'center',
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 12,
     padding: 14,
     marginBottom: 10,
   },
+  rowBody: { flex: 1 },
   message: { fontSize: 15 },
   date: { fontSize: 12, marginTop: 4 },
+  share: { fontSize: 13, fontWeight: '600' },
 });
