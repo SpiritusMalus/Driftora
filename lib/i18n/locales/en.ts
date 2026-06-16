@@ -173,6 +173,8 @@ export const en = {
     flags: 'Privacy & mode',
     hideCalories: 'Hide calories (focus on protein and habits)',
     llmDiaryAssist: 'AI help in the diary (optional, off by default)',
+    showPopulationStats: 'Step reference comparison (optional)',
+    showPopulationStatsNote: 'Shows your step average next to evidence reference points — not a leaderboard. Off by default: comparing to others can demotivate.',
     save: 'Save',
     saving: 'Saving…',
     saved: 'Saved ✓',
@@ -201,6 +203,14 @@ export const en = {
     vsLastWeek: 'Compared with last week',
     delta: '{{change}} vs last week',
     deltaSame: 'same as last week',
+    norms: {
+      title: 'Where your week stands on steps',
+      building: 'Your weekly average is {{avg}} steps/day. Around 7,000 is where risk reductions show up; about {{gap}} more a day to get there.',
+      approaching: 'Your average is {{avg}} steps/day — close to the ~7,000 reference where benefit grows fastest (~{{gap}} more a day).',
+      beneficial: 'Your average is {{avg}} steps/day — already in the zone of clear benefit for heart, brain and stress.',
+      ample: 'Your average is {{avg}} steps/day — more than enough by the evidence. More is not necessarily “better”.',
+      source: '“10,000” is marketing, not a medical threshold. Reference: ~7,000/day and lower risk, Lancet Public Health 2025. Comparing to your past self matters more than to others.',
+    },
     metrics: {
       steps: 'Steps (avg/day)',
       protein: 'Protein (avg/day)',

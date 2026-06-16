@@ -8,6 +8,7 @@ import { listDistortionTagsSince } from '@/lib/core/db/diary';
 import { ensureSettings } from '@/lib/core/db/settings';
 import { weekReview, type WeekReview } from '@/lib/core/db/weekReview';
 import { thinkingTrapOfWeek, type ThinkingTrap } from '@/lib/core/insights/distortions';
+import { stepReference } from '@/lib/core/insights/stepNorms';
 import { colors, type ThemeColors } from '@/lib/theme/colors';
 
 /// Offline weekly review — this week vs your past self, plus the streak,
@@ -20,6 +21,7 @@ export default function ReviewScreen() {
 
   const [review, setReview] = useState<WeekReview | null>(null);
   const [hideCalories, setHideCalories] = useState(false);
+  const [showPopulationStats, setShowPopulationStats] = useState(false);
   const [trap, setTrap] = useState<ThinkingTrap | null>(null);
 
   useFocusEffect(
@@ -37,6 +39,7 @@ export default function ReviewScreen() {
         if (!active) return;
         setReview(rev);
         setHideCalories(settings.hideCalories);
+        setShowPopulationStats(settings.showPopulationStats);
         setTrap(thinkingTrapOfWeek(tagLists));
       })();
       return () => {
@@ -67,6 +70,23 @@ export default function ReviewScreen() {
     { label: t('review.metrics.wins'), value: a.winsCount, delta: a.winsCount - b.winsCount },
   ];
 
+  // Opt-in honest comparison: the user's step average vs sourced reference
+  // points (not a peer leaderboard).
+  const ref = showPopulationStats ? stepReference(a.stepsAvg) : null;
+  const normsLine = (() => {
+    if (!ref) return null;
+    switch (ref.standing) {
+      case 'building':
+        return t('review.norms.building', { avg: ref.weeklyAvg, gap: ref.gapToBeneficial });
+      case 'approaching':
+        return t('review.norms.approaching', { avg: ref.weeklyAvg, gap: ref.gapToBeneficial });
+      case 'beneficial':
+        return t('review.norms.beneficial', { avg: ref.weeklyAvg });
+      case 'ample':
+        return t('review.norms.ample', { avg: ref.weeklyAvg });
+    }
+  })();
+
   return (
     <ScrollView style={{ backgroundColor: theme.background }} contentContainerStyle={styles.content}>
       <View style={[styles.summary, { backgroundColor: theme.iconBg, borderColor: theme.border }]}>
@@ -94,6 +114,14 @@ export default function ReviewScreen() {
           </View>
         </View>
       ))}
+
+      {normsLine ? (
+        <View style={[styles.normsCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <Text style={[styles.normsTitle, { color: theme.subtle }]}>{t('review.norms.title')}</Text>
+          <Text style={[styles.normsBody, { color: theme.text }]}>{normsLine}</Text>
+          <Text style={[styles.normsSource, { color: theme.subtle }]}>{t('review.norms.source')}</Text>
+        </View>
+      ) : null}
 
       {trap ? (
         <View style={[styles.trapCard, { backgroundColor: theme.iconBg, borderColor: theme.border }]}>
@@ -140,6 +168,15 @@ const styles = StyleSheet.create({
   rowRight: { alignItems: 'flex-end' },
   rowValue: { fontSize: 16, fontWeight: '600' },
   rowDelta: { fontSize: 12, marginTop: 2 },
+  normsCard: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 8,
+  },
+  normsTitle: { fontSize: 13, fontWeight: '600' },
+  normsBody: { fontSize: 14, marginTop: 6, lineHeight: 20 },
+  normsSource: { fontSize: 11, marginTop: 8, fontStyle: 'italic', lineHeight: 16 },
   trapCard: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 12,

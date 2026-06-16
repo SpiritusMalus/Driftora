@@ -27,12 +27,14 @@ describe('updateSettings', () => {
       stepsGoal: 8000,
       hideCalories: true,
       paused: true,
+      showPopulationStats: true,
     });
     expect(updated.targetKcal).toBe(1800);
     expect(updated.targetProteinG).toBe(140);
     expect(updated.stepsGoal).toBe(8000);
     expect(updated.hideCalories).toBe(true);
     expect(updated.paused).toBe(true);
+    expect(updated.showPopulationStats).toBe(true);
     expect(updated.targetFatG).toBe(70); // untouched default
     expect(updated.llmDiaryAssist).toBe(false); // untouched default
 

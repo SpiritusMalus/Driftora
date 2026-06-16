@@ -30,6 +30,7 @@ export interface SettingsPatch {
   hideCalories?: boolean;
   llmDiaryAssist?: boolean;
   paused?: boolean;
+  showPopulationStats?: boolean;
 }
 
 /// Applies a partial update to the single settings row, returning the result.
@@ -48,6 +49,7 @@ export async function updateSettings(
   if (patch.hideCalories != null) set.hideCalories = patch.hideCalories;
   if (patch.llmDiaryAssist != null) set.llmDiaryAssist = patch.llmDiaryAssist;
   if (patch.paused != null) set.paused = patch.paused;
+  if (patch.showPopulationStats != null) set.showPopulationStats = patch.showPopulationStats;
   if (Object.keys(set).length > 0) {
     await db.update(appSettings).set(set).where(eq(appSettings.id, 0));
   }
