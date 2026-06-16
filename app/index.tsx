@@ -190,6 +190,13 @@ export default function HomeScreen() {
           theme={theme}
           onPress={() => router.push('/wins')}
         />
+        <SectionCard
+          icon="stats-chart-outline"
+          title={t('review.title')}
+          subtitle={t('review.homeSubtitle')}
+          theme={theme}
+          onPress={() => router.push('/review')}
+        />
         <Text style={[styles.hint, { color: theme.subtle }]}>{t('home.emptyHint')}</Text>
       </ScrollView>
     </>

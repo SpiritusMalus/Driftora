@@ -186,4 +186,23 @@ export const en = {
       proteinGoal: 'Protein goal reached — {{protein}} g 💪',
     },
   },
+  review: {
+    title: 'Weekly review',
+    homeSubtitle: 'You vs your past self',
+    dbUnavailable: 'The review is available in a device dev build.',
+    northStar: 'You logged on {{days}} days this week.',
+    streak: 'Streak: {{weeks}} weeks running',
+    reassurance: 'Days without entries are fine. Progress is a process, not a perfect streak.',
+    vsLastWeek: 'Compared with last week',
+    delta: '{{change}} vs last week',
+    deltaSame: 'same as last week',
+    metrics: {
+      steps: 'Steps (avg/day)',
+      protein: 'Protein (avg/day)',
+      kcal: 'Calories (avg/day)',
+      foodDays: 'Days with a food log',
+      diary: 'Diary entries',
+      wins: 'Wins',
+    },
+  },
 } as const;

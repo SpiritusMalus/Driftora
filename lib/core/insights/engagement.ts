@@ -30,7 +30,7 @@ export interface WeeklyStreak {
 }
 
 /// Monday 00:00 (local) of the week containing [date].
-function startOfWeek(date: Date): Date {
+export function startOfWeek(date: Date): Date {
   const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
   const mondayOffset = (d.getDay() + 6) % 7; // Sun=6, Mon=0 … Sat=5
   d.setDate(d.getDate() - mondayOffset);
