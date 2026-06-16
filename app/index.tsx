@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView, StyleSheet, Text, useColorScheme } from 'react-native';
 
 import { SectionCard } from '@/components/SectionCard';
+import { runAutoWins } from '@/lib/core/db/autoWins';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { countDiaryEntries } from '@/lib/core/db/diary';
 import { todayMacroTotals, type MacroTotals } from '@/lib/core/db/food';
@@ -43,6 +44,20 @@ export default function HomeScreen() {
           countWins(db),
         ]);
         const stepCount = await syncDaySteps(db, getHealthService());
+        // Celebrate the day's earned goals automatically (deduped per day).
+        const awarded = await runAutoWins(
+          db,
+          {
+            steps: stepCount,
+            stepsGoal: settings.stepsGoal,
+            proteinG: tot.proteinG,
+            proteinTargetG: settings.targetProteinG,
+          },
+          {
+            stepsGoal: t('wins.auto.stepsGoal', { steps: stepCount }),
+            proteinGoal: t('wins.auto.proteinGoal', { protein: Math.round(tot.proteinG) }),
+          },
+        );
         if (!active) return;
         setTotals(tot);
         setTargets({ kcal: settings.targetKcal, proteinG: settings.targetProteinG });
@@ -50,12 +65,12 @@ export default function HomeScreen() {
         setSteps(stepCount);
         setStepsMeaning(stepInsight(stepCount, settings.stepsGoal));
         setDiaryCount(diaryN);
-        setWinsCount(winsN);
+        setWinsCount(winsN + awarded.length);
       })();
       return () => {
         active = false;
       };
-    }, [db]),
+    }, [db, t]),
   );
 
   const nutritionSubtitle = (() => {

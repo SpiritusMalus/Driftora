@@ -125,5 +125,9 @@ export const en = {
     count: 'Wins',
     cta: 'Mark a win',
     dbUnavailable: 'Wins are available in a device dev build.',
+    auto: {
+      stepsGoal: 'Daily step goal reached — {{steps}} steps 🎉',
+      proteinGoal: 'Protein goal reached — {{protein}} g 💪',
+    },
   },
 } as const;
