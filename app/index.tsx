@@ -6,11 +6,13 @@ import { Pressable, ScrollView, StyleSheet, Text, useColorScheme } from 'react-n
 
 import { SectionCard } from '@/components/SectionCard';
 import { runAutoWins } from '@/lib/core/db/autoWins';
+import { bodyMindInsightFromDb } from '@/lib/core/db/bodyMind';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { countDiaryEntries } from '@/lib/core/db/diary';
 import { todayMacroTotals, type MacroTotals } from '@/lib/core/db/food';
 import { countWins, ensureSettings } from '@/lib/core/db/settings';
 import { syncDaySteps } from '@/lib/core/db/steps';
+import { type BodyMindResult } from '@/lib/core/insights/bodyMind';
 import { stepInsight } from '@/lib/core/insights/stepInsight';
 import { getHealthService } from '@/lib/core/services/healthProvider';
 import { colors } from '@/lib/theme/colors';
@@ -31,17 +33,19 @@ export default function HomeScreen() {
   const [stepsMeaning, setStepsMeaning] = useState<string | null>(null);
   const [diaryCount, setDiaryCount] = useState(0);
   const [winsCount, setWinsCount] = useState(0);
+  const [bodyMind, setBodyMind] = useState<BodyMindResult | null>(null);
 
   useFocusEffect(
     useCallback(() => {
       let active = true;
       void (async () => {
         if (!db) return;
-        const [tot, settings, diaryN, winsN] = await Promise.all([
+        const [tot, settings, diaryN, winsN, bodyMindResult] = await Promise.all([
           todayMacroTotals(db),
           ensureSettings(db),
           countDiaryEntries(db),
           countWins(db),
+          bodyMindInsightFromDb(db),
         ]);
         const stepCount = await syncDaySteps(db, getHealthService());
         // Celebrate the day's earned goals automatically (deduped per day).
@@ -66,6 +70,7 @@ export default function HomeScreen() {
         setStepsMeaning(stepInsight(stepCount, settings.stepsGoal));
         setDiaryCount(diaryN);
         setWinsCount(winsN + awarded.length);
+        setBodyMind(bodyMindResult);
       })();
       return () => {
         active = false;
@@ -84,6 +89,19 @@ export default function HomeScreen() {
     steps == null || stepsMeaning == null
       ? t('home.comingSoon')
       : `${steps} ${t('home.steps.unit')}\n${stepsMeaning}`;
+
+  // The mood↔steps card stays hidden until there are enough paired days; below
+  // that it would be noise. `null` = don't render the card at all.
+  const bodyMindSubtitle = (() => {
+    if (!bodyMind || bodyMind.kind === 'insufficient') return null;
+    const basis = t('home.bodyMind.basis', { days: bodyMind.pairedDays });
+    if (bodyMind.kind === 'no_link') return `${t('bodyMind.noLink')}\n${basis}`;
+    const key =
+      bodyMind.direction === 'more_steps_better_mood'
+        ? 'bodyMind.link.moreStepsBetterMood'
+        : 'bodyMind.link.moreStepsWorseMood';
+    return `${t(key, { gap: bodyMind.moodGap })}\n${basis}`;
+  })();
 
   return (
     <>
@@ -125,6 +143,14 @@ export default function HomeScreen() {
           theme={theme}
           onPress={() => router.push('/diary')}
         />
+        {bodyMindSubtitle && (
+          <SectionCard
+            icon="pulse-outline"
+            title={t('home.sections.bodyMind')}
+            subtitle={bodyMindSubtitle}
+            theme={theme}
+          />
+        )}
         <SectionCard
           icon="trophy-outline"
           title={t('home.sections.wins')}
