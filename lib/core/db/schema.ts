@@ -57,6 +57,8 @@ export const diaryEntries = sqliteTable('diary_entries', {
   evidenceAgainst: text('evidence_against').notNull().default(''),
   reframe: text('reframe').notNull().default(''),
   mood: integer('mood'), // 0..10, nullable
+  // JSON array of cognitive-distortion keys (see insights/distortions.ts).
+  distortions: text('distortions').notNull().default('[]'),
 });
 
 /// A celebrated success / achievement.

@@ -84,6 +84,24 @@ export const en = {
     fields: {
       mood: 'Mood right now (0–10)',
     },
+    distortions: {
+      label: 'Thinking distortions (if any fit)',
+      all_or_nothing: 'All-or-nothing',
+      overgeneralization: 'Overgeneralization',
+      mental_filter: 'Mental filter',
+      disqualifying_positive: 'Discounting the positive',
+      mind_reading: 'Mind reading',
+      fortune_telling: 'Fortune telling',
+      catastrophizing: 'Catastrophizing',
+      emotional_reasoning: 'Emotional reasoning',
+      shoulds: 'Should statements',
+      labeling: 'Labeling',
+      personalization: 'Personalization',
+    },
+    trap: {
+      title: 'Trap of the week',
+      body: 'Most common this week: {{name}} ({{count}}). Noticing it is half the work.',
+    },
     emotion: {
       name: 'Emotion',
       intensity: 'Intensity',

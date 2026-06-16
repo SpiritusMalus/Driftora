@@ -43,6 +43,14 @@ export default function DiaryEntryScreen() {
     >
       <Section label={t('diary.steps.situation.title')} value={entry.situation} dash={dash} theme={theme} />
       <Section label={t('diary.steps.thoughts.title')} value={entry.thoughts} dash={dash} theme={theme} />
+      {entry.distortions.length > 0 ? (
+        <View style={styles.section}>
+          <Text style={[styles.label, { color: theme.subtle }]}>{t('diary.distortions.label')}</Text>
+          <Text style={[styles.value, { color: theme.text }]}>
+            {entry.distortions.map((k) => t(`diary.distortions.${k}`)).join(' · ')}
+          </Text>
+        </View>
+      ) : null}
 
       <View style={styles.section}>
         <Text style={[styles.label, { color: theme.subtle }]}>{t('diary.steps.emotions.title')}</Text>

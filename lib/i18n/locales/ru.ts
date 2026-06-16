@@ -84,6 +84,24 @@ export const ru = {
     fields: {
       mood: 'Настроение сейчас (0–10)',
     },
+    distortions: {
+      label: 'Искажения мышления (если узнаёте)',
+      all_or_nothing: 'Чёрно-белое',
+      overgeneralization: 'Сверхобобщение',
+      mental_filter: 'Негативный фильтр',
+      disqualifying_positive: 'Обесценивание хорошего',
+      mind_reading: 'Чтение мыслей',
+      fortune_telling: 'Предсказание будущего',
+      catastrophizing: 'Катастрофизация',
+      emotional_reasoning: 'Эмоция как факт',
+      shoulds: 'Долженствование',
+      labeling: 'Ярлыки',
+      personalization: 'Принятие на свой счёт',
+    },
+    trap: {
+      title: 'Ловушка недели',
+      body: 'Чаще всего на этой неделе: {{name}} ({{count}}). Замечать её — уже половина дела.',
+    },
     emotion: {
       name: 'Эмоция',
       intensity: 'Сила',

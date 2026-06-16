@@ -13,6 +13,7 @@ import {
 
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { saveDiaryEntry, type Emotion } from '@/lib/core/db/diary';
+import { DISTORTION_KEYS, type DistortionKey } from '@/lib/core/insights/distortions';
 import { colors, type ThemeColors } from '@/lib/theme/colors';
 
 /// The СМЭР thought record, one gentle step at a time:
@@ -43,6 +44,7 @@ export default function DiaryNewScreen() {
   const [evidenceAgainst, setEvidenceAgainst] = useState('');
   const [reframe, setReframe] = useState('');
   const [mood, setMood] = useState<number | null>(null);
+  const [distortions, setDistortions] = useState<DistortionKey[]>([]);
   const [saving, setSaving] = useState(false);
 
   const key = STEPS[step];
@@ -68,6 +70,7 @@ export default function DiaryNewScreen() {
         evidenceAgainst,
         reframe,
         mood,
+        distortions,
       });
       router.back();
     } finally {
@@ -101,12 +104,15 @@ export default function DiaryNewScreen() {
           />
         )}
         {key === 'thoughts' && (
-          <Field
-            value={thoughts}
-            onChange={setThoughts}
-            placeholder={t('diary.steps.thoughts.placeholder')}
-            theme={theme}
-          />
+          <>
+            <Field
+              value={thoughts}
+              onChange={setThoughts}
+              placeholder={t('diary.steps.thoughts.placeholder')}
+              theme={theme}
+            />
+            <DistortionPicker selected={distortions} onChange={setDistortions} theme={theme} />
+          </>
         )}
         {key === 'emotions' && (
           <EmotionsEditor emotions={emotions} onChange={setEmotions} theme={theme} />
@@ -339,6 +345,47 @@ function MoodPicker({
   );
 }
 
+function DistortionPicker({
+  selected,
+  onChange,
+  theme,
+}: {
+  selected: DistortionKey[];
+  onChange: (d: DistortionKey[]) => void;
+  theme: ThemeColors;
+}) {
+  const { t } = useTranslation();
+  function toggle(key: DistortionKey) {
+    onChange(selected.includes(key) ? selected.filter((k) => k !== key) : [...selected, key]);
+  }
+  return (
+    <View style={styles.distortWrap}>
+      <Text style={[styles.fieldLabel, { color: theme.subtle }]}>
+        {t('diary.distortions.label')}
+      </Text>
+      <View style={styles.distortRow}>
+        {DISTORTION_KEYS.map((key) => {
+          const on = selected.includes(key);
+          return (
+            <Pressable
+              key={key}
+              onPress={() => toggle(key)}
+              style={[
+                styles.distortChip,
+                { borderColor: on ? theme.primary : theme.border, backgroundColor: on ? theme.iconBg : theme.card },
+              ]}
+            >
+              <Text style={{ color: on ? theme.primary : theme.text, fontSize: 13 }}>
+                {t(`diary.distortions.${key}`)}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
 function toInt(v: string): number {
   const n = parseInt(v, 10);
   return Number.isFinite(n) ? n : 0;
@@ -423,5 +470,13 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  distortWrap: { marginTop: 16 },
+  distortRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  distortChip: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
   },
 });

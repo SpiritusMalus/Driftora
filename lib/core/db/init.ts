@@ -48,7 +48,8 @@ CREATE TABLE IF NOT EXISTS diary_entries (
   evidence_for TEXT NOT NULL DEFAULT '',
   evidence_against TEXT NOT NULL DEFAULT '',
   reframe TEXT NOT NULL DEFAULT '',
-  mood INTEGER
+  mood INTEGER,
+  distortions TEXT NOT NULL DEFAULT '[]'
 );
 CREATE TABLE IF NOT EXISTS wins (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -7,10 +7,16 @@ import {
   StyleSheet,
   Text,
   useColorScheme,
+  View,
 } from 'react-native';
 
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
-import { listDiaryEntries, type DiaryEntryView } from '@/lib/core/db/diary';
+import {
+  listDiaryEntries,
+  listDistortionTagsSince,
+  type DiaryEntryView,
+} from '@/lib/core/db/diary';
+import { thinkingTrapOfWeek, type ThinkingTrap } from '@/lib/core/insights/distortions';
 import { colors } from '@/lib/theme/colors';
 
 /// List of thought records, newest first. Tap one to reread it; the button
@@ -22,14 +28,22 @@ export default function DiaryListScreen() {
   const router = useRouter();
   const db = useDatabase();
   const [entries, setEntries] = useState<DiaryEntryView[] | null>(null);
+  const [trap, setTrap] = useState<ThinkingTrap | null>(null);
 
   useFocusEffect(
     useCallback(() => {
       let active = true;
       void (async () => {
         if (!db) return;
-        const list = await listDiaryEntries(db);
-        if (active) setEntries(list);
+        const weekAgo = new Date();
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        const [list, tagLists] = await Promise.all([
+          listDiaryEntries(db),
+          listDistortionTagsSince(db, weekAgo),
+        ]);
+        if (!active) return;
+        setEntries(list);
+        setTrap(thinkingTrapOfWeek(tagLists));
       })();
       return () => {
         active = false;
@@ -51,6 +65,18 @@ export default function DiaryListScreen() {
       >
         <Text style={styles.addText}>{t('diary.add')}</Text>
       </Pressable>
+
+      {trap ? (
+        <View style={[styles.trapCard, { backgroundColor: theme.iconBg, borderColor: theme.border }]}>
+          <Text style={[styles.trapTitle, { color: theme.text }]}>{t('diary.trap.title')}</Text>
+          <Text style={[styles.trapBody, { color: theme.subtle }]}>
+            {t('diary.trap.body', {
+              name: t(`diary.distortions.${trap.key}`),
+              count: trap.count,
+            })}
+          </Text>
+        </View>
+      ) : null}
 
       {db == null ? (
         <Text style={[styles.hint, { color: theme.subtle }]}>{t('diary.dbUnavailable')}</Text>
@@ -101,6 +127,14 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   addText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
+  trapCard: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+  },
+  trapTitle: { fontSize: 14, fontWeight: '600' },
+  trapBody: { fontSize: 13, marginTop: 4, lineHeight: 18 },
   hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
   row: {
     borderRadius: 12,
