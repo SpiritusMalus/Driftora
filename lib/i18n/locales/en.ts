@@ -13,6 +13,7 @@ export const en = {
       wins: 'Wins',
       bodyMind: 'Body & mood',
       weight: 'Weight',
+      mood: 'Mood',
     },
     steps: { unit: 'steps' },
     bodyMind: { basis: 'Based on {{days}} days with mood + steps' },
@@ -48,6 +49,14 @@ export const en = {
       down: 'Over {{days}} days your weight is down {{abs}} kg.',
       up: 'Over {{days}} days your weight is up {{abs}} kg.',
     },
+  },
+  mood: {
+    title: 'Mood',
+    prompt: 'How are you right now?',
+    scale: '0 — very low, 10 — great. One tap, no explanation needed.',
+    empty: 'No mood check-ins yet.',
+    dbUnavailable: 'Mood is available in a device dev build.',
+    cta: 'Log mood',
   },
   food: {
     title: 'Add food',

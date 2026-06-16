@@ -10,6 +10,7 @@ import { bodyMindInsightFromDb } from '@/lib/core/db/bodyMind';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { countDiaryEntries } from '@/lib/core/db/diary';
 import { todayMacroTotals, type MacroTotals } from '@/lib/core/db/food';
+import { latestMood } from '@/lib/core/db/mood';
 import { countWins, ensureSettings, updateSettings } from '@/lib/core/db/settings';
 import { syncDaySteps } from '@/lib/core/db/steps';
 import { latestWeight } from '@/lib/core/db/weight';
@@ -36,6 +37,7 @@ export default function HomeScreen() {
   const [winsCount, setWinsCount] = useState(0);
   const [bodyMind, setBodyMind] = useState<BodyMindResult | null>(null);
   const [weightKg, setWeightKg] = useState<number | null>(null);
+  const [moodValue, setMoodValue] = useState<number | null>(null);
   const [paused, setPaused] = useState(false);
 
   useFocusEffect(
@@ -43,14 +45,16 @@ export default function HomeScreen() {
       let active = true;
       void (async () => {
         if (!db) return;
-        const [tot, settings, diaryN, winsN, bodyMindResult, weightRow] = await Promise.all([
-          todayMacroTotals(db),
-          ensureSettings(db),
-          countDiaryEntries(db),
-          countWins(db),
-          bodyMindInsightFromDb(db),
-          latestWeight(db),
-        ]);
+        const [tot, settings, diaryN, winsN, bodyMindResult, weightRow, moodRow] =
+          await Promise.all([
+            todayMacroTotals(db),
+            ensureSettings(db),
+            countDiaryEntries(db),
+            countWins(db),
+            bodyMindInsightFromDb(db),
+            latestWeight(db),
+            latestMood(db),
+          ]);
         const stepCount = await syncDaySteps(db, getHealthService());
         // Celebrate the day's earned goals automatically (deduped per day).
         const awarded = await runAutoWins(
@@ -77,6 +81,7 @@ export default function HomeScreen() {
         setWinsCount(winsN + awarded.length);
         setBodyMind(bodyMindResult);
         setWeightKg(weightRow ? weightRow.weightKg : null);
+        setMoodValue(moodRow ? moodRow.value : null);
         setPaused(settings.paused);
       })();
       return () => {
@@ -174,6 +179,13 @@ export default function HomeScreen() {
           subtitle={diaryCount > 0 ? `${t('diary.count')}: ${diaryCount}` : t('diary.cta')}
           theme={theme}
           onPress={() => router.push('/diary')}
+        />
+        <SectionCard
+          icon="happy-outline"
+          title={t('home.sections.mood')}
+          subtitle={moodValue != null ? `${moodValue}/10` : t('mood.cta')}
+          theme={theme}
+          onPress={() => router.push('/mood')}
         />
         {bodyMindSubtitle && (
           <SectionCard

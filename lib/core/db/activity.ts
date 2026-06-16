@@ -1,6 +1,6 @@
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
-import { diaryEntries, foodEntries } from './schema';
+import { diaryEntries, foodEntries, moods } from './schema';
 import { dayKey } from './steps';
 
 /// Accepts any drizzle SQLite database (op-sqlite async on device,
@@ -13,11 +13,12 @@ type AnyDb = BaseSQLiteDatabase<any, any, any>;
 /// is deliberately excluded: the north-star and streak reward *showing up*, not
 /// the device syncing in the background.
 export async function selfInitiatedLogDays(db: AnyDb): Promise<Set<string>> {
-  const [food, diary] = await Promise.all([
+  const [food, diary, mood] = await Promise.all([
     db.select({ ts: foodEntries.ts }).from(foodEntries),
     db.select({ ts: diaryEntries.ts }).from(diaryEntries),
+    db.select({ ts: moods.ts }).from(moods),
   ]);
   const days = new Set<string>();
-  for (const row of [...food, ...diary]) days.add(dayKey(row.ts as Date));
+  for (const row of [...food, ...diary, ...mood]) days.add(dayKey(row.ts as Date));
   return days;
 }
