@@ -39,3 +39,8 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# docs live in the Obsidian vault (itself outside git) — keep this repo code-only.
+# No Markdown is tracked here. To keep a specific file, add an exception, e.g.
+# `!README.md`, below this line.
+*.md

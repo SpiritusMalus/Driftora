@@ -1,0 +1,76 @@
+import { describe, expect, it } from '@jest/globals';
+import BetterSqlite3 from 'better-sqlite3';
+import { drizzle } from 'drizzle-orm/better-sqlite3';
+
+import { applySchema } from '@/lib/core/db/init';
+import * as schema from '@/lib/core/db/schema';
+import { dayKey, getStepsForDay, syncDaySteps, upsertSteps } from '@/lib/core/db/steps';
+import type { HealthService } from '@/lib/core/services/health';
+import { StubHealthService } from '@/lib/core/services/stubHealthService';
+
+function makeDb() {
+  const sqlite = new BetterSqlite3(':memory:');
+  return { sqlite, db: drizzle(sqlite, { schema }) };
+}
+
+describe('dayKey', () => {
+  it('formats a local calendar day as YYYY-MM-DD', () => {
+    expect(dayKey(new Date(2026, 5, 16))).toBe('2026-06-16');
+    expect(dayKey(new Date(2026, 0, 3))).toBe('2026-01-03');
+  });
+});
+
+describe('steps storage (steps_days)', () => {
+  it('returns 0 before anything is synced', async () => {
+    const { sqlite, db } = makeDb();
+    await applySchema((s) => sqlite.exec(s));
+
+    expect(await getStepsForDay(db, new Date(2026, 5, 16))).toBe(0);
+
+    sqlite.close();
+  });
+
+  it('upsert stores then overwrites the same day (one row per date)', async () => {
+    const { sqlite, db } = makeDb();
+    await applySchema((s) => sqlite.exec(s));
+    const day = new Date(2026, 5, 16);
+
+    await upsertSteps(db, day, 4000);
+    expect(await getStepsForDay(db, day)).toBe(4000);
+
+    await upsertSteps(db, day, 6800); // same day → replace, not duplicate
+    expect(await getStepsForDay(db, day)).toBe(6800);
+
+    const rows = await db.select().from(schema.stepsDays);
+    expect(rows).toHaveLength(1);
+
+    sqlite.close();
+  });
+
+  it('syncDaySteps writes the service count and returns it', async () => {
+    const { sqlite, db } = makeDb();
+    await applySchema((s) => sqlite.exec(s));
+    const day = new Date(2026, 5, 16);
+
+    const stored = await syncDaySteps(db, new StubHealthService(), day);
+    expect(stored).toBe(await new StubHealthService().stepsForDay(day));
+    expect(await getStepsForDay(db, day)).toBe(stored);
+
+    sqlite.close();
+  });
+
+  it('syncDaySteps keeps the stored count when the service reports nothing', async () => {
+    const { sqlite, db } = makeDb();
+    await applySchema((s) => sqlite.exec(s));
+    const day = new Date(2026, 5, 16);
+    await upsertSteps(db, day, 5200);
+
+    const nullService: HealthService = {
+      requestPermissions: async () => false,
+      stepsForDay: async () => null,
+    };
+    expect(await syncDaySteps(db, nullService, day)).toBe(5200);
+
+    sqlite.close();
+  });
+});
