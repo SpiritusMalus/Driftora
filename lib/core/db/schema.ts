@@ -84,6 +84,11 @@ export const appSettings = sqliteTable('app_settings', {
   llmDiaryAssist: integer('llm_diary_assist', { mode: 'boolean' }).notNull().default(false),
   // "Take a break" — mutes auto-wins and target pressure without losing data.
   paused: integer('paused', { mode: 'boolean' }).notNull().default(false),
+  // Opt-in (default off): show sourced step reference points vs. the user's
+  // average. Off by default — social comparison can demotivate (Roadmap §5).
+  showPopulationStats: integer('show_population_stats', { mode: 'boolean' })
+    .notNull()
+    .default(false),
 });
 
 export type AppSettings = typeof appSettings.$inferSelect;

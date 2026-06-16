@@ -38,6 +38,7 @@ export default function SettingsScreen() {
   const [hideCalories, setHideCalories] = useState(false);
   const [llmDiaryAssist, setLlmDiaryAssist] = useState(false);
   const [paused, setPaused] = useState(false);
+  const [showPopulationStats, setShowPopulationStats] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -57,6 +58,7 @@ export default function SettingsScreen() {
         setHideCalories(s.hideCalories);
         setLlmDiaryAssist(s.llmDiaryAssist);
         setPaused(s.paused);
+        setShowPopulationStats(s.showPopulationStats);
         setLoaded(true);
       })();
       return () => {
@@ -89,6 +91,7 @@ export default function SettingsScreen() {
         hideCalories,
         llmDiaryAssist,
         paused,
+        showPopulationStats,
       });
       setSaved(true);
     } finally {
@@ -143,6 +146,8 @@ export default function SettingsScreen() {
       <Text style={[styles.section, { color: theme.subtle }]}>{t('settings.flags')}</Text>
       <ToggleRow label={t('settings.hideCalories')} value={hideCalories} onChange={(v) => { setHideCalories(v); dirty(); }} theme={theme} />
       <ToggleRow label={t('settings.llmDiaryAssist')} value={llmDiaryAssist} onChange={(v) => { setLlmDiaryAssist(v); dirty(); }} theme={theme} />
+      <ToggleRow label={t('settings.showPopulationStats')} value={showPopulationStats} onChange={(v) => { setShowPopulationStats(v); dirty(); }} theme={theme} />
+      <Text style={[styles.note, { color: theme.subtle }]}>{t('settings.showPopulationStatsNote')}</Text>
 
       <Pressable
         onPress={onSave}

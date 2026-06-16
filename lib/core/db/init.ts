@@ -67,7 +67,8 @@ CREATE TABLE IF NOT EXISTS app_settings (
   reminder_times TEXT NOT NULL DEFAULT '[]',
   hide_calories INTEGER NOT NULL DEFAULT 0,
   llm_diary_assist INTEGER NOT NULL DEFAULT 0,
-  paused INTEGER NOT NULL DEFAULT 0
+  paused INTEGER NOT NULL DEFAULT 0,
+  show_population_stats INTEGER NOT NULL DEFAULT 0
 );
 `;
 
