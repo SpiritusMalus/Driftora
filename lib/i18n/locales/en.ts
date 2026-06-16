@@ -10,11 +10,22 @@ export const en = {
       steps: 'Steps',
       diary: 'Thought diary',
       wins: 'Wins',
+      bodyMind: 'Body & mood',
     },
     steps: { unit: 'steps' },
+    bodyMind: { basis: 'Based on {{days}} days with mood + steps' },
   },
   units: { kcal: 'kcal', g: 'g' },
   macros: { protein: 'Protein', fat: 'Fat', carbs: 'Carbs' },
+  bodyMind: {
+    link: {
+      moreStepsBetterMood:
+        'On days you move more, your mood averages {{gap}} higher out of 10. This is an association, not a cause.',
+      moreStepsWorseMood:
+        'On days with fewer steps, your mood averages {{gap}} higher out of 10. This is an association, not a cause.',
+    },
+    noLink: 'No clear link between steps and mood yet — and that is okay.',
+  },
   food: {
     title: 'Add food',
     inputPlaceholder: 'What did you eat? e.g. three-egg omelette and coffee with milk',
