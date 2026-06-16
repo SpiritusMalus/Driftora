@@ -2,7 +2,7 @@ export const en = {
   appTitle: 'HealthRoutine',
   home: {
     title: 'Today',
-    greeting: 'Your day at a glance',
+    greeting: 'One honest read on how moving shapes how you feel.',
     comingSoon: 'Coming soon',
     emptyHint: 'Nothing here yet — entries will appear once you start.',
     gentleNorm: 'You don\'t have to log every day — a skipped day won\'t break your progress.',
@@ -17,10 +17,49 @@ export const en = {
     },
     steps: { unit: 'steps' },
     bodyMind: { basis: 'Based on {{days}} days with mood + steps' },
+    hero: {
+      eyebrow: 'Body & mind',
+      // The one-tap inputs that build the insight, shown while it is still forming.
+      buildingOne: 'Your body↔mind link is forming — {{days}} more day with a mood and a steps reading.',
+      buildingOther: 'Your body↔mind link is forming — {{days}} more days with a mood and a steps reading.',
+      buildingCaption: 'A check-in today and a few more, and the pattern shows up here.',
+      // Reused for both the link and no-link states.
+      caption: 'An association, not a cause — never a reason to push yourself.',
+    },
+    feeders: {
+      header: 'Feed your insight',
+      mood: 'Mood check-in',
+      moodCta: 'One tap — how are you right now?',
+      moodValue: 'Last: {{value}}/10',
+      steps: 'Steps today',
+      diary: 'Thought diary',
+      diaryCount: '{{count}} entries — your richer mental input',
+      diaryCta: 'A deeper note feeds the insight too',
+    },
+    moreLink: 'More',
+    northStar: 'Showing up {{weeks}} weeks running.',
     paused: {
       title: 'You are on a break',
       body: 'Goals and auto-wins are off. Your data is safe — pick it back up whenever you are ready.',
       resume: 'Resume goals',
+    },
+  },
+  more: {
+    title: 'More',
+    intro: 'Everything else lives here, off the daily screen.',
+    sections: {
+      food: 'Food log',
+      weight: 'Weight',
+      wins: 'Wins',
+      review: 'Weekly review',
+      settings: 'Settings',
+    },
+    subtitles: {
+      food: 'Calories and protein, when you want them',
+      weight: 'One optional signal',
+      wins: 'Small things that went well',
+      review: 'You vs your past self',
+      settings: 'Privacy, targets, break',
     },
   },
   units: { kcal: 'kcal', g: 'g' },
@@ -33,6 +72,14 @@ export const en = {
         'On days with fewer steps, your mood averages {{gap}} higher out of 10. This is an association, not a cause.',
     },
     noLink: 'No clear link between steps and mood yet — and that is okay.',
+    // Hero variants: the big sentence carries the direction; the "association,
+    // not a cause" framing moves to the hero caption (home.hero.caption).
+    hero: {
+      accent: '+{{gap}}',
+      moreStepsBetterMood: 'On the days you move more, your mood runs about {{gap}} higher out of 10.',
+      moreStepsWorseMood: 'On the days you move less, your mood runs about {{gap}} higher out of 10.',
+      noLink: 'No clear link between your steps and your mood yet — and that is honest.',
+    },
   },
   weight: {
     title: 'Weight',
