@@ -1,5 +1,7 @@
-/// Calm, supportive palette (teal-green). Non-judgmental, low-pressure — no
-/// alarming reds for "limits".
+/// "Grove" palette — restrained olive + charcoal. Editorial and calm rather than
+/// clinical: the product leads with one typographic insight, not a dashboard of
+/// rings, so the palette stays quiet and lets the hero sentence carry the screen.
+/// Non-judgmental, low-pressure — no alarming reds for "limits".
 export interface ThemeColors {
   background: string;
   surface: string;
@@ -10,29 +12,37 @@ export interface ThemeColors {
   subtle: string;
   icon: string;
   iconBg: string;
+  /// Strong ink for the editorial hero sentence (near-charcoal).
+  heroText: string;
+  /// Olive accent for the emphasized part of the hero (the "+N to mood" figure).
+  heroAccent: string;
 }
 
 export const colors: { light: ThemeColors; dark: ThemeColors } = {
   light: {
-    background: '#F5F8F7',
-    surface: '#FFFFFF',
-    card: '#FFFFFF',
-    border: '#E2ECE9',
-    primary: '#3E8E7E',
-    text: '#16201D',
-    subtle: '#5B6B66',
-    icon: '#3E8E7E',
-    iconBg: '#DCEFE9',
+    background: '#F4F4EF', // warm paper, faint olive cast
+    surface: '#FBFBF7',
+    card: '#FBFBF7',
+    border: '#E2E2D6',
+    primary: '#6B7045', // muted olive
+    text: '#23241D', // charcoal-olive ink
+    subtle: '#6E7064', // dim olive-grey
+    icon: '#6B7045',
+    iconBg: '#E7E8DA',
+    heroText: '#1E1F18',
+    heroAccent: '#5C6238',
   },
   dark: {
-    background: '#0F1513',
-    surface: '#161D1B',
-    card: '#161D1B',
-    border: '#243230',
-    primary: '#5FB3A1',
-    text: '#E7EFEC',
-    subtle: '#9BB0AA',
-    icon: '#5FB3A1',
-    iconBg: '#1E2A27',
+    background: '#15160F', // deep charcoal with an olive undertone
+    surface: '#1C1D15',
+    card: '#1C1D15',
+    border: '#2D2F22',
+    primary: '#A9B07A', // soft olive on dark
+    text: '#ECEDE0',
+    subtle: '#9C9E8C',
+    icon: '#A9B07A',
+    iconBg: '#262819',
+    heroText: '#F1F2E6',
+    heroAccent: '#B9C089',
   },
 };
