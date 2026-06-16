@@ -11,11 +11,12 @@ import type { Database } from './client';
 const DatabaseContext = createContext<Database | null>(null);
 
 /**
- * Opens the encrypted database on mount and provides it to the tree.
+ * Opens the database on mount and provides it to the tree.
  *
- * The op-sqlite client is imported dynamically so Jest and Expo Go (which lack
- * the native module) don't crash at module-eval time — `db` simply stays `null`
- * there, and screens fall back to placeholders.
+ * `./client` is imported dynamically, and `openDatabase` itself prefers op-sqlite
+ * (encrypted) with an expo-sqlite fallback for Expo Go — so the app works without
+ * a custom native build. `db` only stays `null` if both drivers fail (e.g. on
+ * web), in which case screens fall back to placeholders.
  */
 export function DatabaseProvider({ children }: { children: ReactNode }) {
   const [db, setDb] = useState<Database | null>(null);
