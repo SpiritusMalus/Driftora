@@ -102,6 +102,10 @@ export const en = {
       title: 'Trap of the week',
       body: 'Most common this week: {{name}} ({{count}}). Noticing it is half the work.',
     },
+    export: {
+      title: 'Thought diary — summary',
+      button: 'Share summary',
+    },
     emotion: {
       name: 'Emotion',
       intensity: 'Intensity',
