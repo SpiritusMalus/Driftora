@@ -197,7 +197,7 @@ export default function HomeScreen() {
           theme={theme}
           onPress={() => router.push('/review')}
         />
-        <Text style={[styles.hint, { color: theme.subtle }]}>{t('home.emptyHint')}</Text>
+        <Text style={[styles.hint, { color: theme.subtle }]}>{t('home.gentleNorm')}</Text>
       </ScrollView>
     </>
   );

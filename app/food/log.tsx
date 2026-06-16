@@ -42,6 +42,7 @@ export default function FoodLogScreen() {
   // line shown once a meal is parsed (the meaning-rules library).
   const [proteinTarget, setProteinTarget] = useState(0);
   const [todayProteinG, setTodayProteinG] = useState(0);
+  const [hideCalories, setHideCalories] = useState(false);
   const [quick, setQuick] = useState<{ recents: QuickMeal[]; favorites: QuickMeal[] }>({
     recents: [],
     favorites: [],
@@ -59,6 +60,7 @@ export default function FoodLogScreen() {
       if (!active) return;
       setProteinTarget(settings.targetProteinG);
       setTodayProteinG(totals.proteinG);
+      setHideCalories(settings.hideCalories);
       setQuick(quickAdd);
     })();
     return () => {
@@ -199,6 +201,7 @@ export default function FoodLogScreen() {
               key={i}
               item={item}
               labels={labels}
+              hideCalories={hideCalories}
               theme={theme}
               onChange={(p) => patchItem(i, p)}
             />
@@ -206,7 +209,9 @@ export default function FoodLogScreen() {
           <View style={[styles.totalRow, { borderColor: theme.border }]}>
             <Text style={[styles.totalLabel, { color: theme.text }]}>{t('food.total')}</Text>
             <Text style={[styles.totalValue, { color: theme.text }]}>
-              {result.kcal} {labels.kcal} · {labels.protein} {result.proteinG} {t('units.g')}
+              {hideCalories
+                ? `${labels.protein} ${result.proteinG} ${t('units.g')}`
+                : `${result.kcal} ${labels.kcal} · ${labels.protein} ${result.proteinG} ${t('units.g')}`}
             </Text>
           </View>
           {proteinTarget > 0 ? (
@@ -233,11 +238,13 @@ export default function FoodLogScreen() {
 function ItemEditor({
   item,
   labels,
+  hideCalories,
   theme,
   onChange,
 }: {
   item: ParsedFoodItem;
   labels: MacroLabels;
+  hideCalories: boolean;
   theme: ThemeColors;
   onChange: (patch: Partial<ParsedFoodItem>) => void;
 }) {
@@ -249,7 +256,9 @@ function ItemEditor({
         style={[styles.itemName, { color: theme.text }]}
       />
       <View style={styles.macroRow}>
-        <MacroField label={labels.kcal} value={item.kcal} theme={theme} onChange={(n) => onChange({ kcal: n })} />
+        {!hideCalories && (
+          <MacroField label={labels.kcal} value={item.kcal} theme={theme} onChange={(n) => onChange({ kcal: n })} />
+        )}
         <MacroField label={labels.protein} value={item.proteinG} theme={theme} onChange={(n) => onChange({ proteinG: n })} />
         <MacroField label={labels.fat} value={item.fatG} theme={theme} onChange={(n) => onChange({ fatG: n })} />
         <MacroField label={labels.carbs} value={item.carbG} theme={theme} onChange={(n) => onChange({ carbG: n })} />

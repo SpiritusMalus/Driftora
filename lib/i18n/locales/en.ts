@@ -5,6 +5,7 @@ export const en = {
     greeting: 'Your day at a glance',
     comingSoon: 'Coming soon',
     emptyHint: 'Nothing here yet — entries will appear once you start.',
+    gentleNorm: 'You don\'t have to log every day — a skipped day won\'t break your progress.',
     sections: {
       nutrition: 'Nutrition',
       steps: 'Steps',
