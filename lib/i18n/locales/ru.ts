@@ -125,5 +125,9 @@ export const ru = {
     count: 'Побед',
     cta: 'Отметить победу',
     dbUnavailable: 'Победы доступны в dev-сборке на устройстве.',
+    auto: {
+      stepsGoal: 'Дневная цель по шагам выполнена — {{steps}} шагов 🎉',
+      proteinGoal: 'Цель по белку выполнена — {{protein}} г 💪',
+    },
   },
 } as const;
