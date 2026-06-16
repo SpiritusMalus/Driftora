@@ -34,6 +34,15 @@ export const stepsDays = sqliteTable('steps_days', {
   syncedAt: integer('synced_at', { mode: 'timestamp' }).notNull(),
 });
 
+/// Manually logged body weight, one row per day. No weigh-in pressure: logging
+/// is optional and the UI frames the trend neutrally (weight fluctuates).
+/// Feeds future adaptive macro targets (recalibrated from the weight trend).
+export const weights = sqliteTable('weights', {
+  date: text('date').primaryKey(), // 'YYYY-MM-DD'
+  weightKg: real('weight_kg').notNull(),
+  ts: integer('ts', { mode: 'timestamp' }).notNull(),
+});
+
 /// A СМЭР (CBT) thought record. `emotions` is a JSON array of
 /// `{ name: string, intensity: 0..100 }`.
 export const diaryEntries = sqliteTable('diary_entries', {
@@ -48,6 +57,8 @@ export const diaryEntries = sqliteTable('diary_entries', {
   evidenceAgainst: text('evidence_against').notNull().default(''),
   reframe: text('reframe').notNull().default(''),
   mood: integer('mood'), // 0..10, nullable
+  // JSON array of cognitive-distortion keys (see insights/distortions.ts).
+  distortions: text('distortions').notNull().default('[]'),
 });
 
 /// A celebrated success / achievement.
@@ -71,9 +82,12 @@ export const appSettings = sqliteTable('app_settings', {
   reminderTimes: text('reminder_times').notNull().default('[]'),
   hideCalories: integer('hide_calories', { mode: 'boolean' }).notNull().default(false),
   llmDiaryAssist: integer('llm_diary_assist', { mode: 'boolean' }).notNull().default(false),
+  // "Take a break" — mutes auto-wins and target pressure without losing data.
+  paused: integer('paused', { mode: 'boolean' }).notNull().default(false),
 });
 
 export type AppSettings = typeof appSettings.$inferSelect;
 export type Win = typeof wins.$inferSelect;
 export type FoodEntry = typeof foodEntries.$inferSelect;
 export type DiaryEntry = typeof diaryEntries.$inferSelect;
+export type WeightRow = typeof weights.$inferSelect;

@@ -37,6 +37,7 @@ export default function SettingsScreen() {
   const [newTime, setNewTime] = useState('');
   const [hideCalories, setHideCalories] = useState(false);
   const [llmDiaryAssist, setLlmDiaryAssist] = useState(false);
+  const [paused, setPaused] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -55,6 +56,7 @@ export default function SettingsScreen() {
         setReminders(parseReminderTimes(s.reminderTimes));
         setHideCalories(s.hideCalories);
         setLlmDiaryAssist(s.llmDiaryAssist);
+        setPaused(s.paused);
         setLoaded(true);
       })();
       return () => {
@@ -86,6 +88,7 @@ export default function SettingsScreen() {
         reminderTimes: reminders,
         hideCalories,
         llmDiaryAssist,
+        paused,
       });
       setSaved(true);
     } finally {
@@ -102,6 +105,10 @@ export default function SettingsScreen() {
       {db == null ? (
         <Text style={[styles.hint, { color: theme.subtle }]}>{t('settings.dbUnavailable')}</Text>
       ) : null}
+
+      <Text style={[styles.section, { color: theme.subtle }]}>{t('settings.breakTitle')}</Text>
+      <ToggleRow label={t('settings.pause')} value={paused} onChange={(v) => { setPaused(v); dirty(); }} theme={theme} />
+      <Text style={[styles.note, { color: theme.subtle }]}>{t('settings.pauseNote')}</Text>
 
       <Text style={[styles.section, { color: theme.subtle }]}>{t('settings.targets')}</Text>
       <NumberField label={t('settings.targetKcal')} value={kcal} onChange={(v) => { setKcal(v); dirty(); }} theme={theme} />

@@ -29,6 +29,7 @@ export interface SettingsPatch {
   reminderTimes?: string[];
   hideCalories?: boolean;
   llmDiaryAssist?: boolean;
+  paused?: boolean;
 }
 
 /// Applies a partial update to the single settings row, returning the result.
@@ -46,6 +47,7 @@ export async function updateSettings(
   if (patch.reminderTimes != null) set.reminderTimes = JSON.stringify(patch.reminderTimes);
   if (patch.hideCalories != null) set.hideCalories = patch.hideCalories;
   if (patch.llmDiaryAssist != null) set.llmDiaryAssist = patch.llmDiaryAssist;
+  if (patch.paused != null) set.paused = patch.paused;
   if (Object.keys(set).length > 0) {
     await db.update(appSettings).set(set).where(eq(appSettings.id, 0));
   }

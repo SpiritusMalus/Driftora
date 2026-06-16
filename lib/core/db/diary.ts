@@ -1,6 +1,7 @@
-import { count, desc, eq } from 'drizzle-orm';
+import { count, desc, eq, gte } from 'drizzle-orm';
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
+import { isDistortionKey, type DistortionKey } from '../insights/distortions';
 import { diaryEntries, type DiaryEntry } from './schema';
 
 /// Accepts any drizzle SQLite database (op-sqlite async on device,
@@ -25,10 +26,24 @@ export interface DiaryDraft {
   evidenceAgainst: string;
   reframe: string;
   mood: number | null; // 0–10, optional
+  distortions?: DistortionKey[]; // tagged cognitive distortions (optional)
 }
 
-/// A stored entry with `emotions` parsed from its JSON column.
-export type DiaryEntryView = Omit<DiaryEntry, 'emotions'> & { emotions: Emotion[] };
+/// A stored entry with `emotions` and `distortions` parsed from their JSON columns.
+export type DiaryEntryView = Omit<DiaryEntry, 'emotions' | 'distortions'> & {
+  emotions: Emotion[];
+  distortions: DistortionKey[];
+};
+
+function parseDistortions(json: string): DistortionKey[] {
+  try {
+    const value = JSON.parse(json);
+    if (!Array.isArray(value)) return [];
+    return value.filter((x): x is DistortionKey => typeof x === 'string' && isDistortionKey(x));
+  } catch {
+    return [];
+  }
+}
 
 function parseEmotions(json: string): Emotion[] {
   try {
@@ -45,8 +60,12 @@ function parseEmotions(json: string): Emotion[] {
 }
 
 function toView(row: DiaryEntry): DiaryEntryView {
-  const { emotions, ...rest } = row;
-  return { ...rest, emotions: parseEmotions(emotions) };
+  const { emotions, distortions, ...rest } = row;
+  return {
+    ...rest,
+    emotions: parseEmotions(emotions),
+    distortions: parseDistortions(distortions),
+  };
 }
 
 /// Saves a thought record. Returns the new entry id.
@@ -68,9 +87,23 @@ export async function saveDiaryEntry(
       evidenceAgainst: draft.evidenceAgainst,
       reframe: draft.reframe,
       mood: draft.mood,
+      distortions: JSON.stringify(draft.distortions ?? []),
     })
     .returning({ id: diaryEntries.id });
   return inserted[0].id as number;
+}
+
+/// Distortion tag lists from entries since [since] — the input to
+/// `thinkingTrapOfWeek`.
+export async function listDistortionTagsSince(
+  db: AnyDb,
+  since: Date,
+): Promise<DistortionKey[][]> {
+  const rows = (await db
+    .select({ distortions: diaryEntries.distortions })
+    .from(diaryEntries)
+    .where(gte(diaryEntries.ts, since))) as { distortions: string }[];
+  return rows.map((r) => parseDistortions(r.distortions));
 }
 
 /// Entries newest-first, optionally capped to [limit].

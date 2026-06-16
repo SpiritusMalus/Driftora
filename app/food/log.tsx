@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Pressable,
@@ -12,7 +12,9 @@ import {
 } from 'react-native';
 
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
-import { saveParsedEntry } from '@/lib/core/db/food';
+import { quickMeals, saveParsedEntry, todayMacroTotals, type QuickMeal } from '@/lib/core/db/food';
+import { ensureSettings } from '@/lib/core/db/settings';
+import { proteinInsight } from '@/lib/core/insights/proteinInsight';
 import type { FoodParseResult, ParsedFoodItem } from '@/lib/core/services/foodParser';
 import { getFoodParser } from '@/lib/core/services/foodParserProvider';
 import { colors, type ThemeColors } from '@/lib/theme/colors';
@@ -36,6 +38,61 @@ export default function FoodLogScreen() {
   const [parsing, setParsing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<FoodParseResult | null>(null);
+  // Today's protein-so-far + personal target, for the honest "what it means"
+  // line shown once a meal is parsed (the meaning-rules library).
+  const [proteinTarget, setProteinTarget] = useState(0);
+  const [todayProteinG, setTodayProteinG] = useState(0);
+  const [hideCalories, setHideCalories] = useState(false);
+  const [quick, setQuick] = useState<{ recents: QuickMeal[]; favorites: QuickMeal[] }>({
+    recents: [],
+    favorites: [],
+  });
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      if (!db) return;
+      const [settings, totals, quickAdd] = await Promise.all([
+        ensureSettings(db),
+        todayMacroTotals(db),
+        quickMeals(db),
+      ]);
+      if (!active) return;
+      setProteinTarget(settings.targetProteinG);
+      setTodayProteinG(totals.proteinG);
+      setHideCalories(settings.hideCalories);
+      setQuick(quickAdd);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [db]);
+
+  /// One tap re-loads a past meal into the editable confirm list (no typing, no
+  /// parse) — the user still reviews and saves.
+  function onQuickPick(meal: QuickMeal) {
+    setText(meal.rawText);
+    setResult({
+      items: [
+        {
+          name: meal.rawText,
+          qtyG: null,
+          kcal: meal.kcal,
+          proteinG: meal.proteinG,
+          fatG: meal.fatG,
+          carbG: meal.carbG,
+          assumptions: '',
+        },
+      ],
+      kcal: meal.kcal,
+      proteinG: meal.proteinG,
+      fatG: meal.fatG,
+      carbG: meal.carbG,
+      confidence: 'high',
+      needsClarification: false,
+      clarifyQuestion: null,
+    });
+  }
 
   const labels: MacroLabels = {
     kcal: t('units.kcal'),
@@ -97,6 +154,42 @@ export default function FoodLogScreen() {
         theme={theme}
       />
 
+      {result == null && (quick.favorites.length > 0 || quick.recents.length > 0) ? (
+        <View style={styles.quick}>
+          {(
+            [
+              { label: t('food.favorites'), meals: quick.favorites },
+              { label: t('food.recent'), meals: quick.recents },
+            ] as const
+          ).map((group) =>
+            group.meals.length === 0 ? null : (
+              <View key={group.label} style={styles.quickGroup}>
+                <Text style={[styles.quickLabel, { color: theme.subtle }]}>{group.label}</Text>
+                <View style={styles.quickWrap}>
+                  {group.meals.map((m, i) => (
+                    <Pressable
+                      key={i}
+                      onPress={() => onQuickPick(m)}
+                      style={({ pressed }) => [
+                        styles.chip,
+                        { backgroundColor: theme.card, borderColor: theme.border, opacity: pressed ? 0.6 : 1 },
+                      ]}
+                    >
+                      <Text numberOfLines={1} style={[styles.chipText, { color: theme.text }]}>
+                        {m.rawText}
+                      </Text>
+                      <Text style={[styles.chipMacro, { color: theme.subtle }]}>
+                        {t('macros.protein')} {Math.round(m.proteinG)} {t('units.g')}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            ),
+          )}
+        </View>
+      ) : null}
+
       {result == null ? (
         <Text style={[styles.hint, { color: theme.subtle }]}>{t('food.empty')}</Text>
       ) : result.items.length === 0 ? (
@@ -108,6 +201,7 @@ export default function FoodLogScreen() {
               key={i}
               item={item}
               labels={labels}
+              hideCalories={hideCalories}
               theme={theme}
               onChange={(p) => patchItem(i, p)}
             />
@@ -115,9 +209,16 @@ export default function FoodLogScreen() {
           <View style={[styles.totalRow, { borderColor: theme.border }]}>
             <Text style={[styles.totalLabel, { color: theme.text }]}>{t('food.total')}</Text>
             <Text style={[styles.totalValue, { color: theme.text }]}>
-              {result.kcal} {labels.kcal} · {labels.protein} {result.proteinG} {t('units.g')}
+              {hideCalories
+                ? `${labels.protein} ${result.proteinG} ${t('units.g')}`
+                : `${result.kcal} ${labels.kcal} · ${labels.protein} ${result.proteinG} ${t('units.g')}`}
             </Text>
           </View>
+          {proteinTarget > 0 ? (
+            <Text style={[styles.proteinNote, { color: theme.subtle }]}>
+              {proteinInsight(todayProteinG + result.proteinG, proteinTarget)}
+            </Text>
+          ) : null}
           <Text style={[styles.stubNote, { color: theme.subtle }]}>{t('food.stubNote')}</Text>
           <PrimaryButton
             label={saving ? t('food.saving') : t('food.save')}
@@ -137,11 +238,13 @@ export default function FoodLogScreen() {
 function ItemEditor({
   item,
   labels,
+  hideCalories,
   theme,
   onChange,
 }: {
   item: ParsedFoodItem;
   labels: MacroLabels;
+  hideCalories: boolean;
   theme: ThemeColors;
   onChange: (patch: Partial<ParsedFoodItem>) => void;
 }) {
@@ -153,7 +256,9 @@ function ItemEditor({
         style={[styles.itemName, { color: theme.text }]}
       />
       <View style={styles.macroRow}>
-        <MacroField label={labels.kcal} value={item.kcal} theme={theme} onChange={(n) => onChange({ kcal: n })} />
+        {!hideCalories && (
+          <MacroField label={labels.kcal} value={item.kcal} theme={theme} onChange={(n) => onChange({ kcal: n })} />
+        )}
         <MacroField label={labels.protein} value={item.proteinG} theme={theme} onChange={(n) => onChange({ proteinG: n })} />
         <MacroField label={labels.fat} value={item.fatG} theme={theme} onChange={(n) => onChange({ fatG: n })} />
         <MacroField label={labels.carbs} value={item.carbG} theme={theme} onChange={(n) => onChange({ carbG: n })} />
@@ -281,4 +386,17 @@ const styles = StyleSheet.create({
   totalLabel: { fontSize: 15, fontWeight: '600' },
   totalValue: { fontSize: 14 },
   stubNote: { fontSize: 11, fontStyle: 'italic', marginBottom: 12 },
+  proteinNote: { fontSize: 12, marginTop: 4, marginBottom: 8, lineHeight: 17 },
+  quick: { marginTop: 16 },
+  quickGroup: { marginBottom: 14 },
+  quickLabel: { fontSize: 12, marginBottom: 8, fontWeight: '600' },
+  quickWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  chipText: { fontSize: 14, fontWeight: '600', maxWidth: 240 },
+  chipMacro: { fontSize: 11, marginTop: 2 },
 });

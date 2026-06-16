@@ -32,6 +32,11 @@ CREATE TABLE IF NOT EXISTS steps_days (
   steps INTEGER NOT NULL DEFAULT 0,
   synced_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS weights (
+  date TEXT PRIMARY KEY,
+  weight_kg REAL NOT NULL,
+  ts INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS diary_entries (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   ts INTEGER NOT NULL,
@@ -43,7 +48,8 @@ CREATE TABLE IF NOT EXISTS diary_entries (
   evidence_for TEXT NOT NULL DEFAULT '',
   evidence_against TEXT NOT NULL DEFAULT '',
   reframe TEXT NOT NULL DEFAULT '',
-  mood INTEGER
+  mood INTEGER,
+  distortions TEXT NOT NULL DEFAULT '[]'
 );
 CREATE TABLE IF NOT EXISTS wins (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -60,7 +66,8 @@ CREATE TABLE IF NOT EXISTS app_settings (
   steps_goal INTEGER NOT NULL DEFAULT 7000,
   reminder_times TEXT NOT NULL DEFAULT '[]',
   hide_calories INTEGER NOT NULL DEFAULT 0,
-  llm_diary_assist INTEGER NOT NULL DEFAULT 0
+  llm_diary_assist INTEGER NOT NULL DEFAULT 0,
+  paused INTEGER NOT NULL DEFAULT 0
 );
 `;
 

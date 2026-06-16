@@ -21,6 +21,8 @@ export interface AutoWinFacts {
   stepsGoal: number;
   proteinG: number;
   proteinTargetG: number;
+  /// "Take a break" mode — when true, no auto-wins fire (no pressure on a pause).
+  paused?: boolean;
 }
 
 /// Localized win messages the caller supplies — the db layer stays i18n-free.
@@ -33,6 +35,7 @@ export interface AutoWinMessages {
 /// no DB. Deliberately rewards reaching a *protein* goal (a habit you want more
 /// of), never a calorie cap, to avoid the "limit reached" diet-pressure pattern.
 export function earnedAutoWinKinds(facts: AutoWinFacts): string[] {
+  if (facts.paused) return []; // on a break: no goals, no pressure
   const kinds: string[] = [];
   if (facts.stepsGoal > 0 && facts.steps >= facts.stepsGoal) {
     kinds.push(AUTO_WIN_STEPS_GOAL);

@@ -1,4 +1,4 @@
-import { and, desc, gte, lt } from 'drizzle-orm';
+import { and, desc, eq, gte, lt } from 'drizzle-orm';
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
 import type { FoodParseResult } from '../services/foodParser';
@@ -87,6 +87,106 @@ export async function todayMacroTotals(
     }),
     { ...zeroTotals },
   );
+}
+
+/// A one-tap re-loggable meal derived from history (no LLM, no typing).
+export interface QuickMeal {
+  rawText: string;
+  kcal: number;
+  proteinG: number;
+  fatG: number;
+  carbG: number;
+  count: number;
+}
+
+interface QuickSourceEntry {
+  rawText: string;
+  ts: Date;
+  kcal: number;
+  proteinG: number;
+  fatG: number;
+  carbG: number;
+}
+
+/// Derives quick-add lists from past entries. `recents` = the most recent
+/// distinct meals; `favorites` = the most repeated ones (count ≥ 2, since a
+/// repeat is what's worth one-tapping). Each carries the macros from its latest
+/// occurrence. Pure (grouping/ordering only) so it's unit-testable and
+/// independent of row order.
+export function deriveQuickMeals(
+  entries: QuickSourceEntry[],
+  opts: { recentLimit?: number; favoriteLimit?: number } = {},
+): { recents: QuickMeal[]; favorites: QuickMeal[] } {
+  const recentLimit = opts.recentLimit ?? 6;
+  const favoriteLimit = opts.favoriteLimit ?? 6;
+
+  const groups = new Map<string, { meal: QuickMeal; latestTs: number }>();
+  for (const e of entries) {
+    const key = e.rawText.trim().toLowerCase();
+    if (key.length === 0) continue;
+    const ts = e.ts.getTime();
+    const existing = groups.get(key);
+    if (!existing) {
+      groups.set(key, {
+        latestTs: ts,
+        meal: {
+          rawText: e.rawText.trim(),
+          kcal: e.kcal,
+          proteinG: e.proteinG,
+          fatG: e.fatG,
+          carbG: e.carbG,
+          count: 1,
+        },
+      });
+      continue;
+    }
+    existing.meal.count += 1;
+    // Keep macros + label from the most recent occurrence (order-independent).
+    if (ts > existing.latestTs) {
+      existing.latestTs = ts;
+      existing.meal = {
+        ...existing.meal,
+        rawText: e.rawText.trim(),
+        kcal: e.kcal,
+        proteinG: e.proteinG,
+        fatG: e.fatG,
+        carbG: e.carbG,
+      };
+    }
+  }
+
+  const all = [...groups.values()];
+  const recents = [...all]
+    .sort((a, b) => b.latestTs - a.latestTs)
+    .slice(0, recentLimit)
+    .map((g) => g.meal);
+  const favorites = all
+    .filter((g) => g.meal.count >= 2)
+    .sort((a, b) => b.meal.count - a.meal.count || b.latestTs - a.latestTs)
+    .slice(0, favoriteLimit)
+    .map((g) => g.meal);
+  return { recents, favorites };
+}
+
+/// Quick-add lists drawn from the last [scan] confirmed entries.
+export async function quickMeals(
+  db: AnyDb,
+  opts: { recentLimit?: number; favoriteLimit?: number; scan?: number } = {},
+): Promise<{ recents: QuickMeal[]; favorites: QuickMeal[] }> {
+  const rows = (await db
+    .select({
+      rawText: foodEntries.rawText,
+      ts: foodEntries.ts,
+      kcal: foodEntries.kcal,
+      proteinG: foodEntries.proteinG,
+      fatG: foodEntries.fatG,
+      carbG: foodEntries.carbG,
+    })
+    .from(foodEntries)
+    .where(eq(foodEntries.confirmed, true))
+    .orderBy(desc(foodEntries.ts))
+    .limit(opts.scan ?? 200)) as QuickSourceEntry[];
+  return deriveQuickMeals(rows, opts);
 }
 
 /// Entries logged on [date]'s local day, newest first.
