@@ -11,6 +11,7 @@ export const en = {
       diary: 'Thought diary',
       wins: 'Wins',
     },
+    steps: { unit: 'steps' },
   },
   units: { kcal: 'kcal', g: 'g' },
   macros: { protein: 'Protein', fat: 'Fat', carbs: 'Carbs' },

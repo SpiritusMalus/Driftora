@@ -7,6 +7,9 @@ import { SectionCard } from '@/components/SectionCard';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { todayMacroTotals, type MacroTotals } from '@/lib/core/db/food';
 import { ensureSettings } from '@/lib/core/db/settings';
+import { syncDaySteps } from '@/lib/core/db/steps';
+import { stepInsight } from '@/lib/core/insights/stepInsight';
+import { getHealthService } from '@/lib/core/services/healthProvider';
 import { colors } from '@/lib/theme/colors';
 
 /// Home dashboard. The nutrition card shows today's totals vs targets once the
@@ -21,6 +24,8 @@ export default function HomeScreen() {
   const [totals, setTotals] = useState<MacroTotals | null>(null);
   const [targets, setTargets] = useState<{ kcal: number; proteinG: number } | null>(null);
   const [hideCalories, setHideCalories] = useState(false);
+  const [steps, setSteps] = useState<number | null>(null);
+  const [stepsMeaning, setStepsMeaning] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -31,10 +36,13 @@ export default function HomeScreen() {
           todayMacroTotals(db),
           ensureSettings(db),
         ]);
+        const stepCount = await syncDaySteps(db, getHealthService());
         if (!active) return;
         setTotals(tot);
         setTargets({ kcal: settings.targetKcal, proteinG: settings.targetProteinG });
         setHideCalories(settings.hideCalories);
+        setSteps(stepCount);
+        setStepsMeaning(stepInsight(stepCount, settings.stepsGoal));
       })();
       return () => {
         active = false;
@@ -48,6 +56,11 @@ export default function HomeScreen() {
     if (hideCalories) return protein;
     return `${totals.kcal}/${targets.kcal} ${t('units.kcal')} · ${protein}`;
   })();
+
+  const stepsSubtitle =
+    steps == null || stepsMeaning == null
+      ? t('home.comingSoon')
+      : `${steps} ${t('home.steps.unit')}\n${stepsMeaning}`;
 
   return (
     <ScrollView
@@ -65,7 +78,7 @@ export default function HomeScreen() {
       <SectionCard
         icon="walk-outline"
         title={t('home.sections.steps')}
-        subtitle={t('home.comingSoon')}
+        subtitle={stepsSubtitle}
         theme={theme}
       />
       <SectionCard

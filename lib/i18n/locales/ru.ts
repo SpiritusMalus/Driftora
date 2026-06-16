@@ -11,6 +11,7 @@ export const ru = {
       diary: 'Дневник мыслей',
       wins: 'Победы',
     },
+    steps: { unit: 'шагов' },
   },
   units: { kcal: 'ккал', g: 'г' },
   macros: { protein: 'Белок', fat: 'Жиры', carbs: 'Углеводы' },
