@@ -12,6 +12,7 @@ import { countDiaryEntries } from '@/lib/core/db/diary';
 import { todayMacroTotals, type MacroTotals } from '@/lib/core/db/food';
 import { countWins, ensureSettings } from '@/lib/core/db/settings';
 import { syncDaySteps } from '@/lib/core/db/steps';
+import { latestWeight } from '@/lib/core/db/weight';
 import { type BodyMindResult } from '@/lib/core/insights/bodyMind';
 import { stepInsight } from '@/lib/core/insights/stepInsight';
 import { getHealthService } from '@/lib/core/services/healthProvider';
@@ -34,18 +35,20 @@ export default function HomeScreen() {
   const [diaryCount, setDiaryCount] = useState(0);
   const [winsCount, setWinsCount] = useState(0);
   const [bodyMind, setBodyMind] = useState<BodyMindResult | null>(null);
+  const [weightKg, setWeightKg] = useState<number | null>(null);
 
   useFocusEffect(
     useCallback(() => {
       let active = true;
       void (async () => {
         if (!db) return;
-        const [tot, settings, diaryN, winsN, bodyMindResult] = await Promise.all([
+        const [tot, settings, diaryN, winsN, bodyMindResult, weightRow] = await Promise.all([
           todayMacroTotals(db),
           ensureSettings(db),
           countDiaryEntries(db),
           countWins(db),
           bodyMindInsightFromDb(db),
+          latestWeight(db),
         ]);
         const stepCount = await syncDaySteps(db, getHealthService());
         // Celebrate the day's earned goals automatically (deduped per day).
@@ -71,6 +74,7 @@ export default function HomeScreen() {
         setDiaryCount(diaryN);
         setWinsCount(winsN + awarded.length);
         setBodyMind(bodyMindResult);
+        setWeightKg(weightRow ? weightRow.weightKg : null);
       })();
       return () => {
         active = false;
@@ -135,6 +139,13 @@ export default function HomeScreen() {
           title={t('home.sections.steps')}
           subtitle={stepsSubtitle}
           theme={theme}
+        />
+        <SectionCard
+          icon="scale-outline"
+          title={t('home.sections.weight')}
+          subtitle={weightKg != null ? `${weightKg.toFixed(1)} ${t('weight.unit')}` : t('weight.cta')}
+          theme={theme}
+          onPress={() => router.push('/weight')}
         />
         <SectionCard
           icon="sparkles-outline"

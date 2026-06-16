@@ -34,6 +34,15 @@ export const stepsDays = sqliteTable('steps_days', {
   syncedAt: integer('synced_at', { mode: 'timestamp' }).notNull(),
 });
 
+/// Manually logged body weight, one row per day. No weigh-in pressure: logging
+/// is optional and the UI frames the trend neutrally (weight fluctuates).
+/// Feeds future adaptive macro targets (recalibrated from the weight trend).
+export const weights = sqliteTable('weights', {
+  date: text('date').primaryKey(), // 'YYYY-MM-DD'
+  weightKg: real('weight_kg').notNull(),
+  ts: integer('ts', { mode: 'timestamp' }).notNull(),
+});
+
 /// A СМЭР (CBT) thought record. `emotions` is a JSON array of
 /// `{ name: string, intensity: 0..100 }`.
 export const diaryEntries = sqliteTable('diary_entries', {
@@ -77,3 +86,4 @@ export type AppSettings = typeof appSettings.$inferSelect;
 export type Win = typeof wins.$inferSelect;
 export type FoodEntry = typeof foodEntries.$inferSelect;
 export type DiaryEntry = typeof diaryEntries.$inferSelect;
+export type WeightRow = typeof weights.$inferSelect;
