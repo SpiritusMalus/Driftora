@@ -41,8 +41,7 @@
       "expo-localization",
       "expo-font",
       "expo-sqlite",
-      "expo-notifications",
-      "@react-native-voice/voice"
+      "expo-notifications"
     ],
     "extra": {
       "router": {},
