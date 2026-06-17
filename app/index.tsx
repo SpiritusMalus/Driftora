@@ -18,6 +18,7 @@ import { MIN_PAIRED_DAYS, type BodyMindResult } from '@/lib/core/insights/bodyMi
 import { stepInsight } from '@/lib/core/insights/stepInsight';
 import { getHealthService } from '@/lib/core/services/healthProvider';
 import { colors, type ThemeColors } from '@/lib/theme/colors';
+import { fonts } from '@/lib/theme/typography';
 
 /// Home is a single-insight surface, not a dashboard. The Body↔Mind read
 /// (movement ↔ mood) is the editorial hero at the top; beneath it sit only the
@@ -148,10 +149,10 @@ export default function HomeScreen() {
                 alignItems: 'center',
               })}
             >
-              <Text style={{ color: theme.text, fontSize: 16, marginRight: 2 }}>
+              <Text style={{ color: theme.primary, fontSize: 15, marginRight: 2, fontFamily: fonts.bodySemiBold }}>
                 {t('home.moreLink')}
               </Text>
-              <Ionicons name="chevron-forward" size={16} color={theme.text} />
+              <Ionicons name="chevron-forward" size={16} color={theme.primary} />
             </Pressable>
           ),
         }}
@@ -167,9 +168,9 @@ export default function HomeScreen() {
             <Text style={[styles.pauseBody, { color: theme.subtle }]}>{t('home.paused.body')}</Text>
             <Pressable
               onPress={onResume}
-              style={({ pressed }) => [styles.pauseBtn, { borderColor: theme.primary, opacity: pressed ? 0.6 : 1 }]}
+              style={({ pressed }) => [styles.pauseBtn, { backgroundColor: theme.primary, opacity: pressed ? 0.85 : 1 }]}
             >
-              <Text style={[styles.pauseBtnText, { color: theme.primary }]}>{t('home.paused.resume')}</Text>
+              <Text style={[styles.pauseBtnText, { color: theme.onPrimary }]}>{t('home.paused.resume')}</Text>
             </Pressable>
           </View>
         ) : null}
@@ -210,7 +211,7 @@ export default function HomeScreen() {
         />
 
         {streakWeeks > 0 ? (
-          <Text style={[styles.northStar, { color: theme.subtle }]}>
+          <Text style={[styles.northStar, { color: theme.accent }]}>
             {t('home.northStar', { weeks: streakWeeks })}
           </Text>
         ) : null}
@@ -274,29 +275,28 @@ function FeederRow({
 
 const styles = StyleSheet.create({
   content: { padding: 16 },
-  greeting: { fontSize: 15, lineHeight: 21, marginBottom: 8 },
-  hint: { fontSize: 12, textAlign: 'center', marginTop: 16 },
+  greeting: { fontFamily: fonts.body, fontSize: 15, lineHeight: 21, marginBottom: 8 },
+  hint: { fontFamily: fonts.body, fontSize: 12, textAlign: 'center', marginTop: 16 },
   divider: { height: StyleSheet.hairlineWidth, marginTop: 8, marginBottom: 16 },
-  feedersHeader: { fontSize: 12, letterSpacing: 1.2, fontWeight: '600', marginBottom: 8 },
+  feedersHeader: { fontFamily: fonts.heading, fontSize: 11, letterSpacing: 1.4, marginBottom: 10 },
   feederRow: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 12 },
-  feederTitle: { fontSize: 15, fontWeight: '600' },
-  feederSubtitle: { fontSize: 13, marginTop: 2, lineHeight: 18 },
-  northStar: { fontSize: 12, textAlign: 'center', marginTop: 20 },
+  feederTitle: { fontFamily: fonts.bodySemiBold, fontSize: 15 },
+  feederSubtitle: { fontFamily: fonts.body, fontSize: 13, marginTop: 2, lineHeight: 18 },
+  northStar: { fontFamily: fonts.bodyMedium, fontSize: 12, textAlign: 'center', marginTop: 20 },
   pauseBanner: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 16,
+    borderRadius: 20,
     padding: 16,
     marginBottom: 8,
   },
-  pauseTitle: { fontSize: 16, fontWeight: '600' },
-  pauseBody: { fontSize: 13, marginTop: 6, lineHeight: 18 },
+  pauseTitle: { fontFamily: fonts.bodySemiBold, fontSize: 16 },
+  pauseBody: { fontFamily: fonts.body, fontSize: 13, marginTop: 6, lineHeight: 18 },
   pauseBtn: {
     alignSelf: 'flex-start',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    borderRadius: 999,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
     marginTop: 12,
   },
-  pauseBtnText: { fontSize: 14, fontWeight: '600' },
+  pauseBtnText: { fontFamily: fonts.bodySemiBold, fontSize: 14 },
 });

@@ -3,6 +3,7 @@ import { type ComponentProps } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { type ThemeColors } from '@/lib/theme/colors';
+import { fonts } from '@/lib/theme/typography';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -61,20 +62,26 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 14,
-    borderRadius: 16,
+    padding: 16,
+    borderRadius: 20,
     borderWidth: StyleSheet.hairlineWidth,
     marginBottom: 12,
+    // Soft warm elevation from the Ember mockup.
+    shadowColor: '#2A1A14',
+    shadowOpacity: 0.05,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 1,
   },
   iconWrap: {
     width: 44,
     height: 44,
-    borderRadius: 12,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 14,
   },
   body: { flex: 1 },
-  title: { fontSize: 16, fontWeight: '600' },
-  subtitle: { fontSize: 13, marginTop: 2 },
+  title: { fontFamily: fonts.bodySemiBold, fontSize: 16 },
+  subtitle: { fontFamily: fonts.body, fontSize: 13, marginTop: 3, lineHeight: 18 },
 });

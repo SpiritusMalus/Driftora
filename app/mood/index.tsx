@@ -7,6 +7,7 @@ import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { listMoods, logMood } from '@/lib/core/db/mood';
 import type { MoodRow } from '@/lib/core/db/schema';
 import { colors } from '@/lib/theme/colors';
+import { fonts } from '@/lib/theme/typography';
 
 /// One-tap mood check-in (0–10) — low-friction so it can feed the Body↔Mind
 /// insight daily without a full thought record. Tapping a number logs it.
@@ -58,7 +59,7 @@ export default function MoodScreen() {
               { borderColor: theme.border, backgroundColor: theme.card, opacity: pressed ? 0.6 : 1 },
             ]}
           >
-            <Text style={{ color: theme.text, fontWeight: '600' }}>{n}</Text>
+            <Text style={{ color: theme.text, fontFamily: fonts.bodySemiBold, fontSize: 15 }}>{n}</Text>
           </Pressable>
         ))}
       </View>
@@ -87,27 +88,27 @@ function formatDate(d: Date): string {
 
 const styles = StyleSheet.create({
   content: { padding: 16 },
-  prompt: { fontSize: 17, fontWeight: '600', marginBottom: 12 },
+  prompt: { fontFamily: fonts.heading, fontSize: 19, letterSpacing: -0.3, marginBottom: 14 },
   row: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
     width: 44,
     height: 44,
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  scale: { fontSize: 12, marginTop: 10, marginBottom: 8 },
-  hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
+  scale: { fontFamily: fonts.body, fontSize: 12, marginTop: 10, marginBottom: 8 },
+  hint: { fontFamily: fonts.body, fontSize: 13, textAlign: 'center', marginTop: 20 },
   item: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 14,
     marginTop: 10,
   },
-  itemDate: { fontSize: 13 },
-  itemValue: { fontSize: 16, fontWeight: '600' },
+  itemDate: { fontFamily: fonts.body, fontSize: 13 },
+  itemValue: { fontFamily: fonts.bodySemiBold, fontSize: 16 },
 });

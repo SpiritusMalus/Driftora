@@ -16,6 +16,7 @@ import type { WeightRow } from '@/lib/core/db/schema';
 import { listWeights, upsertWeight } from '@/lib/core/db/weight';
 import { summarizeWeightTrend, type WeightPoint } from '@/lib/core/insights/weightTrend';
 import { colors } from '@/lib/theme/colors';
+import { fonts } from '@/lib/theme/typography';
 
 /// Log today's weight (one row per day) and reread the trend. Deliberately
 /// low-pressure: optional, no daily nag, and the trend is stated neutrally.
@@ -100,7 +101,9 @@ export default function WeightScreen() {
           },
         ]}
       >
-        <Text style={styles.saveText}>{saving ? t('weight.saving') : t('weight.save')}</Text>
+        <Text style={[styles.saveText, { color: theme.onPrimary }]}>
+          {saving ? t('weight.saving') : t('weight.save')}
+        </Text>
       </Pressable>
 
       {trendLine ? (
@@ -145,32 +148,33 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     fontSize: 17,
+    fontFamily: fonts.body,
   },
-  unit: { fontSize: 15 },
-  saveBtn: { borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginBottom: 16 },
-  saveText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
+  unit: { fontFamily: fonts.body, fontSize: 15 },
+  saveBtn: { borderRadius: 16, paddingVertical: 15, alignItems: 'center', marginBottom: 16 },
+  saveText: { fontFamily: fonts.bodySemiBold, fontSize: 16 },
   trendCard: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 12,
-    padding: 14,
+    borderRadius: 18,
+    padding: 16,
     marginBottom: 16,
   },
-  trendText: { fontSize: 15, fontWeight: '600' },
-  trendNote: { fontSize: 12, marginTop: 6, lineHeight: 17 },
-  hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
+  trendText: { fontFamily: fonts.bodySemiBold, fontSize: 15 },
+  trendNote: { fontFamily: fonts.body, fontSize: 12, marginTop: 6, lineHeight: 17 },
+  hint: { fontFamily: fonts.body, fontSize: 13, textAlign: 'center', marginTop: 20 },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 14,
     marginBottom: 10,
   },
-  rowDate: { fontSize: 13 },
-  rowKg: { fontSize: 16, fontWeight: '600' },
+  rowDate: { fontFamily: fonts.body, fontSize: 13 },
+  rowKg: { fontFamily: fonts.bodySemiBold, fontSize: 16 },
 });

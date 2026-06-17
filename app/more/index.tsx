@@ -4,6 +4,7 @@ import { ScrollView, StyleSheet, Text, useColorScheme } from 'react-native';
 
 import { SectionCard } from '@/components/SectionCard';
 import { colors } from '@/lib/theme/colors';
+import { fonts } from '@/lib/theme/typography';
 
 /// "More" — the home for everything that was demoted off the daily screen so
 /// Home can stay a single insight. A plain list of links to routes that already
@@ -59,5 +60,5 @@ export default function MoreScreen() {
 
 const styles = StyleSheet.create({
   content: { padding: 16 },
-  intro: { fontSize: 14, lineHeight: 20, marginBottom: 16 },
+  intro: { fontFamily: fonts.body, fontSize: 14, lineHeight: 20, marginBottom: 16 },
 });

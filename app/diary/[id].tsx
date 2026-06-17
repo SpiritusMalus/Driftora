@@ -6,6 +6,7 @@ import { ScrollView, StyleSheet, Text, useColorScheme, View } from 'react-native
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { getDiaryEntry, type DiaryEntryView } from '@/lib/core/db/diary';
 import { colors, type ThemeColors } from '@/lib/theme/colors';
+import { fonts } from '@/lib/theme/typography';
 
 /// Read-only view of one thought record (reread support for M3).
 export default function DiaryEntryScreen() {
@@ -111,8 +112,8 @@ function Centered({ theme, text }: { theme: ThemeColors; text: string }) {
 
 const styles = StyleSheet.create({
   content: { padding: 16 },
-  section: { marginBottom: 16 },
-  label: { fontSize: 12, marginBottom: 4 },
-  value: { fontSize: 15, lineHeight: 21 },
+  section: { marginBottom: 18 },
+  label: { fontFamily: fonts.heading, fontSize: 11, letterSpacing: 1, marginBottom: 6 },
+  value: { fontFamily: fonts.body, fontSize: 15, lineHeight: 22 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
 });
