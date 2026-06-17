@@ -1,4 +1,5 @@
 import type { FoodParser } from './foodParser';
+import { HttpFoodParser } from './httpFoodParser';
 import { StubFoodParser } from './stubFoodParser';
 
 let _parser: FoodParser | null = null;
@@ -6,12 +7,15 @@ let _parser: FoodParser | null = null;
 /**
  * Returns the active food parser.
  *
- * For now this is the offline [StubFoodParser] (live LLM calls are disabled).
- * When the real parser lands, construct an `AnthropicFoodParser` here when an
- * API key is configured and fall back to the stub otherwise — callers don't
- * change.
+ * When `EXPO_PUBLIC_FOOD_API_URL` is set, the online [HttpFoodParser] calls the
+ * food-parse backend (with the offline [StubFoodParser] as its failure
+ * fallback). With no URL configured, the app runs fully offline on the stub —
+ * so the food-log flow always works. Callers don't change.
  */
 export function getFoodParser(): FoodParser {
-  _parser ??= new StubFoodParser();
+  if (_parser) return _parser;
+  const base = process.env.EXPO_PUBLIC_FOOD_API_URL;
+  const stub = new StubFoodParser();
+  _parser = base ? new HttpFoodParser(base, stub) : stub;
   return _parser;
 }

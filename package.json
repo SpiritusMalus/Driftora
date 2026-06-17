@@ -50,6 +50,10 @@
   },
   "jest": {
     "testEnvironment": "node",
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "/server/"
+    ],
     "transform": {
       "^.+\\.(ts|tsx|js|jsx)$": "babel-jest"
     },
