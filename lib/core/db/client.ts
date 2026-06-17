@@ -1,3 +1,4 @@
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
 import { applySchema } from './init';
@@ -38,28 +39,38 @@ export function getDbDriver(): DbDriver | null {
 /// neither is evaluated where it's missing; if both fail the error propagates and
 /// `DatabaseProvider` leaves `db` null (screens show placeholders). Tests bypass
 /// this and run better-sqlite3 against the same schema.
+///
+/// In **Expo Go** the op-sqlite native module is absent and its very import throws
+/// ("Base module not found"), which surfaces as a red error even when caught — so
+/// we skip the op-sqlite path entirely there (detected via `executionEnvironment`)
+/// and go straight to expo-sqlite. op-sqlite is still preferred on any native build.
 export async function openDatabase(): Promise<Database> {
   if (_db) return _db;
   const key = await getOrCreateDbKey();
-  try {
-    const { open } = await import('@op-engineering/op-sqlite');
-    const { drizzle } = await import('drizzle-orm/op-sqlite');
-    const op = open({ name: 'health_routine.db', encryptionKey: key });
-    await applySchema((statement) => op.execute(statement));
-    _db = drizzle(op, { schema });
-    _driver = 'op-sqlite';
-  } catch (nativeError) {
-    const { openDatabaseSync } = await import('expo-sqlite');
-    const { drizzle } = await import('drizzle-orm/expo-sqlite');
-    const db = openDatabaseSync('health_routine.db');
-    await applySchema((statement) => db.execSync(statement));
-    _db = drizzle(db, { schema });
-    _driver = 'expo-sqlite';
-    console.warn(
-      'op-sqlite unavailable — using the unencrypted expo-sqlite fallback ' +
-        '(Expo Go / no native build).',
-      nativeError,
-    );
+  const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
+
+  if (!isExpoGo) {
+    try {
+      const { open } = await import('@op-engineering/op-sqlite');
+      const { drizzle } = await import('drizzle-orm/op-sqlite');
+      const op = open({ name: 'health_routine.db', encryptionKey: key });
+      await applySchema((statement) => op.execute(statement));
+      _db = drizzle(op, { schema });
+      _driver = 'op-sqlite';
+      return _db;
+    } catch (nativeError) {
+      console.warn('op-sqlite failed to open — falling back to expo-sqlite.', nativeError);
+    }
+  }
+
+  const { openDatabaseSync } = await import('expo-sqlite');
+  const { drizzle } = await import('drizzle-orm/expo-sqlite');
+  const db = openDatabaseSync('health_routine.db');
+  await applySchema((statement) => db.execSync(statement));
+  _db = drizzle(db, { schema });
+  _driver = 'expo-sqlite';
+  if (isExpoGo) {
+    console.warn('Expo Go — using the unencrypted expo-sqlite fallback (no native build).');
   }
   return _db;
 }
