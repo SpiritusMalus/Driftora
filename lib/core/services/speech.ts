@@ -1,5 +1,5 @@
-/// On-device speech-to-text (ru-RU) for voice food logging. Implemented in M1
-/// over @react-native-voice/voice; degrades to text input when unavailable.
+/// On-device speech-to-text (ru-RU) for voice food logging. Backed by
+/// expo-speech-recognition; degrades to text input when unavailable (Expo Go).
 export interface SpeechService {
   /// Initializes the engine. Returns false if speech is unavailable.
   initialize(): Promise<boolean>;
