@@ -225,7 +225,7 @@ export const en = {
     reminders: 'Reminders',
     reminderAdd: 'Time (HH:mm)',
     reminderAddBtn: 'Add',
-    remindersNote: 'Times are saved; the reminders themselves fire in a device dev build.',
+    remindersNote: 'Fire on a device with notification permission (Expo Go may be limited). A break turns them off.',
     nextReminder: 'Next: {{when}}',
     today: 'today',
     tomorrow: 'tomorrow',
@@ -242,6 +242,10 @@ export const en = {
     saving: 'Saving…',
     saved: 'Saved ✓',
     dbUnavailable: 'Settings are available in a device dev build.',
+  },
+  notifications: {
+    reminderTitle: 'HealthRoutine',
+    reminderBody: 'A minute for you — log your mood or steps.',
   },
   wins: {
     title: 'Wins',

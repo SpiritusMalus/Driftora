@@ -224,7 +224,7 @@ export const ru = {
     reminders: 'Напоминания',
     reminderAdd: 'Время (ЧЧ:ММ)',
     reminderAddBtn: 'Добавить',
-    remindersNote: 'Время сохраняется; сами напоминания включатся в dev-сборке на устройстве.',
+    remindersNote: 'Срабатывают на устройстве с разрешением на уведомления (в Expo Go возможны ограничения). Перерыв их отключает.',
     nextReminder: 'Ближайшее: {{when}}',
     today: 'сегодня',
     tomorrow: 'завтра',
@@ -241,6 +241,10 @@ export const ru = {
     saving: 'Сохраняю…',
     saved: 'Сохранено ✓',
     dbUnavailable: 'Настройки доступны в dev-сборке на устройстве.',
+  },
+  notifications: {
+    reminderTitle: 'HealthRoutine',
+    reminderBody: 'Минутка для себя: отметьте настроение или шаги.',
   },
   wins: {
     title: 'Победы',
