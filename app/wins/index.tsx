@@ -16,6 +16,7 @@ import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import type { Win } from '@/lib/core/db/schema';
 import { addWin, listWins } from '@/lib/core/db/settings';
 import { colors } from '@/lib/theme/colors';
+import { fonts } from '@/lib/theme/typography';
 
 /// Celebrate progress: log a quick win and reread past ones. Rewards are
 /// feedback, not pressure — no targets and no judgment here.
@@ -84,7 +85,7 @@ export default function WinsScreen() {
           },
         ]}
       >
-        <Text style={styles.addText}>{t('wins.add')}</Text>
+        <Text style={[styles.addText, { color: theme.onPrimary }]}>{t('wins.add')}</Text>
       </Pressable>
 
       {db == null ? (
@@ -121,25 +122,26 @@ const styles = StyleSheet.create({
   content: { padding: 16 },
   input: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     fontSize: 15,
+    fontFamily: fonts.body,
     marginBottom: 12,
   },
-  addBtn: { borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginBottom: 16 },
-  addText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
-  hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
+  addBtn: { borderRadius: 16, paddingVertical: 15, alignItems: 'center', marginBottom: 16 },
+  addText: { fontFamily: fonts.bodySemiBold, fontSize: 16 },
+  hint: { fontFamily: fonts.body, fontSize: 13, textAlign: 'center', marginTop: 20 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 14,
     marginBottom: 10,
   },
   rowBody: { flex: 1 },
-  message: { fontSize: 15 },
-  date: { fontSize: 12, marginTop: 4 },
-  share: { fontSize: 13, fontWeight: '600' },
+  message: { fontFamily: fonts.body, fontSize: 15, lineHeight: 20 },
+  date: { fontFamily: fonts.body, fontSize: 12, marginTop: 4 },
+  share: { fontFamily: fonts.bodySemiBold, fontSize: 13 },
 });

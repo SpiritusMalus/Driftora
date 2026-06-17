@@ -1,3 +1,4 @@
+import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useColorScheme } from 'react-native';
@@ -6,11 +7,17 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import '@/lib/i18n';
 import { DatabaseProvider } from '@/lib/core/db/DatabaseProvider';
 import { colors } from '@/lib/theme/colors';
+import { fontAssets, fonts } from '@/lib/theme/typography';
 
 export default function RootLayout() {
   const { t } = useTranslation();
   const scheme = useColorScheme();
   const theme = scheme === 'dark' ? colors.dark : colors.light;
+  const [fontsLoaded] = useFonts(fontAssets);
+
+  // Hold the first frame until the Ember fonts are ready, so headers and the
+  // hero don't flash in the system face before swapping.
+  if (!fontsLoaded) return null;
 
   return (
     <DatabaseProvider>
@@ -19,6 +26,8 @@ export default function RootLayout() {
           screenOptions={{
             headerStyle: { backgroundColor: theme.background },
             headerTintColor: theme.text,
+            headerShadowVisible: false,
+            headerTitleStyle: { fontFamily: fonts.heading, fontSize: 18, color: theme.text },
             contentStyle: { backgroundColor: theme.background },
           }}
         >

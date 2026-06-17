@@ -15,6 +15,7 @@ import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { saveDiaryEntry, type Emotion } from '@/lib/core/db/diary';
 import { DISTORTION_KEYS, type DistortionKey } from '@/lib/core/insights/distortions';
 import { colors, type ThemeColors } from '@/lib/theme/colors';
+import { fonts } from '@/lib/theme/typography';
 
 /// The СМЭР thought record, one gentle step at a time:
 /// Situation → Thoughts → Emotions → Reaction → Evidence → Balanced reframe.
@@ -195,7 +196,9 @@ export default function DiaryNewScreen() {
               { backgroundColor: theme.primary, opacity: !canSave || saving ? 0.4 : pressed ? 0.85 : 1 },
             ]}
           >
-            <Text style={styles.navPrimaryText}>{saving ? t('diary.saving') : t('diary.save')}</Text>
+            <Text style={[styles.navPrimaryText, { color: theme.onPrimary }]}>
+              {saving ? t('diary.saving') : t('diary.save')}
+            </Text>
           </Pressable>
         ) : (
           <Pressable
@@ -205,7 +208,7 @@ export default function DiaryNewScreen() {
               { backgroundColor: theme.primary, opacity: pressed ? 0.85 : 1 },
             ]}
           >
-            <Text style={styles.navPrimaryText}>{t('diary.next')}</Text>
+            <Text style={[styles.navPrimaryText, { color: theme.onPrimary }]}>{t('diary.next')}</Text>
           </Pressable>
         )}
       </View>
@@ -336,7 +339,9 @@ function MoodPicker({
                 { borderColor: theme.border, backgroundColor: selected ? theme.primary : theme.card },
               ]}
             >
-              <Text style={{ color: selected ? '#FFFFFF' : theme.text, fontWeight: '600' }}>{n}</Text>
+              <Text style={{ color: selected ? theme.onPrimary : theme.text, fontFamily: fonts.bodySemiBold, fontSize: 15 }}>
+                {n}
+              </Text>
             </Pressable>
           );
         })}
@@ -375,7 +380,7 @@ function DistortionPicker({
                 { borderColor: on ? theme.primary : theme.border, backgroundColor: on ? theme.iconBg : theme.card },
               ]}
             >
-              <Text style={{ color: on ? theme.primary : theme.text, fontSize: 13 }}>
+              <Text style={{ color: on ? theme.primary : theme.text, fontSize: 13, fontFamily: fonts.bodyMedium }}>
                 {t(`diary.distortions.${key}`)}
               </Text>
             </Pressable>
@@ -397,76 +402,79 @@ function clamp(n: number, lo: number, hi: number): number {
 
 const styles = StyleSheet.create({
   content: { padding: 16 },
-  progress: { fontSize: 12 },
-  title: { fontSize: 20, fontWeight: '700', marginTop: 4 },
-  hint: { fontSize: 13, marginTop: 4, marginBottom: 4 },
+  progress: { fontFamily: fonts.heading, fontSize: 11, letterSpacing: 1.2 },
+  title: { fontFamily: fonts.heading, fontSize: 22, letterSpacing: -0.4, marginTop: 6 },
+  hint: { fontFamily: fonts.body, fontSize: 13, marginTop: 6, marginBottom: 4, lineHeight: 19 },
   fields: { marginVertical: 12 },
   field: { marginBottom: 12 },
-  fieldLabel: { fontSize: 12, marginBottom: 4 },
+  fieldLabel: { fontFamily: fonts.bodyMedium, fontSize: 12, marginBottom: 6 },
   input: {
     minHeight: 72,
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
-    padding: 12,
+    padding: 14,
     fontSize: 15,
+    fontFamily: fonts.body,
     textAlignVertical: 'top',
   },
   nav: { flexDirection: 'row', gap: 12, marginTop: 4 },
   navBtn: {
     flex: 1,
-    borderRadius: 12,
-    paddingVertical: 14,
+    borderRadius: 16,
+    paddingVertical: 15,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  navBack: { borderWidth: StyleSheet.hairlineWidth },
-  navBackText: { fontSize: 16, fontWeight: '600' },
-  navPrimaryText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
-  dbHint: { fontSize: 12, textAlign: 'center', marginTop: 12 },
+  navBack: { borderWidth: 1.5 },
+  navBackText: { fontFamily: fonts.bodySemiBold, fontSize: 16 },
+  navPrimaryText: { fontFamily: fonts.bodySemiBold, fontSize: 16 },
+  dbHint: { fontFamily: fonts.body, fontSize: 12, textAlign: 'center', marginTop: 12 },
   emotionChip: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     marginBottom: 8,
   },
-  emotionText: { fontSize: 14 },
+  emotionText: { fontFamily: fonts.bodyMedium, fontSize: 14 },
   emotionRemove: { fontSize: 14 },
   emotionAddRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   emotionName: {
     flex: 1,
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     fontSize: 14,
+    fontFamily: fonts.body,
   },
   emotionIntensity: {
     width: 56,
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 10,
+    borderRadius: 14,
     paddingHorizontal: 8,
-    paddingVertical: 8,
+    paddingVertical: 10,
     fontSize: 14,
+    fontFamily: fonts.body,
     textAlign: 'center',
   },
   emotionAdd: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderWidth: 1.5,
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 11,
   },
-  emotionAddText: { fontSize: 14, fontWeight: '600' },
-  scaleHint: { fontSize: 11, marginTop: 8, fontStyle: 'italic' },
+  emotionAddText: { fontFamily: fonts.bodySemiBold, fontSize: 14 },
+  scaleHint: { fontFamily: fonts.body, fontSize: 11, marginTop: 8, fontStyle: 'italic' },
   moodWrap: { marginTop: 12 },
   moodRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
   moodChip: {
     width: 40,
     height: 40,
-    borderRadius: 10,
+    borderRadius: 13,
     borderWidth: StyleSheet.hairlineWidth,
     alignItems: 'center',
     justifyContent: 'center',
@@ -474,9 +482,9 @@ const styles = StyleSheet.create({
   distortWrap: { marginTop: 16 },
   distortRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
   distortChip: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 16,
-    paddingHorizontal: 12,
+    borderWidth: 1.5,
+    borderRadius: 999,
+    paddingHorizontal: 14,
     paddingVertical: 8,
   },
 });

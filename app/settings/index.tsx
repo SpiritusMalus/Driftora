@@ -19,6 +19,7 @@ import { getNotificationService } from '@/lib/core/services/notificationProvider
 import { buildDailyReminders, rescheduleReminders } from '@/lib/core/services/reminders';
 import { nextReminder } from '@/lib/core/services/reminderSchedule';
 import { colors, type ThemeColors } from '@/lib/theme/colors';
+import { fonts } from '@/lib/theme/typography';
 
 const TIME_RE = /^([01]?\d|2[0-3]):[0-5]\d$/;
 
@@ -215,7 +216,7 @@ export default function SettingsScreen() {
           { backgroundColor: theme.primary, opacity: db == null || saving ? 0.4 : pressed ? 0.85 : 1 },
         ]}
       >
-        <Text style={styles.saveText}>
+        <Text style={[styles.saveText, { color: theme.onPrimary }]}>
           {saving ? t('settings.saving') : saved ? t('settings.saved') : t('settings.save')}
         </Text>
       </Pressable>
@@ -273,56 +274,58 @@ function toNumber(v: string): number {
 
 const styles = StyleSheet.create({
   content: { padding: 16 },
-  hint: { fontSize: 13, textAlign: 'center', marginBottom: 12 },
-  section: { fontSize: 13, fontWeight: '600', marginTop: 20, marginBottom: 8 },
+  hint: { fontFamily: fonts.body, fontSize: 13, textAlign: 'center', marginBottom: 12 },
+  section: { fontFamily: fonts.heading, fontSize: 11, letterSpacing: 1.2, marginTop: 24, marginBottom: 10 },
   field: { marginBottom: 12 },
-  fieldLabel: { fontSize: 12, marginBottom: 4 },
+  fieldLabel: { fontFamily: fonts.body, fontSize: 12, marginBottom: 5 },
   input: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
     fontSize: 15,
+    fontFamily: fonts.body,
   },
   timeRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     marginBottom: 8,
   },
-  timeText: { fontSize: 15 },
+  timeText: { fontFamily: fonts.bodyMedium, fontSize: 15 },
   timeAddRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   timeInput: {
     flex: 1,
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
-  },
-  timeAddBtn: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 10,
+    borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 11,
+    fontSize: 15,
+    fontFamily: fonts.body,
   },
-  timeAddText: { fontSize: 14, fontWeight: '600' },
-  note: { fontSize: 11, fontStyle: 'italic', marginTop: 8 },
+  timeAddBtn: {
+    borderWidth: 1.5,
+    borderRadius: 999,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+  },
+  timeAddText: { fontFamily: fonts.bodySemiBold, fontSize: 14 },
+  note: { fontFamily: fonts.body, fontSize: 11, fontStyle: 'italic', marginTop: 8, lineHeight: 16 },
   toggleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 12,
+    borderRadius: 16,
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 12,
     marginBottom: 10,
   },
-  toggleLabel: { fontSize: 14, flex: 1, paddingRight: 12 },
-  saveBtn: { borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginTop: 20 },
-  saveText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
+  toggleLabel: { fontFamily: fonts.body, fontSize: 14, flex: 1, paddingRight: 12 },
+  saveBtn: { borderRadius: 16, paddingVertical: 15, alignItems: 'center', marginTop: 20 },
+  saveText: { fontFamily: fonts.bodySemiBold, fontSize: 16 },
 });

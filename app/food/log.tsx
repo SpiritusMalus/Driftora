@@ -19,6 +19,7 @@ import type { FoodParseResult, ParsedFoodItem } from '@/lib/core/services/foodPa
 import { getFoodParser } from '@/lib/core/services/foodParserProvider';
 import { getSpeechService } from '@/lib/core/services/speechProvider';
 import { colors, type ThemeColors } from '@/lib/theme/colors';
+import { fonts } from '@/lib/theme/typography';
 
 interface MacroLabels {
   kcal: string;
@@ -199,7 +200,7 @@ export default function FoodLogScreen() {
             },
           ]}
         >
-          <Text style={[styles.micText, { color: listening ? '#FFFFFF' : theme.primary }]}>
+          <Text style={[styles.micText, { color: listening ? theme.onPrimary : theme.primary }]}>
             {listening ? t('food.voiceListening') : t('food.voice')}
           </Text>
         </Pressable>
@@ -371,7 +372,7 @@ function PrimaryButton({
         { backgroundColor: theme.primary, opacity: disabled ? 0.4 : pressed ? 0.85 : 1 },
       ]}
     >
-      <Text style={styles.buttonText}>{label}</Text>
+      <Text style={[styles.buttonText, { color: theme.onPrimary }]}>{label}</Text>
     </Pressable>
   );
 }
@@ -398,48 +399,50 @@ const styles = StyleSheet.create({
   content: { padding: 16 },
   input: {
     minHeight: 80,
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
-    padding: 12,
+    padding: 14,
     fontSize: 15,
+    fontFamily: fonts.body,
     textAlignVertical: 'top',
     marginBottom: 12,
   },
   button: {
-    borderRadius: 12,
-    paddingVertical: 14,
+    borderRadius: 16,
+    paddingVertical: 15,
     alignItems: 'center',
     marginTop: 4,
   },
-  buttonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
+  buttonText: { fontFamily: fonts.bodySemiBold, fontSize: 16 },
   micButton: {
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 999,
+    borderWidth: 1.5,
     paddingVertical: 12,
     alignItems: 'center',
     marginBottom: 8,
   },
-  micText: { fontSize: 15, fontWeight: '600' },
-  hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
+  micText: { fontFamily: fonts.bodySemiBold, fontSize: 15 },
+  hint: { fontFamily: fonts.body, fontSize: 13, textAlign: 'center', marginTop: 20 },
   results: { marginTop: 16 },
   item: {
-    borderRadius: 12,
+    borderRadius: 18,
     borderWidth: StyleSheet.hairlineWidth,
-    padding: 12,
+    padding: 14,
     marginBottom: 10,
   },
-  itemName: { fontSize: 16, fontWeight: '600', marginBottom: 8 },
+  itemName: { fontFamily: fonts.bodySemiBold, fontSize: 16, marginBottom: 10 },
   macroRow: { flexDirection: 'row', gap: 8 },
   macroField: { flex: 1 },
-  macroLabel: { fontSize: 11, marginBottom: 2 },
+  macroLabel: { fontFamily: fonts.body, fontSize: 11, marginBottom: 3 },
   macroInput: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     fontSize: 14,
+    fontFamily: fonts.body,
   },
-  assumptions: { fontSize: 11, marginTop: 8, fontStyle: 'italic' },
+  assumptions: { fontFamily: fonts.body, fontSize: 11, marginTop: 8, fontStyle: 'italic', lineHeight: 16 },
   totalRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -448,20 +451,20 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     marginTop: 4,
   },
-  totalLabel: { fontSize: 15, fontWeight: '600' },
-  totalValue: { fontSize: 14 },
-  stubNote: { fontSize: 11, fontStyle: 'italic', marginBottom: 12 },
-  proteinNote: { fontSize: 12, marginTop: 4, marginBottom: 8, lineHeight: 17 },
+  totalLabel: { fontFamily: fonts.bodySemiBold, fontSize: 15 },
+  totalValue: { fontFamily: fonts.bodyMedium, fontSize: 14 },
+  stubNote: { fontFamily: fonts.body, fontSize: 11, fontStyle: 'italic', marginBottom: 12 },
+  proteinNote: { fontFamily: fonts.body, fontSize: 12, marginTop: 4, marginBottom: 8, lineHeight: 17 },
   quick: { marginTop: 16 },
   quickGroup: { marginBottom: 14 },
-  quickLabel: { fontSize: 12, marginBottom: 8, fontWeight: '600' },
+  quickLabel: { fontFamily: fonts.heading, fontSize: 11, letterSpacing: 1.2, marginBottom: 8 },
   quickWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
   },
-  chipText: { fontSize: 14, fontWeight: '600', maxWidth: 240 },
-  chipMacro: { fontSize: 11, marginTop: 2 },
+  chipText: { fontFamily: fonts.bodySemiBold, fontSize: 14, maxWidth: 240 },
+  chipMacro: { fontFamily: fonts.body, fontSize: 11, marginTop: 2 },
 });

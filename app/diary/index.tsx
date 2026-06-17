@@ -20,6 +20,7 @@ import {
 import { thinkingTrapOfWeek, type ThinkingTrap } from '@/lib/core/insights/distortions';
 import { buildDiaryExport } from '@/lib/core/insights/diaryExport';
 import { colors } from '@/lib/theme/colors';
+import { fonts } from '@/lib/theme/typography';
 
 /// List of thought records, newest first. Tap one to reread it; the button
 /// starts a new guided entry.
@@ -85,7 +86,7 @@ export default function DiaryListScreen() {
           { backgroundColor: theme.primary, opacity: pressed ? 0.85 : 1 },
         ]}
       >
-        <Text style={styles.addText}>{t('diary.add')}</Text>
+        <Text style={[styles.addText, { color: theme.onPrimary }]}>{t('diary.add')}</Text>
       </Pressable>
 
       {entries && entries.length > 0 ? (
@@ -155,36 +156,36 @@ function formatDate(d: Date): string {
 const styles = StyleSheet.create({
   content: { padding: 16 },
   addBtn: {
-    borderRadius: 12,
-    paddingVertical: 14,
+    borderRadius: 16,
+    paddingVertical: 15,
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
   },
-  addText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
+  addText: { fontFamily: fonts.bodySemiBold, fontSize: 16 },
   shareBtn: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 12,
+    borderWidth: 1.5,
+    borderRadius: 999,
     paddingVertical: 12,
     alignItems: 'center',
     marginBottom: 16,
   },
-  shareText: { fontSize: 15, fontWeight: '600' },
+  shareText: { fontFamily: fonts.bodySemiBold, fontSize: 15 },
   trapCard: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 12,
-    padding: 14,
+    borderRadius: 18,
+    padding: 16,
     marginBottom: 16,
   },
-  trapTitle: { fontSize: 14, fontWeight: '600' },
-  trapBody: { fontSize: 13, marginTop: 4, lineHeight: 18 },
-  hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
+  trapTitle: { fontFamily: fonts.bodySemiBold, fontSize: 14 },
+  trapBody: { fontFamily: fonts.body, fontSize: 13, marginTop: 4, lineHeight: 18 },
+  hint: { fontFamily: fonts.body, fontSize: 13, textAlign: 'center', marginTop: 20 },
   row: {
-    borderRadius: 12,
+    borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
     padding: 14,
     marginBottom: 10,
   },
-  rowDate: { fontSize: 12, marginBottom: 4 },
-  rowText: { fontSize: 15 },
-  rowMood: { fontSize: 12, marginTop: 6 },
+  rowDate: { fontFamily: fonts.body, fontSize: 12, marginBottom: 4 },
+  rowText: { fontFamily: fonts.body, fontSize: 15, lineHeight: 21 },
+  rowMood: { fontFamily: fonts.body, fontSize: 12, marginTop: 6 },
 });

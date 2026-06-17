@@ -1,6 +1,7 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import { type ThemeColors } from '@/lib/theme/colors';
+import { fonts } from '@/lib/theme/typography';
 
 /// The editorial Body↔Mind hero — the typographic centerpiece of Home.
 ///
@@ -42,29 +43,31 @@ export function InsightHero({
 const styles = StyleSheet.create({
   wrap: { paddingVertical: 24 },
   eyebrow: {
-    fontSize: 12,
-    letterSpacing: 1.5,
-    fontWeight: '600',
-    marginBottom: 12,
+    fontFamily: fonts.heading,
+    fontSize: 11,
+    letterSpacing: 1.6,
+    marginBottom: 14,
   },
   accent: {
-    fontSize: 56,
-    fontWeight: '800',
-    lineHeight: 60,
-    letterSpacing: -1,
-    marginBottom: 4,
+    fontFamily: fonts.display,
+    fontSize: 52,
+    lineHeight: 58,
+    letterSpacing: -1.5,
+    marginBottom: 6,
   },
   headline: {
-    fontSize: 26,
-    fontWeight: '700',
-    lineHeight: 34,
-    letterSpacing: -0.3,
+    fontFamily: fonts.heading,
+    fontSize: 25,
+    lineHeight: 33,
+    letterSpacing: -0.4,
   },
   basis: {
+    fontFamily: fonts.body,
     fontSize: 13,
     marginTop: 14,
   },
   caption: {
+    fontFamily: fonts.body,
     fontSize: 13,
     lineHeight: 19,
     marginTop: 8,
