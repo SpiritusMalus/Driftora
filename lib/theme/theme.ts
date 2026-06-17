@@ -43,6 +43,7 @@ const iosSurfaces = {
 /// Font weight fragments. On Android they name the loaded Unbounded/Manrope
 /// faces; on iOS they carry only a weight so the system SF face is used.
 const androidFont = {
+  displayHeavy: { fontFamily: 'Unbounded_800ExtraBold' },
   display: { fontFamily: 'Unbounded_700Bold' },
   heading: { fontFamily: 'Unbounded_600SemiBold' },
   body: { fontFamily: 'Manrope_400Regular' },
@@ -52,6 +53,7 @@ const androidFont = {
 } satisfies Record<string, TextStyle>;
 
 const iosFont = {
+  displayHeavy: { fontWeight: '800' },
   display: { fontWeight: '800' },
   heading: { fontWeight: '700' },
   body: { fontWeight: '400' },
