@@ -3,6 +3,7 @@ import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BodyMindCard } from '@/components/ui/BodyMindCard';
 import { Card } from '@/components/ui/Card';
@@ -36,6 +37,7 @@ export default function HomeScreen() {
   const theme = useTheme();
   const router = useRouter();
   const db = useDatabase();
+  const insets = useSafeAreaInsets();
 
   const [steps, setSteps] = useState<number | null>(null);
   const [stepsMeaning, setStepsMeaning] = useState<string | null>(null);
@@ -188,7 +190,10 @@ export default function HomeScreen() {
       />
       <ScrollView
         style={styles.fill}
-        contentContainerStyle={theme.isIOS ? styles.iosContent : styles.androidContent}
+        contentContainerStyle={[
+          theme.isIOS ? styles.iosContent : styles.androidContent,
+          { paddingBottom: 96 + insets.bottom },
+        ]}
         contentInsetAdjustmentBehavior="automatic"
       >
         <Text style={[styles.greeting, { color: theme.subtle }, theme.font.body]}>
@@ -253,7 +258,13 @@ export default function HomeScreen() {
         <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('home.gentleNorm')}</Text>
       </ScrollView>
 
-      <View style={[styles.footer, theme.isIOS ? styles.footerIOS : styles.footerAndroid]}>
+      <View
+        style={[
+          styles.footer,
+          theme.isIOS ? styles.footerIOS : styles.footerAndroid,
+          { bottom: (theme.isIOS ? 12 : 16) + insets.bottom },
+        ]}
+      >
         <FoodBar
           placeholder={t('home.foodBar.placeholder')}
           onPressText={() => router.push('/food/log')}
@@ -295,8 +306,8 @@ const styles = StyleSheet.create({
   northStar: { fontSize: 12, textAlign: 'center', marginTop: 22 },
   hint: { fontSize: 12, textAlign: 'center', marginTop: 10, lineHeight: 17 },
   footer: { position: 'absolute', left: 0, right: 0 },
-  footerAndroid: { bottom: 16, paddingHorizontal: 18 },
-  footerIOS: { bottom: 12, paddingHorizontal: 16 },
+  footerAndroid: { paddingHorizontal: 18 },
+  footerIOS: { paddingHorizontal: 16 },
   pauseBanner: { marginBottom: 4 },
   pauseTitle: { fontSize: 16 },
   pauseBody: { fontSize: 13, marginTop: 6, lineHeight: 18 },
