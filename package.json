@@ -8,6 +8,7 @@
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
     "@op-engineering/op-sqlite": "^16.2.2",
+    "@react-native-voice/voice": "^3.2.4",
     "babel-preset-expo": "~54.0.10",
     "drizzle-orm": "^0.45.2",
     "expo": "~54.0.0",

@@ -110,6 +110,8 @@ export const en = {
     inputPlaceholder: 'What did you eat? e.g. three-egg omelette and coffee with milk',
     parse: 'Parse',
     parsing: 'Parsing…',
+    voice: '🎤 Say it',
+    voiceListening: '● Listening… tap to stop',
     save: 'Save',
     saving: 'Saving…',
     empty: 'Describe your meal and tap “Parse”.',

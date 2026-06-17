@@ -17,6 +17,7 @@ import { ensureSettings } from '@/lib/core/db/settings';
 import { proteinInsight } from '@/lib/core/insights/proteinInsight';
 import type { FoodParseResult, ParsedFoodItem } from '@/lib/core/services/foodParser';
 import { getFoodParser } from '@/lib/core/services/foodParserProvider';
+import { getSpeechService } from '@/lib/core/services/speechProvider';
 import { colors, type ThemeColors } from '@/lib/theme/colors';
 
 interface MacroLabels {
@@ -47,6 +48,41 @@ export default function FoodLogScreen() {
     recents: [],
     favorites: [],
   });
+  const [speechAvailable, setSpeechAvailable] = useState(false);
+  const [listening, setListening] = useState(false);
+  // Records whether the current draft came from voice, so the saved entry's
+  // `source` is honest ('voice' vs 'text').
+  const [usedVoice, setUsedVoice] = useState(false);
+
+  // Probe the on-device recognizer once; off-device this stays false and the
+  // mic button never shows (text entry is the fallback). Stop on unmount.
+  useEffect(() => {
+    let active = true;
+    const speech = getSpeechService();
+    void speech.initialize().then((ok) => {
+      if (active) setSpeechAvailable(ok);
+    });
+    return () => {
+      active = false;
+      void speech.stop();
+    };
+  }, []);
+
+  async function toggleListening() {
+    const speech = getSpeechService();
+    if (listening) {
+      await speech.stop();
+      setListening(false);
+      return;
+    }
+    setResult(null);
+    setUsedVoice(true);
+    setListening(true);
+    await speech.listen((transcript, isFinal) => {
+      setText(transcript);
+      if (isFinal) setListening(false);
+    });
+  }
 
   useEffect(() => {
     let active = true;
@@ -72,6 +108,7 @@ export default function FoodLogScreen() {
   /// parse) — the user still reviews and saves.
   function onQuickPick(meal: QuickMeal) {
     setText(meal.rawText);
+    setUsedVoice(false);
     setResult({
       items: [
         {
@@ -123,7 +160,7 @@ export default function FoodLogScreen() {
     if (!result || !db) return;
     setSaving(true);
     try {
-      await saveParsedEntry(db, { rawText: text, source: 'text', result });
+      await saveParsedEntry(db, { rawText: text, source: usedVoice ? 'voice' : 'text', result });
       router.back();
     } finally {
       setSaving(false);
@@ -138,7 +175,10 @@ export default function FoodLogScreen() {
     >
       <TextInput
         value={text}
-        onChangeText={setText}
+        onChangeText={(v) => {
+          setText(v);
+          if (!listening) setUsedVoice(false);
+        }}
         placeholder={t('food.inputPlaceholder')}
         placeholderTextColor={theme.subtle}
         multiline
@@ -147,10 +187,27 @@ export default function FoodLogScreen() {
           { color: theme.text, backgroundColor: theme.card, borderColor: theme.border },
         ]}
       />
+      {speechAvailable ? (
+        <Pressable
+          onPress={toggleListening}
+          style={({ pressed }) => [
+            styles.micButton,
+            {
+              borderColor: listening ? theme.primary : theme.border,
+              backgroundColor: listening ? theme.primary : theme.card,
+              opacity: pressed ? 0.7 : 1,
+            },
+          ]}
+        >
+          <Text style={[styles.micText, { color: listening ? '#FFFFFF' : theme.primary }]}>
+            {listening ? t('food.voiceListening') : t('food.voice')}
+          </Text>
+        </Pressable>
+      ) : null}
       <PrimaryButton
         label={parsing ? t('food.parsing') : t('food.parse')}
         onPress={onParse}
-        disabled={parsing || text.trim().length === 0}
+        disabled={parsing || listening || text.trim().length === 0}
         theme={theme}
       />
 
@@ -355,6 +412,14 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   buttonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
+  micButton: {
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  micText: { fontSize: 15, fontWeight: '600' },
   hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
   results: { marginTop: 16 },
   item: {
