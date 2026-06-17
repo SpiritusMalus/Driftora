@@ -40,7 +40,8 @@
       "expo-secure-store",
       "expo-localization",
       "expo-font",
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-notifications"
     ],
     "extra": {
       "router": {},

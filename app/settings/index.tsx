@@ -15,6 +15,8 @@ import {
 import { getDbDriver } from '@/lib/core/db/client';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { ensureSettings, parseReminderTimes, updateSettings } from '@/lib/core/db/settings';
+import { getNotificationService } from '@/lib/core/services/notificationProvider';
+import { buildDailyReminders, rescheduleReminders } from '@/lib/core/services/reminders';
 import { nextReminder } from '@/lib/core/services/reminderSchedule';
 import { colors, type ThemeColors } from '@/lib/theme/colors';
 
@@ -95,9 +97,29 @@ export default function SettingsScreen() {
         paused,
         showPopulationStats,
       });
+      await syncReminders();
       setSaved(true);
     } finally {
       setSaving(false);
+    }
+  }
+
+  /// Re-applies the saved reminders to the OS scheduler. A break (`paused`)
+  /// clears them; otherwise we ask for permission once and schedule the set.
+  /// Best-effort — a missing notification backend never blocks saving.
+  async function syncReminders() {
+    try {
+      const service = getNotificationService();
+      await service.initialize();
+      const specs = buildDailyReminders(
+        reminders,
+        { title: t('notifications.reminderTitle'), body: t('notifications.reminderBody') },
+        paused,
+      );
+      if (specs.length > 0) await service.requestPermissions();
+      await rescheduleReminders(service, specs);
+    } catch (e) {
+      console.warn('reminder scheduling failed', e);
     }
   }
 
