@@ -62,7 +62,7 @@ export function BodyMindCard({
             value={bodyValue}
           />
           <View style={styles.center}>
-            <Text style={[styles.accent, { color: theme.heroAccent }, theme.font.display]}>
+            <Text style={[styles.accent, { color: theme.heroAccent }, theme.font.displayHeavy]}>
               {accent}
             </Text>
             <Sparkline coral={theme.primary} amber={theme.accent} />
@@ -153,7 +153,7 @@ const styles = StyleSheet.create({
   tile: { width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   colLabel: { fontSize: 11, marginTop: 8 },
   colValue: { fontSize: 16, marginTop: 2 },
-  accent: { fontSize: 32, lineHeight: 32, letterSpacing: -0.64 },
+  accent: { fontSize: 32, lineHeight: 33, letterSpacing: -0.6 },
 
   headline: { fontSize: 19, lineHeight: 26, letterSpacing: -0.19, marginTop: 22 },
   basis: { fontSize: 13, marginTop: 14 },
