@@ -12,6 +12,7 @@ import {
   View,
 } from 'react-native';
 
+import { getDbDriver } from '@/lib/core/db/client';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { ensureSettings, parseReminderTimes, updateSettings } from '@/lib/core/db/settings';
 import { nextReminder } from '@/lib/core/services/reminderSchedule';
@@ -161,6 +162,28 @@ export default function SettingsScreen() {
       <ToggleRow label={t('settings.llmDiaryAssist')} value={llmDiaryAssist} onChange={(v) => { setLlmDiaryAssist(v); dirty(); }} theme={theme} />
       <ToggleRow label={t('settings.showPopulationStats')} value={showPopulationStats} onChange={(v) => { setShowPopulationStats(v); dirty(); }} theme={theme} />
       <Text style={[styles.note, { color: theme.subtle }]}>{t('settings.showPopulationStatsNote')}</Text>
+
+      {db != null
+        ? (() => {
+            const encrypted = getDbDriver() === 'op-sqlite';
+            return (
+              <>
+                <Text style={[styles.section, { color: theme.subtle }]}>{t('settings.storage')}</Text>
+                <View style={[styles.toggleRow, { backgroundColor: theme.card, borderColor: theme.border }]}>
+                  <Text style={[styles.toggleLabel, { color: theme.text }]}>
+                    {encrypted ? t('settings.storageEncrypted') : t('settings.storageUnencrypted')}
+                  </Text>
+                  <Text style={{ color: encrypted ? theme.primary : theme.subtle, fontSize: 16 }}>
+                    {encrypted ? '🔒' : '⚠️'}
+                  </Text>
+                </View>
+                {encrypted ? null : (
+                  <Text style={[styles.note, { color: theme.subtle }]}>{t('settings.storageUnencryptedNote')}</Text>
+                )}
+              </>
+            );
+          })()
+        : null}
 
       <Pressable
         onPress={onSave}

@@ -11,7 +11,19 @@ import * as schema from './schema';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Database = BaseSQLiteDatabase<any, any, typeof schema>;
 
+/// Which SQLite driver actually backs the open database. `op-sqlite` means the
+/// file is encrypted at rest (SQLCipher); `expo-sqlite` is the unencrypted Expo
+/// Go / web fallback. Exposed so the UI can tell the user whether their data is
+/// truly encrypted on this build (a silent fallback otherwise looks identical).
+export type DbDriver = 'op-sqlite' | 'expo-sqlite';
+
 let _db: Database | null = null;
+let _driver: DbDriver | null = null;
+
+/// The driver backing the open database, or null before `openDatabase` resolves.
+export function getDbDriver(): DbDriver | null {
+  return _driver;
+}
 
 /// Opens the on-device database and applies the schema.
 ///
@@ -35,12 +47,14 @@ export async function openDatabase(): Promise<Database> {
     const op = open({ name: 'health_routine.db', encryptionKey: key });
     await applySchema((statement) => op.execute(statement));
     _db = drizzle(op, { schema });
+    _driver = 'op-sqlite';
   } catch (nativeError) {
     const { openDatabaseSync } = await import('expo-sqlite');
     const { drizzle } = await import('drizzle-orm/expo-sqlite');
     const db = openDatabaseSync('health_routine.db');
     await applySchema((statement) => db.execSync(statement));
     _db = drizzle(db, { schema });
+    _driver = 'expo-sqlite';
     console.warn(
       'op-sqlite unavailable — using the unencrypted expo-sqlite fallback ' +
         '(Expo Go / no native build).',
