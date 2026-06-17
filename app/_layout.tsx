@@ -1,36 +1,58 @@
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { useColorScheme } from 'react-native';
+import { Platform, useColorScheme } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import '@/lib/i18n';
 import { DatabaseProvider } from '@/lib/core/db/DatabaseProvider';
-import { colors } from '@/lib/theme/colors';
-import { fontAssets, fonts } from '@/lib/theme/typography';
+import { resolveTheme } from '@/lib/theme/theme';
+import { fontAssets } from '@/lib/theme/typography';
 
+/// Two platform looks from the Ember handoff:
+///   • iOS — native large titles on a liquid-glass (blurred) header, SF system
+///     type. The grouped screens scroll under the translucent bar.
+///   • Android — a flat Material app bar tinted to the warm Ember cream, with a
+///     left-aligned Unbounded title and no shadow.
+/// Both keep the native header so back navigation comes for free.
 export default function RootLayout() {
   const { t } = useTranslation();
-  const scheme = useColorScheme();
-  const theme = scheme === 'dark' ? colors.dark : colors.light;
+  const scheme = useColorScheme() === 'dark' ? 'dark' : 'light';
+  const theme = resolveTheme(scheme);
   const [fontsLoaded] = useFonts(fontAssets);
 
-  // Hold the first frame until the Ember fonts are ready, so headers and the
-  // hero don't flash in the system face before swapping.
+  // Hold the first frame until the Ember fonts are ready so Android headers and
+  // the hero don't flash in the system face before swapping. (iOS uses SF, so
+  // this only matters for Android, but a single gate keeps it simple.)
   if (!fontsLoaded) return null;
+
+  const headerOptions =
+    Platform.OS === 'ios'
+      ? {
+          headerLargeTitle: true,
+          headerTransparent: true,
+          headerBlurEffect: (scheme === 'dark' ? 'systemChromeMaterialDark' : 'systemChromeMaterial') as
+            | 'systemChromeMaterialDark'
+            | 'systemChromeMaterial',
+          headerLargeTitleShadowVisible: false,
+          headerShadowVisible: false,
+          headerTintColor: theme.primary,
+          headerLargeTitleStyle: { color: theme.text },
+          headerTitleStyle: { color: theme.text },
+          contentStyle: { backgroundColor: theme.background },
+        }
+      : {
+          headerStyle: { backgroundColor: theme.background },
+          headerTintColor: theme.text,
+          headerShadowVisible: false,
+          headerTitleStyle: { fontFamily: 'Unbounded_600SemiBold', fontSize: 20, color: theme.text },
+          contentStyle: { backgroundColor: theme.background },
+        };
 
   return (
     <DatabaseProvider>
       <SafeAreaProvider>
-        <Stack
-          screenOptions={{
-            headerStyle: { backgroundColor: theme.background },
-            headerTintColor: theme.text,
-            headerShadowVisible: false,
-            headerTitleStyle: { fontFamily: fonts.heading, fontSize: 18, color: theme.text },
-            contentStyle: { backgroundColor: theme.background },
-          }}
-        >
+        <Stack screenOptions={headerOptions}>
           <Stack.Screen name="index" options={{ title: t('home.title') }} />
           <Stack.Screen name="more/index" options={{ title: t('more.title') }} />
           <Stack.Screen name="food/log" options={{ title: t('food.title') }} />

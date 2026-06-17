@@ -36,6 +36,9 @@ export const ru = {
       diaryCta: 'Подробная заметка тоже питает инсайт',
     },
     moreLink: 'Ещё',
+    moodNow: { title: 'Как вы сейчас?', hint: 'один тап · 0–10' },
+    bodyMindCol: { body: 'Тело', mind: 'Разум' },
+    foodBar: { placeholder: 'Расскажите или напишите, что съели…' },
     northStar: 'Вы на связи {{weeks}} нед. подряд.',
     paused: {
       title: 'Сейчас вы на паузе',

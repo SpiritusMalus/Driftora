@@ -1,25 +1,20 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  useColorScheme,
-  View,
-} from 'react-native';
+import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 
+import { Card } from '@/components/ui/Card';
+import { PrimaryButton } from '@/components/ui/PrimaryButton';
+import { Screen } from '@/components/ui/Screen';
+import { SectionHeader } from '@/components/ui/SectionHeader';
+import { TextField } from '@/components/ui/TextField';
 import { getDbDriver } from '@/lib/core/db/client';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { ensureSettings, parseReminderTimes, updateSettings } from '@/lib/core/db/settings';
 import { getNotificationService } from '@/lib/core/services/notificationProvider';
 import { buildDailyReminders, rescheduleReminders } from '@/lib/core/services/reminders';
 import { nextReminder } from '@/lib/core/services/reminderSchedule';
-import { colors, type ThemeColors } from '@/lib/theme/colors';
-import { fonts } from '@/lib/theme/typography';
+import { type Theme, useTheme } from '@/lib/theme/theme';
 
 const TIME_RE = /^([01]?\d|2[0-3]):[0-5]\d$/;
 
@@ -28,8 +23,7 @@ const TIME_RE = /^([01]?\d|2[0-3]):[0-5]\d$/;
 /// expo-notifications on a device (see the note).
 export default function SettingsScreen() {
   const { t } = useTranslation();
-  const scheme = useColorScheme();
-  const theme = scheme === 'dark' ? colors.dark : colors.light;
+  const theme = useTheme();
   const db = useDatabase();
 
   const [loaded, setLoaded] = useState(false);
@@ -125,103 +119,94 @@ export default function SettingsScreen() {
   }
 
   return (
-    <ScrollView
-      style={{ backgroundColor: theme.background }}
-      contentContainerStyle={styles.content}
-      keyboardShouldPersistTaps="handled"
-    >
+    <Screen>
       {db == null ? (
-        <Text style={[styles.hint, { color: theme.subtle }]}>{t('settings.dbUnavailable')}</Text>
+        <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>
+          {t('settings.dbUnavailable')}
+        </Text>
       ) : null}
 
-      <Text style={[styles.section, { color: theme.subtle }]}>{t('settings.breakTitle')}</Text>
+      <SectionHeader>{t('settings.breakTitle')}</SectionHeader>
       <ToggleRow label={t('settings.pause')} value={paused} onChange={(v) => { setPaused(v); dirty(); }} theme={theme} />
-      <Text style={[styles.note, { color: theme.subtle }]}>{t('settings.pauseNote')}</Text>
+      <Note theme={theme}>{t('settings.pauseNote')}</Note>
 
-      <Text style={[styles.section, { color: theme.subtle }]}>{t('settings.targets')}</Text>
+      <SectionHeader>{t('settings.targets')}</SectionHeader>
       <NumberField label={t('settings.targetKcal')} value={kcal} onChange={(v) => { setKcal(v); dirty(); }} theme={theme} />
       <NumberField label={t('settings.targetProtein')} value={protein} onChange={(v) => { setProtein(v); dirty(); }} theme={theme} />
       <NumberField label={t('settings.targetFat')} value={fat} onChange={(v) => { setFat(v); dirty(); }} theme={theme} />
       <NumberField label={t('settings.targetCarb')} value={carb} onChange={(v) => { setCarb(v); dirty(); }} theme={theme} />
       <NumberField label={t('settings.stepsGoal')} value={stepsGoal} onChange={(v) => { setStepsGoal(v); dirty(); }} theme={theme} />
 
-      <Text style={[styles.section, { color: theme.subtle }]}>{t('settings.reminders')}</Text>
+      <SectionHeader>{t('settings.reminders')}</SectionHeader>
       {reminders.map((time) => (
-        <View key={time} style={[styles.timeRow, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[styles.timeText, { color: theme.text }]}>{time}</Text>
+        <Card key={time} style={styles.timeRow} padded={false}>
+          <Text style={[styles.timeText, { color: theme.text }, theme.font.bodyMedium]}>{time}</Text>
           <Pressable onPress={() => { setReminders(reminders.filter((x) => x !== time)); dirty(); }} hitSlop={8}>
             <Text style={{ color: theme.subtle }}>✕</Text>
           </Pressable>
-        </View>
+        </Card>
       ))}
       <View style={styles.timeAddRow}>
-        <TextInput
+        <TextField
           value={newTime}
           onChangeText={setNewTime}
           placeholder={t('settings.reminderAdd')}
-          placeholderTextColor={theme.subtle}
-          style={[styles.timeInput, { color: theme.text, backgroundColor: theme.card, borderColor: theme.border }]}
+          style={styles.timeInput}
         />
         <Pressable onPress={addTime} style={({ pressed }) => [styles.timeAddBtn, { borderColor: theme.primary, opacity: pressed ? 0.6 : 1 }]}>
-          <Text style={[styles.timeAddText, { color: theme.primary }]}>{t('settings.reminderAddBtn')}</Text>
+          <Text style={[styles.timeAddText, { color: theme.primary }, theme.font.bodySemiBold]}>
+            {t('settings.reminderAddBtn')}
+          </Text>
         </Pressable>
       </View>
-      <Text style={[styles.note, { color: theme.subtle }]}>{t('settings.remindersNote')}</Text>
+      <Note theme={theme}>{t('settings.remindersNote')}</Note>
       {(() => {
         const next = nextReminder(reminders);
         if (!next) return null;
         const pad = (n: number) => String(n).padStart(2, '0');
         const isToday = next.getDate() === new Date().getDate();
         const when = `${isToday ? t('settings.today') : t('settings.tomorrow')} ${pad(next.getHours())}:${pad(next.getMinutes())}`;
-        return (
-          <Text style={[styles.note, { color: theme.subtle }]}>
-            {t('settings.nextReminder', { when })}
-          </Text>
-        );
+        return <Note theme={theme}>{t('settings.nextReminder', { when })}</Note>;
       })()}
 
-      <Text style={[styles.section, { color: theme.subtle }]}>{t('settings.flags')}</Text>
+      <SectionHeader>{t('settings.flags')}</SectionHeader>
       <ToggleRow label={t('settings.hideCalories')} value={hideCalories} onChange={(v) => { setHideCalories(v); dirty(); }} theme={theme} />
       <ToggleRow label={t('settings.llmDiaryAssist')} value={llmDiaryAssist} onChange={(v) => { setLlmDiaryAssist(v); dirty(); }} theme={theme} />
       <ToggleRow label={t('settings.showPopulationStats')} value={showPopulationStats} onChange={(v) => { setShowPopulationStats(v); dirty(); }} theme={theme} />
-      <Text style={[styles.note, { color: theme.subtle }]}>{t('settings.showPopulationStatsNote')}</Text>
+      <Note theme={theme}>{t('settings.showPopulationStatsNote')}</Note>
 
       {db != null
         ? (() => {
             const encrypted = getDbDriver() === 'op-sqlite';
             return (
               <>
-                <Text style={[styles.section, { color: theme.subtle }]}>{t('settings.storage')}</Text>
-                <View style={[styles.toggleRow, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                  <Text style={[styles.toggleLabel, { color: theme.text }]}>
+                <SectionHeader>{t('settings.storage')}</SectionHeader>
+                <Card style={styles.toggleRow} padded={false}>
+                  <Text style={[styles.toggleLabel, { color: theme.text }, theme.font.body]}>
                     {encrypted ? t('settings.storageEncrypted') : t('settings.storageUnencrypted')}
                   </Text>
                   <Text style={{ color: encrypted ? theme.primary : theme.subtle, fontSize: 16 }}>
                     {encrypted ? '🔒' : '⚠️'}
                   </Text>
-                </View>
-                {encrypted ? null : (
-                  <Text style={[styles.note, { color: theme.subtle }]}>{t('settings.storageUnencryptedNote')}</Text>
-                )}
+                </Card>
+                {encrypted ? null : <Note theme={theme}>{t('settings.storageUnencryptedNote')}</Note>}
               </>
             );
           })()
         : null}
 
-      <Pressable
+      <PrimaryButton
+        label={saving ? t('settings.saving') : saved ? t('settings.saved') : t('settings.save')}
         onPress={onSave}
         disabled={db == null || saving}
-        style={({ pressed }) => [
-          styles.saveBtn,
-          { backgroundColor: theme.primary, opacity: db == null || saving ? 0.4 : pressed ? 0.85 : 1 },
-        ]}
-      >
-        <Text style={[styles.saveText, { color: theme.onPrimary }]}>
-          {saving ? t('settings.saving') : saved ? t('settings.saved') : t('settings.save')}
-        </Text>
-      </Pressable>
-    </ScrollView>
+        style={styles.save}
+      />
+    </Screen>
   );
+}
+
+function Note({ children, theme }: { children: string; theme: Theme }) {
+  return <Text style={[styles.note, { color: theme.subtle }, theme.font.body]}>{children}</Text>;
 }
 
 function NumberField({
@@ -233,17 +218,12 @@ function NumberField({
   label: string;
   value: string;
   onChange: (v: string) => void;
-  theme: ThemeColors;
+  theme: Theme;
 }) {
   return (
     <View style={styles.field}>
-      <Text style={[styles.fieldLabel, { color: theme.subtle }]}>{label}</Text>
-      <TextInput
-        value={value}
-        onChangeText={onChange}
-        keyboardType="numeric"
-        style={[styles.input, { color: theme.text, backgroundColor: theme.card, borderColor: theme.border }]}
-      />
+      <Text style={[styles.fieldLabel, { color: theme.subtle }, theme.font.body]}>{label}</Text>
+      <TextField value={value} onChangeText={onChange} keyboardType="numeric" />
     </View>
   );
 }
@@ -257,13 +237,18 @@ function ToggleRow({
   label: string;
   value: boolean;
   onChange: (v: boolean) => void;
-  theme: ThemeColors;
+  theme: Theme;
 }) {
   return (
-    <View style={[styles.toggleRow, { backgroundColor: theme.card, borderColor: theme.border }]}>
-      <Text style={[styles.toggleLabel, { color: theme.text }]}>{label}</Text>
-      <Switch value={value} onValueChange={onChange} trackColor={{ true: theme.primary, false: theme.border }} />
-    </View>
+    <Card style={styles.toggleRow} padded={false}>
+      <Text style={[styles.toggleLabel, { color: theme.text }, theme.font.body]}>{label}</Text>
+      <Switch
+        value={value}
+        onValueChange={onChange}
+        trackColor={{ true: theme.primary, false: theme.separator }}
+        ios_backgroundColor={theme.separator}
+      />
+    </Card>
   );
 }
 
@@ -273,59 +258,31 @@ function toNumber(v: string): number {
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 16 },
-  hint: { fontFamily: fonts.body, fontSize: 13, textAlign: 'center', marginBottom: 12 },
-  section: { fontFamily: fonts.heading, fontSize: 11, letterSpacing: 1.2, marginTop: 24, marginBottom: 10 },
+  hint: { fontSize: 13, textAlign: 'center', marginBottom: 12 },
   field: { marginBottom: 12 },
-  fieldLabel: { fontFamily: fonts.body, fontSize: 12, marginBottom: 5 },
-  input: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    fontSize: 15,
-    fontFamily: fonts.body,
-  },
+  fieldLabel: { fontSize: 12, marginBottom: 5 },
   timeRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 12,
     marginBottom: 8,
   },
-  timeText: { fontFamily: fonts.bodyMedium, fontSize: 15 },
+  timeText: { fontSize: 15 },
   timeAddRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
-  timeInput: {
-    flex: 1,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    fontSize: 15,
-    fontFamily: fonts.body,
-  },
-  timeAddBtn: {
-    borderWidth: 1.5,
-    borderRadius: 999,
-    paddingHorizontal: 18,
-    paddingVertical: 11,
-  },
-  timeAddText: { fontFamily: fonts.bodySemiBold, fontSize: 14 },
-  note: { fontFamily: fonts.body, fontSize: 11, fontStyle: 'italic', marginTop: 8, lineHeight: 16 },
+  timeInput: { flex: 1 },
+  timeAddBtn: { borderWidth: 1.5, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 12 },
+  timeAddText: { fontSize: 14 },
+  note: { fontSize: 11, fontStyle: 'italic', marginTop: 8, lineHeight: 16, marginHorizontal: 4 },
   toggleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 16,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 10,
     marginBottom: 10,
   },
-  toggleLabel: { fontFamily: fonts.body, fontSize: 14, flex: 1, paddingRight: 12 },
-  saveBtn: { borderRadius: 16, paddingVertical: 15, alignItems: 'center', marginTop: 20 },
-  saveText: { fontFamily: fonts.bodySemiBold, fontSize: 16 },
+  toggleLabel: { fontSize: 14, flex: 1, paddingRight: 12 },
+  save: { marginTop: 20 },
 });

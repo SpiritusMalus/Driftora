@@ -2,35 +2,38 @@ import { Ionicons } from '@expo/vector-icons';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, ScrollView, StyleSheet, Text, useColorScheme, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { InsightHero } from '@/components/InsightHero';
+import { BodyMindCard } from '@/components/ui/BodyMindCard';
+import { Card } from '@/components/ui/Card';
+import { FoodBar } from '@/components/ui/FoodBar';
+import { ListGroup, type RowSpec } from '@/components/ui/ListGroup';
+import { MoodScale } from '@/components/ui/MoodScale';
+import { SectionHeader } from '@/components/ui/SectionHeader';
 import { runAutoWins } from '@/lib/core/db/autoWins';
 import { bodyMindInsightFromDb } from '@/lib/core/db/bodyMind';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { countDiaryEntries } from '@/lib/core/db/diary';
 import { todayMacroTotals } from '@/lib/core/db/food';
-import { latestMood } from '@/lib/core/db/mood';
+import { latestMood, logMood } from '@/lib/core/db/mood';
 import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
 import { syncDaySteps } from '@/lib/core/db/steps';
 import { weekReview } from '@/lib/core/db/weekReview';
 import { MIN_PAIRED_DAYS, type BodyMindResult } from '@/lib/core/insights/bodyMind';
 import { stepInsight } from '@/lib/core/insights/stepInsight';
 import { getHealthService } from '@/lib/core/services/healthProvider';
-import { colors, type ThemeColors } from '@/lib/theme/colors';
-import { fonts } from '@/lib/theme/typography';
+import { useTheme } from '@/lib/theme/theme';
 
 /// Home is a single-insight surface, not a dashboard. The Body↔Mind read
-/// (movement ↔ mood) is the editorial hero at the top; beneath it sit only the
-/// small inputs that *feed* that insight (a one-tap mood, today's steps, the
-/// diary). Everything else — food, weight, wins, weekly review, settings — lives
-/// behind the "More" link. The hero's honesty states are preserved exactly: it
-/// stays a building-up placeholder below the paired-days gate, shows an honest
-/// "no clear link yet", and always frames the finding as association, not cause.
+/// (movement ↔ mood) is the editorial hero card at the top; beneath it sit only
+/// the inputs that *feed* that insight — a one-tap mood scale, today's steps, the
+/// diary — plus a pinned food bar. Everything else lives behind "More". The
+/// hero's honesty states are preserved exactly: a building-up placeholder below
+/// the paired-days gate, an honest "no clear link yet", and the "association,
+/// not cause" framing on real findings.
 export default function HomeScreen() {
   const { t } = useTranslation();
-  const scheme = useColorScheme();
-  const theme = scheme === 'dark' ? colors.dark : colors.light;
+  const theme = useTheme();
   const router = useRouter();
   const db = useDatabase();
 
@@ -56,8 +59,8 @@ export default function HomeScreen() {
           weekReview(db),
         ]);
         const stepCount = await syncDaySteps(db, getHealthService());
-        // Celebrate the day's earned goals automatically (deduped per day). This
-        // is a quiet background behavior, not a Home card — kept as-is.
+        // Celebrate the day's earned goals automatically (deduped per day). A
+        // quiet background behavior, not a Home card — kept as-is.
         await runAutoWins(
           db,
           {
@@ -91,6 +94,13 @@ export default function HomeScreen() {
     if (!db) return;
     await updateSettings(db, { paused: false });
     setPaused(false);
+  }
+
+  // One-tap mood check-in straight from Home — the lowest-friction feeder.
+  async function onPickMood(value: number) {
+    if (!db) return;
+    await logMood(db, value);
+    setMoodValue(value);
   }
 
   // Map the structured Body↔Mind result onto the presentational hero. Every
@@ -132,10 +142,30 @@ export default function HomeScreen() {
   const stepsSubtitle =
     steps == null || stepsMeaning == null
       ? t('home.comingSoon')
-      : `${steps} ${t('home.steps.unit')}\n${stepsMeaning}`;
+      : `${formatSteps(steps)} — ${stepsMeaning}`;
+
+  const feeders: RowSpec[] = [
+    {
+      key: 'steps',
+      icon: 'walk-outline',
+      tint: theme.accent,
+      iconBg: theme.scheme === 'light' ? '#FBEFD9' : '#33261F',
+      title: t('home.feeders.steps'),
+      subtitle: stepsSubtitle,
+    },
+    {
+      key: 'diary',
+      icon: 'sparkles-outline',
+      tint: theme.primary,
+      iconBg: theme.scheme === 'light' ? '#FBE2D9' : '#3A241B',
+      title: t('home.feeders.diary'),
+      subtitle: diaryCount > 0 ? t('home.feeders.diaryCount', { count: diaryCount }) : t('home.feeders.diaryCta'),
+      onPress: () => router.push('/diary'),
+    },
+  ];
 
   return (
-    <>
+    <View style={[styles.fill, { backgroundColor: theme.background }]}>
       <Stack.Screen
         options={{
           headerRight: () => (
@@ -144,12 +174,11 @@ export default function HomeScreen() {
               hitSlop={8}
               style={({ pressed }) => ({
                 opacity: pressed ? 0.5 : 1,
-                paddingHorizontal: 4,
                 flexDirection: 'row',
                 alignItems: 'center',
               })}
             >
-              <Text style={{ color: theme.primary, fontSize: 15, marginRight: 2, fontFamily: fonts.bodySemiBold }}>
+              <Text style={[{ color: theme.primary, fontSize: 16, marginRight: 2 }, theme.font.bodySemiBold]}>
                 {t('home.moreLink')}
               </Text>
               <Ionicons name="chevron-forward" size={16} color={theme.primary} />
@@ -158,66 +187,80 @@ export default function HomeScreen() {
         }}
       />
       <ScrollView
-        style={{ backgroundColor: theme.background }}
-        contentContainerStyle={styles.content}
+        style={styles.fill}
+        contentContainerStyle={theme.isIOS ? styles.iosContent : styles.androidContent}
+        contentInsetAdjustmentBehavior="automatic"
       >
-        <Text style={[styles.greeting, { color: theme.subtle }]}>{t('home.greeting')}</Text>
+        <Text style={[styles.greeting, { color: theme.subtle }, theme.font.body]}>
+          {t('home.greeting')}
+        </Text>
+
         {paused ? (
-          <View style={[styles.pauseBanner, { backgroundColor: theme.iconBg, borderColor: theme.border }]}>
-            <Text style={[styles.pauseTitle, { color: theme.text }]}>{t('home.paused.title')}</Text>
-            <Text style={[styles.pauseBody, { color: theme.subtle }]}>{t('home.paused.body')}</Text>
+          <Card style={styles.pauseBanner}>
+            <Text style={[styles.pauseTitle, { color: theme.text }, theme.font.bodySemiBold]}>
+              {t('home.paused.title')}
+            </Text>
+            <Text style={[styles.pauseBody, { color: theme.subtle }, theme.font.body]}>
+              {t('home.paused.body')}
+            </Text>
             <Pressable
               onPress={onResume}
               style={({ pressed }) => [styles.pauseBtn, { backgroundColor: theme.primary, opacity: pressed ? 0.85 : 1 }]}
             >
-              <Text style={[styles.pauseBtnText, { color: theme.onPrimary }]}>{t('home.paused.resume')}</Text>
+              <Text style={[styles.pauseBtnText, { color: theme.onPrimary }, theme.font.bodySemiBold]}>
+                {t('home.paused.resume')}
+              </Text>
             </Pressable>
-          </View>
+          </Card>
         ) : null}
 
-        <InsightHero
-          eyebrow={hero.eyebrow}
-          accent={hero.accent}
-          headline={hero.headline}
-          basis={hero.basis}
-          caption={hero.caption}
-          theme={theme}
-        />
+        <View style={styles.hero}>
+          <BodyMindCard
+            eyebrow={hero.eyebrow}
+            accent={hero.accent}
+            headline={hero.headline}
+            basis={hero.basis}
+            caption={hero.caption}
+            bodyLabel={t('home.bodyMindCol.body')}
+            bodyValue={steps != null ? formatSteps(steps) : '—'}
+            mindLabel={t('home.bodyMindCol.mind')}
+            mindValue={moodValue != null ? `${moodValue}/10` : '—'}
+          />
+        </View>
 
-        <View style={[styles.divider, { backgroundColor: theme.border }]} />
-        <Text style={[styles.feedersHeader, { color: theme.subtle }]}>
-          {t('home.feeders.header').toUpperCase()}
-        </Text>
+        <Card style={styles.moodCard}>
+          <View style={styles.moodHead}>
+            <Text style={[styles.moodTitle, { color: theme.text }, theme.font.bodySemiBold]}>
+              {t('home.moodNow.title')}
+            </Text>
+            <Text style={[styles.moodHint, { color: theme.subtle }, theme.font.body]}>
+              {t('home.moodNow.hint')}
+            </Text>
+          </View>
+          <View style={{ marginTop: 14 }}>
+            <MoodScale selected={moodValue} onPick={onPickMood} disabled={db == null} />
+          </View>
+        </Card>
 
-        <FeederRow
-          icon="happy-outline"
-          title={t('home.feeders.mood')}
-          subtitle={moodValue != null ? t('home.feeders.moodValue', { value: moodValue }) : t('home.feeders.moodCta')}
-          theme={theme}
-          onPress={() => router.push('/mood')}
-        />
-        <FeederRow
-          icon="walk-outline"
-          title={t('home.feeders.steps')}
-          subtitle={stepsSubtitle}
-          theme={theme}
-        />
-        <FeederRow
-          icon="sparkles-outline"
-          title={t('home.feeders.diary')}
-          subtitle={diaryCount > 0 ? t('home.feeders.diaryCount', { count: diaryCount }) : t('home.feeders.diaryCta')}
-          theme={theme}
-          onPress={() => router.push('/diary')}
-        />
+        <SectionHeader>{t('home.feeders.header')}</SectionHeader>
+        <ListGroup rows={feeders} />
 
         {streakWeeks > 0 ? (
-          <Text style={[styles.northStar, { color: theme.accent }]}>
+          <Text style={[styles.northStar, { color: theme.accent }, theme.font.bodyMedium]}>
             {t('home.northStar', { weeks: streakWeeks })}
           </Text>
         ) : null}
-        <Text style={[styles.hint, { color: theme.subtle }]}>{t('home.gentleNorm')}</Text>
+        <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('home.gentleNorm')}</Text>
       </ScrollView>
-    </>
+
+      <View style={[styles.footer, theme.isIOS ? styles.footerIOS : styles.footerAndroid]}>
+        <FoodBar
+          placeholder={t('home.foodBar.placeholder')}
+          onPressText={() => router.push('/food/log')}
+          onPressMic={() => router.push('/food/log?voice=1')}
+        />
+      </View>
+    </View>
   );
 }
 
@@ -229,74 +272,34 @@ function buildingKey(n: number): string {
   const mod100 = n % 100;
   if (mod10 === 1 && mod100 !== 11) return 'home.hero.buildingOne';
   if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
-    // 'few' in ru; en lacks this bucket and falls back to its 'other' string.
     return 'home.hero.buildingFew';
   }
   return 'home.hero.buildingMany';
 }
 
-/// A compact feeder line: an input that builds the hero, deliberately lighter
-/// than the old dashboard cards (no surrounding card, thin rule between).
-function FeederRow({
-  icon,
-  title,
-  subtitle,
-  theme,
-  onPress,
-}: {
-  icon: React.ComponentProps<typeof Ionicons>['name'];
-  title: string;
-  subtitle: string;
-  theme: ThemeColors;
-  onPress?: () => void;
-}) {
-  const body = (
-    <>
-      <Ionicons name={icon} size={20} color={theme.icon} style={{ marginRight: 14, marginTop: 2 }} />
-      <View style={{ flex: 1 }}>
-        <Text style={[styles.feederTitle, { color: theme.text }]}>{title}</Text>
-        <Text style={[styles.feederSubtitle, { color: theme.subtle }]}>{subtitle}</Text>
-      </View>
-      {onPress ? <Ionicons name="chevron-forward" size={18} color={theme.subtle} /> : null}
-    </>
-  );
-  if (onPress) {
-    return (
-      <Pressable
-        onPress={onPress}
-        style={({ pressed }) => [styles.feederRow, { opacity: pressed ? 0.6 : 1 }]}
-      >
-        {body}
-      </Pressable>
-    );
-  }
-  return <View style={styles.feederRow}>{body}</View>;
+/// Thin-space thousands so "6 240" reads like the mockup.
+function formatSteps(n: number): string {
+  return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 16 },
-  greeting: { fontFamily: fonts.body, fontSize: 15, lineHeight: 21, marginBottom: 8 },
-  hint: { fontFamily: fonts.body, fontSize: 12, textAlign: 'center', marginTop: 16 },
-  divider: { height: StyleSheet.hairlineWidth, marginTop: 8, marginBottom: 16 },
-  feedersHeader: { fontFamily: fonts.heading, fontSize: 11, letterSpacing: 1.4, marginBottom: 10 },
-  feederRow: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 12 },
-  feederTitle: { fontFamily: fonts.bodySemiBold, fontSize: 15 },
-  feederSubtitle: { fontFamily: fonts.body, fontSize: 13, marginTop: 2, lineHeight: 18 },
-  northStar: { fontFamily: fonts.bodyMedium, fontSize: 12, textAlign: 'center', marginTop: 20 },
-  pauseBanner: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 20,
-    padding: 16,
-    marginBottom: 8,
-  },
-  pauseTitle: { fontFamily: fonts.bodySemiBold, fontSize: 16 },
-  pauseBody: { fontFamily: fonts.body, fontSize: 13, marginTop: 6, lineHeight: 18 },
-  pauseBtn: {
-    alignSelf: 'flex-start',
-    borderRadius: 999,
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    marginTop: 12,
-  },
-  pauseBtnText: { fontFamily: fonts.bodySemiBold, fontSize: 14 },
+  fill: { flex: 1 },
+  androidContent: { paddingHorizontal: 18, paddingTop: 4, paddingBottom: 96 },
+  iosContent: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 96 },
+  greeting: { fontSize: 14, lineHeight: 20, marginBottom: 2 },
+  hero: { marginTop: 14 },
+  moodCard: { marginTop: 14 },
+  moodHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  moodTitle: { fontSize: 15 },
+  moodHint: { fontSize: 12 },
+  northStar: { fontSize: 12, textAlign: 'center', marginTop: 22 },
+  hint: { fontSize: 12, textAlign: 'center', marginTop: 10, lineHeight: 17 },
+  footer: { position: 'absolute', left: 0, right: 0 },
+  footerAndroid: { bottom: 16, paddingHorizontal: 18 },
+  footerIOS: { bottom: 12, paddingHorizontal: 16 },
+  pauseBanner: { marginBottom: 4 },
+  pauseTitle: { fontSize: 16 },
+  pauseBody: { fontSize: 13, marginTop: 6, lineHeight: 18 },
+  pauseBtn: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 18, paddingVertical: 10, marginTop: 12 },
+  pauseBtnText: { fontSize: 14 },
 });

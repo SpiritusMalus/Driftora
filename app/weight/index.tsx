@@ -1,29 +1,24 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  useColorScheme,
-  View,
-} from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
+import { Card } from '@/components/ui/Card';
+import { ListGroup, type RowSpec } from '@/components/ui/ListGroup';
+import { PrimaryButton } from '@/components/ui/PrimaryButton';
+import { Screen } from '@/components/ui/Screen';
+import { TextField } from '@/components/ui/TextField';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import type { WeightRow } from '@/lib/core/db/schema';
 import { listWeights, upsertWeight } from '@/lib/core/db/weight';
 import { summarizeWeightTrend, type WeightPoint } from '@/lib/core/insights/weightTrend';
-import { colors } from '@/lib/theme/colors';
-import { fonts } from '@/lib/theme/typography';
+import { useTheme } from '@/lib/theme/theme';
 
 /// Log today's weight (one row per day) and reread the trend. Deliberately
 /// low-pressure: optional, no daily nag, and the trend is stated neutrally.
 export default function WeightScreen() {
   const { t } = useTranslation();
-  const scheme = useColorScheme();
-  const theme = scheme === 'dark' ? colors.dark : colors.light;
+  const theme = useTheme();
   const db = useDatabase();
 
   const [items, setItems] = useState<WeightRow[] | null>(null);
@@ -70,64 +65,52 @@ export default function WeightScreen() {
 
   const valid = toNumber(text) > 0;
 
+  const rows: RowSpec[] = (items ?? []).map((w) => ({
+    key: w.date,
+    title: formatDay(w.date),
+    right: (
+      <Text style={[styles.rowKg, { color: theme.text }, theme.font.bodySemiBold]}>
+        {w.weightKg.toFixed(1)} {t('weight.unit')}
+      </Text>
+    ),
+  }));
+
   return (
-    <ScrollView
-      style={{ backgroundColor: theme.background }}
-      contentContainerStyle={styles.content}
-      keyboardShouldPersistTaps="handled"
-    >
+    <Screen>
       <View style={styles.inputRow}>
-        <TextInput
+        <TextField
           value={text}
           onChangeText={setText}
           placeholder={t('weight.placeholder')}
-          placeholderTextColor={theme.subtle}
           keyboardType="decimal-pad"
-          style={[
-            styles.input,
-            { color: theme.text, backgroundColor: theme.card, borderColor: theme.border },
-          ]}
+          style={styles.input}
         />
-        <Text style={[styles.unit, { color: theme.subtle }]}>{t('weight.unit')}</Text>
+        <Text style={[styles.unit, { color: theme.subtle }, theme.font.body]}>{t('weight.unit')}</Text>
       </View>
-      <Pressable
+      <PrimaryButton
+        label={saving ? t('weight.saving') : t('weight.save')}
         onPress={onSave}
         disabled={db == null || !valid || saving}
-        style={({ pressed }) => [
-          styles.saveBtn,
-          {
-            backgroundColor: theme.primary,
-            opacity: db == null || !valid || saving ? 0.4 : pressed ? 0.85 : 1,
-          },
-        ]}
-      >
-        <Text style={[styles.saveText, { color: theme.onPrimary }]}>
-          {saving ? t('weight.saving') : t('weight.save')}
-        </Text>
-      </Pressable>
+        style={styles.save}
+      />
 
       {trendLine ? (
-        <View style={[styles.trendCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[styles.trendText, { color: theme.text }]}>{trendLine}</Text>
-          <Text style={[styles.trendNote, { color: theme.subtle }]}>{t('weight.note')}</Text>
-        </View>
+        <Card style={styles.trendCard}>
+          <Text style={[styles.trendText, { color: theme.text }, theme.font.bodySemiBold]}>{trendLine}</Text>
+          <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>{t('weight.note')}</Text>
+        </Card>
       ) : null}
 
       {db == null ? (
-        <Text style={[styles.hint, { color: theme.subtle }]}>{t('weight.dbUnavailable')}</Text>
+        <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('weight.dbUnavailable')}</Text>
       ) : items == null ? null : items.length === 0 ? (
-        <Text style={[styles.hint, { color: theme.subtle }]}>{t('weight.empty')}</Text>
+        <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('weight.empty')}</Text>
       ) : (
-        items.map((w) => (
-          <View key={w.date} style={[styles.row, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Text style={[styles.rowDate, { color: theme.subtle }]}>{formatDay(w.date)}</Text>
-            <Text style={[styles.rowKg, { color: theme.text }]}>
-              {w.weightKg.toFixed(1)} {t('weight.unit')}
-            </Text>
-          </View>
-        ))
+        <View style={styles.history}>
+          <ListGroup rows={rows} />
+        </View>
       )}
-    </ScrollView>
+    </Screen>
   );
 }
 
@@ -143,38 +126,14 @@ function formatDay(date: string): string {
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 16 },
-  inputRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
-  input: {
-    flex: 1,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 17,
-    fontFamily: fonts.body,
-  },
-  unit: { fontFamily: fonts.body, fontSize: 15 },
-  saveBtn: { borderRadius: 16, paddingVertical: 15, alignItems: 'center', marginBottom: 16 },
-  saveText: { fontFamily: fonts.bodySemiBold, fontSize: 16 },
-  trendCard: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 16,
-  },
-  trendText: { fontFamily: fonts.bodySemiBold, fontSize: 15 },
-  trendNote: { fontFamily: fonts.body, fontSize: 12, marginTop: 6, lineHeight: 17 },
-  hint: { fontFamily: fonts.body, fontSize: 13, textAlign: 'center', marginTop: 20 },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 10,
-  },
-  rowDate: { fontFamily: fonts.body, fontSize: 13 },
-  rowKg: { fontFamily: fonts.bodySemiBold, fontSize: 16 },
+  inputRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4, marginBottom: 12 },
+  input: { flex: 1 },
+  unit: { fontSize: 15 },
+  save: { marginBottom: 16 },
+  trendCard: { marginBottom: 16 },
+  trendText: { fontSize: 15 },
+  trendNote: { fontSize: 12, marginTop: 6, lineHeight: 17 },
+  hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
+  history: { marginTop: 4 },
+  rowKg: { fontSize: 16 },
 });
