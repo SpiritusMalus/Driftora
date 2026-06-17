@@ -45,7 +45,7 @@ export function BodyMindCard({
           styles.eyebrow,
           { color: theme.isIOS ? theme.subtle : theme.bodyMindEyebrow },
           theme.font.bodyBold,
-          theme.isIOS && styles.eyebrowIOS,
+          theme.isIOS ? styles.eyebrowIOS : styles.eyebrowAndroid,
         ]}
       >
         {eyebrow.toUpperCase()}
@@ -57,7 +57,7 @@ export function BodyMindCard({
             theme={theme}
             icon="walk-outline"
             tint={theme.primary}
-            tile={theme.scheme === 'light' ? '#FBE2D9' : '#3A241B'}
+            tile={theme.primarySoft}
             label={bodyLabel}
             value={bodyValue}
           />
@@ -71,7 +71,7 @@ export function BodyMindCard({
             theme={theme}
             icon="happy-outline"
             tint={theme.accent}
-            tile={theme.scheme === 'light' ? '#FBEFD9' : '#33261F'}
+            tile={theme.accentSoft}
             label={mindLabel}
             value={mindValue}
           />
@@ -95,7 +95,7 @@ export function BodyMindCard({
   }
   return (
     <LinearGradient
-      colors={theme.bodyMindGradient}
+      colors={theme.bodyMindGradient as [string, string, ...string[]]}
       start={{ x: 0.1, y: 0 }}
       end={{ x: 0.9, y: 1 }}
       style={[styles.androidCard, { borderColor: theme.bodyMindBorder }]}
@@ -122,8 +122,8 @@ function Column({
 }) {
   return (
     <View style={styles.column}>
-      <View style={[styles.tile, { backgroundColor: theme.isIOS ? tile : '#FFFFFF' }]}>
-        <Ionicons name={icon as never} size={21} color={tint} />
+      <View style={[styles.tile, { backgroundColor: tile }]}>
+        <Ionicons name={icon as never} size={25} color={tint} />
       </View>
       <Text style={[styles.colLabel, { color: theme.subtle }, theme.font.body]}>{label}</Text>
       <Text
@@ -143,18 +143,19 @@ const styles = StyleSheet.create({
   androidCard: { borderRadius: 26, padding: 20, borderWidth: 1 },
   iosCard: { borderRadius: 18, padding: 18 },
 
-  eyebrow: { fontSize: 12, letterSpacing: 1.1 },
+  eyebrow: { fontSize: 12 },
+  eyebrowAndroid: { letterSpacing: 1.7, textAlign: 'center' },
   eyebrowIOS: { letterSpacing: -0.08, fontWeight: '400' },
 
-  columns: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 6, marginTop: 12 },
-  column: { width: 64, alignItems: 'center' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 14 },
-  tile: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  colLabel: { fontSize: 11, marginTop: 6 },
-  colValue: { fontSize: 15, marginTop: 2 },
-  accent: { fontSize: 30, lineHeight: 32, letterSpacing: -0.6 },
+  columns: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 6, marginTop: 18 },
+  column: { width: 78, alignItems: 'center' },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 18 },
+  tile: { width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  colLabel: { fontSize: 11, marginTop: 8 },
+  colValue: { fontSize: 16, marginTop: 2 },
+  accent: { fontSize: 32, lineHeight: 32, letterSpacing: -0.64 },
 
-  headline: { fontSize: 16, lineHeight: 22, marginTop: 12 },
-  basis: { fontSize: 13, marginTop: 10 },
-  caption: { fontSize: 12, marginTop: 8, lineHeight: 17 },
+  headline: { fontSize: 19, lineHeight: 26, letterSpacing: -0.19, marginTop: 22 },
+  basis: { fontSize: 13, marginTop: 14 },
+  caption: { fontSize: 13, marginTop: 6, lineHeight: 19 },
 });

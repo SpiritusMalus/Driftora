@@ -37,7 +37,7 @@ export const ru = {
     },
     moreLink: 'Ещё',
     moodNow: { title: 'Как вы сейчас?', hint: 'один тап · 0–10' },
-    bodyMindCol: { body: 'Тело', mind: 'Разум' },
+    bodyMindCol: { body: 'Тело · шаги', mind: 'Разум · настр.' },
     foodBar: { placeholder: 'Расскажите или напишите, что съели…' },
     northStar: 'Вы на связи {{weeks}} нед. подряд.',
     paused: {

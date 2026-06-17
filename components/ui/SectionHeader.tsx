@@ -2,18 +2,17 @@ import { StyleSheet, Text } from 'react-native';
 
 import { useTheme } from '@/lib/theme/theme';
 
-/// A section eyebrow above a group of cards/rows. Android renders it as a tight
-/// uppercase Unbounded label; iOS as a grouped-list header (uppercase
-/// secondaryLabel, indented to the card inset).
+/// A section eyebrow above a group of cards/rows. Android renders it as a warm
+/// `labelCaps` Manrope-bold caps label (UI_HANDOFF §2/§8); iOS as a grouped-list
+/// header (uppercase secondaryLabel, indented to the card inset).
 export function SectionHeader({ children }: { children: string }) {
   const theme = useTheme();
   return (
     <Text
       style={[
         theme.isIOS ? styles.ios : styles.android,
-        { color: theme.subtle },
-        theme.font.heading,
-        theme.isIOS && { fontWeight: '400' },
+        { color: theme.isIOS ? theme.subtle : theme.labelCaps },
+        theme.isIOS ? [theme.font.body, { fontWeight: '400' as const }] : theme.font.bodyBold,
       ]}
     >
       {children.toUpperCase()}
@@ -24,7 +23,7 @@ export function SectionHeader({ children }: { children: string }) {
 const styles = StyleSheet.create({
   android: {
     fontSize: 12,
-    letterSpacing: 1.2,
+    letterSpacing: 1.44,
     marginTop: 18,
     marginBottom: 10,
   },

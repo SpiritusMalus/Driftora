@@ -38,7 +38,7 @@ export const en = {
     },
     moreLink: 'More',
     moodNow: { title: 'How are you right now?', hint: 'one tap · 0–10' },
-    bodyMindCol: { body: 'Body', mind: 'Mind' },
+    bodyMindCol: { body: 'Body · steps', mind: 'Mind · mood' },
     foodBar: { placeholder: 'Tell or type what you ate…' },
     northStar: 'Showing up {{weeks}} weeks running.',
     paused: {

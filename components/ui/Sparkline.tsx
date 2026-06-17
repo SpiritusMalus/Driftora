@@ -1,14 +1,20 @@
-import Svg, { Circle, Path } from 'react-native-svg';
+import Svg, { Circle, Defs, LinearGradient, Path, Stop } from 'react-native-svg';
 
-/// The small upward arc linking Body→Mind in the hero card — a coral curve from
-/// a coral dot (body) to an amber dot (mind). Decorative; it echoes the "+gap"
-/// finding rather than plotting real data.
+/// The upward arc bridging Body→Mind in the hero — the semantic centre of the
+/// product, not decoration (UI_HANDOFF §4.2/§8). A coral→amber gradient curve
+/// rises from a coral dot (body) to an amber dot (mind), exact V2 geometry.
 export function Sparkline({ coral, amber }: { coral: string; amber: string }) {
   return (
-    <Svg width={116} height={40} viewBox="0 0 116 40" fill="none">
-      <Path d="M6 32 C 32 6, 84 6, 110 32" stroke={coral} strokeWidth={3} strokeLinecap="round" />
-      <Circle cx={6} cy={32} r={4.5} fill={coral} />
-      <Circle cx={110} cy={32} r={4.5} fill={amber} />
+    <Svg width={132} height={46} viewBox="0 0 132 46" fill="none">
+      <Defs>
+        <LinearGradient id="bridge" x1="0" y1="0" x2="132" y2="0" gradientUnits="userSpaceOnUse">
+          <Stop stopColor={coral} />
+          <Stop offset="1" stopColor={amber} />
+        </LinearGradient>
+      </Defs>
+      <Path d="M6 38 C 38 6, 94 6, 126 38" stroke="url(#bridge)" strokeWidth={3} strokeLinecap="round" />
+      <Circle cx={6} cy={38} r={5} fill={coral} />
+      <Circle cx={126} cy={38} r={5} fill={amber} />
     </Svg>
   );
 }
