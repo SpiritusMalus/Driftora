@@ -36,7 +36,6 @@ export function BodyMindCard({
   mindValue: string;
 }) {
   const theme = useTheme();
-  const showColumns = accent != null;
 
   const content = (
     <>
@@ -51,32 +50,34 @@ export function BodyMindCard({
         {eyebrow.toUpperCase()}
       </Text>
 
-      {showColumns ? (
-        <View style={styles.columns}>
-          <Column
-            theme={theme}
-            icon="walk-outline"
-            tint={theme.primary}
-            tile={theme.primarySoft}
-            label={bodyLabel}
-            value={bodyValue}
-          />
-          <View style={styles.center}>
-            <Text style={[styles.accent, { color: theme.heroAccent }, theme.font.displayHeavy]}>
-              {accent}
-            </Text>
-            <Sparkline coral={theme.primary} amber={theme.accent} />
-          </View>
-          <Column
-            theme={theme}
-            icon="happy-outline"
-            tint={theme.accent}
-            tile={theme.accentSoft}
-            label={mindLabel}
-            value={mindValue}
-          />
+      {/* The Body↔Mind bridge is the product's core motif and is ALWAYS on
+          screen (UI_HANDOFF §8: "не декор — ядро идеи"). The "+gap" figure above
+          the arc only appears once there's a real finding; until then the arc
+          still draws, with the slot reserved so it doesn't jump. */}
+      <View style={styles.columns}>
+        <Column
+          theme={theme}
+          icon="walk-outline"
+          tint={theme.primary}
+          tile={theme.primarySoft}
+          label={bodyLabel}
+          value={bodyValue}
+        />
+        <View style={styles.center}>
+          <Text style={[styles.accent, { color: theme.heroAccent }, theme.font.displayHeavy]}>
+            {accent ?? ' '}
+          </Text>
+          <Sparkline coral={theme.primary} amber={theme.accent} />
         </View>
-      ) : null}
+        <Column
+          theme={theme}
+          icon="happy-outline"
+          tint={theme.accent}
+          tile={theme.accentSoft}
+          label={mindLabel}
+          value={mindValue}
+        />
+      </View>
 
       <Text style={[styles.headline, { color: theme.heroText }, theme.font.bodySemiBold]}>
         {headline}
