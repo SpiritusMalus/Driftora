@@ -38,7 +38,10 @@ export function MoodScale({
               ? styles.androidActive
               : styles.androidPill;
 
-        const inactiveBg = grid && !theme.isIOS ? theme.card : theme.fill;
+        // Android compact uses the warm moodTrack pills; the Android grid uses
+        // white bordered tiles; iOS uses the neutral system fill.
+        const inactiveBg = theme.isIOS ? theme.fill : grid ? theme.card : theme.moodTrack;
+        const inactiveNum = theme.isIOS ? theme.subtle : grid ? theme.text : theme.moodTrackNum;
 
         return (
           <Pressable
@@ -60,7 +63,7 @@ export function MoodScale({
             <Text
               style={[
                 grid ? styles.gridLabel : theme.isIOS ? styles.iosLabel : styles.androidLabel,
-                { color: active ? theme.onPrimary : grid ? theme.text : theme.subtle },
+                { color: active ? theme.onPrimary : inactiveNum },
                 active ? theme.font.bodyBold : theme.font.bodyMedium,
               ]}
             >

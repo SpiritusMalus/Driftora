@@ -75,10 +75,18 @@ export interface Theme {
   heroAccent: string;
   /// Coral gradient for the Android primary button / mic FAB (top-left → coral).
   primaryGradient: [string, string];
-  /// Soft gradient behind the Body↔Mind hero card (Android).
-  bodyMindGradient: [string, string];
+  /// Soft gradient behind the Body↔Mind hero card (Android). 2–3 stops.
+  bodyMindGradient: string[];
   bodyMindBorder: string;
   bodyMindEyebrow: string;
+  /// Soft tinted tiles for the hero's Body (coral) and Mind (amber) glyphs.
+  primarySoft: string;
+  accentSoft: string;
+  /// UPPERCASE caps section labels (#B89684 light / #9C7E70 dark).
+  labelCaps: string;
+  /// 0–10 mood scale: empty-pill fill + the number printed on it.
+  moodTrack: string;
+  moodTrackNum: string;
   /// Coral glow color used for the Android FAB/button shadow.
   glow: string;
 
@@ -123,10 +131,15 @@ export function resolveTheme(scheme: 'light' | 'dark'): Theme {
     accent: ember.accent,
     heroText: ember.heroText,
     heroAccent: ember.heroAccent,
-    primaryGradient: light ? ['#E86A4D', '#D8513A'] : ['#F4937A', '#F08365'],
-    bodyMindGradient: light ? ['#FFF1EC', '#FBE0D6'] : ['#2E1E17', '#3A241B'],
-    bodyMindBorder: light ? '#F6D7CB' : '#43302B',
-    bodyMindEyebrow: light ? '#C56A53' : '#F0A58C',
+    primaryGradient: light ? ['#E86A4D', '#D8513A'] : ['#F08365', '#D8513A'],
+    bodyMindGradient: light ? ['#FFF1EC', '#FBE0D6'] : ['#2E1A13', '#3A1F16', '#4A271C'],
+    bodyMindBorder: light ? '#F6D7CB' : '#3E261C',
+    bodyMindEyebrow: light ? '#B89684' : '#C79885',
+    primarySoft: light ? '#FBE2D9' : '#3A241C',
+    accentSoft: light ? '#FBEFD9' : '#33291A',
+    labelCaps: light ? '#B89684' : '#9C7E70',
+    moodTrack: light ? '#F4E6DD' : '#33261F',
+    moodTrackNum: light ? '#B79C8F' : '#9C8175',
     glow: 'rgba(216,81,58,0.4)',
 
     background: isIOS ? sys.background : ember.background,
