@@ -77,10 +77,15 @@ export default function FoodLogScreen() {
     setResult(null);
     setUsedVoice(true);
     setListening(true);
-    await speech.listen((transcript, isFinal) => {
-      setText(transcript);
-      if (isFinal) setListening(false);
-    });
+    await speech.listen(
+      (transcript, isFinal) => {
+        setText(transcript);
+        if (isFinal) setListening(false);
+      },
+      // Always clear the listening state when the session ends, even with no
+      // final result (no match / error / timeout / denied permission).
+      () => setListening(false),
+    );
   }
 
   // Honor a ?voice=1 deep-link once the recognizer is known to be available.

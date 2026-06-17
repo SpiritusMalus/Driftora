@@ -18,7 +18,9 @@ export function Sparkline({ coral, amber }: { coral: string; amber: string }) {
       toValue: 1,
       duration: 1600,
       easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
+      // strokeDashoffset isn't a transform/opacity, so the native animated
+      // module can't drive it — must stay on the JS driver.
+      useNativeDriver: false,
     });
     anim.start();
     return () => anim.stop();

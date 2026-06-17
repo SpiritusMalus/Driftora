@@ -8,8 +8,12 @@ export interface SpeechService {
   readonly isAvailable: boolean;
 
   /// Starts listening; `onResult` fires with partial and final transcripts.
+  /// `onEnd` fires exactly once when the session ends for ANY reason — a final
+  /// result, no match, an error, a timeout, or permission denial — so callers
+  /// can always reset their "listening" UI (a final result is not guaranteed).
   listen(
     onResult: (text: string, isFinal: boolean) => void,
+    onEnd?: () => void,
     localeId?: string,
   ): Promise<void>;
 

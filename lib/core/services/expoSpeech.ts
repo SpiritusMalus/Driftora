@@ -47,19 +47,31 @@ export class ExpoSpeechService implements SpeechService {
 
   async listen(
     onResult: (text: string, isFinal: boolean) => void,
+    onEnd?: () => void,
     localeId = 'ru-RU',
   ): Promise<void> {
+    // `onEnd` must fire exactly once, on the first terminal path we hit
+    // (denied/missing module/end/error), so the caller's "listening" UI always
+    // resets even when no final result arrives.
+    let ended = false;
+    const finish = () => {
+      if (ended) return;
+      ended = true;
+      this.removeSubs();
+      onEnd?.();
+    };
+
     const mod = await this.load();
-    if (!mod) return;
+    if (!mod) return finish();
     const recognizer = mod.ExpoSpeechRecognitionModule;
 
     // Ask for mic + speech permission on first use; bail quietly if denied so
     // the caller's listening state resets and text entry stays usable.
     try {
       const perm = await recognizer.requestPermissionsAsync();
-      if (!perm.granted) return;
+      if (!perm.granted) return finish();
     } catch {
-      return;
+      return finish();
     }
 
     this.removeSubs();
@@ -68,8 +80,8 @@ export class ExpoSpeechService implements SpeechService {
         const transcript = e.results?.[0]?.transcript;
         if (transcript != null && transcript.length > 0) onResult(transcript, e.isFinal);
       }),
-      recognizer.addListener('end', () => this.removeSubs()),
-      recognizer.addListener('error', () => this.removeSubs()),
+      recognizer.addListener('end', finish),
+      recognizer.addListener('error', finish),
     );
 
     recognizer.start({ lang: localeId, interimResults: true, continuous: false });
