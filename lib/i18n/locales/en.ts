@@ -37,6 +37,9 @@ export const en = {
       diaryCta: 'A deeper note feeds the insight too',
     },
     moreLink: 'More',
+    moodNow: { title: 'How are you right now?', hint: 'one tap · 0–10' },
+    bodyMindCol: { body: 'Body', mind: 'Mind' },
+    foodBar: { placeholder: 'Tell or type what you ate…' },
     northStar: 'Showing up {{weeks}} weeks running.',
     paused: {
       title: 'You are on a break',

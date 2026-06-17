@@ -1,29 +1,22 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Pressable,
-  ScrollView,
-  Share,
-  StyleSheet,
-  Text,
-  TextInput,
-  useColorScheme,
-  View,
-} from 'react-native';
+import { Pressable, Share, StyleSheet, Text, View } from 'react-native';
 
+import { ListGroup, type RowSpec } from '@/components/ui/ListGroup';
+import { PrimaryButton } from '@/components/ui/PrimaryButton';
+import { Screen } from '@/components/ui/Screen';
+import { TextField } from '@/components/ui/TextField';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import type { Win } from '@/lib/core/db/schema';
 import { addWin, listWins } from '@/lib/core/db/settings';
-import { colors } from '@/lib/theme/colors';
-import { fonts } from '@/lib/theme/typography';
+import { useTheme } from '@/lib/theme/theme';
 
 /// Celebrate progress: log a quick win and reread past ones. Rewards are
 /// feedback, not pressure — no targets and no judgment here.
 export default function WinsScreen() {
   const { t } = useTranslation();
-  const scheme = useColorScheme();
-  const theme = scheme === 'dark' ? colors.dark : colors.light;
+  const theme = useTheme();
   const db = useDatabase();
 
   const [items, setItems] = useState<Win[] | null>(null);
@@ -61,55 +54,48 @@ export default function WinsScreen() {
     }
   }
 
+  const rows: RowSpec[] = (items ?? []).map((w) => ({
+    key: String(w.id),
+    title: w.message,
+    subtitle: formatDate(w.ts),
+    right: (
+      <Pressable
+        onPress={() => onShare(w.message)}
+        hitSlop={8}
+        style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1, paddingLeft: 12 })}
+      >
+        <Text style={[styles.share, { color: theme.primary }, theme.font.bodySemiBold]}>
+          {t('wins.share')}
+        </Text>
+      </Pressable>
+    ),
+  }));
+
   return (
-    <ScrollView
-      style={{ backgroundColor: theme.background }}
-      contentContainerStyle={styles.content}
-      keyboardShouldPersistTaps="handled"
-    >
-      <TextInput
+    <Screen>
+      <TextField
         value={text}
         onChangeText={setText}
         placeholder={t('wins.addPlaceholder')}
-        placeholderTextColor={theme.subtle}
-        style={[styles.input, { color: theme.text, backgroundColor: theme.card, borderColor: theme.border }]}
+        style={styles.input}
       />
-      <Pressable
+      <PrimaryButton
+        label={t('wins.add')}
         onPress={onAdd}
         disabled={db == null || text.trim().length === 0 || saving}
-        style={({ pressed }) => [
-          styles.addBtn,
-          {
-            backgroundColor: theme.primary,
-            opacity: db == null || text.trim().length === 0 || saving ? 0.4 : pressed ? 0.85 : 1,
-          },
-        ]}
-      >
-        <Text style={[styles.addText, { color: theme.onPrimary }]}>{t('wins.add')}</Text>
-      </Pressable>
+        style={styles.add}
+      />
 
       {db == null ? (
-        <Text style={[styles.hint, { color: theme.subtle }]}>{t('wins.dbUnavailable')}</Text>
+        <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('wins.dbUnavailable')}</Text>
       ) : items == null ? null : items.length === 0 ? (
-        <Text style={[styles.hint, { color: theme.subtle }]}>{t('wins.empty')}</Text>
+        <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('wins.empty')}</Text>
       ) : (
-        items.map((w) => (
-          <View key={w.id} style={[styles.row, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <View style={styles.rowBody}>
-              <Text style={[styles.message, { color: theme.text }]}>{w.message}</Text>
-              <Text style={[styles.date, { color: theme.subtle }]}>{formatDate(w.ts)}</Text>
-            </View>
-            <Pressable
-              onPress={() => onShare(w.message)}
-              hitSlop={8}
-              style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1, paddingLeft: 12 })}
-            >
-              <Text style={[styles.share, { color: theme.primary }]}>{t('wins.share')}</Text>
-            </Pressable>
-          </View>
-        ))
+        <View style={styles.list}>
+          <ListGroup rows={rows} />
+        </View>
       )}
-    </ScrollView>
+    </Screen>
   );
 }
 
@@ -119,29 +105,9 @@ function formatDate(d: Date): string {
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 16 },
-  input: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-    fontFamily: fonts.body,
-    marginBottom: 12,
-  },
-  addBtn: { borderRadius: 16, paddingVertical: 15, alignItems: 'center', marginBottom: 16 },
-  addText: { fontFamily: fonts.bodySemiBold, fontSize: 16 },
-  hint: { fontFamily: fonts.body, fontSize: 13, textAlign: 'center', marginTop: 20 },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 10,
-  },
-  rowBody: { flex: 1 },
-  message: { fontFamily: fonts.body, fontSize: 15, lineHeight: 20 },
-  date: { fontFamily: fonts.body, fontSize: 12, marginTop: 4 },
-  share: { fontFamily: fonts.bodySemiBold, fontSize: 13 },
+  input: { marginTop: 4, marginBottom: 12 },
+  add: { marginBottom: 16 },
+  hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
+  list: { marginTop: 4 },
+  share: { fontSize: 13 },
 });

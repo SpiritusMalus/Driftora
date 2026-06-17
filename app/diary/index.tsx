@@ -1,16 +1,11 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Pressable,
-  ScrollView,
-  Share,
-  StyleSheet,
-  Text,
-  useColorScheme,
-  View,
-} from 'react-native';
+import { Pressable, Share, StyleSheet, Text, View } from 'react-native';
 
+import { Card } from '@/components/ui/Card';
+import { PrimaryButton } from '@/components/ui/PrimaryButton';
+import { Screen } from '@/components/ui/Screen';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import {
   listDiaryEntries,
@@ -19,15 +14,13 @@ import {
 } from '@/lib/core/db/diary';
 import { thinkingTrapOfWeek, type ThinkingTrap } from '@/lib/core/insights/distortions';
 import { buildDiaryExport } from '@/lib/core/insights/diaryExport';
-import { colors } from '@/lib/theme/colors';
-import { fonts } from '@/lib/theme/typography';
+import { useTheme } from '@/lib/theme/theme';
 
 /// List of thought records, newest first. Tap one to reread it; the button
 /// starts a new guided entry.
 export default function DiaryListScreen() {
   const { t } = useTranslation();
-  const scheme = useColorScheme();
-  const theme = scheme === 'dark' ? colors.dark : colors.light;
+  const theme = useTheme();
   const router = useRouter();
   const db = useDatabase();
   const [entries, setEntries] = useState<DiaryEntryView[] | null>(null);
@@ -75,71 +68,53 @@ export default function DiaryListScreen() {
   }
 
   return (
-    <ScrollView
-      style={{ backgroundColor: theme.background }}
-      contentContainerStyle={styles.content}
-    >
-      <Pressable
-        onPress={() => router.push('/diary/new')}
-        style={({ pressed }) => [
-          styles.addBtn,
-          { backgroundColor: theme.primary, opacity: pressed ? 0.85 : 1 },
-        ]}
-      >
-        <Text style={[styles.addText, { color: theme.onPrimary }]}>{t('diary.add')}</Text>
-      </Pressable>
+    <Screen>
+      <PrimaryButton label={t('diary.add')} onPress={() => router.push('/diary/new')} style={styles.add} />
 
       {entries && entries.length > 0 ? (
         <Pressable
           onPress={onShare}
-          style={({ pressed }) => [
-            styles.shareBtn,
-            { borderColor: theme.primary, opacity: pressed ? 0.6 : 1 },
-          ]}
+          style={({ pressed }) => [styles.shareBtn, { borderColor: theme.primary, opacity: pressed ? 0.6 : 1 }]}
         >
-          <Text style={[styles.shareText, { color: theme.primary }]}>{t('diary.export.button')}</Text>
+          <Text style={[styles.shareText, { color: theme.primary }, theme.font.bodySemiBold]}>
+            {t('diary.export.button')}
+          </Text>
         </Pressable>
       ) : null}
 
       {trap ? (
-        <View style={[styles.trapCard, { backgroundColor: theme.iconBg, borderColor: theme.border }]}>
-          <Text style={[styles.trapTitle, { color: theme.text }]}>{t('diary.trap.title')}</Text>
-          <Text style={[styles.trapBody, { color: theme.subtle }]}>
-            {t('diary.trap.body', {
-              name: t(`diary.distortions.${trap.key}`),
-              count: trap.count,
-            })}
+        <Card style={[styles.trapCard, { backgroundColor: theme.iconBg, borderColor: theme.cardBorder }]}>
+          <Text style={[styles.trapTitle, { color: theme.text }, theme.font.bodySemiBold]}>
+            {t('diary.trap.title')}
           </Text>
-        </View>
+          <Text style={[styles.trapBody, { color: theme.subtle }, theme.font.body]}>
+            {t('diary.trap.body', { name: t(`diary.distortions.${trap.key}`), count: trap.count })}
+          </Text>
+        </Card>
       ) : null}
 
       {db == null ? (
-        <Text style={[styles.hint, { color: theme.subtle }]}>{t('diary.dbUnavailable')}</Text>
+        <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('diary.dbUnavailable')}</Text>
       ) : entries == null ? null : entries.length === 0 ? (
-        <Text style={[styles.hint, { color: theme.subtle }]}>{t('diary.empty')}</Text>
+        <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('diary.empty')}</Text>
       ) : (
-        entries.map((e) => (
-          <Pressable
-            key={e.id}
-            onPress={() => router.push(`/diary/${e.id}`)}
-            style={({ pressed }) => [
-              styles.row,
-              { backgroundColor: theme.card, borderColor: theme.border, opacity: pressed ? 0.7 : 1 },
-            ]}
-          >
-            <Text style={[styles.rowDate, { color: theme.subtle }]}>{formatDate(e.ts)}</Text>
-            <Text style={[styles.rowText, { color: theme.text }]} numberOfLines={2}>
-              {snippet(e, t('diary.emptyValue'))}
-            </Text>
-            {e.mood != null ? (
-              <Text style={[styles.rowMood, { color: theme.subtle }]}>
-                {t('diary.moodShort')}: {e.mood}/10
+        <View style={styles.list}>
+          {entries.map((e) => (
+            <Card key={e.id} style={styles.row} onPress={() => router.push(`/diary/${e.id}`)}>
+              <Text style={[styles.rowDate, { color: theme.subtle }, theme.font.body]}>{formatDate(e.ts)}</Text>
+              <Text style={[styles.rowText, { color: theme.text }, theme.font.body]} numberOfLines={2}>
+                {snippet(e, t('diary.emptyValue'))}
               </Text>
-            ) : null}
-          </Pressable>
-        ))
+              {e.mood != null ? (
+                <Text style={[styles.rowMood, { color: theme.subtle }, theme.font.body]}>
+                  {t('diary.moodShort')}: {e.mood}/10
+                </Text>
+              ) : null}
+            </Card>
+          ))}
+        </View>
       )}
-    </ScrollView>
+    </Screen>
   );
 }
 
@@ -154,38 +129,16 @@ function formatDate(d: Date): string {
 }
 
 const styles = StyleSheet.create({
-  content: { padding: 16 },
-  addBtn: {
-    borderRadius: 16,
-    paddingVertical: 15,
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  addText: { fontFamily: fonts.bodySemiBold, fontSize: 16 },
-  shareBtn: {
-    borderWidth: 1.5,
-    borderRadius: 999,
-    paddingVertical: 12,
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  shareText: { fontFamily: fonts.bodySemiBold, fontSize: 15 },
-  trapCard: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 16,
-  },
-  trapTitle: { fontFamily: fonts.bodySemiBold, fontSize: 14 },
-  trapBody: { fontFamily: fonts.body, fontSize: 13, marginTop: 4, lineHeight: 18 },
-  hint: { fontFamily: fonts.body, fontSize: 13, textAlign: 'center', marginTop: 20 },
-  row: {
-    borderRadius: 16,
-    borderWidth: StyleSheet.hairlineWidth,
-    padding: 14,
-    marginBottom: 10,
-  },
-  rowDate: { fontFamily: fonts.body, fontSize: 12, marginBottom: 4 },
-  rowText: { fontFamily: fonts.body, fontSize: 15, lineHeight: 21 },
-  rowMood: { fontFamily: fonts.body, fontSize: 12, marginTop: 6 },
+  add: { marginTop: 4, marginBottom: 12 },
+  shareBtn: { borderWidth: 1.5, borderRadius: 999, paddingVertical: 12, alignItems: 'center', marginBottom: 16 },
+  shareText: { fontSize: 15 },
+  trapCard: { marginBottom: 16 },
+  trapTitle: { fontSize: 14 },
+  trapBody: { fontSize: 13, marginTop: 4, lineHeight: 18 },
+  hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
+  list: { gap: 10 },
+  row: {},
+  rowDate: { fontSize: 12, marginBottom: 4 },
+  rowText: { fontSize: 15, lineHeight: 21 },
+  rowMood: { fontSize: 12, marginTop: 6 },
 });
