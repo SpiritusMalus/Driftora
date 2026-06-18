@@ -10,7 +10,8 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "test": "node --import tsx --test test/*.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "import:nutrition": "tsx scripts/srLegacyImport.ts"
   },
   "dependencies": {
     "express": "^5.1.0",

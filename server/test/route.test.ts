@@ -118,7 +118,7 @@ test('unknown food (USDA miss) → per100.source estimate + has_estimate, no cra
   }
 });
 
-test('region RU → per100.source skurikhin, USDA never queried', async () => {
+test('region RU → served by the RU table, USDA API never queried', async () => {
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString();
     if (url.includes('127.0.0.1')) return realFetch(input as never, init);
@@ -135,7 +135,9 @@ test('region RU → per100.source skurikhin, USDA never queried', async () => {
     assert.equal(res.status, 200);
     const draft = (await res.json()) as Record<string, any>;
     assert.equal(draft.region, 'RU');
-    assert.equal(draft.items[0].per100.source, 'skurikhin');
+    // Data is USDA SR Legacy-sourced (honestly attributed), served from the RU
+    // table by SkurikhinProvider — the live USDA API is never hit for RU.
+    assert.equal(draft.items[0].per100.source, 'usda');
     assert.equal(draft.flags.has_estimate, false);
   } finally {
     await stop();
