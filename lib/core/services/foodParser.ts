@@ -1,33 +1,67 @@
-/// Confidence of a parse, mirroring the LLM contract.
-export type ParseConfidence = 'high' | 'medium' | 'low';
-
-/// One parsed food item with its macros (БЖУ) and the assumptions made.
-export interface ParsedFoodItem {
-  name: string;
-  qtyG: number | null;
-  kcal: number;
-  proteinG: number;
-  fatG: number;
-  carbG: number;
-  assumptions: string;
-}
-
-/// Structured result of parsing a Russian food utterance into items + totals.
-export interface FoodParseResult {
-  items: ParsedFoodItem[];
-  kcal: number;
-  proteinG: number;
-  fatG: number;
-  carbG: number;
-  confidence: ParseConfidence;
-  needsClarification: boolean;
-  clarifyQuestion: string | null;
-}
-
-/// Turns a free-form Russian food utterance into structured macros.
+/// Wire contracts for the food parser — must match the backend `server/src/types.ts`.
 ///
-/// Implemented in M1 over the Anthropic Messages API (tool use, low temperature).
-/// This is the app's ONLY external network call; nothing else leaves the device.
+/// THE HONESTY RULE: per-100g composition is EXACT (from the nutrition DB); the
+/// whole-dish total is APPROXIMATE while the weight is only estimated. The model
+/// never emits nutrition numbers — every number here comes from the DB resolver.
+
+export type Region = 'RU' | 'US';
+
+/// Where a per-100g number came from. `estimate` = DB miss (coarse, not fact).
+export type NutritionSource = 'usda' | 'skurikhin' | 'openfoodfacts' | 'apininjas' | 'estimate';
+
+/// Mineral set v1 — mg per 100 g (or scaled). Any subset may be present.
+export interface Minerals {
+  na?: number;
+  k?: number;
+  ca?: number;
+  mg?: number;
+  fe?: number;
+  zn?: number;
+}
+
+/// Macros + minerals for a fixed quantity (per-100g or scaled).
+export interface NutrientValues {
+  kcal: number;
+  prot: number;
+  fat: number;
+  carb: number;
+  minerals: Minerals;
+}
+
+/// EXACT per-100g composition from the nutrition DB (or a coarse `estimate`).
+export interface Per100 extends NutrientValues {
+  source: NutritionSource;
+}
+
+/// One resolved component — exact per-100g + the scaled-to-grams total.
+export interface NutritionItem {
+  name_ru: string;
+  name_en: string;
+  grams: number;
+  grams_source: 'estimated' | 'confirmed';
+  confidence: number; // 0..1
+  per100: Per100; // EXACT (or estimate on a DB miss)
+  scaled: NutrientValues; // per100 * grams / 100
+  approximate: boolean; // true while grams_source === 'estimated'
+}
+
+/// A parsed meal awaiting the user's grams confirmation, then saved.
+export interface MealDraft {
+  region: Region;
+  items: NutritionItem[];
+  totals: NutrientValues;
+  portion_state: 'estimated' | 'confirmed';
+  approximate: boolean; // true if any item is still estimated
+  flags: {
+    has_estimate: boolean; // a per100 came from the estimate fallback (DB miss)
+    low_confidence: boolean; // an item is below the confidence floor
+  };
+}
+
+/// Turns a free-form food description into a structured, honest [MealDraft].
+///
+/// Online (HttpFoodParser) it calls the food-parse backend — the app's ONLY
+/// external network call. Offline it falls back to a deterministic local stub.
 export interface FoodParser {
-  parse(utterance: string): Promise<FoodParseResult>;
+  parse(text: string, region: Region): Promise<MealDraft>;
 }

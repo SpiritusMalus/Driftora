@@ -1,4 +1,6 @@
-import type { FoodParser } from './foodParser';
+import * as Localization from 'expo-localization';
+
+import type { FoodParser, Region } from './foodParser';
 import { HttpFoodParser } from './httpFoodParser';
 import { StubFoodParser } from './stubFoodParser';
 
@@ -18,4 +20,14 @@ export function getFoodParser(): FoodParser {
   const stub = new StubFoodParser();
   _parser = base ? new HttpFoodParser(base, stub) : stub;
   return _parser;
+}
+
+/**
+ * The nutrition region for lookups (BUILD SPEC §2): from the device locale,
+ * Russia or US, defaulting to US. A future in-app region setting would override
+ * this (`appSettings.region ?? deviceLocale.region`).
+ */
+export function resolveRegion(): Region {
+  const code = Localization.getLocales?.()[0]?.regionCode ?? null;
+  return code === 'RU' ? 'RU' : 'US';
 }

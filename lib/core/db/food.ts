@@ -1,7 +1,7 @@
 import { and, desc, eq, gte, lt } from 'drizzle-orm';
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
-import type { FoodParseResult } from '../services/foodParser';
+import type { MealDraft } from '../services/foodParser';
 import { foodEntries, foodItems, type FoodEntry } from './schema';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -24,44 +24,48 @@ export function dayBounds(date: Date): { start: Date; end: Date } {
   return { start, end };
 }
 
-/// Saves a confirmed food entry plus its item breakdown. Returns the entry id.
+/// Saves a confirmed meal plus its item breakdown. Returns the entry id.
+///
+/// The honest [MealDraft] (exact per-100g + scaled totals) collapses to the
+/// stored shape here: each row keeps the SCALED macros for the confirmed grams,
+/// which is the final fact once the user has set the weight.
 export async function saveParsedEntry(
   db: AnyDb,
   opts: {
     rawText: string;
     source: 'voice' | 'text';
-    result: FoodParseResult;
+    draft: MealDraft;
     ts?: Date;
   },
 ): Promise<number> {
   const ts = opts.ts ?? new Date();
-  const r = opts.result;
+  const d = opts.draft;
   const inserted = await db
     .insert(foodEntries)
     .values({
       ts,
       rawText: opts.rawText,
       source: opts.source,
-      kcal: r.kcal,
-      proteinG: r.proteinG,
-      fatG: r.fatG,
-      carbG: r.carbG,
+      kcal: d.totals.kcal,
+      proteinG: d.totals.prot,
+      fatG: d.totals.fat,
+      carbG: d.totals.carb,
       confirmed: true,
     })
     .returning({ id: foodEntries.id });
 
   const entryId = inserted[0].id as number;
 
-  if (r.items.length > 0) {
+  if (d.items.length > 0) {
     await db.insert(foodItems).values(
-      r.items.map((it) => ({
+      d.items.map((it) => ({
         entryId,
-        name: it.name,
-        qtyG: it.qtyG,
-        kcal: it.kcal,
-        proteinG: it.proteinG,
-        fatG: it.fatG,
-        carbG: it.carbG,
+        name: it.name_ru,
+        qtyG: it.grams,
+        kcal: it.scaled.kcal,
+        proteinG: it.scaled.prot,
+        fatG: it.scaled.fat,
+        carbG: it.scaled.carb,
       })),
     );
   }

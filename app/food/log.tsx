@@ -12,19 +12,16 @@ import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { quickMeals, saveParsedEntry, todayMacroTotals, type QuickMeal } from '@/lib/core/db/food';
 import { ensureSettings } from '@/lib/core/db/settings';
 import { proteinInsight } from '@/lib/core/insights/proteinInsight';
-import type { FoodParseResult, ParsedFoodItem } from '@/lib/core/services/foodParser';
-import { getFoodParser } from '@/lib/core/services/foodParserProvider';
+import type { MealDraft, Minerals, NutritionItem, Region } from '@/lib/core/services/foodParser';
+import { getFoodParser, resolveRegion } from '@/lib/core/services/foodParserProvider';
+import { recomputeDraft, withItemGrams } from '@/lib/core/services/mealDraft';
 import { getSpeechService } from '@/lib/core/services/speechProvider';
 import { type Theme, useTheme } from '@/lib/theme/theme';
 
-interface MacroLabels {
-  kcal: string;
-  protein: string;
-  fat: string;
-  carbs: string;
-}
+const MINERAL_KEYS: readonly (keyof Minerals)[] = ['na', 'k', 'ca', 'mg', 'fe', 'zn'];
 
-/// Text → parse (offline stub) → editable confirm list → save.
+/// Text/voice → parse → two-tier honest result (exact per-100g + approximate
+/// whole-dish total) → confirm grams → save.
 export default function FoodLogScreen() {
   const { t } = useTranslation();
   const theme = useTheme();
@@ -32,11 +29,14 @@ export default function FoodLogScreen() {
   const db = useDatabase();
   // The Home mic FAB deep-links here with ?voice=1 to start dictation at once.
   const { voice } = useLocalSearchParams<{ voice?: string }>();
+  const region = useRef<Region>(resolveRegion()).current;
 
   const [text, setText] = useState('');
   const [parsing, setParsing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [result, setResult] = useState<FoodParseResult | null>(null);
+  const [draft, setDraft] = useState<MealDraft | null>(null);
+  // The original estimated grams per item, for the S/M/L presets.
+  const [baseGrams, setBaseGrams] = useState<number[]>([]);
   // Today's protein-so-far + personal target, for the honest "what it means"
   // line shown once a meal is parsed (the meaning-rules library).
   const [proteinTarget, setProteinTarget] = useState(0);
@@ -52,6 +52,11 @@ export default function FoodLogScreen() {
   // `source` is honest ('voice' vs 'text').
   const [usedVoice, setUsedVoice] = useState(false);
   const autoStarted = useRef(false);
+
+  function setFreshDraft(d: MealDraft | null) {
+    setDraft(d);
+    setBaseGrams(d ? d.items.map((it) => it.grams) : []);
+  }
 
   // Probe the on-device recognizer once; off-device this stays false and the
   // mic button never shows (text entry is the fallback). Stop on unmount.
@@ -74,7 +79,7 @@ export default function FoodLogScreen() {
       setListening(false);
       return;
     }
-    setResult(null);
+    setFreshDraft(null);
     setUsedVoice(true);
     setListening(true);
     await speech.listen(
@@ -117,63 +122,43 @@ export default function FoodLogScreen() {
     };
   }, [db]);
 
-  /// One tap re-loads a past meal into the editable confirm list (no typing, no
-  /// parse) — the user still reviews and saves.
+  /// One tap re-loads a past meal as an already-confirmed draft (no parse) — the
+  /// user still reviews and saves.
   function onQuickPick(meal: QuickMeal) {
     setText(meal.rawText);
     setUsedVoice(false);
-    setResult({
-      items: [
-        {
-          name: meal.rawText,
-          qtyG: null,
-          kcal: meal.kcal,
-          proteinG: meal.proteinG,
-          fatG: meal.fatG,
-          carbG: meal.carbG,
-          assumptions: '',
-        },
-      ],
-      kcal: meal.kcal,
-      proteinG: meal.proteinG,
-      fatG: meal.fatG,
-      carbG: meal.carbG,
-      confidence: 'high',
-      needsClarification: false,
-      clarifyQuestion: null,
-    });
+    const item: NutritionItem = {
+      name_ru: meal.rawText,
+      name_en: meal.rawText,
+      grams: 100,
+      grams_source: 'confirmed',
+      confidence: 1,
+      per100: { source: 'estimate', kcal: meal.kcal, prot: meal.proteinG, fat: meal.fatG, carb: meal.carbG, minerals: {} },
+      scaled: { kcal: meal.kcal, prot: meal.proteinG, fat: meal.fatG, carb: meal.carbG, minerals: {} },
+      approximate: false,
+    };
+    setFreshDraft(recomputeDraft(region, [item]));
   }
-
-  const labels: MacroLabels = {
-    kcal: t('units.kcal'),
-    protein: t('macros.protein'),
-    fat: t('macros.fat'),
-    carbs: t('macros.carbs'),
-  };
 
   async function onParse() {
     if (text.trim().length === 0) return;
     setParsing(true);
     try {
-      setResult(await getFoodParser().parse(text));
+      setFreshDraft(await getFoodParser().parse(text, region));
     } finally {
       setParsing(false);
     }
   }
 
-  function patchItem(index: number, patch: Partial<ParsedFoodItem>) {
-    setResult((prev) => {
-      if (!prev) return prev;
-      const items = prev.items.map((it, i) => (i === index ? { ...it, ...patch } : it));
-      return { ...prev, items, ...sumItems(items) };
-    });
+  function onItemGrams(index: number, grams: number) {
+    setDraft((prev) => (prev ? withItemGrams(prev, index, grams) : prev));
   }
 
   async function onSave() {
-    if (!result || !db) return;
+    if (!draft || !db) return;
     setSaving(true);
     try {
-      await saveParsedEntry(db, { rawText: text, source: usedVoice ? 'voice' : 'text', result });
+      await saveParsedEntry(db, { rawText: text, source: usedVoice ? 'voice' : 'text', draft });
       router.back();
     } finally {
       setSaving(false);
@@ -215,7 +200,7 @@ export default function FoodLogScreen() {
         disabled={parsing || listening || text.trim().length === 0}
       />
 
-      {result == null && (quick.favorites.length > 0 || quick.recents.length > 0) ? (
+      {draft == null && (quick.favorites.length > 0 || quick.recents.length > 0) ? (
         <View style={styles.quick}>
           {(
             [
@@ -253,36 +238,46 @@ export default function FoodLogScreen() {
         </View>
       ) : null}
 
-      {result == null ? (
+      {draft == null ? (
         <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('food.empty')}</Text>
-      ) : result.items.length === 0 ? (
+      ) : draft.items.length === 0 ? (
         <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('food.needHelp')}</Text>
       ) : (
         <View style={styles.results}>
-          {result.items.map((item, i) => (
-            <ItemEditor
+          {draft.items.map((item, i) => (
+            <ItemCard
               key={i}
               item={item}
-              labels={labels}
+              baseGrams={baseGrams[i] ?? item.grams}
               hideCalories={hideCalories}
               theme={theme}
-              onChange={(p) => patchItem(i, p)}
+              onGrams={(g) => onItemGrams(i, g)}
             />
           ))}
-          <View style={[styles.totalRow, { borderColor: theme.separator }]}>
-            <Text style={[styles.totalLabel, { color: theme.text }, theme.font.bodySemiBold]}>{t('food.total')}</Text>
+
+          <Card style={[styles.totalCard, { borderColor: theme.separator }]}>
+            <View style={styles.totalHead}>
+              <Text style={[styles.totalLabel, { color: theme.text }, theme.font.bodySemiBold]}>{t('food.total')}</Text>
+              {draft.approximate ? <ApproxBadge theme={theme} label={t('food.approx')} /> : null}
+            </View>
             <Text style={[styles.totalValue, { color: theme.text }, theme.font.bodyMedium]}>
               {hideCalories
-                ? `${labels.protein} ${result.proteinG} ${t('units.g')}`
-                : `${result.kcal} ${labels.kcal} · ${labels.protein} ${result.proteinG} ${t('units.g')}`}
+                ? `${t('macros.protein')} ${draft.totals.prot} ${t('units.g')}`
+                : `${draft.totals.kcal} ${t('units.kcal')} · ${t('macros.protein')} ${draft.totals.prot} ${t('units.g')} · ${t('macros.fat')} ${draft.totals.fat} · ${t('macros.carbs')} ${draft.totals.carb}`}
             </Text>
-          </View>
+            {draft.approximate ? (
+              <Text style={[styles.disclaimer, { color: theme.subtle }, theme.font.body]}>{t('food.disclaimer')}</Text>
+            ) : null}
+            {draft.flags.has_estimate ? (
+              <Text style={[styles.disclaimer, { color: theme.subtle }, theme.font.body]}>{t('food.estimateNote')}</Text>
+            ) : null}
+          </Card>
+
           {proteinTarget > 0 ? (
             <Text style={[styles.proteinNote, { color: theme.subtle }, theme.font.body]}>
-              {proteinInsight(todayProteinG + result.proteinG, proteinTarget)}
+              {proteinInsight(todayProteinG + draft.totals.prot, proteinTarget)}
             </Text>
           ) : null}
-          <Text style={[styles.stubNote, { color: theme.subtle }, theme.font.body]}>{t('food.stubNote')}</Text>
           <PrimaryButton
             label={saving ? t('food.saving') : t('food.save')}
             onPress={onSave}
@@ -297,77 +292,112 @@ export default function FoodLogScreen() {
   );
 }
 
-function ItemEditor({
-  item,
-  labels,
-  hideCalories,
-  theme,
-  onChange,
-}: {
-  item: ParsedFoodItem;
-  labels: MacroLabels;
-  hideCalories: boolean;
-  theme: Theme;
-  onChange: (patch: Partial<ParsedFoodItem>) => void;
-}) {
+function ApproxBadge({ theme, label }: { theme: Theme; label: string }) {
   return (
-    <Card style={styles.item}>
-      <TextField value={item.name} onChangeText={(v) => onChange({ name: v })} style={styles.itemName} />
-      <View style={styles.macroRow}>
-        {!hideCalories && (
-          <MacroField label={labels.kcal} value={item.kcal} theme={theme} onChange={(n) => onChange({ kcal: n })} />
-        )}
-        <MacroField label={labels.protein} value={item.proteinG} theme={theme} onChange={(n) => onChange({ proteinG: n })} />
-        <MacroField label={labels.fat} value={item.fatG} theme={theme} onChange={(n) => onChange({ fatG: n })} />
-        <MacroField label={labels.carbs} value={item.carbG} theme={theme} onChange={(n) => onChange({ carbG: n })} />
-      </View>
-      {item.assumptions ? (
-        <Text style={[styles.assumptions, { color: theme.subtle }, theme.font.body]}>{item.assumptions}</Text>
-      ) : null}
-    </Card>
+    <View style={[styles.badge, { backgroundColor: theme.card, borderColor: theme.primary }]}>
+      <Text style={[styles.badgeText, { color: theme.primary }, theme.font.bodySemiBold]}>{label}</Text>
+    </View>
   );
 }
 
-function MacroField({
-  label,
-  value,
+function mineralLine(item: NutritionItem, t: (k: string) => string): string {
+  const parts: string[] = [];
+  for (const key of MINERAL_KEYS) {
+    const v = item.per100.minerals[key];
+    if (typeof v === 'number' && v > 0) parts.push(`${t(`food.minerals.${key}`)} ${Math.round(v)}`);
+  }
+  return parts.join(' · ');
+}
+
+function ItemCard({
+  item,
+  baseGrams,
+  hideCalories,
   theme,
-  onChange,
+  onGrams,
 }: {
-  label: string;
-  value: number;
+  item: NutritionItem;
+  baseGrams: number;
+  hideCalories: boolean;
   theme: Theme;
-  onChange: (n: number) => void;
+  onGrams: (grams: number) => void;
 }) {
+  const { t } = useTranslation();
+  const minerals = mineralLine(item, t);
+  const presets: { label: string; grams: number }[] = [
+    { label: t('food.presetLess'), grams: Math.max(5, Math.round(baseGrams * 0.6)) },
+    { label: t('food.presetMid'), grams: Math.max(5, Math.round(baseGrams)) },
+    { label: t('food.presetMore'), grams: Math.max(5, Math.round(baseGrams * 1.6)) },
+  ];
+
   return (
-    <View style={styles.macroField}>
-      <Text style={[styles.macroLabel, { color: theme.subtle }, theme.font.body]}>{label}</Text>
-      <TextField
-        value={String(value)}
-        onChangeText={(v) => onChange(toNumber(v))}
-        keyboardType="numeric"
-        style={styles.macroInput}
-      />
-    </View>
+    <Card style={styles.item}>
+      <Text style={[styles.itemName, { color: theme.text }, theme.font.bodySemiBold]}>{item.name_ru}</Text>
+
+      {/* Per-100g composition — EXACT, presented as fact. */}
+      <Text style={[styles.per100Label, { color: theme.subtle }, theme.font.body]}>
+        {t('food.per100')} · {t(`food.source.${item.per100.source}`)}
+      </Text>
+      <Text style={[styles.per100Value, { color: theme.text }, theme.font.body]}>
+        {hideCalories
+          ? `${t('macros.protein')} ${item.per100.prot} · ${t('macros.fat')} ${item.per100.fat} · ${t('macros.carbs')} ${item.per100.carb}`
+          : `${item.per100.kcal} ${t('units.kcal')} · ${t('macros.protein')} ${item.per100.prot} · ${t('macros.fat')} ${item.per100.fat} · ${t('macros.carbs')} ${item.per100.carb}`}
+      </Text>
+      {minerals.length > 0 ? (
+        <Text style={[styles.minerals, { color: theme.subtle }, theme.font.body]}>{minerals}</Text>
+      ) : null}
+
+      {/* Confirm grams → flips the item out of "approximate". */}
+      <View style={styles.gramsRow}>
+        <Text style={[styles.gramsLabel, { color: theme.subtle }, theme.font.body]}>{t('food.grams')}</Text>
+        <View style={styles.presets}>
+          {presets.map((p) => {
+            const active = Math.round(item.grams) === p.grams;
+            return (
+              <Pressable
+                key={p.label}
+                onPress={() => onGrams(p.grams)}
+                style={({ pressed }) => [
+                  styles.preset,
+                  {
+                    backgroundColor: active ? theme.primary : theme.card,
+                    borderColor: active ? theme.primary : theme.separator,
+                    opacity: pressed ? 0.7 : 1,
+                  },
+                ]}
+              >
+                <Text style={[styles.presetText, { color: active ? theme.onPrimary : theme.text }, theme.font.body]}>
+                  {p.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <TextField
+          value={String(Math.round(item.grams))}
+          onChangeText={(v) => onGrams(toNumber(v))}
+          keyboardType="numeric"
+          style={styles.gramsInput}
+        />
+        <Text style={[styles.gramsUnit, { color: theme.subtle }, theme.font.body]}>{t('units.g')}</Text>
+      </View>
+
+      {/* Scaled component total — approximate until grams confirmed. */}
+      <View style={styles.itemTotalRow}>
+        <Text style={[styles.itemTotal, { color: theme.text }, theme.font.bodyMedium]}>
+          {hideCalories
+            ? `${t('macros.protein')} ${item.scaled.prot} ${t('units.g')}`
+            : `${item.scaled.kcal} ${t('units.kcal')} · ${t('macros.protein')} ${item.scaled.prot} ${t('units.g')}`}
+        </Text>
+        {item.approximate ? <ApproxBadge theme={theme} label={t('food.approx')} /> : null}
+      </View>
+    </Card>
   );
 }
 
 function toNumber(v: string): number {
   const n = parseFloat(v.replace(',', '.'));
-  return Number.isFinite(n) ? n : 0;
-}
-
-function sumItems(items: ParsedFoodItem[]) {
-  const r = (n: number) => Math.round(n * 10) / 10;
-  return items.reduce(
-    (acc, i) => ({
-      kcal: r(acc.kcal + i.kcal),
-      proteinG: r(acc.proteinG + i.proteinG),
-      fatG: r(acc.fatG + i.fatG),
-      carbG: r(acc.carbG + i.carbG),
-    }),
-    { kcal: 0, proteinG: 0, fatG: 0, carbG: 0 },
-  );
+  return Number.isFinite(n) ? Math.max(0, n) : 0;
 }
 
 const styles = StyleSheet.create({
@@ -377,23 +407,26 @@ const styles = StyleSheet.create({
   hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
   results: { marginTop: 16 },
   item: { marginBottom: 10 },
-  itemName: { marginBottom: 10 },
-  macroRow: { flexDirection: 'row', gap: 8 },
-  macroField: { flex: 1 },
-  macroLabel: { fontSize: 11, marginBottom: 3 },
-  macroInput: { paddingVertical: 8, fontSize: 14 },
-  assumptions: { fontSize: 11, marginTop: 8, fontStyle: 'italic', lineHeight: 16 },
-  totalRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    marginTop: 4,
-  },
+  itemName: { fontSize: 15, marginBottom: 6 },
+  per100Label: { fontSize: 11, marginBottom: 2 },
+  per100Value: { fontSize: 13, marginBottom: 2 },
+  minerals: { fontSize: 11, marginBottom: 8, lineHeight: 16 },
+  gramsRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' },
+  gramsLabel: { fontSize: 12 },
+  presets: { flexDirection: 'row', gap: 6 },
+  preset: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 6 },
+  presetText: { fontSize: 12 },
+  gramsInput: { width: 64, paddingVertical: 8, fontSize: 14, textAlign: 'center' },
+  gramsUnit: { fontSize: 12 },
+  itemTotalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 },
+  itemTotal: { fontSize: 14 },
+  totalCard: { marginTop: 4, marginBottom: 8 },
+  totalHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
   totalLabel: { fontSize: 15 },
   totalValue: { fontSize: 14 },
-  stubNote: { fontSize: 11, fontStyle: 'italic', marginBottom: 12 },
+  disclaimer: { fontSize: 11, marginTop: 8, lineHeight: 16 },
+  badge: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
+  badgeText: { fontSize: 11 },
   proteinNote: { fontSize: 12, marginTop: 4, marginBottom: 8, lineHeight: 17 },
   quick: { marginTop: 16 },
   quickGroup: { marginBottom: 14 },

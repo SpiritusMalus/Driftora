@@ -22,13 +22,13 @@ describe('food logging (parse → save → totals)', () => {
     await applySchema((stmt) => sqlite.exec(stmt));
 
     const text = 'омлет из трёх яиц и кофе с молоком';
-    const result = await new StubFoodParser().parse(text);
-    expect(result.items.length).toBeGreaterThan(0);
+    const draft = await new StubFoodParser().parse(text, 'RU');
+    expect(draft.items.length).toBeGreaterThan(0);
 
-    await saveParsedEntry(db, { rawText: text, source: 'text', result });
+    await saveParsedEntry(db, { rawText: text, source: 'text', draft });
 
     const totals = await todayMacroTotals(db);
-    expect(totals.kcal).toBeCloseTo(result.kcal, 1);
+    expect(totals.kcal).toBeCloseTo(draft.totals.kcal, 1);
     expect(totals.proteinG).toBeGreaterThan(0);
 
     const entries = await listEntriesForDay(db);
@@ -43,11 +43,11 @@ describe('food logging (parse → save → totals)', () => {
     const { sqlite, db } = makeDb();
     await applySchema((stmt) => sqlite.exec(stmt));
 
-    const result = await new StubFoodParser().parse('банан');
+    const draft = await new StubFoodParser().parse('банан', 'US');
     await saveParsedEntry(db, {
       rawText: 'банан',
       source: 'text',
-      result,
+      draft,
       ts: new Date(2020, 0, 1, 9, 0),
     });
 
@@ -55,7 +55,7 @@ describe('food logging (parse → save → totals)', () => {
     expect(todayTotals.kcal).toBe(0);
 
     const thatDay = await todayMacroTotals(db, new Date(2020, 0, 1));
-    expect(thatDay.kcal).toBeCloseTo(result.kcal, 1);
+    expect(thatDay.kcal).toBeCloseTo(draft.totals.kcal, 1);
 
     sqlite.close();
   });
