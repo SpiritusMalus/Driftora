@@ -1,6 +1,7 @@
 import type { Per100, Region } from '../types.js';
 import type { NutritionProvider, ProviderResult } from './provider.js';
-import { SKURIKHIN_TABLE, type SkurikhinEntry } from './skurikhinData.js';
+import { SKURIKHIN_TABLE } from './skurikhinData.js';
+import type { SkurikhinEntry } from './skurikhinTypes.js';
 
 /** Normalize a RU food name for matching: lowercase, ё→е, strip punctuation. */
 export function normalizeRu(name: string): string {
@@ -41,7 +42,8 @@ export class SkurikhinProvider implements NutritionProvider {
   }
 
   private toResult(entry: SkurikhinEntry, confidence: number): ProviderResult {
-    const per100: Per100 = { source: 'skurikhin', ...entry.per100 };
+    // Honest provenance: USDA-sourced rows say 'usda', curated rows 'skurikhin'.
+    const per100: Per100 = { source: entry.source ?? 'skurikhin', ...entry.per100 };
     return { per100, confidence };
   }
 

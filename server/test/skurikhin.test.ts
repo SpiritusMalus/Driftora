@@ -16,25 +16,35 @@ test('normalizeRu lowercases, ё→е, strips punctuation', () => {
   assert.equal(normalizeRu('Гречка (варёная)!'), 'гречка вареная');
 });
 
-test('exact name match returns skurikhin per100 with minerals', async () => {
+test('exact name match returns per100 with minerals (USDA-sourced, attributed)', async () => {
   const r = await provider.search('куриная грудка', 'RU');
   assert.ok(r);
-  assert.equal(r!.per100.source, 'skurikhin');
-  assert.equal(r!.per100.prot, 23.6);
-  assert.equal(r!.per100.minerals.k, 292);
+  assert.equal(r!.per100.source, 'usda'); // data from USDA SR Legacy, honestly attributed
+  assert.equal(r!.per100.prot, 31);
+  assert.equal(r!.per100.minerals.k, 256);
   assert.ok(r!.confidence >= 0.9);
 });
 
-test('alias match: "греч" → гречка', async () => {
-  const r = await provider.search('греч', 'RU');
+test('alias match: "греча" → гречка варёная', async () => {
+  const r = await provider.search('греча', 'RU');
   assert.ok(r);
-  assert.equal(r!.per100.kcal, 110);
+  assert.equal(r!.per100.kcal, 92);
+});
+
+test('sample new entries resolve with sane values', async () => {
+  const banana = await provider.search('банан', 'RU');
+  assert.equal(banana!.per100.kcal, 89);
+  assert.equal(banana!.per100.minerals.k, 358);
+
+  const curd = await provider.search('творог', 'RU'); // alias of "творог 2%"
+  assert.ok(curd!.per100.prot >= 10);
+  assert.equal(curd!.per100.source, 'usda');
 });
 
 test('word-overlap fallback: "куриная грудка отварная" still matches', async () => {
   const r = await provider.search('куриная грудка отварная', 'RU');
   assert.ok(r);
-  assert.equal(r!.per100.source, 'skurikhin');
+  assert.equal(r!.per100.source, 'usda');
   assert.ok(r!.confidence < 0.95, 'fuzzy match has lower confidence than exact');
 });
 
@@ -47,9 +57,9 @@ test('RU routing: resolver uses Skurikhin, never USDA', async () => {
   // USDA would throw if called (no fetch mock) — proves it is skipped for RU.
   const resolver = new Resolver([new SkurikhinProvider(), new UsdaProvider('KEY')]);
   const r = await resolver.resolveItem(item({ name_ru: 'гречка', est_grams: 200 }), 'RU');
-  assert.equal(r.per100.source, 'skurikhin');
-  // scaled = 110 * 2
-  assert.equal(r.scaled.kcal, 220);
+  assert.equal(r.per100.source, 'usda'); // from the RU table (SR Legacy data), not the live USDA provider
+  // scaled = 92 * 2
+  assert.equal(r.scaled.kcal, 184);
   assert.equal(r.grams_source, 'estimated');
   assert.equal(r.approximate, true);
 });
