@@ -47,6 +47,13 @@
           "speechRecognitionPermission": "Распознавание речи используется для голосового ввода еды.",
           "androidSpeechServicePackages": ["com.google.android.googlequicksearchbox"]
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Доступ к фото нужен, чтобы распознать блюдо по снимку.",
+          "cameraPermission": "Камера нужна, чтобы сфотографировать блюдо и распознать его."
+        }
       ]
     ],
     "extra": {

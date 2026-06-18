@@ -1,4 +1,4 @@
-import type { FoodParser, MealDraft, Minerals, NutritionItem, Per100, Region } from './foodParser';
+import type { FoodParser, MealDraft, Minerals, NutritionItem, Per100, PhotoInput, Region } from './foodParser';
 import { recomputeDraft, scaleToGrams } from './mealDraft';
 
 /**
@@ -92,5 +92,11 @@ export class StubFoodParser implements FoodParser {
     }
 
     return recomputeDraft(region, items);
+  }
+
+  /// Offline has no on-device vision — return an empty draft so the UI shows the
+  /// "couldn't recognize, add detail" hint instead of breaking.
+  async parsePhoto(_photo: PhotoInput, region: Region): Promise<MealDraft> {
+    return recomputeDraft(region, []);
   }
 }

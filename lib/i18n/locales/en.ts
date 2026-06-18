@@ -115,6 +115,8 @@ export const en = {
     parsing: 'Parsing…',
     voice: '🎤 Say it',
     voiceListening: '● Listening… tap to stop',
+    photo: '📷 Take a photo',
+    photoAnalyzing: 'Reading the photo…',
     save: 'Save',
     saving: 'Saving…',
     empty: 'Describe your meal and tap “Parse”.',

@@ -1,13 +1,18 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
+import multer from 'multer';
 
-import { identifyFromText, VisionUnavailableError } from './gemini.js';
+import { identifyFromPhoto, identifyFromText, VisionUnavailableError } from './gemini.js';
 import { Resolver } from './nutrition/resolver.js';
 import { buildMealDraft, buildProviders } from './orchestrator.js';
-import { emptyMealDraft, type Region } from './types.js';
+import { emptyMealDraft, type IdentifiedItem, type Region } from './types.js';
 
 const APP_TOKEN = process.env.APP_TOKEN || '';
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '';
 const MAX_TEXT = 1000;
+const MAX_PHOTO_BYTES = 8 * 1024 * 1024; // 8 MB — client downscales to ≤~1024px
+
+// In-memory upload (stateless, nothing written to disk) — privacy §2.
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_PHOTO_BYTES } });
 
 function defaultRegion(): Region {
   return process.env.DEFAULT_REGION === 'RU' ? 'RU' : 'US';
@@ -61,6 +66,29 @@ export function createApp(resolver: Resolver = new Resolver(buildProviders())): 
     res.json({ status: 'ok' });
   });
 
+  // Shared tail for both inputs: identified items → resolved MealDraft, with the
+  // same error mapping. Never leaks the input or a stack trace.
+  async function respondWithDraft(
+    res: Response,
+    region: Region,
+    identify: () => Promise<IdentifiedItem[]>,
+  ): Promise<void> {
+    try {
+      const identified = await identify();
+      if (identified.length === 0) {
+        res.json(emptyMealDraft(region));
+        return;
+      }
+      res.json(await buildMealDraft(resolver, identified, region));
+    } catch (err) {
+      if (err instanceof VisionUnavailableError) {
+        fail(res, 503, 'llm_unavailable', 'The parsing service is temporarily unavailable.');
+        return;
+      }
+      fail(res, 500, 'internal_error', 'Internal server error.');
+    }
+  }
+
   app.post('/food/parse', requireToken, async (req: Request, res: Response) => {
     const body = (req.body ?? {}) as { text?: unknown; region?: unknown };
     const text = typeof body.text === 'string' ? body.text.trim() : '';
@@ -75,24 +103,37 @@ export function createApp(resolver: Resolver = new Resolver(buildProviders())): 
       return;
     }
 
-    try {
-      const identified = await identifyFromText(text, region);
-      if (identified.length === 0) {
-        res.json(emptyMealDraft(region));
-        return;
-      }
-      res.json(await buildMealDraft(resolver, identified, region));
-    } catch (err) {
-      if (err instanceof VisionUnavailableError) {
-        fail(res, 503, 'llm_unavailable', 'The parsing service is temporarily unavailable.');
-        return;
-      }
-      // Never leak the input or a stack trace.
-      fail(res, 500, 'internal_error', 'Internal server error.');
-    }
+    await respondWithDraft(res, region, () => identifyFromText(text, region));
   });
 
-  // Photo parsing (Phase 3) is intentionally not wired yet.
+  // Photo input (BUILD SPEC §5.1): multipart `image` + `region` → MealDraft via
+  // Gemini vision. The client downscales + strips EXIF before upload; the file
+  // stays in memory and is never persisted (privacy §2).
+  app.post('/food/parse-photo', requireToken, upload.single('image'), async (req: Request, res: Response) => {
+    const region = regionOf((req.body ?? {}) as { region?: unknown });
+    const file = req.file;
+    if (!file || file.size === 0) {
+      fail(res, 400, 'empty_input', 'Field "image" is required.');
+      return;
+    }
+    const mimeType = file.mimetype || 'image/jpeg';
+    const base64 = file.buffer.toString('base64');
+    await respondWithDraft(res, region, () => identifyFromPhoto(base64, mimeType, region));
+  });
+
+  // Map multer rejections (e.g. oversized upload) to a clean error envelope.
+  app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
+    if (err instanceof multer.MulterError) {
+      const tooLarge = err.code === 'LIMIT_FILE_SIZE';
+      fail(res, tooLarge ? 413 : 400, tooLarge ? 'image_too_large' : 'bad_upload', err.message);
+      return;
+    }
+    if (err) {
+      fail(res, 500, 'internal_error', 'Internal server error.');
+      return;
+    }
+    next();
+  });
 
   return app;
 }
