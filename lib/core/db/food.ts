@@ -33,7 +33,7 @@ export async function saveParsedEntry(
   db: AnyDb,
   opts: {
     rawText: string;
-    source: 'voice' | 'text';
+    source: 'voice' | 'text' | 'photo';
     draft: MealDraft;
     ts?: Date;
   },

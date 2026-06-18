@@ -73,12 +73,27 @@ CREATE TABLE IF NOT EXISTS app_settings (
   hide_calories INTEGER NOT NULL DEFAULT 0,
   llm_diary_assist INTEGER NOT NULL DEFAULT 0,
   paused INTEGER NOT NULL DEFAULT 0,
-  show_population_stats INTEGER NOT NULL DEFAULT 0
+  show_population_stats INTEGER NOT NULL DEFAULT 0,
+  region TEXT NOT NULL DEFAULT 'auto'
 );
 `;
 
-/// Runs each CREATE statement through [run]. [run] may be sync (better-sqlite3
-/// in tests) or async (op-sqlite on device).
+/// Idempotent ALTERs for schema that evolved AFTER the initial release, since
+/// `CREATE TABLE IF NOT EXISTS` can't add a column to an existing table. Each is
+/// re-run on every launch and is expected to throw "duplicate column" once the
+/// column exists — that error is swallowed (see [applySchema]). This is the
+/// lightweight migration path the app actually runs on-device; the drizzle-kit
+/// migration in `drizzle/` mirrors it for tooling/history.
+export const MIGRATIONS: string[] = [
+  // 2026-06-18: region override for the food parser (BUILD-SPEC finalize, part B).
+  `ALTER TABLE app_settings ADD COLUMN region TEXT NOT NULL DEFAULT 'auto'`,
+];
+
+/// Runs each CREATE statement through [run], then the idempotent [MIGRATIONS].
+/// [run] may be sync (better-sqlite3 in tests) or async (op-sqlite on device).
+/// A migration that throws because its column already exists is swallowed, so
+/// re-running on every launch is safe (and fresh installs already have the
+/// column from the CREATE above — that ALTER is the no-op that gets ignored).
 export async function applySchema(
   run: (statement: string) => unknown | Promise<unknown>,
 ): Promise<void> {
@@ -87,5 +102,12 @@ export async function applySchema(
     .filter((s) => s.length > 0);
   for (const statement of statements) {
     await run(statement);
+  }
+  for (const migration of MIGRATIONS) {
+    try {
+      await run(migration);
+    } catch {
+      // Expected when the column already exists (duplicate column) — idempotent.
+    }
   }
 }

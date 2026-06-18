@@ -41,6 +41,17 @@ describe('updateSettings', () => {
     sqlite.close();
   });
 
+  it('defaults region to auto and persists an override', async () => {
+    const { sqlite, db } = makeDb();
+    await applySchema((s) => sqlite.exec(s));
+
+    expect((await ensureSettings(db)).region).toBe('auto');
+    const updated = await updateSettings(db, { region: 'RU' });
+    expect(updated.region).toBe('RU');
+
+    sqlite.close();
+  });
+
   it('round-trips reminder times through JSON', async () => {
     const { sqlite, db } = makeDb();
     await applySchema((s) => sqlite.exec(s));

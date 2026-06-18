@@ -38,6 +38,7 @@ export default function SettingsScreen() {
   const [llmDiaryAssist, setLlmDiaryAssist] = useState(false);
   const [paused, setPaused] = useState(false);
   const [showPopulationStats, setShowPopulationStats] = useState(false);
+  const [region, setRegion] = useState<'auto' | 'RU' | 'US'>('auto');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -58,6 +59,7 @@ export default function SettingsScreen() {
         setLlmDiaryAssist(s.llmDiaryAssist);
         setPaused(s.paused);
         setShowPopulationStats(s.showPopulationStats);
+        setRegion(s.region);
         setLoaded(true);
       })();
       return () => {
@@ -91,6 +93,7 @@ export default function SettingsScreen() {
         llmDiaryAssist,
         paused,
         showPopulationStats,
+        region,
       });
       await syncReminders();
       setSaved(true);
@@ -168,6 +171,32 @@ export default function SettingsScreen() {
         const when = `${isToday ? t('settings.today') : t('settings.tomorrow')} ${pad(next.getHours())}:${pad(next.getMinutes())}`;
         return <Note theme={theme}>{t('settings.nextReminder', { when })}</Note>;
       })()}
+
+      <SectionHeader>{t('settings.regionTitle')}</SectionHeader>
+      <View style={styles.segment}>
+        {(['auto', 'RU', 'US'] as const).map((opt) => {
+          const active = region === opt;
+          return (
+            <Pressable
+              key={opt}
+              onPress={() => { setRegion(opt); dirty(); }}
+              style={({ pressed }) => [
+                styles.segmentBtn,
+                {
+                  backgroundColor: active ? theme.primary : theme.card,
+                  borderColor: active ? theme.primary : theme.separator,
+                  opacity: pressed ? 0.7 : 1,
+                },
+              ]}
+            >
+              <Text style={[styles.segmentText, { color: active ? theme.onPrimary : theme.text }, theme.font.bodySemiBold]}>
+                {t(`settings.region_${opt}`)}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      <Note theme={theme}>{t('settings.regionNote')}</Note>
 
       <SectionHeader>{t('settings.flags')}</SectionHeader>
       <ToggleRow label={t('settings.hideCalories')} value={hideCalories} onChange={(v) => { setHideCalories(v); dirty(); }} theme={theme} />
@@ -284,5 +313,8 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   toggleLabel: { fontSize: 14, flex: 1, paddingRight: 12 },
+  segment: { flexDirection: 'row', gap: 8 },
+  segmentBtn: { flex: 1, borderWidth: 1.5, borderRadius: 12, paddingVertical: 11, alignItems: 'center' },
+  segmentText: { fontSize: 14 },
   save: { marginTop: 20 },
 });

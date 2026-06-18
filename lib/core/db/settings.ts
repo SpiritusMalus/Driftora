@@ -31,6 +31,7 @@ export interface SettingsPatch {
   llmDiaryAssist?: boolean;
   paused?: boolean;
   showPopulationStats?: boolean;
+  region?: 'auto' | 'RU' | 'US';
 }
 
 /// Applies a partial update to the single settings row, returning the result.
@@ -50,6 +51,7 @@ export async function updateSettings(
   if (patch.llmDiaryAssist != null) set.llmDiaryAssist = patch.llmDiaryAssist;
   if (patch.paused != null) set.paused = patch.paused;
   if (patch.showPopulationStats != null) set.showPopulationStats = patch.showPopulationStats;
+  if (patch.region != null) set.region = patch.region;
   if (Object.keys(set).length > 0) {
     await db.update(appSettings).set(set).where(eq(appSettings.id, 0));
   }
