@@ -2,6 +2,7 @@ import * as Localization from 'expo-localization';
 
 import type { FoodParser, Region } from './foodParser';
 import { HttpFoodParser } from './httpFoodParser';
+import { pickRegion } from './region';
 import { StubFoodParser } from './stubFoodParser';
 
 let _parser: FoodParser | null = null;
@@ -23,11 +24,10 @@ export function getFoodParser(): FoodParser {
 }
 
 /**
- * The nutrition region for lookups (BUILD SPEC §2): from the device locale,
- * Russia or US, defaulting to US. A future in-app region setting would override
- * this (`appSettings.region ?? deviceLocale.region`).
+ * The nutrition region for lookups (BUILD SPEC §2): the in-app setting wins
+ * unless it's 'auto', in which case the device locale decides. Pure logic lives
+ * in `pickRegion` (region.ts) — tested without the native locale dep.
  */
-export function resolveRegion(): Region {
-  const code = Localization.getLocales?.()[0]?.regionCode ?? null;
-  return code === 'RU' ? 'RU' : 'US';
+export function resolveRegion(setting?: 'auto' | 'RU' | 'US' | null): Region {
+  return pickRegion(setting, Localization.getLocales?.()[0]?.regionCode ?? null);
 }

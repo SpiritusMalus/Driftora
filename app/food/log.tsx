@@ -30,7 +30,10 @@ export default function FoodLogScreen() {
   const db = useDatabase();
   // The Home mic FAB deep-links here with ?voice=1 to start dictation at once.
   const { voice } = useLocalSearchParams<{ voice?: string }>();
-  const region = useRef<Region>(resolveRegion()).current;
+  // Region setting ('auto' until settings load); the active region honors it,
+  // falling back to device locale (resolveRegion).
+  const [regionSetting, setRegionSetting] = useState<'auto' | 'RU' | 'US'>('auto');
+  const region: Region = resolveRegion(regionSetting);
 
   const [text, setText] = useState('');
   const [parsing, setParsing] = useState(false);
@@ -49,9 +52,8 @@ export default function FoodLogScreen() {
   });
   const [speechAvailable, setSpeechAvailable] = useState(false);
   const [listening, setListening] = useState(false);
-  // Records whether the current draft came from voice, so the saved entry's
-  // `source` is honest ('voice' vs 'text').
-  const [usedVoice, setUsedVoice] = useState(false);
+  // Origin of the current draft, so the saved entry's `source` is honest.
+  const [source, setSource] = useState<'text' | 'voice' | 'photo'>('text');
   const autoStarted = useRef(false);
 
   function setFreshDraft(d: MealDraft | null) {
@@ -81,7 +83,7 @@ export default function FoodLogScreen() {
       return;
     }
     setFreshDraft(null);
-    setUsedVoice(true);
+    setSource('voice');
     setListening(true);
     await speech.listen(
       (transcript, isFinal) => {
@@ -116,6 +118,7 @@ export default function FoodLogScreen() {
       setProteinTarget(settings.targetProteinG);
       setTodayProteinG(totals.proteinG);
       setHideCalories(settings.hideCalories);
+      setRegionSetting(settings.region);
       setQuick(quickAdd);
     })();
     return () => {
@@ -127,7 +130,7 @@ export default function FoodLogScreen() {
   /// user still reviews and saves.
   function onQuickPick(meal: QuickMeal) {
     setText(meal.rawText);
-    setUsedVoice(false);
+    setSource('text');
     const item: NutritionItem = {
       name_ru: meal.rawText,
       name_en: meal.rawText,
@@ -156,7 +159,7 @@ export default function FoodLogScreen() {
     if (parsing || listening) return;
     const photo = await capturePhoto('camera');
     if (!photo) return;
-    setUsedVoice(false);
+    setSource('photo');
     setParsing(true);
     try {
       setFreshDraft(await getFoodParser().parsePhoto(photo, region));
@@ -173,7 +176,7 @@ export default function FoodLogScreen() {
     if (!draft || !db) return;
     setSaving(true);
     try {
-      await saveParsedEntry(db, { rawText: text, source: usedVoice ? 'voice' : 'text', draft });
+      await saveParsedEntry(db, { rawText: text, source, draft });
       router.back();
     } finally {
       setSaving(false);
@@ -186,7 +189,7 @@ export default function FoodLogScreen() {
         value={text}
         onChangeText={(v) => {
           setText(v);
-          if (!listening) setUsedVoice(false);
+          if (!listening) setSource('text');
         }}
         placeholder={t('food.inputPlaceholder')}
         multiline

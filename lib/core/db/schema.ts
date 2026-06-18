@@ -5,7 +5,7 @@ export const foodEntries = sqliteTable('food_entries', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   ts: integer('ts', { mode: 'timestamp' }).notNull(),
   rawText: text('raw_text').notNull(),
-  source: text('source', { enum: ['voice', 'text'] }).notNull(),
+  source: text('source', { enum: ['voice', 'text', 'photo'] }).notNull(),
   kcal: real('kcal').notNull().default(0),
   proteinG: real('protein_g').notNull().default(0),
   fatG: real('fat_g').notNull().default(0),
@@ -87,6 +87,9 @@ export const appSettings = sqliteTable('app_settings', {
   targetCarbG: real('target_carb_g').notNull().default(200),
   // Personal, achievable goal — deliberately NOT the "10,000 steps" myth.
   stepsGoal: integer('steps_goal').notNull().default(7000),
+  // Nutrition region for the food parser: 'auto' follows device locale, else
+  // forces RU/US (resolveRegion: appSettings.region ?? deviceLocale.region).
+  region: text('region', { enum: ['auto', 'RU', 'US'] }).notNull().default('auto'),
   reminderTimes: text('reminder_times').notNull().default('[]'),
   hideCalories: integer('hide_calories', { mode: 'boolean' }).notNull().default(false),
   llmDiaryAssist: integer('llm_diary_assist', { mode: 'boolean' }).notNull().default(false),
