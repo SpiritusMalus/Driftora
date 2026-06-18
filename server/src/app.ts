@@ -2,9 +2,10 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import multer from 'multer';
 
 import { identifyFromPhoto, identifyFromText, VisionUnavailableError } from './gemini.js';
+import { metrics } from './metrics.js';
 import { Resolver } from './nutrition/resolver.js';
 import { buildMealDraft, buildProviders } from './orchestrator.js';
-import { emptyMealDraft, type IdentifiedItem, type Region } from './types.js';
+import { emptyMealDraft, type IdentifiedItem, type MealDraft, type Region } from './types.js';
 
 const APP_TOKEN = process.env.APP_TOKEN || '';
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '';
@@ -66,20 +67,26 @@ export function createApp(resolver: Resolver = new Resolver(buildProviders())): 
     res.json({ status: 'ok' });
   });
 
+  // Aggregate, content-free ops counters (privacy §2).
+  app.get('/metrics', requireToken, (_req: Request, res: Response) => {
+    res.json(metrics.snapshot());
+  });
+
   // Shared tail for both inputs: identified items → resolved MealDraft, with the
-  // same error mapping. Never leaks the input or a stack trace.
+  // same error mapping + aggregate metrics. Never leaks the input or a stack trace.
   async function respondWithDraft(
     res: Response,
+    route: 'text' | 'photo',
     region: Region,
     identify: () => Promise<IdentifiedItem[]>,
   ): Promise<void> {
+    const startedAt = Date.now();
     try {
       const identified = await identify();
-      if (identified.length === 0) {
-        res.json(emptyMealDraft(region));
-        return;
-      }
-      res.json(await buildMealDraft(resolver, identified, region));
+      const draft: MealDraft =
+        identified.length === 0 ? emptyMealDraft(region) : await buildMealDraft(resolver, identified, region);
+      metrics.recordParse(route, region, draft, Date.now() - startedAt);
+      res.json(draft);
     } catch (err) {
       if (err instanceof VisionUnavailableError) {
         fail(res, 503, 'llm_unavailable', 'The parsing service is temporarily unavailable.');
@@ -103,7 +110,7 @@ export function createApp(resolver: Resolver = new Resolver(buildProviders())): 
       return;
     }
 
-    await respondWithDraft(res, region, () => identifyFromText(text, region));
+    await respondWithDraft(res, 'text', region, () => identifyFromText(text, region));
   });
 
   // Photo input (BUILD SPEC §5.1): multipart `image` + `region` → MealDraft via
@@ -118,7 +125,7 @@ export function createApp(resolver: Resolver = new Resolver(buildProviders())): 
     }
     const mimeType = file.mimetype || 'image/jpeg';
     const base64 = file.buffer.toString('base64');
-    await respondWithDraft(res, region, () => identifyFromPhoto(base64, mimeType, region));
+    await respondWithDraft(res, 'photo', region, () => identifyFromPhoto(base64, mimeType, region));
   });
 
   // Map multer rejections (e.g. oversized upload) to a clean error envelope.
