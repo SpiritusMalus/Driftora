@@ -5,6 +5,7 @@ import type {
   NutritionItem,
   NutritionSource,
   Per100,
+  PhotoInput,
   Region,
 } from './foodParser';
 
@@ -67,12 +68,24 @@ function isMealDraft(v: unknown): v is MealDraft {
  * match the contract — it silently falls back to the offline stub so the
  * food-log screen never breaks (BUILD SPEC §5.3: offline resilience stays).
  */
+/** Derive the photo endpoint from the text one (/food/parse → /food/parse-photo). */
+function derivePhotoEndpoint(endpoint: string): string {
+  return /\/food\/parse$/.test(endpoint)
+    ? endpoint.replace(/\/food\/parse$/, '/food/parse-photo')
+    : `${endpoint}-photo`;
+}
+
 export class HttpFoodParser implements FoodParser {
+  private readonly photoEndpoint: string;
+
   constructor(
     private readonly endpoint: string,
     private readonly fallback: FoodParser,
     private readonly timeoutMs: number = DEFAULT_TIMEOUT_MS,
-  ) {}
+    photoEndpoint?: string,
+  ) {
+    this.photoEndpoint = photoEndpoint ?? derivePhotoEndpoint(endpoint);
+  }
 
   async parse(text: string, region: Region): Promise<MealDraft> {
     const controller = new AbortController();
@@ -91,6 +104,40 @@ export class HttpFoodParser implements FoodParser {
     } catch {
       // Network error or timeout — stay usable offline.
       return this.fallback.parse(text, region);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Upload a prepared (downscaled, EXIF-stripped) photo as multipart/form-data
+   * and return a `MealDraft`. Same fail-safe contract as `parse`: any failure
+   * falls back to the offline parser (which, for photos, yields an empty draft).
+   */
+  async parsePhoto(photo: PhotoInput, region: Region): Promise<MealDraft> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const form = new FormData();
+      form.append('region', region);
+      // React Native multipart file shape — { uri, name, type }.
+      form.append('image', {
+        uri: photo.uri,
+        name: 'meal.jpg',
+        type: photo.mimeType,
+      } as unknown as Blob);
+
+      const res = await fetch(this.photoEndpoint, {
+        method: 'POST',
+        body: form,
+        signal: controller.signal,
+      });
+      if (!res.ok) return this.fallback.parsePhoto(photo, region);
+      const data: unknown = await res.json();
+      if (!isMealDraft(data)) return this.fallback.parsePhoto(photo, region);
+      return data;
+    } catch {
+      return this.fallback.parsePhoto(photo, region);
     } finally {
       clearTimeout(timer);
     }

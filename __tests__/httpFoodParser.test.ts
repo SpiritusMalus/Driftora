@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 
-import type { FoodParser, MealDraft } from '@/lib/core/services/foodParser';
+import type { FoodParser, MealDraft, PhotoInput } from '@/lib/core/services/foodParser';
 import { HttpFoodParser } from '@/lib/core/services/httpFoodParser';
 
 const ENDPOINT = 'https://api.example.com/food/parse';
+const PHOTO_ENDPOINT = 'https://api.example.com/food/parse-photo';
+const PHOTO: PhotoInput = { uri: 'file:///tmp/meal.jpg', mimeType: 'image/jpeg' };
 
 const SENTINEL: MealDraft = {
   region: 'US',
@@ -16,8 +18,13 @@ const SENTINEL: MealDraft = {
 
 class SpyFallback implements FoodParser {
   calls = 0;
+  photoCalls = 0;
   async parse(): Promise<MealDraft> {
     this.calls += 1;
+    return SENTINEL;
+  }
+  async parsePhoto(): Promise<MealDraft> {
+    this.photoCalls += 1;
     return SENTINEL;
   }
 }
@@ -94,6 +101,30 @@ describe('HttpFoodParser', () => {
     const r = await new HttpFoodParser(ENDPOINT, fallback).parse('банан', 'US');
     expect(r).toBe(SENTINEL);
     expect(fallback.calls).toBe(1);
+  });
+
+  it('parsePhoto posts multipart to the derived photo endpoint and returns the draft', async () => {
+    let captured: { url: unknown; isForm: boolean } = { url: null, isForm: false };
+    mockFetch(async (...args: unknown[]) => {
+      captured = { url: args[0], isForm: (args[1] as { body: unknown }).body instanceof FormData };
+      return { ok: true, json: async () => VALID } as unknown;
+    });
+
+    const fallback = new SpyFallback();
+    const r = await new HttpFoodParser(ENDPOINT, fallback).parsePhoto(PHOTO, 'US');
+
+    expect(r).toEqual(VALID);
+    expect(fallback.photoCalls).toBe(0);
+    expect(captured.url).toBe(PHOTO_ENDPOINT);
+    expect(captured.isForm).toBe(true);
+  });
+
+  it('parsePhoto falls back to the offline photo path on a non-2xx', async () => {
+    mockFetch(async () => ({ ok: false, json: async () => ({}) }) as unknown);
+    const fallback = new SpyFallback();
+    const r = await new HttpFoodParser(ENDPOINT, fallback).parsePhoto(PHOTO, 'US');
+    expect(r).toBe(SENTINEL);
+    expect(fallback.photoCalls).toBe(1);
   });
 
   it('aborts on timeout and falls back', async () => {

@@ -58,10 +58,19 @@ export interface MealDraft {
   };
 }
 
-/// Turns a free-form food description into a structured, honest [MealDraft].
+/// A prepared photo ready for upload — already downscaled + EXIF-stripped.
+export interface PhotoInput {
+  uri: string;
+  mimeType: string;
+}
+
+/// Turns a free-form food description (or a photo) into a structured, honest
+/// [MealDraft].
 ///
 /// Online (HttpFoodParser) it calls the food-parse backend — the app's ONLY
-/// external network call. Offline it falls back to a deterministic local stub.
+/// external network call. Offline it falls back to a deterministic local stub
+/// (text), or an empty draft for photos (no on-device vision).
 export interface FoodParser {
   parse(text: string, region: Region): Promise<MealDraft>;
+  parsePhoto(photo: PhotoInput, region: Region): Promise<MealDraft>;
 }

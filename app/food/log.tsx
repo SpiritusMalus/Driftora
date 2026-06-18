@@ -15,6 +15,7 @@ import { proteinInsight } from '@/lib/core/insights/proteinInsight';
 import type { MealDraft, Minerals, NutritionItem, Region } from '@/lib/core/services/foodParser';
 import { getFoodParser, resolveRegion } from '@/lib/core/services/foodParserProvider';
 import { recomputeDraft, withItemGrams } from '@/lib/core/services/mealDraft';
+import { capturePhoto } from '@/lib/core/services/photoProvider';
 import { getSpeechService } from '@/lib/core/services/speechProvider';
 import { type Theme, useTheme } from '@/lib/theme/theme';
 
@@ -150,6 +151,20 @@ export default function FoodLogScreen() {
     }
   }
 
+  // Photo → downscale + EXIF strip → backend vision → same two-tier draft.
+  async function onPhoto() {
+    if (parsing || listening) return;
+    const photo = await capturePhoto('camera');
+    if (!photo) return;
+    setUsedVoice(false);
+    setParsing(true);
+    try {
+      setFreshDraft(await getFoodParser().parsePhoto(photo, region));
+    } finally {
+      setParsing(false);
+    }
+  }
+
   function onItemGrams(index: number, grams: number) {
     setDraft((prev) => (prev ? withItemGrams(prev, index, grams) : prev));
   }
@@ -194,6 +209,16 @@ export default function FoodLogScreen() {
           </Text>
         </Pressable>
       ) : null}
+      <Pressable
+        onPress={onPhoto}
+        disabled={parsing || listening}
+        style={({ pressed }) => [
+          styles.micButton,
+          { borderColor: theme.separator, backgroundColor: theme.card, opacity: pressed || parsing || listening ? 0.6 : 1 },
+        ]}
+      >
+        <Text style={[styles.micText, { color: theme.primary }, theme.font.bodySemiBold]}>{t('food.photo')}</Text>
+      </Pressable>
       <PrimaryButton
         label={parsing ? t('food.parsing') : t('food.parse')}
         onPress={onParse}
