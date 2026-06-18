@@ -1,47 +1,71 @@
-import type { FoodParseResult, FoodParser, ParseConfidence, ParsedFoodItem } from './foodParser';
+import type {
+  FoodParser,
+  MealDraft,
+  NutrientValues,
+  NutritionItem,
+  NutritionSource,
+  Per100,
+  Region,
+} from './foodParser';
 
-const CONFIDENCES: readonly ParseConfidence[] = ['high', 'medium', 'low'];
-const DEFAULT_TIMEOUT_MS = 10_000;
+const SOURCES: readonly NutritionSource[] = ['usda', 'skurikhin', 'openfoodfacts', 'apininjas', 'estimate'];
+const DEFAULT_TIMEOUT_MS = 12_000;
 
-function isItem(value: unknown): value is ParsedFoodItem {
-  if (value === null || typeof value !== 'object') return false;
-  const v = value as Record<string, unknown>;
+function isNutrientValues(v: unknown): v is NutrientValues {
+  if (v === null || typeof v !== 'object') return false;
+  const n = v as Record<string, unknown>;
   return (
-    typeof v.name === 'string' &&
-    (typeof v.qtyG === 'number' || v.qtyG === null) &&
-    typeof v.kcal === 'number' &&
-    typeof v.proteinG === 'number' &&
-    typeof v.fatG === 'number' &&
-    typeof v.carbG === 'number' &&
-    typeof v.assumptions === 'string'
+    typeof n.kcal === 'number' &&
+    typeof n.prot === 'number' &&
+    typeof n.fat === 'number' &&
+    typeof n.carb === 'number' &&
+    typeof n.minerals === 'object' &&
+    n.minerals !== null
+  );
+}
+
+function isPer100(v: unknown): v is Per100 {
+  return isNutrientValues(v) && SOURCES.includes((v as Per100).source);
+}
+
+function isItem(v: unknown): v is NutritionItem {
+  if (v === null || typeof v !== 'object') return false;
+  const i = v as Record<string, unknown>;
+  return (
+    typeof i.name_ru === 'string' &&
+    typeof i.name_en === 'string' &&
+    typeof i.grams === 'number' &&
+    (i.grams_source === 'estimated' || i.grams_source === 'confirmed') &&
+    typeof i.confidence === 'number' &&
+    isPer100(i.per100) &&
+    isNutrientValues(i.scaled) &&
+    typeof i.approximate === 'boolean'
   );
 }
 
 /** Structural guard: the backend may be down, stale, or misbehaving. */
-function isResult(value: unknown): value is FoodParseResult {
-  if (value === null || typeof value !== 'object') return false;
-  const v = value as Record<string, unknown>;
+function isMealDraft(v: unknown): v is MealDraft {
+  if (v === null || typeof v !== 'object') return false;
+  const d = v as Record<string, unknown>;
   return (
-    Array.isArray(v.items) &&
-    v.items.every(isItem) &&
-    typeof v.kcal === 'number' &&
-    typeof v.proteinG === 'number' &&
-    typeof v.fatG === 'number' &&
-    typeof v.carbG === 'number' &&
-    CONFIDENCES.includes(v.confidence as ParseConfidence) &&
-    typeof v.needsClarification === 'boolean' &&
-    (typeof v.clarifyQuestion === 'string' || v.clarifyQuestion === null)
+    (d.region === 'RU' || d.region === 'US') &&
+    Array.isArray(d.items) &&
+    d.items.every(isItem) &&
+    isNutrientValues(d.totals) &&
+    (d.portion_state === 'estimated' || d.portion_state === 'confirmed') &&
+    typeof d.approximate === 'boolean' &&
+    typeof d.flags === 'object' &&
+    d.flags !== null
   );
 }
 
 /**
- * Online food parser — POSTs the utterance to the food-parse backend (the app's
- * ONLY external network call) and returns a `FoodParseResult`.
+ * Online food parser — POSTs `{ text, region }` to the food-parse backend (the
+ * app's ONLY external network call) and returns a `MealDraft`.
  *
- * On any failure — network error, timeout (~10s), non-2xx, or a response that
- * doesn't match the contract — it silently falls back to the offline parser so
- * the food-log screen never breaks (handoff §6). `source` ('voice'/'text') is
- * the client's concern and is not sent to the backend.
+ * On any failure — network error, timeout, non-2xx, or a response that doesn't
+ * match the contract — it silently falls back to the offline stub so the
+ * food-log screen never breaks (BUILD SPEC §5.3: offline resilience stays).
  */
 export class HttpFoodParser implements FoodParser {
   constructor(
@@ -50,23 +74,23 @@ export class HttpFoodParser implements FoodParser {
     private readonly timeoutMs: number = DEFAULT_TIMEOUT_MS,
   ) {}
 
-  async parse(utterance: string): Promise<FoodParseResult> {
+  async parse(text: string, region: Region): Promise<MealDraft> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
       const res = await fetch(this.endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ utterance, locale: 'ru' }),
+        body: JSON.stringify({ text, region }),
         signal: controller.signal,
       });
-      if (!res.ok) return this.fallback.parse(utterance);
+      if (!res.ok) return this.fallback.parse(text, region);
       const data: unknown = await res.json();
-      if (!isResult(data)) return this.fallback.parse(utterance);
+      if (!isMealDraft(data)) return this.fallback.parse(text, region);
       return data;
     } catch {
       // Network error or timeout — stay usable offline.
-      return this.fallback.parse(utterance);
+      return this.fallback.parse(text, region);
     } finally {
       clearTimeout(timer);
     }
