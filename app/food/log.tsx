@@ -15,7 +15,7 @@ import { proteinInsight } from '@/lib/core/insights/proteinInsight';
 import type { MealDraft, Minerals, NutritionItem, Region } from '@/lib/core/services/foodParser';
 import { getFoodParser, resolveRegion } from '@/lib/core/services/foodParserProvider';
 import { recomputeDraft, withItemGrams } from '@/lib/core/services/mealDraft';
-import { capturePhoto } from '@/lib/core/services/photoProvider';
+import { capturePhoto, isPhotoCaptureAvailable } from '@/lib/core/services/photoProvider';
 import { getSpeechService } from '@/lib/core/services/speechProvider';
 import { type Theme, useTheme } from '@/lib/theme/theme';
 
@@ -51,6 +51,7 @@ export default function FoodLogScreen() {
     favorites: [],
   });
   const [speechAvailable, setSpeechAvailable] = useState(false);
+  const [photoAvailable, setPhotoAvailable] = useState(false);
   const [listening, setListening] = useState(false);
   // Origin of the current draft, so the saved entry's `source` is honest.
   const [source, setSource] = useState<'text' | 'voice' | 'photo'>('text');
@@ -68,6 +69,9 @@ export default function FoodLogScreen() {
     const speech = getSpeechService();
     void speech.initialize().then((ok) => {
       if (active) setSpeechAvailable(ok);
+    });
+    void isPhotoCaptureAvailable().then((ok) => {
+      if (active) setPhotoAvailable(ok);
     });
     return () => {
       active = false;
@@ -212,16 +216,18 @@ export default function FoodLogScreen() {
           </Text>
         </Pressable>
       ) : null}
-      <Pressable
-        onPress={onPhoto}
-        disabled={parsing || listening}
-        style={({ pressed }) => [
-          styles.micButton,
-          { borderColor: theme.separator, backgroundColor: theme.card, opacity: pressed || parsing || listening ? 0.6 : 1 },
-        ]}
-      >
-        <Text style={[styles.micText, { color: theme.primary }, theme.font.bodySemiBold]}>{t('food.photo')}</Text>
-      </Pressable>
+      {photoAvailable ? (
+        <Pressable
+          onPress={onPhoto}
+          disabled={parsing || listening}
+          style={({ pressed }) => [
+            styles.micButton,
+            { borderColor: theme.separator, backgroundColor: theme.card, opacity: pressed || parsing || listening ? 0.6 : 1 },
+          ]}
+        >
+          <Text style={[styles.micText, { color: theme.primary }, theme.font.bodySemiBold]}>{t('food.photo')}</Text>
+        </Pressable>
+      ) : null}
       <PrimaryButton
         label={parsing ? t('food.parsing') : t('food.parse')}
         onPress={onParse}
