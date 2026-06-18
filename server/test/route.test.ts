@@ -118,6 +118,30 @@ test('unknown food (USDA miss) → per100.source estimate + has_estimate, no cra
   }
 });
 
+test('region RU → per100.source skurikhin, USDA never queried', async () => {
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input.toString();
+    if (url.includes('127.0.0.1')) return realFetch(input as never, init);
+    if (url.includes('generativelanguage.googleapis.com')) {
+      return geminiReply([{ name_ru: 'куриная грудка', name_en: 'chicken breast', est_grams: 150, confidence: 0.9 }]);
+    }
+    if (url.includes('api.nal.usda.gov')) throw new Error('USDA must not be called for RU');
+    throw new Error(`unexpected fetch: ${url}`);
+  }) as typeof fetch;
+
+  const { base, stop } = await startApp();
+  try {
+    const res = await post(base, { text: 'куриная грудка', region: 'RU' });
+    assert.equal(res.status, 200);
+    const draft = (await res.json()) as Record<string, any>;
+    assert.equal(draft.region, 'RU');
+    assert.equal(draft.items[0].per100.source, 'skurikhin');
+    assert.equal(draft.flags.has_estimate, false);
+  } finally {
+    await stop();
+  }
+});
+
 test('empty text → 400 empty_input', async () => {
   const { base, stop } = await startApp();
   try {

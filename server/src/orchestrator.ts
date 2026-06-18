@@ -2,6 +2,7 @@ import { ApiNinjasProvider } from './nutrition/apininjas.js';
 import { OpenFoodFactsProvider } from './nutrition/openfoodfacts.js';
 import type { NutritionProvider } from './nutrition/provider.js';
 import { Resolver } from './nutrition/resolver.js';
+import { SkurikhinProvider } from './nutrition/skurikhin.js';
 import { UsdaProvider } from './nutrition/usda.js';
 import { assembleMealDraft, type IdentifiedItem, type MealDraft, type Region } from './types.js';
 
@@ -15,6 +16,10 @@ import { assembleMealDraft, type IdentifiedItem, type MealDraft, type Region } f
  */
 export function buildProviders(): NutritionProvider[] {
   const providers: NutritionProvider[] = [];
+  // RU-first and US-first cores. The resolver filters by region, so order here
+  // IS the per-region chain order: RU → [Skurikhin, OFF, ApiNinjas];
+  // US → [Usda, OFF, ApiNinjas].
+  providers.push(new SkurikhinProvider());
   providers.push(new UsdaProvider(process.env.USDA_API_KEY || ''));
   providers.push(new OpenFoodFactsProvider());
   if (process.env.APININJAS_KEY) {
