@@ -23,6 +23,7 @@
     "expo-image-picker": "~17.0.11",
     "expo-linear-gradient": "~15.0.8",
     "expo-linking": "~8.0.12",
+    "expo-local-authentication": "~17.0.7",
     "expo-localization": "~17.0.9",
     "expo-notifications": "~0.32.17",
     "expo-router": "~6.0.24",
@@ -77,7 +78,9 @@
       "^expo-localization$": "<rootDir>/__mocks__/expo-localization.ts",
       "^expo/virtual/env$": "<rootDir>/__mocks__/expo-virtual-env.ts",
       "^expo-secure-store$": "<rootDir>/__mocks__/expo-secure-store.ts",
-      "^expo-crypto$": "<rootDir>/__mocks__/expo-crypto.ts"
+      "^expo-crypto$": "<rootDir>/__mocks__/expo-crypto.ts",
+      "^expo-local-authentication$": "<rootDir>/__mocks__/expo-local-authentication.ts",
+      "^expo-modules-core$": "<rootDir>/__mocks__/expo-modules-core.ts"
     }
   },
   "private": true

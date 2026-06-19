@@ -21,9 +21,12 @@ import {
 } from '@/lib/core/db/backupFile';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import {
+  BiometricGateError,
   getOrCreateMasterKeyPair,
   hasMasterKey,
   installMasterKeyPair,
+  tryRestoreMasterKeyFromPlatform,
+  unlockMasterKeyPair,
 } from '@/lib/core/db/keystore';
 import { ensureSettings } from '@/lib/core/db/settings';
 import { type Theme, useTheme } from '@/lib/theme/theme';
@@ -46,9 +49,14 @@ import { type Theme, useTheme } from '@/lib/theme/theme';
 /// `lib/core/db/{backup,backupFile}.ts` (unit-tested in node); this screen is the
 /// thin native glue (file IO + share/pick + the recovery UX).
 ///
-/// NATIVE seams (NOT implemented — need a dev build): biometric unlock before the
-/// key read; same-ecosystem "no phrase needed" restore via iCloud Keychain /
-/// Google Block Store custody. See `keystore.getOrCreateMasterKeyPair`.
+/// Phase-2 native (this screen wires it; verified on a dev build, not in CI):
+///  - Biometric unlock — sensitive key reads (backup, key-file export, restore-
+///    decrypt) go through `keystore.unlockMasterKeyPair`, which gates on Face ID /
+///    fingerprint (graceful no-op where biometrics are unavailable).
+///  - Same-ecosystem "no phrase needed" restore — `tryRestoreMasterKeyFromPlatform`
+///    pulls the master key from iCloud Keychain / Google Block Store before we fall
+///    back to the recovery-phrase prompt. See `lib/core/security/*` + the native
+///    `modules/platform-key-store`.
 type Status =
   | { kind: 'idle' }
   | { kind: 'working'; op: 'backup' | 'restore' }
@@ -129,7 +137,8 @@ export default function BackupScreen() {
     setGateBusy(true);
     try {
       const doc = await exportAllTables(db);
-      const master = await getOrCreateMasterKeyPair();
+      // Biometric-gated read of the master key before it is used to build the file.
+      const master = await unlockMasterKeyPair(t('keysync.biometricReason'));
       const fileBytes = await buildBackupFile(doc, master, gatePhrase);
 
       const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
@@ -153,7 +162,11 @@ export default function BackupScreen() {
     } catch (e) {
       setGatePhrase(null);
       setGateBusy(false);
-      setStatus({ kind: 'error', message: messageFrom(e, t('backup.backupError')) });
+      const message =
+        e instanceof BiometricGateError
+          ? t('keysync.gateFailed')
+          : messageFrom(e, t('backup.backupError'));
+      setStatus({ kind: 'error', message });
     }
   }
 
@@ -161,7 +174,8 @@ export default function BackupScreen() {
   /// both from the save-gate and as its own button.
   async function onExportKeyFile() {
     try {
-      const master = await getOrCreateMasterKeyPair();
+      // The key-file reveals the raw private key → gate it behind biometrics too.
+      const master = await unlockMasterKeyPair(t('keysync.biometricReason'));
       const json = serializeKeyFile(master);
       const file = new File(Paths.cache, KEYFILE_NAME);
       file.create({ overwrite: true });
@@ -177,7 +191,11 @@ export default function BackupScreen() {
         setStatus({ kind: 'done', message: t('backup.savedLocally', { path: file.uri }) });
       }
     } catch (e) {
-      setStatus({ kind: 'error', message: messageFrom(e, t('recovery.keyFile.exportError')) });
+      const message =
+        e instanceof BiometricGateError
+          ? t('keysync.gateFailed')
+          : messageFrom(e, t('recovery.keyFile.exportError'));
+      setStatus({ kind: 'error', message });
     }
   }
 
@@ -241,31 +259,53 @@ export default function BackupScreen() {
         return;
       }
 
-      // New device with no master key + a recovery header → ask for the phrase.
-      const keyHere = await hasMasterKey();
-      if (!keyHere && parsed.recovery) {
-        setPhrasePrompt({ recovery: parsed.recovery, bodyB64: encodeBase64(parsed.bodyCiphertext) });
-        setPhraseInput('');
-        setPhraseError(false);
-        setStatus({ kind: 'idle' });
-        return;
+      // Decide which private key decrypts the body.
+      //  1. Key already on this device → biometric-gated read (same-device restore).
+      //  2. Fresh device, but the master key arrived via the user's Apple/Google
+      //     account (iCloud Keychain / Block Store) → install + use it, NO phrase.
+      //  3. Fresh device, no platform key, file has a recovery header → ask for the
+      //     recovery phrase (the cross-ecosystem / lost-everything path).
+      //  4. Legacy Phase-1 file with no recovery header and no key → fall through to
+      //     a (wrong) fresh key so the user gets an honest "wrong key" message.
+      let privateKey: string;
+      let restoredViaPlatform = false;
+      if (await hasMasterKey()) {
+        privateKey = (await unlockMasterKeyPair(t('keysync.biometricReason'))).privateKey;
+      } else {
+        const platform = await tryRestoreMasterKeyFromPlatform();
+        if (platform) {
+          privateKey = platform.privateKey;
+          restoredViaPlatform = true;
+        } else if (parsed.recovery) {
+          setPhrasePrompt({ recovery: parsed.recovery, bodyB64: encodeBase64(parsed.bodyCiphertext) });
+          setPhraseInput('');
+          setPhraseError(false);
+          setStatus({ kind: 'idle' });
+          return;
+        } else {
+          privateKey = (await getOrCreateMasterKeyPair()).privateKey;
+        }
       }
 
-      // Otherwise decrypt with the on-device master key (same device, or a legacy
-      // Phase-1 file). A wrong key / corrupt file surfaces an honest message.
-      const master = await getOrCreateMasterKeyPair();
       let doc: BackupDocument;
       try {
-        doc = decryptBackupBody(parsed, master.privateKey);
+        doc = decryptBackupBody(parsed, privateKey);
       } catch {
         setStatus({ kind: 'error', message: t('backup.restoreWrongKey') });
         return;
       }
 
       await importAllTables(db, doc);
-      setStatus({ kind: 'done', message: t('backup.restoreDone') });
+      setStatus({
+        kind: 'done',
+        message: restoredViaPlatform ? t('keysync.autoRestored') : t('backup.restoreDone'),
+      });
     } catch (e) {
-      setStatus({ kind: 'error', message: messageFrom(e, t('backup.restoreError')) });
+      const message =
+        e instanceof BiometricGateError
+          ? t('keysync.gateFailed')
+          : messageFrom(e, t('backup.restoreError'));
+      setStatus({ kind: 'error', message });
     }
   }
 

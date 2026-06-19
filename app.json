@@ -54,7 +54,14 @@
           "photosPermission": "Доступ к фото нужен, чтобы распознать блюдо по снимку.",
           "cameraPermission": "Камера нужна, чтобы сфотографировать блюдо и распознать его."
         }
-      ]
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Face ID разблокирует ваш ключ шифрования, чтобы открыть резервную копию."
+        }
+      ],
+      "./plugins/withICloudKeychainSync"
     ],
     "extra": {
       "router": {},
