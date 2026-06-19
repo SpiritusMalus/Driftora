@@ -10,6 +10,8 @@ import {
   getMasterPublicKey,
   getOrCreateDbKey,
   getOrCreateMasterKeyPair,
+  hasMasterKey,
+  installMasterKeyPair,
 } from '@/lib/core/db/keystore';
 import { keyPairMatches } from '@/lib/core/crypto/e2ee';
 import * as schema from '@/lib/core/db/schema';
@@ -90,5 +92,47 @@ describe('master keypair in secure store', () => {
     expect(blobLatin1.includes(pair.privateKey)).toBe(false);
 
     sqlite.close();
+  });
+});
+
+describe('recovery: installing a master key on a fresh device', () => {
+  it('hasMasterKey reflects whether a key is present', async () => {
+    expect(await hasMasterKey()).toBe(false);
+    await getOrCreateMasterKeyPair();
+    expect(await hasMasterKey()).toBe(true);
+  });
+
+  it('installMasterKeyPair persists a recovered key and getOrCreateMasterKeyPair returns it', async () => {
+    // A key produced elsewhere (e.g. unwrapped from a backup recovery header).
+    const external = await getOrCreateMasterKeyPair();
+    SecureStoreMock.__reset();
+    expect(await hasMasterKey()).toBe(false);
+
+    const installed = await installMasterKeyPair(external.privateKey);
+    expect(installed.privateKey).toBe(external.privateKey);
+    expect(installed.publicKey).toBe(external.publicKey);
+
+    // The next read returns the installed pair (idempotent, no regeneration).
+    const reread = await getOrCreateMasterKeyPair();
+    expect(reread).toEqual(external);
+    expect(await getMasterPublicKey()).toBe(external.publicKey);
+  });
+
+  it('installMasterKeyPair heals/derives the public key from the private key', async () => {
+    const pair = await getOrCreateMasterKeyPair();
+    SecureStoreMock.__reset();
+    const installed = await installMasterKeyPair(pair.privateKey);
+    expect(keyPairMatches(installed.privateKey, installed.publicKey)).toBe(true);
+    expect(installed.publicKey).toBe(pair.publicKey);
+  });
+
+  it('the installed private key lives ONLY under the master item in secure store', async () => {
+    const pair = await getOrCreateMasterKeyPair();
+    SecureStoreMock.__reset();
+    await installMasterKeyPair(pair.privateKey);
+    const dump = SecureStoreMock.__dump();
+    const occurrences = Object.entries(dump).filter(([, v]) => v.includes(pair.privateKey));
+    expect(occurrences).toHaveLength(1);
+    expect(occurrences[0][0]).toBe(MASTER_KEY_ITEM);
   });
 });

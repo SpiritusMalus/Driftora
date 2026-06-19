@@ -40,14 +40,24 @@ interface StoredMasterKey {
 /// in expo-secure-store on first use. The private key is the only copy and never
 /// leaves secure storage; the public key is what backups are encrypted to.
 ///
-/// ⚠️ Phase-2 seams (intentionally NOT implemented here):
+/// Phase-2 status:
+///  ✅ Recovery export (DONE — needs no native build): the user-held fallback —
+///     a recovery phrase + key-file that wrap this private key — is implemented in
+///     `lib/core/crypto/recovery.ts`, embedded in the backup file by
+///     `lib/core/db/backupFile.ts`, and surfaced in `app/settings/recovery.tsx`.
+///     `installMasterKeyPair` (below) is the new-device install path.
+///
+///  ⚠️ NATIVE seams (intentionally NOT implemented — each needs a dev build):
 ///  - Biometric gating: wrap this read with `expo-local-authentication` so the
 ///    private key is only released after Face ID / fingerprint.
-///  - Platform key custody: persist with `kSecAttrSynchronizable` (iOS iCloud
-///    Keychain) / Google Block Store so a new device in the same ecosystem
-///    restores the key with nothing to remember.
-///  - Recovery export: a recovery phrase / key-file fallback (reuse LawDocs
-///    `generateRecoveryPhrase` / `downloadKeyFile`).
+///    // TODO(phase2-native): const ok = await LocalAuthentication.authenticateAsync();
+///  - iOS iCloud Keychain custody: persist with `kSecAttrSynchronizable` so a new
+///    iPhone in the same Apple account restores the key with nothing to remember.
+///    expo-secure-store has no option for this today → needs a config plugin /
+///    tiny native module. // TODO(phase2-native): kSecAttrSynchronizable = true.
+///  - Android Google Block Store custody: back up the key via
+///    `com.google.android.gms.auth.blockstore` (E2E-encryption flag) so it
+///    restores after Google sign-in. // TODO(phase2-native): Block Store module.
 /// The seam is deliberately a single function so those can be layered in without
 /// touching callers.
 export async function getOrCreateMasterKeyPair(): Promise<E2EEKeyPair> {
@@ -84,6 +94,38 @@ export async function getMasterPublicKey(): Promise<string | null> {
   const parsed = safeParseStored(raw);
   if (parsed) return parsed.publicKey;
   return null;
+}
+
+/// Whether a master key already lives on this device. Used by restore to decide
+/// between same-device decrypt (key present) and new-device recovery (key absent
+/// → ask for the recovery phrase / key-file). A malformed stored value counts as
+/// absent — restore will then go through recovery and overwrite it.
+export async function hasMasterKey(): Promise<boolean> {
+  const raw = await SecureStore.getItemAsync(MASTER_KEY_NAME);
+  if (!raw || raw.length === 0) return false;
+  return safeParseStored(raw) != null;
+}
+
+/// Installs a recovered master keypair into secure-store — the new-device path,
+/// after the private key was unwrapped from a backup's recovery header (recovery
+/// phrase) or read from an imported key-file. Derives/normalizes the public key
+/// from the private key so a key-file missing or mismatched on the public half is
+/// healed. After this, `getOrCreateMasterKeyPair` returns the installed pair and
+/// existing backups encrypted to it decrypt locally.
+///
+/// SECURITY: this is the ONLY way the private key enters the device other than
+/// fresh generation; the caller must have obtained it from a user-held artefact
+/// (phrase-unwrapped blob or key-file). It is never fetched from a network.
+export async function installMasterKeyPair(privateKeyB64: string): Promise<E2EEKeyPair> {
+  installExpoCryptoRng();
+  const publicKey = publicKeyFromPrivateKey(privateKeyB64); // throws on a bad key
+  const stored: StoredMasterKey = {
+    privateKey: privateKeyB64,
+    publicKey,
+    createdAt: new Date().toISOString(),
+  };
+  await SecureStore.setItemAsync(MASTER_KEY_NAME, JSON.stringify(stored));
+  return { privateKey: privateKeyB64, publicKey };
 }
 
 function safeParseStored(raw: string): StoredMasterKey | null {
