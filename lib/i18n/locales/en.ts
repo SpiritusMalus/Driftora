@@ -377,7 +377,59 @@ export const en = {
     restoreError: 'Could not restore from the file.',
     restoreWrongKey: 'This file could not be decrypted with this device’s key. A backup made on another phone can’t be restored yet (cross-device key transfer comes later).',
     safetyTitle: 'What to know',
-    safetyNote: 'Your backup is encrypted with your key. Without the backup and the key, no one can restore your data — not even us.',
+    safetyNote: 'Your backup is encrypted with your key. Without a saved recovery phrase or key-file, no one can restore your data — not even us.',
     dbUnavailable: 'Backup is available in a device dev build.',
+  },
+  // Phase 2: user-held recovery fallback (recovery phrase + key-file) so a backup
+  // restores on a NEW device with no server. The copy stays honest about the hard
+  // E2E limit: lose both the phrase and the key-file and the data is gone.
+  recovery: {
+    // Unskippable save-gate, shown when creating a backup.
+    gate: {
+      title: 'Save your recovery phrase',
+      warning:
+        'Without a saved phrase or key-file, no one can restore your data — not even us. That is the price of real end-to-end encryption: only you hold the key.',
+      phraseLabel: 'Your recovery phrase (write it down)',
+      exportKeyFile: 'Save key-file',
+      exportAgain: 'Save key-file again',
+      exportHint:
+        'You can also save a separate key-file (JSON) to a password manager or Files — a power-user alternative to the phrase.',
+      savedAck: 'I have written down the recovery phrase somewhere safe',
+      confirmLabel: 'Confirm: enter the requested groups',
+      groupN: 'Group {{n}}',
+      groupPlaceholder: '6 characters',
+      confirmError: 'The groups do not match. Check that you copied the phrase correctly.',
+      proceed: 'Create backup',
+      working: 'Creating…',
+      cancel: 'Cancel',
+    },
+    // New-device restore: prompt for the recovery phrase.
+    restore: {
+      title: 'Enter your recovery phrase',
+      body: 'This device has no key yet. Enter the recovery phrase from this backup to decrypt your data.',
+      placeholder: 'e.g. abc123 — def456 — ghi789 — jkl012',
+      submit: 'Restore',
+      wrongPhrase: 'Wrong recovery phrase. Check it and try again.',
+      cancel: 'Cancel',
+    },
+    // Power-user key-file path (export/import the raw key as JSON).
+    keyFile: {
+      title: 'Key-file (advanced)',
+      explainer:
+        'A key-file is a copy of your key as JSON. Save it as an alternative to the phrase, or import it to move your key to a new device without typing the phrase. Anyone who gets this file can decrypt your backups — keep it like a password.',
+      exportCta: 'Export key-file',
+      importCta: 'Import key-file',
+      shareTitle: 'Save your key-file',
+      imported: 'Key imported. You can now restore a backup made with this key.',
+      exportError: 'Could not export the key-file.',
+      importError: 'Could not import the key-file.',
+    },
+    // Errors from key-file import (codes map to recovery.ts RecoveryFileError).
+    keyFileError: {
+      invalidFormat: 'Invalid file format. It must be a healthroutine-key.json key-file.',
+      noPrivateKey: 'The file has no private key.',
+      noPublicKey: 'The file has no public key.',
+      mismatch: 'The key-file is corrupt: the keys do not match.',
+    },
   },
 } as const;

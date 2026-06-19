@@ -1,34 +1,52 @@
 import { Paths, File } from 'expo-file-system';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Modal, StyleSheet, Text, View } from 'react-native';
+import { decodeBase64, encodeBase64 } from 'tweetnacl-util';
 
+import { RecoverySaveGate } from '@/components/backup/RecoverySaveGate';
 import { Card } from '@/components/ui/Card';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
-import { Screen } from '@/components/ui/Screen';
+import { Screen, ScreenBackground } from '@/components/ui/Screen';
 import { SectionHeader } from '@/components/ui/SectionHeader';
-import { decryptBlob, encryptBlob } from '@/lib/core/crypto/e2ee';
+import { TextField } from '@/components/ui/TextField';
+import { generateRecoveryPhrase, parseKeyFile, RecoveryFileError, serializeKeyFile } from '@/lib/core/crypto/recovery';
 import { exportAllTables, importAllTables, type BackupDocument } from '@/lib/core/db/backup';
+import {
+  buildBackupFile,
+  decryptBackupBody,
+  parseBackupFile,
+  recoverMasterKeyFromFile,
+} from '@/lib/core/db/backupFile';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
-import { getOrCreateMasterKeyPair } from '@/lib/core/db/keystore';
+import {
+  getOrCreateMasterKeyPair,
+  hasMasterKey,
+  installMasterKeyPair,
+} from '@/lib/core/db/keystore';
 import { type Theme, useTheme } from '@/lib/theme/theme';
 
-/// "Резервная копия" — Phase-1 local encrypted backup & restore (no server).
+/// "Резервная копия" — local encrypted backup & restore (no server), now with the
+/// Phase-2 user-held RECOVERY fallback so a backup restores on a NEW device.
 ///
-/// Backup:  exportAllTables → JSON → encryptBlob(masterPublicKey) → write a file
-///          → OS share-sheet, so the user saves it to THEIR OWN cloud (iCloud
-///          Drive / Files / Google Drive). The blob is encrypted to the device's
-///          X25519 master key, which never leaves expo-secure-store.
-/// Restore: pick a file → decryptBlob(masterPrivateKey) → importAllTables
-///          (replace-all). Local SQLite stays the source of truth.
+/// Backup:  exportAllTables → JSON → buildBackupFile (encryptBlob body to the
+///          master PUBLIC key + a recovery header = master PRIVATE key wrapped
+///          under a recovery phrase) → write file → OS share-sheet (the user's own
+///          cloud). The unskippable save-gate forces the user to save the phrase /
+///          key-file before the file is written.
+/// Restore: pick a file → if this device has no master key (fresh install), ask
+///          for the recovery phrase → unwrap + install the key → decrypt body →
+///          importAllTables. If the key is already here, decrypt directly.
+/// Key-file: a power-user path — export the raw key as JSON, or import one to
+///          install the master key without a phrase.
 ///
-/// This screen is the thin native glue (file IO + share/pick). All crypto and
-/// DB logic lives in `lib/core/crypto/e2ee.ts` + `lib/core/db/backup.ts`, which
-/// are unit-tested in node.
+/// All crypto + DB logic lives in `lib/core/crypto/{e2ee,recovery}.ts` +
+/// `lib/core/db/{backup,backupFile}.ts` (unit-tested in node); this screen is the
+/// thin native glue (file IO + share/pick + the recovery UX).
 ///
-/// Phase-2 seams (NOT implemented here): a biometric prompt before reading the
-/// key; same-ecosystem "no phrase needed" restore via platform key custody; and
-/// a recovery phrase / key-file fallback. See `keystore.getOrCreateMasterKeyPair`.
+/// NATIVE seams (NOT implemented — need a dev build): biometric unlock before the
+/// key read; same-ecosystem "no phrase needed" restore via iCloud Keychain /
+/// Google Block Store custody. See `keystore.getOrCreateMasterKeyPair`.
 type Status =
   | { kind: 'idle' }
   | { kind: 'working'; op: 'backup' | 'restore' }
@@ -36,32 +54,56 @@ type Status =
   | { kind: 'error'; message: string };
 
 const BACKUP_EXTENSION = 'hrbackup';
+const KEYFILE_NAME = 'healthroutine-key.json';
 
 export default function BackupScreen() {
   const { t } = useTranslation();
   const theme = useTheme();
+  const promptStyles = makePromptStyles(theme);
   const db = useDatabase();
   const [status, setStatus] = useState<Status>({ kind: 'idle' });
 
+  // Save-gate overlay: when set, we have generated a phrase and are blocking on
+  // the user saving it before the backup file is written.
+  const [gatePhrase, setGatePhrase] = useState<string | null>(null);
+  const [gateBusy, setGateBusy] = useState(false);
+
+  // Restore-by-phrase prompt: holds the picked-but-not-yet-decrypted file when a
+  // fresh device needs the recovery phrase.
+  const [phrasePrompt, setPhrasePrompt] = useState<{ recovery: string; bodyB64: string } | null>(
+    null,
+  );
+  const [phraseInput, setPhraseInput] = useState('');
+  const [phraseError, setPhraseError] = useState(false);
+
   const working = status.kind === 'working';
 
-  async function onBackup() {
+  // ── Backup ────────────────────────────────────────────────────────────────
+  /// Start a backup: generate a recovery phrase and open the save-gate. The file
+  /// is only written after the user confirms they saved the phrase (in the gate).
+  function onStartBackup() {
     if (!db || working) return;
-    setStatus({ kind: 'working', op: 'backup' });
+    setStatus({ kind: 'idle' });
+    setGatePhrase(generateRecoveryPhrase());
+  }
+
+  /// Called by the save-gate once the user has saved + confirmed the phrase. Builds
+  /// the recovery-enabled backup file and hands it to the share-sheet.
+  async function onGateConfirmed() {
+    if (!db || gatePhrase == null) return;
+    setGateBusy(true);
     try {
       const doc = await exportAllTables(db);
-      const json = JSON.stringify(doc);
-      const bytes = new TextEncoder().encode(json);
+      const master = await getOrCreateMasterKeyPair();
+      const fileBytes = await buildBackupFile(doc, master, gatePhrase);
 
-      const { publicKey } = await getOrCreateMasterKeyPair();
-      const blob = encryptBlob(bytes, publicKey);
-
-      // Write the encrypted blob to a cache file, then hand it to the OS
-      // share-sheet so the user picks where it goes (their cloud, not ours).
       const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
       const file = new File(Paths.cache, `healthroutine-backup-${stamp}.${BACKUP_EXTENSION}`);
       file.create({ overwrite: true });
-      file.write(blob);
+      file.write(fileBytes);
+
+      setGatePhrase(null);
+      setGateBusy(false);
 
       const Sharing = await import('expo-sharing');
       if (await Sharing.isAvailableAsync()) {
@@ -71,14 +113,73 @@ export default function BackupScreen() {
         });
         setStatus({ kind: 'done', message: t('backup.backupDone') });
       } else {
-        // No share-sheet (e.g. some emulators) — the file still exists locally.
         setStatus({ kind: 'done', message: t('backup.savedLocally', { path: file.uri }) });
       }
     } catch (e) {
+      setGatePhrase(null);
+      setGateBusy(false);
       setStatus({ kind: 'error', message: messageFrom(e, t('backup.backupError')) });
     }
   }
 
+  /// Export the raw master key as a JSON key-file (power-user fallback). Available
+  /// both from the save-gate and as its own button.
+  async function onExportKeyFile() {
+    try {
+      const master = await getOrCreateMasterKeyPair();
+      const json = serializeKeyFile(master);
+      const file = new File(Paths.cache, KEYFILE_NAME);
+      file.create({ overwrite: true });
+      file.write(new TextEncoder().encode(json));
+
+      const Sharing = await import('expo-sharing');
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(file.uri, {
+          mimeType: 'application/json',
+          dialogTitle: t('recovery.keyFile.shareTitle'),
+        });
+      } else {
+        setStatus({ kind: 'done', message: t('backup.savedLocally', { path: file.uri }) });
+      }
+    } catch (e) {
+      setStatus({ kind: 'error', message: messageFrom(e, t('recovery.keyFile.exportError')) });
+    }
+  }
+
+  /// Import a key-file: validate it (keyPairMatches), then install the master key.
+  /// Lets a fresh device restore a backup without typing the recovery phrase.
+  async function onImportKeyFile() {
+    if (working) return;
+    setStatus({ kind: 'working', op: 'restore' });
+    try {
+      const DocumentPicker = await import('expo-document-picker');
+      const picked = await DocumentPicker.getDocumentAsync({
+        type: '*/*',
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      if (picked.canceled || !picked.assets?.[0]) {
+        setStatus({ kind: 'idle' });
+        return;
+      }
+      const file = new File(picked.assets[0].uri);
+      const text = new TextDecoder().decode(await file.bytes());
+      let pair;
+      try {
+        pair = parseKeyFile(text);
+      } catch (e) {
+        const code = e instanceof RecoveryFileError ? e.code : 'invalidFormat';
+        setStatus({ kind: 'error', message: t(`recovery.keyFileError.${code}`) });
+        return;
+      }
+      await installMasterKeyPair(pair.privateKey);
+      setStatus({ kind: 'done', message: t('recovery.keyFile.imported') });
+    } catch (e) {
+      setStatus({ kind: 'error', message: messageFrom(e, t('recovery.keyFile.importError')) });
+    }
+  }
+
+  // ── Restore ───────────────────────────────────────────────────────────────
   async function onRestore() {
     if (!db || working) return;
     setStatus({ kind: 'working', op: 'restore' });
@@ -95,21 +196,70 @@ export default function BackupScreen() {
       }
 
       const file = new File(picked.assets[0].uri);
-      const blob = await file.bytes();
+      const fileBytes = await file.bytes();
 
-      const { privateKey } = await getOrCreateMasterKeyPair();
+      let parsed;
+      try {
+        parsed = parseBackupFile(fileBytes);
+      } catch {
+        setStatus({ kind: 'error', message: t('backup.restoreError') });
+        return;
+      }
+
+      // New device with no master key + a recovery header → ask for the phrase.
+      const keyHere = await hasMasterKey();
+      if (!keyHere && parsed.recovery) {
+        setPhrasePrompt({ recovery: parsed.recovery, bodyB64: encodeBase64(parsed.bodyCiphertext) });
+        setPhraseInput('');
+        setPhraseError(false);
+        setStatus({ kind: 'idle' });
+        return;
+      }
+
+      // Otherwise decrypt with the on-device master key (same device, or a legacy
+      // Phase-1 file). A wrong key / corrupt file surfaces an honest message.
+      const master = await getOrCreateMasterKeyPair();
       let doc: BackupDocument;
       try {
-        const plaintext = decryptBlob(blob, privateKey);
-        doc = JSON.parse(new TextDecoder().decode(plaintext)) as BackupDocument;
+        doc = decryptBackupBody(parsed, master.privateKey);
       } catch {
-        // Either the wrong key (a backup from another device/key) or a corrupt /
-        // non-backup file. Be honest about the limit.
         setStatus({ kind: 'error', message: t('backup.restoreWrongKey') });
         return;
       }
 
       await importAllTables(db, doc);
+      setStatus({ kind: 'done', message: t('backup.restoreDone') });
+    } catch (e) {
+      setStatus({ kind: 'error', message: messageFrom(e, t('backup.restoreError')) });
+    }
+  }
+
+  /// Finish a new-device restore once the user has entered the recovery phrase:
+  /// unwrap + install the master key, then decrypt + import.
+  async function onSubmitPhrase() {
+    if (!db || phrasePrompt == null) return;
+    setStatus({ kind: 'working', op: 'restore' });
+    try {
+      const parsed = {
+        bodyCiphertext: decodeBase64(phrasePrompt.bodyB64),
+        recovery: phrasePrompt.recovery,
+        legacy: false,
+      };
+
+      let privateKey: string;
+      try {
+        privateKey = await recoverMasterKeyFromFile(parsed, phraseInput);
+      } catch {
+        setPhraseError(true);
+        setStatus({ kind: 'idle' });
+        return;
+      }
+
+      await installMasterKeyPair(privateKey);
+      const doc = decryptBackupBody(parsed, privateKey);
+      await importAllTables(db, doc);
+
+      setPhrasePrompt(null);
       setStatus({ kind: 'done', message: t('backup.restoreDone') });
     } catch (e) {
       setStatus({ kind: 'error', message: messageFrom(e, t('backup.restoreError')) });
@@ -130,7 +280,7 @@ export default function BackupScreen() {
       <Note theme={theme}>{t('backup.backupExplainer')}</Note>
       <PrimaryButton
         label={status.kind === 'working' && status.op === 'backup' ? t('backup.working') : t('backup.backupCta')}
-        onPress={onBackup}
+        onPress={onStartBackup}
         disabled={db == null || working}
         style={styles.btn}
       />
@@ -165,8 +315,79 @@ export default function BackupScreen() {
         </Card>
       ) : null}
 
+      {/* Power-user key-file path. */}
+      <SectionHeader>{t('recovery.keyFile.title')}</SectionHeader>
+      <Note theme={theme}>{t('recovery.keyFile.explainer')}</Note>
+      <PrimaryButton label={t('recovery.keyFile.exportCta')} onPress={onExportKeyFile} disabled={working} style={styles.btn} />
+      <PrimaryButton label={t('recovery.keyFile.importCta')} onPress={onImportKeyFile} disabled={working} style={styles.btn} />
+
       <SectionHeader>{t('backup.safetyTitle')}</SectionHeader>
       <Note theme={theme}>{t('backup.safetyNote')}</Note>
+
+      {/* Unskippable save-gate, shown when starting a backup. */}
+      <Modal visible={gatePhrase != null} animationType="slide" onRequestClose={() => !gateBusy && setGatePhrase(null)}>
+        <ScreenBackground>
+          {gatePhrase != null ? (
+            <RecoverySaveGate
+              phrase={gatePhrase}
+              busy={gateBusy}
+              onExportKeyFile={onExportKeyFile}
+              onConfirmed={onGateConfirmed}
+              onCancel={() => {
+                if (!gateBusy) setGatePhrase(null);
+              }}
+            />
+          ) : null}
+        </ScreenBackground>
+      </Modal>
+
+      {/* Recovery-phrase prompt for a new-device restore. */}
+      <Modal
+        visible={phrasePrompt != null}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setPhrasePrompt(null)}
+      >
+        <View style={promptStyles.promptOverlay}>
+          <Card style={promptStyles.promptCard}>
+            <Text style={[promptStyles.promptTitle, { color: theme.text }, theme.font.bodyBold]}>
+              {t('recovery.restore.title')}
+            </Text>
+            <Text style={[promptStyles.promptBody, { color: theme.subtle }, theme.font.body]}>
+              {t('recovery.restore.body')}
+            </Text>
+            <TextField
+              value={phraseInput}
+              onChangeText={(v) => {
+                setPhraseInput(v);
+                setPhraseError(false);
+              }}
+              autoCapitalize="none"
+              autoCorrect={false}
+              multiline
+              placeholder={t('recovery.restore.placeholder')}
+              style={promptStyles.promptInput}
+            />
+            {phraseError ? (
+              <Text style={[promptStyles.promptError, { color: theme.primary }, theme.font.body]}>
+                {t('recovery.restore.wrongPhrase')}
+              </Text>
+            ) : null}
+            <PrimaryButton
+              label={working ? t('backup.working') : t('recovery.restore.submit')}
+              onPress={onSubmitPhrase}
+              disabled={working || phraseInput.trim().length === 0}
+              style={styles.btn}
+            />
+            <Text
+              onPress={() => setPhrasePrompt(null)}
+              style={[promptStyles.promptCancel, { color: theme.subtle }, theme.font.body]}
+            >
+              {t('recovery.restore.cancel')}
+            </Text>
+          </Card>
+        </View>
+      </Modal>
     </Screen>
   );
 }
@@ -188,3 +409,22 @@ const styles = StyleSheet.create({
   statusCard: { marginTop: 16, paddingHorizontal: 14, paddingVertical: 12 },
   statusText: { fontSize: 13, lineHeight: 18 },
 });
+
+/// Themed styles for the recovery-phrase prompt (the only ones that depend on the
+/// theme — the card background). Everything static lives in `styles` above.
+function makePromptStyles(theme: Theme) {
+  return StyleSheet.create({
+    promptOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.45)',
+      justifyContent: 'center',
+      padding: 20,
+    },
+    promptCard: { backgroundColor: theme.card },
+    promptTitle: { fontSize: 18, marginBottom: 8 },
+    promptBody: { fontSize: 13, lineHeight: 19, marginBottom: 12 },
+    promptInput: { minHeight: 64 },
+    promptError: { fontSize: 13, marginTop: 8 },
+    promptCancel: { fontSize: 14, textAlign: 'center', marginTop: 14, padding: 6 },
+  });
+}
