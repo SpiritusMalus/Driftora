@@ -74,7 +74,12 @@ CREATE TABLE IF NOT EXISTS app_settings (
   llm_diary_assist INTEGER NOT NULL DEFAULT 0,
   paused INTEGER NOT NULL DEFAULT 0,
   show_population_stats INTEGER NOT NULL DEFAULT 0,
-  region TEXT NOT NULL DEFAULT 'auto'
+  region TEXT NOT NULL DEFAULT 'auto',
+  legal_accepted_version TEXT NOT NULL DEFAULT '',
+  legal_accepted_at INTEGER,
+  ai_food_parse_consent INTEGER NOT NULL DEFAULT 0,
+  ai_food_parse_consent_at INTEGER,
+  ai_food_parse_consent_version TEXT NOT NULL DEFAULT ''
 );
 `;
 
@@ -87,6 +92,14 @@ CREATE TABLE IF NOT EXISTS app_settings (
 export const MIGRATIONS: string[] = [
   // 2026-06-18: region override for the food parser (BUILD-SPEC finalize, part B).
   `ALTER TABLE app_settings ADD COLUMN region TEXT NOT NULL DEFAULT 'auto'`,
+  // 2026-06-19: РКН-safe AI consent (TASK-2026-06-19-rkn-ai-consent). Two
+  // SEPARATE consents — general app Terms/Privacy, and the opt-in cross-border
+  // food→AI transfer — plus their captured-fact timestamps/versions.
+  `ALTER TABLE app_settings ADD COLUMN legal_accepted_version TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE app_settings ADD COLUMN legal_accepted_at INTEGER`,
+  `ALTER TABLE app_settings ADD COLUMN ai_food_parse_consent INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE app_settings ADD COLUMN ai_food_parse_consent_at INTEGER`,
+  `ALTER TABLE app_settings ADD COLUMN ai_food_parse_consent_version TEXT NOT NULL DEFAULT ''`,
 ];
 
 /// Runs each CREATE statement through [run], then the idempotent [MIGRATIONS].

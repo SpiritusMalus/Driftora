@@ -32,6 +32,14 @@ export interface SettingsPatch {
   paused?: boolean;
   showPopulationStats?: boolean;
   region?: 'auto' | 'RU' | 'US';
+  // РКН-safe consent fields — see schema.ts. The two consents are independent;
+  // helpers in `lib/core/consent/consent.ts` set them with the right version +
+  // timestamp so callers never have to remember the audit-trail bookkeeping.
+  legalAcceptedVersion?: string;
+  legalAcceptedAt?: number | null;
+  aiFoodParseConsent?: boolean;
+  aiFoodParseConsentAt?: number | null;
+  aiFoodParseConsentVersion?: string;
 }
 
 /// Applies a partial update to the single settings row, returning the result.
@@ -52,6 +60,13 @@ export async function updateSettings(
   if (patch.paused != null) set.paused = patch.paused;
   if (patch.showPopulationStats != null) set.showPopulationStats = patch.showPopulationStats;
   if (patch.region != null) set.region = patch.region;
+  if (patch.legalAcceptedVersion != null) set.legalAcceptedVersion = patch.legalAcceptedVersion;
+  // `…At` fields accept an explicit null (clearing consent on AI-off), so probe
+  // for `undefined` — `!= null` would drop a deliberate null.
+  if (patch.legalAcceptedAt !== undefined) set.legalAcceptedAt = patch.legalAcceptedAt;
+  if (patch.aiFoodParseConsent != null) set.aiFoodParseConsent = patch.aiFoodParseConsent;
+  if (patch.aiFoodParseConsentAt !== undefined) set.aiFoodParseConsentAt = patch.aiFoodParseConsentAt;
+  if (patch.aiFoodParseConsentVersion != null) set.aiFoodParseConsentVersion = patch.aiFoodParseConsentVersion;
   if (Object.keys(set).length > 0) {
     await db.update(appSettings).set(set).where(eq(appSettings.id, 0));
   }

@@ -60,13 +60,16 @@
     "testEnvironment": "node",
     "testPathIgnorePatterns": [
       "/node_modules/",
-      "/server/"
+      "/server/",
+      "/.claude/"
     ],
     "transform": {
       "^.+\\.(ts|tsx|js|jsx)$": "babel-jest"
     },
     "moduleNameMapper": {
-      "^@/(.*)$": "<rootDir>/$1"
+      "^@/(.*)$": "<rootDir>/$1",
+      "^expo-localization$": "<rootDir>/__mocks__/expo-localization.ts",
+      "^expo/virtual/env$": "<rootDir>/__mocks__/expo-virtual-env.ts"
     }
   },
   "private": true

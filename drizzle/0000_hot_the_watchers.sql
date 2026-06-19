@@ -10,7 +10,12 @@ CREATE TABLE `app_settings` (
 	`hide_calories` integer DEFAULT false NOT NULL,
 	`llm_diary_assist` integer DEFAULT false NOT NULL,
 	`paused` integer DEFAULT false NOT NULL,
-	`show_population_stats` integer DEFAULT false NOT NULL
+	`show_population_stats` integer DEFAULT false NOT NULL,
+	`legal_accepted_version` text DEFAULT '' NOT NULL,
+	`legal_accepted_at` integer,
+	`ai_food_parse_consent` integer DEFAULT false NOT NULL,
+	`ai_food_parse_consent_at` integer,
+	`ai_food_parse_consent_version` text DEFAULT '' NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE `diary_entries` (

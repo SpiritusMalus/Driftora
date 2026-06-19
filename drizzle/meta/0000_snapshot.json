@@ -102,6 +102,44 @@
           "notNull": true,
           "autoincrement": false,
           "default": false
+        },
+        "legal_accepted_version": {
+          "name": "legal_accepted_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "''"
+        },
+        "legal_accepted_at": {
+          "name": "legal_accepted_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "ai_food_parse_consent": {
+          "name": "ai_food_parse_consent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "ai_food_parse_consent_at": {
+          "name": "ai_food_parse_consent_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "ai_food_parse_consent_version": {
+          "name": "ai_food_parse_consent_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "''"
         }
       },
       "indexes": {},

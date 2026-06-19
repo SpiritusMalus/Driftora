@@ -3,14 +3,18 @@ import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 
+import { ConsentModal } from '@/components/consent/ConsentModal';
+import { LegalReader } from '@/components/legal/LegalReader';
 import { Card } from '@/components/ui/Card';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { TextField } from '@/components/ui/TextField';
+import { grantAiConsent, needsAiConsent, revokeAiConsent } from '@/lib/core/consent/consent';
 import { getDbDriver } from '@/lib/core/db/client';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { ensureSettings, parseReminderTimes, updateSettings } from '@/lib/core/db/settings';
+import type { LegalDoc } from '@/lib/legal/documents';
 import { getNotificationService } from '@/lib/core/services/notificationProvider';
 import { buildDailyReminders, rescheduleReminders } from '@/lib/core/services/reminders';
 import { nextReminder } from '@/lib/core/services/reminderSchedule';
@@ -41,6 +45,12 @@ export default function SettingsScreen() {
   const [region, setRegion] = useState<'auto' | 'RU' | 'US'>('auto');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  // Cross-border AI consent — persisted immediately on toggle (not via Save),
+  // since it is a consent action. Version drives the re-prompt logic.
+  const [aiConsent, setAiConsent] = useState(false);
+  const [aiConsentVersion, setAiConsentVersion] = useState('');
+  const [aiPromptVisible, setAiPromptVisible] = useState(false);
+  const [reader, setReader] = useState<LegalDoc | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -60,6 +70,8 @@ export default function SettingsScreen() {
         setPaused(s.paused);
         setShowPopulationStats(s.showPopulationStats);
         setRegion(s.region);
+        setAiConsent(s.aiFoodParseConsent);
+        setAiConsentVersion(s.aiFoodParseConsentVersion);
         setLoaded(true);
       })();
       return () => {
@@ -119,6 +131,38 @@ export default function SettingsScreen() {
     } catch (e) {
       console.warn('reminder scheduling failed', e);
     }
+  }
+
+  /// AI toggle. ON → run the just-in-time consent capture (§B); the switch only
+  /// moves to ON once accepted. OFF → revoke immediately and fall back to the
+  /// offline stub. Consent is persisted here, independent of the Save button.
+  async function onToggleAi(next: boolean) {
+    if (!db) return;
+    if (next) {
+      if (needsAiConsent({ aiFoodParseConsent: aiConsent, aiFoodParseConsentVersion: aiConsentVersion })) {
+        setAiPromptVisible(true);
+        return;
+      }
+      // Already consented at the current version — just reflect it.
+      setAiConsent(true);
+    } else {
+      await revokeAiConsent(db);
+      setAiConsent(false);
+    }
+  }
+
+  async function onAiConsentAccept() {
+    setAiPromptVisible(false);
+    if (!db) return;
+    await grantAiConsent(db);
+    const s = await ensureSettings(db);
+    setAiConsent(s.aiFoodParseConsent);
+    setAiConsentVersion(s.aiFoodParseConsentVersion);
+  }
+
+  function onAiConsentDecline() {
+    setAiPromptVisible(false);
+    // Toggle never moved to ON; consent stays false → offline stub.
   }
 
   return (
@@ -199,10 +243,25 @@ export default function SettingsScreen() {
       <Note theme={theme}>{t('settings.regionNote')}</Note>
 
       <SectionHeader>{t('settings.flags')}</SectionHeader>
+      <Note theme={theme}>{t('settings.privacyLine')}</Note>
+      {/* AI food recognition — bound to aiFoodParseConsent, OFF by default.
+          Persisted immediately (consent action), not via the Save button. */}
+      <ToggleRow label={t('settings.aiToggle')} value={aiConsent} onChange={onToggleAi} theme={theme} />
+      <Note theme={theme}>{aiConsent ? t('settings.aiOn') : t('settings.aiOff')}</Note>
       <ToggleRow label={t('settings.hideCalories')} value={hideCalories} onChange={(v) => { setHideCalories(v); dirty(); }} theme={theme} />
       <ToggleRow label={t('settings.llmDiaryAssist')} value={llmDiaryAssist} onChange={(v) => { setLlmDiaryAssist(v); dirty(); }} theme={theme} />
       <ToggleRow label={t('settings.showPopulationStats')} value={showPopulationStats} onChange={(v) => { setShowPopulationStats(v); dirty(); }} theme={theme} />
       <Note theme={theme}>{t('settings.showPopulationStatsNote')}</Note>
+
+      <SectionHeader>{t('legal.privacy')}</SectionHeader>
+      <Card style={styles.toggleRow} padded={false} onPress={() => setReader('terms')}>
+        <Text style={[styles.toggleLabel, { color: theme.text }, theme.font.body]}>{t('legal.terms')}</Text>
+        <Text style={{ color: theme.primary, fontSize: 20 }}>›</Text>
+      </Card>
+      <Card style={styles.toggleRow} padded={false} onPress={() => setReader('privacy')}>
+        <Text style={[styles.toggleLabel, { color: theme.text }, theme.font.body]}>{t('legal.privacy')}</Text>
+        <Text style={{ color: theme.primary, fontSize: 20 }}>›</Text>
+      </Card>
 
       {db != null
         ? (() => {
@@ -230,6 +289,18 @@ export default function SettingsScreen() {
         disabled={db == null || saving}
         style={styles.save}
       />
+
+      <ConsentModal
+        visible={aiPromptVisible}
+        title={t('consent.ai.title')}
+        body={t('consent.ai.body')}
+        confirmLabel={t('consent.ai.accept')}
+        declineLabel={t('consent.ai.decline')}
+        declineCaption={t('consent.ai.declineCaption')}
+        onConfirm={onAiConsentAccept}
+        onDecline={onAiConsentDecline}
+      />
+      <LegalReader doc={reader} visible={reader != null} onClose={() => setReader(null)} />
     </Screen>
   );
 }
