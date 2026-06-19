@@ -186,6 +186,45 @@ export function decryptBlob(blob: Uint8Array, privateKeyB64: string): Uint8Array
   return plaintext;
 }
 
+/**
+ * Solves a server-issued login challenge — the client half of the passwordless
+ * "login by key" flow used by the sync server (`sync-server/`, lifted from
+ * LawDocs). The server encrypts a random nonce TO the account's public key with an
+ * anonymous box and sends the base64 blob; only the holder of the matching private
+ * key can recover the nonce, which is returned (base64) as proof of possession.
+ *
+ * The challenge blob is exactly the LawDocs `key_blob` layout WITHOUT a bulk layer
+ * (the payload IS the nonce, wrapped directly):
+ *
+ *   blob = box_nonce[24] | ephemeralPub[32] | nacl_box(nonce)[nonce.len + 16]
+ *
+ * which is the same construction `encryptBlob` uses for its wrapped symmetric key.
+ * This is the TS twin of the server's `e2ee_box.encrypt_for_public_key` /
+ * `tests/helpers.solve_challenge`.
+ *
+ * @returns the decrypted nonce as base64 — what the server's `/v1/auth/login`
+ *   expects in its `nonce` field.
+ * @throws if the blob is malformed/too short or the private key can't open it
+ *   (wrong key / tampered challenge). NEVER sends the private key anywhere.
+ */
+export function solveChallenge(encryptedChallengeB64: string, privateKeyB64: string): string {
+  const blob = decodeBase64(encryptedChallengeB64);
+  if (blob.length < NONCE_LENGTH + PUBLIC_KEY_LENGTH + nacl.box.overheadLength) {
+    throw new Error('e2ee: challenge blob too short');
+  }
+  const privateKey = decodeBase64(privateKeyB64);
+
+  const boxNonce = blob.slice(0, NONCE_LENGTH);
+  const ephemeralPub = blob.slice(NONCE_LENGTH, NONCE_LENGTH + PUBLIC_KEY_LENGTH);
+  const wrapped = blob.slice(NONCE_LENGTH + PUBLIC_KEY_LENGTH);
+
+  const nonce = nacl.box.open(wrapped, boxNonce, ephemeralPub, privateKey);
+  if (!nonce) {
+    throw new Error('e2ee: could not solve challenge (wrong key or corrupt data)');
+  }
+  return encodeBase64(nonce);
+}
+
 /** The fixed length of the key-wrapping header, exported for tests/format checks. */
 export const KEY_BLOB_BYTES = KEY_BLOB_LENGTH;
 export const SECRETBOX_NONCE_BYTES = SECRETBOX_NONCE_LENGTH;

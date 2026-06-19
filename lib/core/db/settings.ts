@@ -40,6 +40,10 @@ export interface SettingsPatch {
   aiFoodParseConsent?: boolean;
   aiFoodParseConsentAt?: number | null;
   aiFoodParseConsentVersion?: string;
+  // Opt-in server-backed E2E sync (Phase 3). Independent of the AI consent above.
+  syncEnabled?: boolean;
+  syncConsentAt?: number | null;
+  syncConsentVersion?: string;
 }
 
 /// Applies a partial update to the single settings row, returning the result.
@@ -67,6 +71,10 @@ export async function updateSettings(
   if (patch.aiFoodParseConsent != null) set.aiFoodParseConsent = patch.aiFoodParseConsent;
   if (patch.aiFoodParseConsentAt !== undefined) set.aiFoodParseConsentAt = patch.aiFoodParseConsentAt;
   if (patch.aiFoodParseConsentVersion != null) set.aiFoodParseConsentVersion = patch.aiFoodParseConsentVersion;
+  if (patch.syncEnabled != null) set.syncEnabled = patch.syncEnabled;
+  // `…At` accepts an explicit null (clearing consent on sync-off) — probe undefined.
+  if (patch.syncConsentAt !== undefined) set.syncConsentAt = patch.syncConsentAt;
+  if (patch.syncConsentVersion != null) set.syncConsentVersion = patch.syncConsentVersion;
   if (Object.keys(set).length > 0) {
     await db.update(appSettings).set(set).where(eq(appSettings.id, 0));
   }

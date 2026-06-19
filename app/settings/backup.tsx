@@ -1,7 +1,7 @@
 import { Paths, File } from 'expo-file-system';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, Modal, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Modal, StyleSheet, Switch, Text, View } from 'react-native';
 import { decodeBase64, encodeBase64 } from 'tweetnacl-util';
 
 import { RecoverySaveGate } from '@/components/backup/RecoverySaveGate';
@@ -10,6 +10,7 @@ import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen, ScreenBackground } from '@/components/ui/Screen';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { TextField } from '@/components/ui/TextField';
+import { grantSyncConsent, revokeSyncConsent } from '@/lib/core/consent/consent';
 import { generateRecoveryPhrase, parseKeyFile, RecoveryFileError, serializeKeyFile } from '@/lib/core/crypto/recovery';
 import { exportAllTables, importAllTables, type BackupDocument } from '@/lib/core/db/backup';
 import {
@@ -24,6 +25,7 @@ import {
   hasMasterKey,
   installMasterKeyPair,
 } from '@/lib/core/db/keystore';
+import { ensureSettings } from '@/lib/core/db/settings';
 import { type Theme, useTheme } from '@/lib/theme/theme';
 
 /// "Резервная копия" — local encrypted backup & restore (no server), now with the
@@ -76,7 +78,40 @@ export default function BackupScreen() {
   const [phraseInput, setPhraseInput] = useState('');
   const [phraseError, setPhraseError] = useState(false);
 
+  // Server-backed sync opt-in (Phase 3). Default OFF; persisted immediately on
+  // toggle (a consent action), like the food→AI consent. The actual push/pull is
+  // the dev-build sync client (lib/core/sync/syncClient.ts), gated on this flag.
+  const [syncEnabled, setSyncEnabled] = useState(false);
+
   const working = status.kind === 'working';
+
+  // Load the persisted sync opt-in once the DB is ready.
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      if (!db) return;
+      const s = await ensureSettings(db);
+      if (active) setSyncEnabled(s.syncEnabled);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [db]);
+
+  /// Sync toggle. ON → record consent (epoch + version) and flip on. OFF → revoke
+  /// immediately; the sync client then refuses to transfer. Local data and any
+  /// saved backups are untouched either way. No network call happens here — this
+  /// only sets the opt-in; transfers run from the sync client on a dev build.
+  async function onToggleSync(next: boolean) {
+    if (!db) return;
+    if (next) {
+      await grantSyncConsent(db);
+      setSyncEnabled(true);
+    } else {
+      await revokeSyncConsent(db);
+      setSyncEnabled(false);
+    }
+  }
 
   // ── Backup ────────────────────────────────────────────────────────────────
   /// Start a backup: generate a recovery phrase and open the save-gate. The file
@@ -321,6 +356,25 @@ export default function BackupScreen() {
       <PrimaryButton label={t('recovery.keyFile.exportCta')} onPress={onExportKeyFile} disabled={working} style={styles.btn} />
       <PrimaryButton label={t('recovery.keyFile.importCta')} onPress={onImportKeyFile} disabled={working} style={styles.btn} />
 
+      {/* Server-backed E2E sync — opt-in, OFF by default. Honest copy: the data is
+          stored encrypted and the server cannot read it. */}
+      <SectionHeader>{t('backup.sync.title')}</SectionHeader>
+      <Note theme={theme}>{t('backup.sync.explainer')}</Note>
+      <Card style={styles.toggleRow} padded={false}>
+        <Text style={[styles.toggleLabel, { color: theme.text }, theme.font.body]}>
+          {t('backup.sync.toggle')}
+        </Text>
+        <Switch
+          value={syncEnabled}
+          onValueChange={onToggleSync}
+          disabled={db == null}
+          trackColor={{ true: theme.primary, false: theme.separator }}
+          ios_backgroundColor={theme.separator}
+        />
+      </Card>
+      <Note theme={theme}>{syncEnabled ? t('backup.sync.on') : t('backup.sync.off')}</Note>
+      <Note theme={theme}>{t('backup.sync.limitNote')}</Note>
+
       <SectionHeader>{t('backup.safetyTitle')}</SectionHeader>
       <Note theme={theme}>{t('backup.safetyNote')}</Note>
 
@@ -408,6 +462,15 @@ const styles = StyleSheet.create({
   statusRow: { marginTop: 16, alignItems: 'center' },
   statusCard: { marginTop: 16, paddingHorizontal: 14, paddingVertical: 12 },
   statusText: { fontSize: 13, lineHeight: 18 },
+  toggleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginTop: 12,
+  },
+  toggleLabel: { fontSize: 14, flex: 1, paddingRight: 12 },
 });
 
 /// Themed styles for the recovery-phrase prompt (the only ones that depend on the

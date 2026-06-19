@@ -115,6 +115,16 @@ export const appSettings = sqliteTable('app_settings', {
     .default(false),
   aiFoodParseConsentAt: integer('ai_food_parse_consent_at'),
   aiFoodParseConsentVersion: text('ai_food_parse_consent_version').notNull().default(''),
+  // SPECIFIC, opt-in consent to server-backed E2E sync (Phase 3). Ships FALSE:
+  // the sync client refuses to push/pull until this is true (see
+  // lib/core/sync/syncClient.ts). Data is end-to-end encrypted before upload and
+  // the server cannot read it, but sync is still a network transfer of (encrypted)
+  // health data to OUR server, so it is gated by its own explicit consent —
+  // SEPARATE from the AI consent above (152-ФЗ bans bundled consent). The
+  // `…At`/`…Version` record the consent fact for the audit trail.
+  syncEnabled: integer('sync_enabled', { mode: 'boolean' }).notNull().default(false),
+  syncConsentAt: integer('sync_consent_at'),
+  syncConsentVersion: text('sync_consent_version').notNull().default(''),
 });
 
 export type AppSettings = typeof appSettings.$inferSelect;
