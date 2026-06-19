@@ -379,6 +379,18 @@ export const en = {
     safetyTitle: 'What to know',
     safetyNote: 'Your backup is encrypted with your key. Without a saved recovery phrase or key-file, no one can restore your data — not even us.',
     dbUnavailable: 'Backup is available in a device dev build.',
+    // Phase 3: server-backed E2E sync. Off by default; honest that the data is
+    // stored encrypted and the server can't read it.
+    sync: {
+      title: 'Sync across devices',
+      toggle: 'Sync through our server',
+      explainer:
+        'Your data is encrypted on this device with your key, and only then is the encrypted copy sent to our server. We store just the encrypted file and cannot read it — the key stays with you. Sign-in is proven with your key, not a password.',
+      on: 'Sync is on. An encrypted copy will be sent to the server and downloaded on your other devices.',
+      off: 'Off. Until you turn sync on, nothing is sent to the server — your data stays only on this device.',
+      limitNote:
+        'The server only ever sees the encrypted file and metadata (when it was updated, its size, a device id). It cannot be decrypted without your key — not even by us.',
+    },
   },
   // Phase 2: user-held recovery fallback (recovery phrase + key-file) so a backup
   // restores on a NEW device with no server. The copy stays honest about the hard

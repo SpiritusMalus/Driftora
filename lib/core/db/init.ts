@@ -79,7 +79,10 @@ CREATE TABLE IF NOT EXISTS app_settings (
   legal_accepted_at INTEGER,
   ai_food_parse_consent INTEGER NOT NULL DEFAULT 0,
   ai_food_parse_consent_at INTEGER,
-  ai_food_parse_consent_version TEXT NOT NULL DEFAULT ''
+  ai_food_parse_consent_version TEXT NOT NULL DEFAULT '',
+  sync_enabled INTEGER NOT NULL DEFAULT 0,
+  sync_consent_at INTEGER,
+  sync_consent_version TEXT NOT NULL DEFAULT ''
 );
 `;
 
@@ -100,6 +103,11 @@ export const MIGRATIONS: string[] = [
   `ALTER TABLE app_settings ADD COLUMN ai_food_parse_consent INTEGER NOT NULL DEFAULT 0`,
   `ALTER TABLE app_settings ADD COLUMN ai_food_parse_consent_at INTEGER`,
   `ALTER TABLE app_settings ADD COLUMN ai_food_parse_consent_version TEXT NOT NULL DEFAULT ''`,
+  // 2026-06-19: opt-in consent to server-backed E2E sync (TASK-2026-06-19 Phase 3).
+  // Ships off; the sync client refuses to transfer data until enabled.
+  `ALTER TABLE app_settings ADD COLUMN sync_enabled INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE app_settings ADD COLUMN sync_consent_at INTEGER`,
+  `ALTER TABLE app_settings ADD COLUMN sync_consent_version TEXT NOT NULL DEFAULT ''`,
 ];
 
 /// Runs each CREATE statement through [run], then the idempotent [MIGRATIONS].

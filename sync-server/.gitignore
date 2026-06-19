@@ -1,0 +1,15 @@
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Local dev SQLite database (created by `uvicorn app.main:app`)
+*.db
+sync_dev.db
+
+# Virtualenv
+.venv/
+venv/
+
+# Local env overrides
+.env
