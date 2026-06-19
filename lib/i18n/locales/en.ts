@@ -444,4 +444,13 @@ export const en = {
       mismatch: 'The key-file is corrupt: the keys do not match.',
     },
   },
+  // Phase 2 (native): biometric unlock + platform key custody (iCloud Keychain /
+  // Google Block Store) so a new phone in the same ecosystem restores the data with
+  // no phrase to type. The phrase / key-file remain the cross-ecosystem fallback.
+  keysync: {
+    biometricReason: 'Confirm it’s you to unlock your encryption key.',
+    gateFailed: 'Could not confirm it’s you. Try again, or use your recovery phrase.',
+    autoRestored:
+      'Your key was restored from your account (iCloud Keychain / Google) — data decrypted with no phrase.',
+  },
 } as const;
