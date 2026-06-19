@@ -1,4 +1,4 @@
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
@@ -29,6 +29,7 @@ export default function SettingsScreen() {
   const { t } = useTranslation();
   const theme = useTheme();
   const db = useDatabase();
+  const router = useRouter();
 
   const [loaded, setLoaded] = useState(false);
   const [kcal, setKcal] = useState('2000');
@@ -282,6 +283,15 @@ export default function SettingsScreen() {
             );
           })()
         : null}
+
+      <SectionHeader>{t('backup.title')}</SectionHeader>
+      <Card style={styles.toggleRow} padded={false} onPress={() => router.push('/settings/backup')}>
+        <Text style={[styles.toggleLabel, { color: theme.text }, theme.font.body]}>
+          {t('backup.openRow')}
+        </Text>
+        <Text style={{ color: theme.primary, fontSize: 20 }}>›</Text>
+      </Card>
+      <Note theme={theme}>{t('backup.openRowNote')}</Note>
 
       <PrimaryButton
         label={saving ? t('settings.saving') : saved ? t('settings.saved') : t('settings.save')}

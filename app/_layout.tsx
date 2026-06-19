@@ -65,6 +65,7 @@ export default function RootLayout() {
           <Stack.Screen name="diary/[id]" options={{ title: t('diary.entryTitle') }} />
           <Stack.Screen name="wins/index" options={{ title: t('wins.title') }} />
           <Stack.Screen name="settings/index" options={{ title: t('settings.title') }} />
+          <Stack.Screen name="settings/backup" options={{ title: t('backup.title') }} />
           <Stack.Screen name="review/index" options={{ title: t('review.title') }} />
         </Stack>
         </LegalGate>
