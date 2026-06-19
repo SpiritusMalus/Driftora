@@ -48,3 +48,11 @@ yarn-error.*
 # hosted at a public URL for the stores), so they ARE tracked here.
 !legal/PRIVACY_POLICY.md
 !legal/TERMS_OF_USE.md
+
+.claude/
+dist.stale.*
+
+.claude/
+dist.stale.*
+HealthRoutine/
+.DS_Store
