@@ -100,6 +100,21 @@ export const appSettings = sqliteTable('app_settings', {
   showPopulationStats: integer('show_population_stats', { mode: 'boolean' })
     .notNull()
     .default(false),
+  // GENERAL consent to use the app (Terms + Privacy Policy), captured by the
+  // first-launch offer gate. Stored as the accepted text version + epoch ms;
+  // an empty version means "not yet accepted". Kept SEPARATE from the AI
+  // cross-border consent below — Russian 152-ФЗ bans bundled consent.
+  legalAcceptedVersion: text('legal_accepted_version').notNull().default(''),
+  legalAcceptedAt: integer('legal_accepted_at'),
+  // SPECIFIC, opt-in consent to the cross-border food→AI transfer (Google
+  // Gemini, US). Ships FALSE: the online parser is unreachable until this is
+  // true (see foodParserProvider.getFoodParser). The `…At`/`…Version` record
+  // the fact of consent for the 152-ФЗ audit trail.
+  aiFoodParseConsent: integer('ai_food_parse_consent', { mode: 'boolean' })
+    .notNull()
+    .default(false),
+  aiFoodParseConsentAt: integer('ai_food_parse_consent_at'),
+  aiFoodParseConsentVersion: text('ai_food_parse_consent_version').notNull().default(''),
 });
 
 export type AppSettings = typeof appSettings.$inferSelect;

@@ -5,22 +5,30 @@ import { HttpFoodParser } from './httpFoodParser';
 import { pickRegion } from './region';
 import { StubFoodParser } from './stubFoodParser';
 
-let _parser: FoodParser | null = null;
+// The offline stub is stateless and reused across calls; the online parser is
+// (re)built only while the user holds AI consent, so it can never linger once
+// consent is withdrawn.
+let _stub: StubFoodParser | null = null;
+let _online: HttpFoodParser | null = null;
+
+function stub(): StubFoodParser {
+  return (_stub ??= new StubFoodParser());
+}
 
 /**
- * Returns the active food parser.
+ * Returns the active food parser, given the user's cross-border AI consent.
  *
- * When `EXPO_PUBLIC_FOOD_API_URL` is set, the online [HttpFoodParser] calls the
- * food-parse backend (with the offline [StubFoodParser] as its failure
- * fallback). With no URL configured, the app runs fully offline on the stub —
- * so the food-log flow always works. Callers don't change.
+ * HARD GATE (TASK-2026-06-19 §B / DATA_PRIVACY_HANDOFF §5): the online
+ * [HttpFoodParser] — the app's ONLY external network call — is used only when
+ * BOTH `EXPO_PUBLIC_FOOD_API_URL` is set AND `aiConsent === true`. In every
+ * other case the fully-offline [StubFoodParser] is returned and the server is
+ * never contacted, so nothing leaves the device without opt-in consent. The
+ * general entry-gate consent is deliberately NOT this flag (separate consents).
  */
-export function getFoodParser(): FoodParser {
-  if (_parser) return _parser;
+export function getFoodParser(aiConsent: boolean): FoodParser {
   const base = process.env.EXPO_PUBLIC_FOOD_API_URL;
-  const stub = new StubFoodParser();
-  _parser = base ? new HttpFoodParser(base, stub) : stub;
-  return _parser;
+  if (!base || !aiConsent) return stub();
+  return (_online ??= new HttpFoodParser(base, stub()));
 }
 
 /**

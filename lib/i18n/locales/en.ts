@@ -1,5 +1,34 @@
 export const en = {
   appTitle: 'HealthRoutine',
+  // First-launch offer gate (GENERAL consent: Terms + Privacy). Kept separate
+  // from the AI cross-border consent below — Russian law bans bundled consent.
+  legal: {
+    gate: {
+      title: 'Before you start',
+      body: "Your diary, mood, weight and meals are stored only on this phone, in an encrypted database. There is no account and no server holding your records — we can't see or read them.",
+      acceptHint: 'By tapping "Accept", you agree to the Terms of Use and the Privacy Policy.',
+      accept: 'Accept',
+    },
+    terms: 'Terms of Use',
+    privacy: 'Privacy Policy',
+    close: 'Close',
+  },
+  // Just-in-time, opt-in consent for the cross-border food→AI transfer.
+  consent: {
+    ai: {
+      title: 'Send this meal for recognition?',
+      body: 'To identify the foods, the meal text is sent to Google Gemini (servers in the USA). Calories and macros are computed by the built-in database, not the AI. Your diary, mood and weight are not sent. This is a cross-border data transfer; you can withdraw consent in Settings.',
+      accept: 'Send',
+      decline: "Don't send",
+      declineCaption: "You'll keep the offline estimate from the built-in database.",
+    },
+    photo: {
+      title: 'This photo goes to Google (USA)',
+      body: 'Photograph the plate only. A face, people or documents in the frame may count as personal data. The photo is downscaled and stripped of geotags before sending.',
+      confirm: 'Take photo',
+      cancel: 'Cancel',
+    },
+  },
   home: {
     title: 'Today',
     greeting: 'One honest read on how moving shapes how you feel.',
@@ -131,6 +160,9 @@ export const en = {
     approx: '≈ approx',
     disclaimer:
       'Per-100g composition is from the database. The whole-dish total is approximate (portion estimated). Confirm the weight for accuracy.',
+    // Persistent notice shown on the food screen while AI parsing is enabled
+    // (NOT the weight-accuracy disclaimer above — kept as a separate key).
+    aiNotice: 'Recognized by Google Gemini (USA). Numbers come from the database. Your diary is not sent.',
     grams: 'Weight',
     gramsHint: 'Confirm the weight to make the total exact.',
     presetLess: 'Less',
@@ -255,6 +287,10 @@ export const en = {
     today: 'today',
     tomorrow: 'tomorrow',
     flags: 'Privacy & mode',
+    privacyLine: 'Your data stays only on the phone, in an encrypted database. Only the food parse (text or photo) leaves it → Google Gemini, USA. Diary, mood and weight never do.',
+    aiToggle: 'AI food recognition',
+    aiOff: 'Off — the app works offline. Turn on to recognize food from text or a photo via Google Gemini (USA).',
+    aiOn: 'On. Food text and photos are sent to Google Gemini (USA). Turn off to return to offline estimates.',
     hideCalories: 'Hide calories (focus on protein and habits)',
     llmDiaryAssist: 'AI help in the diary (optional, off by default)',
     showPopulationStats: 'Step reference comparison (optional)',

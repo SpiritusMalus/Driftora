@@ -4,20 +4,27 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useTranslation } from 'react-i18next';
 
+import { ConsentModal } from '@/components/consent/ConsentModal';
 import { Card } from '@/components/ui/Card';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
 import { TextField } from '@/components/ui/TextField';
+import { AI_CONSENT_VERSION, grantAiConsent, needsAiConsent } from '@/lib/core/consent/consent';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { quickMeals, saveParsedEntry, todayMacroTotals, type QuickMeal } from '@/lib/core/db/food';
 import { ensureSettings } from '@/lib/core/db/settings';
 import { proteinInsight } from '@/lib/core/insights/proteinInsight';
-import type { MealDraft, Minerals, NutritionItem, Region } from '@/lib/core/services/foodParser';
+import type { MealDraft, Minerals, NutritionItem, PhotoInput, Region } from '@/lib/core/services/foodParser';
 import { getFoodParser, resolveRegion } from '@/lib/core/services/foodParserProvider';
 import { recomputeDraft, withItemGrams } from '@/lib/core/services/mealDraft';
 import { capturePhoto, isPhotoCaptureAvailable } from '@/lib/core/services/photoProvider';
 import { getSpeechService } from '@/lib/core/services/speechProvider';
 import { type Theme, useTheme } from '@/lib/theme/theme';
+
+/// Whether an online AI parser is even configured for this build. Consent and
+/// the on-screen AI notice only matter when it is — otherwise everything is
+/// offline and nothing can leave the device.
+const AI_CONFIGURED = !!process.env.EXPO_PUBLIC_FOOD_API_URL;
 
 const MINERAL_KEYS: readonly (keyof Minerals)[] = ['na', 'k', 'ca', 'mg', 'fe', 'zn'];
 
@@ -46,6 +53,14 @@ export default function FoodLogScreen() {
   const [proteinTarget, setProteinTarget] = useState(0);
   const [todayProteinG, setTodayProteinG] = useState(0);
   const [hideCalories, setHideCalories] = useState(false);
+  // Cross-border AI consent — mirrors app_settings; drives the parser gate, the
+  // just-in-time prompt and the on-screen notice. Starts false (opt-in).
+  const [aiConsent, setAiConsent] = useState(false);
+  const [aiConsentVersion, setAiConsentVersion] = useState('');
+  // Which just-in-time consent modal is open, and the captured input to send if
+  // the user accepts (so accept resumes the exact parse they triggered).
+  const [consentPrompt, setConsentPrompt] = useState<'text' | 'photo' | null>(null);
+  const [pendingPhoto, setPendingPhoto] = useState<PhotoInput | null>(null);
   const [quick, setQuick] = useState<{ recents: QuickMeal[]; favorites: QuickMeal[] }>({
     recents: [],
     favorites: [],
@@ -123,6 +138,8 @@ export default function FoodLogScreen() {
       setTodayProteinG(totals.proteinG);
       setHideCalories(settings.hideCalories);
       setRegionSetting(settings.region);
+      setAiConsent(settings.aiFoodParseConsent);
+      setAiConsentVersion(settings.aiFoodParseConsentVersion);
       setQuick(quickAdd);
     })();
     return () => {
@@ -148,27 +165,80 @@ export default function FoodLogScreen() {
     setFreshDraft(recomputeDraft(region, [item]));
   }
 
-  async function onParse() {
-    if (text.trim().length === 0) return;
+  /// Run the text parse with a known consent value. `getFoodParser` only goes
+  /// online when AI is configured AND consent is true; otherwise it's the stub.
+  async function runTextParse(consentNow: boolean) {
     setParsing(true);
     try {
-      setFreshDraft(await getFoodParser().parse(text, region));
+      setFreshDraft(await getFoodParser(consentNow).parse(text, region));
     } finally {
       setParsing(false);
     }
   }
 
-  // Photo → downscale + EXIF strip → backend vision → same two-tier draft.
+  async function runPhotoParse(photo: PhotoInput, consentNow: boolean) {
+    setParsing(true);
+    try {
+      setFreshDraft(await getFoodParser(consentNow).parsePhoto(photo, region));
+    } finally {
+      setParsing(false);
+    }
+  }
+
+  async function onParse() {
+    if (text.trim().length === 0) return;
+    // Just-in-time cross-border consent: only when an online parser exists and
+    // the user hasn't already consented at the current version.
+    if (AI_CONFIGURED && needsAiConsent({ aiFoodParseConsent: aiConsent, aiFoodParseConsentVersion: aiConsentVersion })) {
+      setConsentPrompt('text');
+      return;
+    }
+    await runTextParse(aiConsent);
+  }
+
+  // Photo → downscale + EXIF strip → (consent) → backend vision → two-tier draft.
   async function onPhoto() {
     if (parsing || listening) return;
     const photo = await capturePhoto('camera');
     if (!photo) return;
     setSource('photo');
-    setParsing(true);
-    try {
-      setFreshDraft(await getFoodParser().parsePhoto(photo, region));
-    } finally {
-      setParsing(false);
+    if (AI_CONFIGURED && needsAiConsent({ aiFoodParseConsent: aiConsent, aiFoodParseConsentVersion: aiConsentVersion })) {
+      // Stronger, SEPARATE photo warning before the first photo→AI send (§C).
+      setPendingPhoto(photo);
+      setConsentPrompt('photo');
+      return;
+    }
+    await runPhotoParse(photo, aiConsent);
+  }
+
+  /// Accept on either consent modal: record the consent fact, flip local state,
+  /// then resume the exact parse the user triggered — now online.
+  async function onConsentAccept() {
+    const kind = consentPrompt;
+    setConsentPrompt(null);
+    if (db) await grantAiConsent(db);
+    setAiConsent(true);
+    setAiConsentVersion(AI_CONSENT_VERSION);
+    if (kind === 'photo') {
+      const photo = pendingPhoto;
+      setPendingPhoto(null);
+      if (photo) await runPhotoParse(photo, true);
+    } else if (kind === 'text') {
+      await runTextParse(true);
+    }
+  }
+
+  /// Decline: keep consent false and fall back to the offline stub for the same
+  /// input, so the food-log flow still completes.
+  async function onConsentDecline() {
+    const kind = consentPrompt;
+    setConsentPrompt(null);
+    if (kind === 'photo') {
+      const photo = pendingPhoto;
+      setPendingPhoto(null);
+      if (photo) await runPhotoParse(photo, false);
+    } else if (kind === 'text') {
+      await runTextParse(false);
     }
   }
 
@@ -217,22 +287,34 @@ export default function FoodLogScreen() {
         </Pressable>
       ) : null}
       {photoAvailable ? (
-        <Pressable
-          onPress={onPhoto}
-          disabled={parsing || listening}
-          style={({ pressed }) => [
-            styles.micButton,
-            { borderColor: theme.separator, backgroundColor: theme.card, opacity: pressed || parsing || listening ? 0.6 : 1 },
-          ]}
-        >
-          <Text style={[styles.micText, { color: theme.primary }, theme.font.bodySemiBold]}>{t('food.photo')}</Text>
-        </Pressable>
+        <>
+          <Pressable
+            onPress={onPhoto}
+            disabled={parsing || listening}
+            style={({ pressed }) => [
+              styles.micButton,
+              { borderColor: theme.separator, backgroundColor: theme.card, opacity: pressed || parsing || listening ? 0.6 : 1 },
+            ]}
+          >
+            <Text style={[styles.micText, { color: theme.primary }, theme.font.bodySemiBold]}>{t('food.photo')}</Text>
+          </Pressable>
+          {/* Persistent line on the photo control: photos carry higher risk (§C). */}
+          {AI_CONFIGURED && aiConsent ? (
+            <Text style={[styles.photoWarn, { color: theme.subtle }, theme.font.body]}>{t('consent.photo.body')}</Text>
+          ) : null}
+        </>
       ) : null}
       <PrimaryButton
         label={parsing ? t('food.parsing') : t('food.parse')}
         onPress={onParse}
         disabled={parsing || listening || text.trim().length === 0}
       />
+
+      {/* Persistent notice while AI parsing is enabled — NEW key, not the
+          weight-accuracy disclaimer (§B). */}
+      {AI_CONFIGURED && aiConsent ? (
+        <Text style={[styles.aiNotice, { color: theme.subtle }, theme.font.body]}>{t('food.aiNotice')}</Text>
+      ) : null}
 
       {draft == null && (quick.favorites.length > 0 || quick.recents.length > 0) ? (
         <View style={styles.quick}>
@@ -322,6 +404,26 @@ export default function FoodLogScreen() {
           ) : null}
         </View>
       )}
+
+      <ConsentModal
+        visible={consentPrompt === 'text'}
+        title={t('consent.ai.title')}
+        body={t('consent.ai.body')}
+        confirmLabel={t('consent.ai.accept')}
+        declineLabel={t('consent.ai.decline')}
+        declineCaption={t('consent.ai.declineCaption')}
+        onConfirm={onConsentAccept}
+        onDecline={onConsentDecline}
+      />
+      <ConsentModal
+        visible={consentPrompt === 'photo'}
+        title={t('consent.photo.title')}
+        body={t('consent.photo.body')}
+        confirmLabel={t('consent.photo.confirm')}
+        declineLabel={t('consent.photo.cancel')}
+        onConfirm={onConsentAccept}
+        onDecline={onConsentDecline}
+      />
     </Screen>
   );
 }
@@ -438,6 +540,8 @@ const styles = StyleSheet.create({
   input: { marginBottom: 12 },
   micButton: { borderRadius: 999, borderWidth: 1.5, paddingVertical: 12, alignItems: 'center', marginBottom: 8 },
   micText: { fontSize: 15 },
+  photoWarn: { fontSize: 11, lineHeight: 16, marginTop: -2, marginBottom: 10, marginHorizontal: 4 },
+  aiNotice: { fontSize: 11, lineHeight: 16, marginTop: 10, marginHorizontal: 4 },
   hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
   results: { marginTop: 16 },
   item: { marginBottom: 10 },

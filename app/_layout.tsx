@@ -5,6 +5,7 @@ import { Platform, useColorScheme } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import '@/lib/i18n';
+import { LegalGate } from '@/components/legal/LegalGate';
 import { DatabaseProvider } from '@/lib/core/db/DatabaseProvider';
 import { resolveTheme } from '@/lib/theme/theme';
 import { fontAssets } from '@/lib/theme/typography';
@@ -52,6 +53,7 @@ export default function RootLayout() {
   return (
     <DatabaseProvider>
       <SafeAreaProvider>
+        <LegalGate>
         <Stack screenOptions={headerOptions}>
           <Stack.Screen name="index" options={{ title: t('home.title') }} />
           <Stack.Screen name="more/index" options={{ title: t('more.title') }} />
@@ -65,6 +67,7 @@ export default function RootLayout() {
           <Stack.Screen name="settings/index" options={{ title: t('settings.title') }} />
           <Stack.Screen name="review/index" options={{ title: t('review.title') }} />
         </Stack>
+        </LegalGate>
       </SafeAreaProvider>
     </DatabaseProvider>
   );
