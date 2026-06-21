@@ -26,7 +26,7 @@ import expo.modules.kotlin.modules.ModuleDefinition
  * on two physical devices signed into the same Google account.
  */
 class PlatformKeyStoreModule : Module() {
-  override fun definition(): ModuleDefinition = ModuleDefinition {
+  override fun definition() = ModuleDefinition {
     Name("PlatformKeyStore")
 
     // Mirrors the iOS "kind" constant; the JS layer uses it only for UI labelling.
