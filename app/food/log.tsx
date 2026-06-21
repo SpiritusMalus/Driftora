@@ -311,9 +311,14 @@ export default function FoodLogScreen() {
       />
 
       {/* Persistent notice while AI parsing is enabled — NEW key, not the
-          weight-accuracy disclaimer (§B). */}
+          weight-accuracy disclaimer (§B). Includes a point-of-input guardrail
+          telling the user not to type personal/third-party data (РКН/152-ФЗ
+          minimization — the text analog of the photo→face warning). */}
       {AI_CONFIGURED && aiConsent ? (
-        <Text style={[styles.aiNotice, { color: theme.subtle }, theme.font.body]}>{t('food.aiNotice')}</Text>
+        <>
+          <Text style={[styles.aiNotice, { color: theme.subtle }, theme.font.body]}>{t('food.inputGuard')}</Text>
+          <Text style={[styles.aiNotice, { color: theme.subtle }, theme.font.body]}>{t('food.aiNotice')}</Text>
+        </>
       ) : null}
 
       {draft == null && (quick.favorites.length > 0 || quick.recents.length > 0) ? (
