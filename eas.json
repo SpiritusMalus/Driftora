@@ -15,6 +15,9 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_FOOD_API_URL": "https://food.family-pie.ru/food/parse"
       }
     },
     "production": {

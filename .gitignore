@@ -55,5 +55,8 @@ dist.stale.*
 
 .claude/
 dist.stale.*
-HealthRoutine/
+# Anchored to repo root: ignore a top-level HealthRoutine/ dir (nested duplicate
+# / .dc.html mockups) WITHOUT matching nested package dirs like
+# modules/.../com/healthroutine/ (macOS git is case-insensitive).
+/HealthRoutine/
 .DS_Store

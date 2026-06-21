@@ -1,9 +1,16 @@
+import { stubIdentifyFromPhoto, stubIdentifyFromText } from './identifyStub.js';
 import { metrics } from './metrics.js';
 import { IDENTIFY_SCHEMA, IDENTIFY_SYSTEM_PROMPT, userInstruction } from './prompt.js';
 import { normalizeIdentified, type IdentifiedItem, type Region } from './types.js';
 
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 const MODEL = process.env.GEMINI_MODEL || 'gemini-3-flash';
+/**
+ * TEMPORARY: when `GEMINI_STUB=1`, identification is served by a local stub
+ * instead of Gemini (the free tier geo-blocks this VPS's egress IP). Numbers
+ * still come from the resolver. Remove with `identifyStub.ts` once reachable.
+ */
+const STUB = process.env.GEMINI_STUB === '1';
 /** Optional stronger model for low-confidence escalation (§8.4). Off if unset. */
 const PRO_MODEL = process.env.GEMINI_PRO_MODEL || '';
 const CONFIDENCE_FLOOR = 0.5;
@@ -95,6 +102,7 @@ async function identifyWithEscalation(parts: GeminiPart[]): Promise<IdentifiedIt
 
 /** Layer 2: free-text meal → identified foods + estimated grams (no numbers). */
 export async function identifyFromText(text: string, region: Region): Promise<IdentifiedItem[]> {
+  if (STUB) return stubIdentifyFromText(text); // TEMPORARY — see identifyStub.ts
   return identifyWithEscalation([{ text: `${userInstruction(region)}\n\n${text}` }]);
 }
 
@@ -104,6 +112,7 @@ export async function identifyFromPhoto(
   mimeType: string,
   region: Region,
 ): Promise<IdentifiedItem[]> {
+  if (STUB) return stubIdentifyFromPhoto(); // TEMPORARY — see identifyStub.ts
   return identifyWithEscalation([
     { text: userInstruction(region) },
     { inlineData: { mimeType, data: base64 } },
