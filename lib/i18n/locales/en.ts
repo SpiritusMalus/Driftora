@@ -163,6 +163,9 @@ export const en = {
     // Persistent notice shown on the food screen while AI parsing is enabled
     // (NOT the weight-accuracy disclaimer above — kept as a separate key).
     aiNotice: 'Recognized by Google Gemini (USA). Numbers come from the database. Your diary is not sent.',
+    // Point-of-input guardrail (РКН/152-ФЗ minimization): the free text goes to
+    // the model as-is, so nudge against typing personal/third-party data.
+    inputGuard: 'Enter only the dish name. Do not type your contacts, documents, or other people’s data — the text goes to Google (USA).',
     grams: 'Weight',
     gramsHint: 'Confirm the weight to make the total exact.',
     presetLess: 'Less',
