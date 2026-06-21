@@ -17,11 +17,14 @@ from pydantic import BaseModel, Field
 
 class AccountCreateRequest(BaseModel):
     # The X25519 public key (base64) — the account identity. No password.
-    public_key: str
+    # A 32-byte X25519 key is 44 base64 chars; cap well above that to reject junk.
+    public_key: str = Field(min_length=1, max_length=128)
     # OPTIONAL, OPAQUE wrapped private key (client-encrypted under the recovery
-    # phrase). Server stores it verbatim; it can never unwrap it.
-    wrapped_private_key: str | None = None
-    label: str | None = None
+    # phrase). Server stores it verbatim; it can never unwrap it. The wrap is a
+    # small fixed-size blob — a few hundred base64 chars — so 4 KiB is ample.
+    wrapped_private_key: str | None = Field(default=None, max_length=4096)
+    # UX label ("iPhone 15") — bounded to the DB column width (String(100)).
+    label: str | None = Field(default=None, max_length=100)
 
 
 class AccountCreateResponse(BaseModel):
@@ -32,10 +35,6 @@ class AccountCreateResponse(BaseModel):
 # ── Login by key (challenge-response) — lifted from LawDocs ──────────────────
 
 
-class KeyChallengeRequest(BaseModel):
-    public_key: str  # base64 public key the client wants to authenticate as
-
-
 class KeyChallengeResponse(BaseModel):
     challenge_id: str
     # A nonce encrypted to the public key — only the private-key holder can read
@@ -44,8 +43,9 @@ class KeyChallengeResponse(BaseModel):
 
 
 class KeyLoginRequest(BaseModel):
-    challenge_id: str
-    nonce: str  # base64 of the DECRYPTED nonce — the proof of key possession
+    challenge_id: str = Field(min_length=1, max_length=64)
+    # base64 of the DECRYPTED 32-byte nonce (~44 chars) — proof of key possession.
+    nonce: str = Field(min_length=1, max_length=128)
 
 
 class KeyLoginResponse(BaseModel):
@@ -59,8 +59,10 @@ class KeyLoginResponse(BaseModel):
 class SnapshotUploadRequest(BaseModel):
     # Base64 of the encrypted backup-file bytes (client `buildBackupFile` output).
     # OPAQUE — the server never base64-decodes it to inspect contents; it only
-    # stores the bytes. min_length guards against an empty upload.
-    blob: str = Field(min_length=1)
+    # stores the bytes. min_length guards an empty upload; max_length bounds the
+    # request body (a health diary is tiny — 64 MiB of base64 ≈ 48 MiB raw is far
+    # above any realistic snapshot, while still rejecting memory-exhausting uploads).
+    blob: str = Field(min_length=1, max_length=64 * 1024 * 1024)
     # When the client snapshot was taken (drives last-writer-wins).
     updated_at: datetime
     # Plaintext size in bytes (client-asserted, sanity only).
