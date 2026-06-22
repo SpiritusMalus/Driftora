@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
@@ -8,6 +8,7 @@ import { acceptLegal, needsLegalGate } from '@/lib/core/consent/consent';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { ensureSettings } from '@/lib/core/db/settings';
 import type { LegalDoc } from '@/lib/legal/documents';
+import { LEGAL_URL } from '@/lib/legal/links';
 import { useTheme } from '@/lib/theme/theme';
 
 import { LegalReader } from './LegalReader';
@@ -83,6 +84,14 @@ export function LegalGate({ children }: { children: ReactNode }) {
           <DocRow label={t('legal.terms')} onPress={() => setReader('terms')} theme={theme} />
           <DocRow label={t('legal.privacy')} onPress={() => setReader('privacy')} theme={theme} />
         </View>
+
+        <Pressable
+          onPress={() => void Linking.openURL(LEGAL_URL.combined)}
+          accessibilityRole="link"
+          hitSlop={8}
+        >
+          <Text style={[styles.online, { color: theme.primary }, theme.font.body]}>{t('legal.viewOnline')}</Text>
+        </Pressable>
       </View>
 
       <View style={styles.footer}>
@@ -118,6 +127,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 26, marginBottom: 16, lineHeight: 32 },
   lead: { fontSize: 15, lineHeight: 23, marginBottom: 24 },
   links: { gap: 10 },
+  online: { fontSize: 13, textAlign: 'center', marginTop: 14, textDecorationLine: 'underline' },
   docRow: {
     flexDirection: 'row',
     alignItems: 'center',

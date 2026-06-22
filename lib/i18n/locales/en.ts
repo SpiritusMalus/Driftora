@@ -11,6 +11,7 @@ export const en = {
     },
     terms: 'Terms of Use',
     privacy: 'Privacy Policy',
+    viewOnline: 'View online',
     close: 'Close',
   },
   // Just-in-time, opt-in consent for the cross-border food→AI transfer.

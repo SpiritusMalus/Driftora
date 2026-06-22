@@ -1,7 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { ConsentModal } from '@/components/consent/ConsentModal';
 import { LegalReader } from '@/components/legal/LegalReader';
@@ -15,6 +15,7 @@ import { getDbDriver } from '@/lib/core/db/client';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { ensureSettings, parseReminderTimes, updateSettings } from '@/lib/core/db/settings';
 import type { LegalDoc } from '@/lib/legal/documents';
+import { LEGAL_URL } from '@/lib/legal/links';
 import { getNotificationService } from '@/lib/core/services/notificationProvider';
 import { buildDailyReminders, rescheduleReminders } from '@/lib/core/services/reminders';
 import { nextReminder } from '@/lib/core/services/reminderSchedule';
@@ -262,6 +263,12 @@ export default function SettingsScreen() {
       <Card style={styles.toggleRow} padded={false} onPress={() => setReader('privacy')}>
         <Text style={[styles.toggleLabel, { color: theme.text }, theme.font.body]}>{t('legal.privacy')}</Text>
         <Text style={{ color: theme.primary, fontSize: 20 }}>›</Text>
+      </Card>
+      {/* Public copy hosted centrally at family-pie; in-app readers above stay
+          as the offline fallback. */}
+      <Card style={styles.toggleRow} padded={false} onPress={() => void Linking.openURL(LEGAL_URL.combined)}>
+        <Text style={[styles.toggleLabel, { color: theme.text }, theme.font.body]}>{t('legal.viewOnline')}</Text>
+        <Text style={{ color: theme.primary, fontSize: 16 }}>↗</Text>
       </Card>
 
       {db != null

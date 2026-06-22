@@ -11,6 +11,7 @@ export const ru = {
     },
     terms: 'Пользовательское соглашение',
     privacy: 'Политика конфиденциальности',
+    viewOnline: 'Открыть на сайте',
     close: 'Закрыть',
   },
   // Just-in-time, opt-in consent for the cross-border food→AI transfer.
