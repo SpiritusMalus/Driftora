@@ -45,6 +45,9 @@ yarn-error.*
 # No Markdown is tracked here. To keep a specific file, add an exception, e.g.
 # `!README.md`, below this line.
 *.md
+# Exception: the repo README is the one tracked doc at the root (every git
+# project should carry one).
+!README.md
 # Exception: the legal documents are product artifacts (rendered in-app and
 # hosted at a public URL for the stores), so they ARE tracked here.
 !legal/PRIVACY_POLICY.md
