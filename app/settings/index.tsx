@@ -15,7 +15,7 @@ import { getDbDriver } from '@/lib/core/db/client';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { ensureSettings, parseReminderTimes, updateSettings } from '@/lib/core/db/settings';
 import type { LegalDoc } from '@/lib/legal/documents';
-import { LEGAL_URL } from '@/lib/legal/links';
+import { LEGAL_URL, SITE_URL } from '@/lib/legal/links';
 import { getNotificationService } from '@/lib/core/services/notificationProvider';
 import { buildDailyReminders, rescheduleReminders } from '@/lib/core/services/reminders';
 import { nextReminder } from '@/lib/core/services/reminderSchedule';
@@ -268,6 +268,11 @@ export default function SettingsScreen() {
           as the offline fallback. */}
       <Card style={styles.toggleRow} padded={false} onPress={() => void Linking.openURL(LEGAL_URL.combined)}>
         <Text style={[styles.toggleLabel, { color: theme.text }, theme.font.body]}>{t('legal.viewOnline')}</Text>
+        <Text style={{ color: theme.primary, fontSize: 16 }}>↗</Text>
+      </Card>
+      {/* Neutral studio landing page — no purchase/steering wording (iOS-safe). */}
+      <Card style={styles.toggleRow} padded={false} onPress={() => void Linking.openURL(SITE_URL)}>
+        <Text style={[styles.toggleLabel, { color: theme.text }, theme.font.body]}>{t('settings.site')}</Text>
         <Text style={{ color: theme.primary, fontSize: 16 }}>↗</Text>
       </Card>
 

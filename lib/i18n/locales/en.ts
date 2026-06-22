@@ -274,6 +274,7 @@ export const en = {
   },
   settings: {
     title: 'Settings',
+    site: 'Our site',
     breakTitle: 'Break',
     pause: 'Take a break',
     pauseNote: 'Mutes goals, reminders and auto-wins — no guilt. Your entries stay; resume any time.',
