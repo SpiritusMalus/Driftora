@@ -1,0 +1,9 @@
+/// Canonical PUBLIC legal URLs — hosted centrally at family-pie (studio host).
+/// HR does not run its own legal site; the wording canon lives in
+/// `legal/*.md` + `lib/legal/documents.ts` and the family-pie page mirrors it.
+/// `combined` is the single page; `/terms` + `/privacy` deep-link its tabs.
+export const LEGAL_URL = {
+  combined: 'https://family-pie.ru/health_routine/legal',
+  terms: 'https://family-pie.ru/health_routine/terms',
+  privacy: 'https://family-pie.ru/health_routine/privacy',
+} as const;
