@@ -7,3 +7,6 @@ export const LEGAL_URL = {
   terms: 'https://family-pie.ru/health_routine/terms',
   privacy: 'https://family-pie.ru/health_routine/privacy',
 } as const;
+
+/// Neutral studio landing page (not a purchase/steering link — iOS-safe).
+export const SITE_URL = 'https://family-pie.ru';
