@@ -23,7 +23,7 @@ drizzle/            Drizzle schema + migrations  (drizzle.config.ts)
 assets/             fonts, images
 android/            prebuilt native Android project
 legal/              legal text canon (PRIVACY_POLICY.md, TERMS_OF_USE.md)
-web-legal/          public legal web page (hosted at family-pie.ru/health_routine/legal)
+                    (public page hosted centrally at family-pie.ru/health_routine/legal)
 server/             food-parse proxy (Gemini identify + nutrition numbers)
 sync-server/        FastAPI E2E backup/sync (dev only, not deployed)
 ```
