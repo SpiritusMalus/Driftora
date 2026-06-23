@@ -2,8 +2,8 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/health_routine.iml" filepath="$PROJECT_DIR$/health_routine.iml" />
-      <module fileurl="file://$PROJECT_DIR$/android/health_routine_android.iml" filepath="$PROJECT_DIR$/android/health_routine_android.iml" />
+      <module fileurl="file://$PROJECT_DIR$/driftora.iml" filepath="$PROJECT_DIR$/driftora.iml" />
+      <module fileurl="file://$PROJECT_DIR$/android/driftora_android.iml" filepath="$PROJECT_DIR$/android/driftora_android.iml" />
     </modules>
   </component>
 </project>

@@ -53,7 +53,7 @@ export async function openDatabase(): Promise<Database> {
     try {
       const { open } = await import('@op-engineering/op-sqlite');
       const { drizzle } = await import('drizzle-orm/op-sqlite');
-      const op = open({ name: 'health_routine.db', encryptionKey: key });
+      const op = open({ name: 'driftora.db', encryptionKey: key });
       await applySchema((statement) => op.execute(statement));
       _db = drizzle(op, { schema });
       _driver = 'op-sqlite';
@@ -65,7 +65,7 @@ export async function openDatabase(): Promise<Database> {
 
   const { openDatabaseSync } = await import('expo-sqlite');
   const { drizzle } = await import('drizzle-orm/expo-sqlite');
-  const db = openDatabaseSync('health_routine.db');
+  const db = openDatabaseSync('driftora.db');
   await applySchema((statement) => db.execSync(statement));
   _db = drizzle(db, { schema });
   _driver = 'expo-sqlite';

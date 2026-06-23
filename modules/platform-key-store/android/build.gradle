@@ -1,7 +1,7 @@
 apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
 
-group = 'com.healthroutine.platformkeystore'
+group = 'com.driftora.platformkeystore'
 version = '1.0.0'
 
 def expoModulesCorePlugin = new File(project(":expo-modules-core").projectDir.absolutePath, "ExpoModulesCorePlugin.gradle")
@@ -11,7 +11,7 @@ useCoreDependencies()
 useExpoPublishing()
 
 android {
-  namespace = "com.healthroutine.platformkeystore"
+  namespace = "com.driftora.platformkeystore"
   compileSdkVersion safeExtGet("compileSdkVersion", 35)
 
   defaultConfig {

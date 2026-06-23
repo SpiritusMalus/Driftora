@@ -1,4 +1,4 @@
-# HealthRoutine
+# Driftora
 
 Local-first personal health app that pairs **Body** (nutrition, weight, food-photo logging) and
 **Mind** (mood, diary, wins) in one place. Built with Expo / React Native / TypeScript; all data
@@ -23,7 +23,7 @@ drizzle/            Drizzle schema + migrations  (drizzle.config.ts)
 assets/             fonts, images
 android/            prebuilt native Android project
 legal/              legal text canon (PRIVACY_POLICY.md, TERMS_OF_USE.md)
-                    (public page hosted centrally at family-pie.ru/health_routine/legal)
+                    (public page hosted centrally at family-pie.ru/driftora/legal)
 server/             food-parse proxy (Gemini identify + nutrition numbers)
 sync-server/        FastAPI E2E backup/sync (dev only, not deployed)
 ```
@@ -97,8 +97,8 @@ pytest
 Local-first: your data stays on the device in encrypted SQLite (SQLCipher). The optional cloud
 backup is **end-to-end encrypted** (TweetNaCl / X25519) to a destination you control; the food proxy
 is stateless and identity-free. Legal text canon lives in `legal/`; the public pages are hosted at
-`family-pie.ru/health_routine/legal`.
+`family-pie.ru/driftora/legal`.
 
 ---
-Planning, briefs and decisions live in the Obsidian vault: `../obsidian-vault/HealthRoutine/`.
+Planning, briefs and decisions live in the Obsidian vault: `../obsidian-vault/Driftora/`.
 Claude Code: read `CLAUDE.md` first.

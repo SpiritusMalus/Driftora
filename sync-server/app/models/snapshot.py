@@ -1,4 +1,4 @@
-"""The encrypted full-DB snapshot — newly written for HealthRoutine Phase-3 v1.
+"""The encrypted full-DB snapshot — newly written for Driftora Phase-3 v1.
 
 E2E INVARIANT (non-negotiable): every column here is either OPAQUE CIPHERTEXT or
 non-sensitive METADATA. `blob` is the client-side `buildBackupFile` output —

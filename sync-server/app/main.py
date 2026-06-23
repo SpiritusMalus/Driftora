@@ -1,4 +1,4 @@
-"""FastAPI application factory + entrypoint for the HealthRoutine E2E sync server.
+"""FastAPI application factory + entrypoint for the Driftora E2E sync server.
 
 Run locally:
     uvicorn app.main:app --reload
@@ -36,7 +36,7 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(
-    title="HealthRoutine E2E Sync",
+    title="Driftora E2E Sync",
     version="1.0.0",
     description=(
         "Thin end-to-end-encrypted sync. Stores only ciphertext, wrapped keys and "

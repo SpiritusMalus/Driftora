@@ -1,4 +1,4 @@
-# HealthRoutine E2E sync server — runtime + test deps.
+# Driftora E2E sync server — runtime + test deps.
 # Versions track the LawDocs backend (proven combo) where shared. SQLite via
 # aiosqlite is the dev/test driver (Postgres etc. is an OWNER decision, §G).
 

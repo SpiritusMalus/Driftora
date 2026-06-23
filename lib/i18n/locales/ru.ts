@@ -1,5 +1,5 @@
 export const ru = {
-  appTitle: 'HealthRoutine',
+  appTitle: 'Driftora',
   // First-launch offer gate (GENERAL consent: Terms + Privacy). Kept separate
   // from the AI cross-border consent below — 152-ФЗ bans bundled consent.
   legal: {
@@ -314,7 +314,7 @@ export const ru = {
     dbUnavailable: 'Настройки доступны в dev-сборке на устройстве.',
   },
   notifications: {
-    reminderTitle: 'HealthRoutine',
+    reminderTitle: 'Driftora',
     reminderBody: 'Минутка для себя: отметьте настроение или шаги.',
   },
   wins: {
@@ -442,7 +442,7 @@ export const ru = {
     },
     // Errors from key-file import (codes map to recovery.ts RecoveryFileError).
     keyFileError: {
-      invalidFormat: 'Неверный формат файла. Это должен быть ключ-файл healthroutine-key.json.',
+      invalidFormat: 'Неверный формат файла. Это должен быть ключ-файл driftora-key.json.',
       noPrivateKey: 'Файл не содержит приватный ключ.',
       noPublicKey: 'Файл не содержит публичный ключ.',
       mismatch: 'Ключ-файл повреждён: ключи не соответствуют друг другу.',

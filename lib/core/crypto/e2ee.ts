@@ -2,7 +2,7 @@ import nacl from 'tweetnacl';
 import { decodeBase64, encodeBase64 } from 'tweetnacl-util';
 
 /**
- * End-to-end crypto for HealthRoutine — ported from the LawDocs `e2ee-client.ts`
+ * End-to-end crypto for Driftora — ported from the LawDocs `e2ee-client.ts`
  * TweetNaCl model (the project's protocol/file format are reused; only the bulk
  * layer differs — see below). `tweetnacl` + `tweetnacl-util` are pure JS, so this
  * module runs unchanged in React Native (Hermes) AND in jest/node.

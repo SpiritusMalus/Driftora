@@ -5,7 +5,7 @@ import { scrypt } from 'scrypt-js';
 import { keyPairMatches, publicKeyFromPrivateKey, type E2EEKeyPair } from './e2ee';
 
 /**
- * Recovery layer for HealthRoutine — the user-held fallback that lets a backup be
+ * Recovery layer for Driftora — the user-held fallback that lets a backup be
  * restored on a NEW device WITHOUT any server. Two artefacts are produced:
  *
  *  1. A **recovery phrase** (`generateRecoveryPhrase`) — 18 random bytes rendered
@@ -218,7 +218,7 @@ export function serializeKeyFile(pair: E2EEKeyPair): string {
 
 /**
  * Parses + validates an imported key-file. Mirrors LawDocs `recoverViaKeyFile`'s
- * checks (minus the server account-binding, which HealthRoutine has no server for):
+ * checks (minus the server account-binding, which Driftora has no server for):
  *  - valid JSON with both keys present,
  *  - the private key actually derives the public key (`keyPairMatches`),
  * so a corrupt or mismatched file is rejected before it touches secure storage.

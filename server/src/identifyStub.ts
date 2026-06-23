@@ -3,7 +3,7 @@
  *
  * WHY THIS EXISTS — the free Gemini tier geo-blocks this deploy's VPS egress IP
  * ("400 User location is not supported"), so the real model is unreachable from
- * the server right now. To let the operator run HealthRoutine end-to-end for the
+ * the server right now. To let the operator run Driftora end-to-end for the
  * off-store test, this stub stands in for the LLM's IDENTIFICATION step only:
  * text/photo → `IdentifiedItem[]` (food name + estimated grams). It emits NO
  * nutrition numbers — every kcal/macro/mineral still comes from the real
