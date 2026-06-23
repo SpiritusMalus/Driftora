@@ -29,6 +29,7 @@ export interface SettingsPatch {
   reminderTimes?: string[];
   hideCalories?: boolean;
   llmDiaryAssist?: boolean;
+  onboardingSeen?: boolean;
   paused?: boolean;
   showPopulationStats?: boolean;
   region?: 'auto' | 'RU' | 'US';
@@ -61,6 +62,7 @@ export async function updateSettings(
   if (patch.reminderTimes != null) set.reminderTimes = JSON.stringify(patch.reminderTimes);
   if (patch.hideCalories != null) set.hideCalories = patch.hideCalories;
   if (patch.llmDiaryAssist != null) set.llmDiaryAssist = patch.llmDiaryAssist;
+  if (patch.onboardingSeen != null) set.onboardingSeen = patch.onboardingSeen;
   if (patch.paused != null) set.paused = patch.paused;
   if (patch.showPopulationStats != null) set.showPopulationStats = patch.showPopulationStats;
   if (patch.region != null) set.region = patch.region;

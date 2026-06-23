@@ -52,6 +52,17 @@ describe('updateSettings', () => {
     sqlite.close();
   });
 
+  it('defaults onboarding_seen to false and flips it once dismissed', async () => {
+    const { sqlite, db } = makeDb();
+    await applySchema((s) => sqlite.exec(s));
+
+    expect((await ensureSettings(db)).onboardingSeen).toBe(false);
+    const updated = await updateSettings(db, { onboardingSeen: true });
+    expect(updated.onboardingSeen).toBe(true);
+
+    sqlite.close();
+  });
+
   it('round-trips reminder times through JSON', async () => {
     const { sqlite, db } = makeDb();
     await applySchema((s) => sqlite.exec(s));

@@ -60,6 +60,20 @@ export async function hasWinOfKindOnDay(
   return rows.length > 0;
 }
 
+/// True if ANY win (auto or manual) was logged on [date]'s local day — the
+/// "you earned something today" signal for the Home day-summary line.
+export async function hasAnyWinOnDay(
+  db: AnyDb,
+  date: Date = new Date(),
+): Promise<boolean> {
+  const { start, end } = dayBounds(date);
+  const rows = await db
+    .select({ id: wins.id })
+    .from(wins)
+    .where(and(gte(wins.ts, start), lt(wins.ts, end)));
+  return rows.length > 0;
+}
+
 /// Inserts a win of [kind] unless one already exists on [date]'s local day.
 /// Returns true iff a new win was written — idempotent per (kind, day), so it
 /// is safe to call on every Home focus.

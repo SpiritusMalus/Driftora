@@ -32,6 +32,11 @@ CREATE TABLE IF NOT EXISTS steps_days (
   steps INTEGER NOT NULL DEFAULT 0,
   synced_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS sleep_days (
+  date TEXT PRIMARY KEY,
+  minutes INTEGER NOT NULL DEFAULT 0,
+  synced_at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS weights (
   date TEXT PRIMARY KEY,
   weight_kg REAL NOT NULL,
@@ -72,6 +77,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
   reminder_times TEXT NOT NULL DEFAULT '[]',
   hide_calories INTEGER NOT NULL DEFAULT 0,
   llm_diary_assist INTEGER NOT NULL DEFAULT 0,
+  onboarding_seen INTEGER NOT NULL DEFAULT 0,
   paused INTEGER NOT NULL DEFAULT 0,
   show_population_stats INTEGER NOT NULL DEFAULT 0,
   region TEXT NOT NULL DEFAULT 'auto',
@@ -108,6 +114,10 @@ export const MIGRATIONS: string[] = [
   `ALTER TABLE app_settings ADD COLUMN sync_enabled INTEGER NOT NULL DEFAULT 0`,
   `ALTER TABLE app_settings ADD COLUMN sync_consent_at INTEGER`,
   `ALTER TABLE app_settings ADD COLUMN sync_consent_version TEXT NOT NULL DEFAULT ''`,
+  // 2026-06-23: first-run onboarding shown-once flag (TASK-2026-06-23 onboarding).
+  // (The new `sleep_days` table needs no ALTER — CREATE TABLE IF NOT EXISTS above
+  // covers both fresh and existing installs.)
+  `ALTER TABLE app_settings ADD COLUMN onboarding_seen INTEGER NOT NULL DEFAULT 0`,
 ];
 
 /// Runs each CREATE statement through [run], then the idempotent [MIGRATIONS].

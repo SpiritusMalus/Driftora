@@ -34,6 +34,16 @@ export const stepsDays = sqliteTable('steps_days', {
   syncedAt: integer('synced_at', { mode: 'timestamp' }).notNull(),
 });
 
+/// Nightly sleep duration (minutes) pulled from the OS health store, one row per
+/// day. A second zero-effort passive signal alongside steps; it feeds the
+/// Body↔Mind insight (sleep↔mood). Real HealthKit / Health Connect data is
+/// device-gated exactly like steps — an offline stub fills it until then.
+export const sleepDays = sqliteTable('sleep_days', {
+  date: text('date').primaryKey(), // 'YYYY-MM-DD'
+  minutes: integer('minutes').notNull().default(0),
+  syncedAt: integer('synced_at', { mode: 'timestamp' }).notNull(),
+});
+
 /// Manually logged body weight, one row per day. No weigh-in pressure: logging
 /// is optional and the UI frames the trend neutrally (weight fluctuates).
 /// Feeds future adaptive macro targets (recalibrated from the weight trend).
@@ -93,6 +103,10 @@ export const appSettings = sqliteTable('app_settings', {
   reminderTimes: text('reminder_times').notNull().default('[]'),
   hideCalories: integer('hide_calories', { mode: 'boolean' }).notNull().default(false),
   llmDiaryAssist: integer('llm_diary_assist', { mode: 'boolean' }).notNull().default(false),
+  // First-run onboarding shown-once flag. Set true after the calm intro
+  // (Body↔Mind + privacy + how to feed the card) is dismissed; returning users
+  // never see it again. Additive UX flag, no consent meaning.
+  onboardingSeen: integer('onboarding_seen', { mode: 'boolean' }).notNull().default(false),
   // "Take a break" — mutes auto-wins and target pressure without losing data.
   paused: integer('paused', { mode: 'boolean' }).notNull().default(false),
   // Opt-in (default off): show sourced step reference points vs. the user's
@@ -133,3 +147,4 @@ export type FoodEntry = typeof foodEntries.$inferSelect;
 export type DiaryEntry = typeof diaryEntries.$inferSelect;
 export type WeightRow = typeof weights.$inferSelect;
 export type MoodRow = typeof moods.$inferSelect;
+export type SleepRow = typeof sleepDays.$inferSelect;

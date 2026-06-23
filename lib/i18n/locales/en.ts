@@ -46,15 +46,37 @@ export const en = {
       mood: 'Mood',
     },
     steps: { unit: 'steps' },
-    bodyMind: { basis: 'Based on {{days}} days with mood + steps' },
+    bodyMind: { basis: 'Based on {{days}} days with mood + {{signal}}' },
     hero: {
       eyebrow: 'Body & mind',
       // The one-tap inputs that build the insight, shown while it is still forming.
-      buildingOne: 'Your body↔mind link is forming — {{days}} more day with a mood and a steps reading.',
-      buildingOther: 'Your body↔mind link is forming — {{days}} more days with a mood and a steps reading.',
+      buildingOne: 'Your body↔mind link is forming — {{days}} more day with a mood and {{signal}}.',
+      buildingFew: 'Your body↔mind link is forming — {{days}} more days with a mood and {{signal}}.',
+      buildingMany: 'Your body↔mind link is forming — {{days}} more days with a mood and {{signal}}.',
       buildingCaption: 'A check-in today and a few more, and the pattern shows up here.',
       // Reused for both the link and no-link states.
       caption: 'An association, not a cause — never a reason to push yourself.',
+      // The body signal noun for the "…with a mood and {{signal}}" phrasing.
+      signalNoun: { steps: 'a steps reading', sleep: 'a sleep reading', protein: 'a protein reading' },
+    },
+    sleep: {
+      meaning: {
+        unknown: 'no sleep data yet',
+        very_short: 'under 6 hours — a short night; one won\'t undo you',
+        short: 'close to the range; nearer 7 hours often feels easier by day',
+        ample: 'within the recommended 7–9 hours',
+        long: 'over 9 hours — sometimes a sign your body is catching up',
+      },
+    },
+    daySummary: {
+      empty: 'A new day. Check in your mood or take a few steps, and a summary shows up here.',
+      steps: '{{steps}} steps already today. A good start.',
+      mood: 'Mood today — {{mood}}/10. Thanks for checking in.',
+      win: 'There\'s already a small win today — that counts.',
+      stepsMood: '{{steps}} steps and a mood of {{mood}}/10 today.',
+      stepsWin: '{{steps}} steps today — and already a win.',
+      moodWin: 'Mood {{mood}}/10 and a win in the bag. Good day.',
+      stepsMoodWin: '{{steps}} steps, mood {{mood}}/10 — and already a win today.',
     },
     feeders: {
       header: 'Feed your insight',
@@ -62,19 +84,41 @@ export const en = {
       moodCta: 'One tap — how are you right now?',
       moodValue: 'Last: {{value}}/10',
       steps: 'Steps today',
+      sleep: 'Last night\'s sleep',
       diary: 'Thought diary',
       diaryCount: '{{count}} entries — your richer mental input',
       diaryCta: 'A deeper note feeds the insight too',
     },
     moreLink: 'More',
     moodNow: { title: 'How are you right now?', hint: 'one tap · 0–10' },
-    bodyMindCol: { body: 'Body · steps', mind: 'Mind · mood' },
+    bodyMindCol: {
+      body: 'Body · steps',
+      bodySignal: { steps: 'Body · steps', sleep: 'Body · sleep', protein: 'Body · protein' },
+      mind: 'Mind · mood',
+    },
     foodBar: { placeholder: 'Tell or type what you ate…' },
     northStar: 'Showing up {{weeks}} weeks running.',
     paused: {
       title: 'You are on a break',
       body: 'Goals and auto-wins are off. Your data is safe — pick it back up whenever you are ready.',
       resume: 'Resume goals',
+    },
+  },
+  onboarding: {
+    next: 'Next',
+    start: 'Get started',
+    skip: 'Skip',
+    hero: {
+      title: 'Body and mind, together',
+      body: 'Driftora looks for one honest link: how moving, sleep and food shape how you feel. An association, never an order.',
+    },
+    privacy: {
+      title: 'Your data stays yours',
+      body: 'Everything lives on your device in an encrypted database. Your diary and mood never leave it. Backup is optional and end-to-end encrypted.',
+    },
+    feed: {
+      title: 'One tap a day is enough',
+      body: 'Check in your mood with a single tap; steps and sleep follow on their own. In a few days your personal pattern shows up here.',
     },
   },
   more: {
@@ -95,7 +139,7 @@ export const en = {
       settings: 'Privacy, targets, break',
     },
   },
-  units: { kcal: 'kcal', g: 'g' },
+  units: { kcal: 'kcal', g: 'g', h: 'h' },
   macros: { protein: 'Protein', fat: 'Fat', carbs: 'Carbs' },
   bodyMind: {
     link: {
@@ -112,6 +156,26 @@ export const en = {
       moreStepsBetterMood: 'On the days you move more, your mood runs about {{gap}} higher out of 10.',
       moreStepsWorseMood: 'On the days you move less, your mood runs about {{gap}} higher out of 10.',
       noLink: 'No clear link between your steps and your mood yet — and that is honest.',
+      // v2 — the hero speaks about the strongest honest signal (steps/sleep/protein).
+      signal: {
+        steps: {
+          better: 'On the days you move more, your mood runs about {{gap}} higher out of 10.',
+          worse: 'On the days you move less, your mood runs about {{gap}} higher out of 10.',
+        },
+        sleep: {
+          better: 'After the nights you sleep more, your mood runs about {{gap}} higher out of 10.',
+          worse: 'After the nights you sleep less, your mood runs about {{gap}} higher out of 10.',
+        },
+        protein: {
+          better: 'On the days you eat more protein, your mood runs about {{gap}} higher out of 10.',
+          worse: 'On the days you eat less protein, your mood runs about {{gap}} higher out of 10.',
+        },
+      },
+      signalNoLink: {
+        steps: 'No clear link between your steps and your mood yet — and that is honest.',
+        sleep: 'No clear link between your sleep and your mood yet — and that is honest.',
+        protein: 'No clear link between your protein and your mood yet — and that is honest.',
+      },
     },
   },
   weight: {
@@ -219,6 +283,20 @@ export const en = {
     trap: {
       title: 'Trap of the week',
       body: 'Most common this week: {{name}} ({{count}}). Noticing it is half the work.',
+    },
+    assist: {
+      // On-device CBT nudges (A1). Distortion-awareness + reframe prompts only —
+      // never "just think positive".
+      title: 'A gentle nudge',
+      dismiss: 'Hide',
+      recurringDistortion:
+        '"{{name}}" has come up often this week ({{count}}). Want to try a balanced reframe of a thought like that?',
+      highIntensity:
+        'A few entries carried very strong emotions. A calm look at the evidence for and against can take some of the heat out.',
+      missingReframe:
+        'Your latest entry has no reframe yet. One step — seeing the thought from the outside — often shifts how it feels.',
+      crisis:
+        'This looks like a really hard moment. You are not alone. If you can, reach out to someone you trust or a professional — that is okay, and it matters.',
     },
     export: {
       title: 'Thought diary — summary',

@@ -11,16 +11,23 @@ import { FoodBar } from '@/components/ui/FoodBar';
 import { ListGroup, type RowSpec } from '@/components/ui/ListGroup';
 import { MoodScale } from '@/components/ui/MoodScale';
 import { SectionHeader } from '@/components/ui/SectionHeader';
-import { runAutoWins } from '@/lib/core/db/autoWins';
-import { bodyMindInsightFromDb } from '@/lib/core/db/bodyMind';
+import { hasAnyWinOnDay, runAutoWins } from '@/lib/core/db/autoWins';
+import { bestBodyMindFromDb } from '@/lib/core/db/bodyMind';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { countDiaryEntries } from '@/lib/core/db/diary';
 import { todayMacroTotals } from '@/lib/core/db/food';
 import { latestMood, logMood } from '@/lib/core/db/mood';
 import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
+import { syncDaySleep } from '@/lib/core/db/sleep';
 import { syncDaySteps } from '@/lib/core/db/steps';
 import { weekReview } from '@/lib/core/db/weekReview';
-import { MIN_PAIRED_DAYS, type BodyMindResult } from '@/lib/core/insights/bodyMind';
+import {
+  MIN_PAIRED_DAYS,
+  type BodyMindSignal,
+  type SignalAssociation,
+} from '@/lib/core/insights/bodyMind';
+import { daySummary, type DaySummary } from '@/lib/core/insights/daySummary';
+import { sleepBand, sleepHours } from '@/lib/core/insights/sleepInsight';
 import { stepInsight } from '@/lib/core/insights/stepInsight';
 import { getHealthService } from '@/lib/core/services/healthProvider';
 import { useTheme } from '@/lib/theme/theme';
@@ -41,8 +48,11 @@ export default function HomeScreen() {
 
   const [steps, setSteps] = useState<number | null>(null);
   const [stepsMeaning, setStepsMeaning] = useState<string | null>(null);
+  const [sleepMin, setSleepMin] = useState<number | null>(null);
+  const [proteinG, setProteinG] = useState(0);
   const [diaryCount, setDiaryCount] = useState(0);
-  const [bodyMind, setBodyMind] = useState<BodyMindResult | null>(null);
+  const [best, setBest] = useState<SignalAssociation | null>(null);
+  const [summary, setSummary] = useState<DaySummary | null>(null);
   const [moodValue, setMoodValue] = useState<number | null>(null);
   const [streakWeeks, setStreakWeeks] = useState(0);
   const [paused, setPaused] = useState(false);
@@ -52,15 +62,18 @@ export default function HomeScreen() {
       let active = true;
       void (async () => {
         if (!db) return;
-        const [tot, settings, diaryN, bodyMindResult, moodRow, review] = await Promise.all([
+        const [tot, settings, diaryN, moodRow, review] = await Promise.all([
           todayMacroTotals(db),
           ensureSettings(db),
           countDiaryEntries(db),
-          bodyMindInsightFromDb(db),
           latestMood(db),
           weekReview(db),
         ]);
-        const stepCount = await syncDaySteps(db, getHealthService());
+        const svc = getHealthService();
+        // Sync today's passive signals first so the read reflects today too.
+        const stepCount = await syncDaySteps(db, svc);
+        const sleepMinutes = await syncDaySleep(db, svc);
+        const bestLink = await bestBodyMindFromDb(db);
         // Celebrate the day's earned goals automatically (deduped per day). A
         // quiet background behavior, not a Home card — kept as-is.
         await runAutoWins(
@@ -77,14 +90,24 @@ export default function HomeScreen() {
             proteinGoal: t('wins.auto.proteinGoal', { protein: Math.round(tot.proteinG) }),
           },
         );
+        const wonToday = await hasAnyWinOnDay(db);
         if (!active) return;
         setSteps(stepCount);
         setStepsMeaning(stepInsight(stepCount, settings.stepsGoal));
+        setSleepMin(sleepMinutes);
+        setProteinG(tot.proteinG);
         setDiaryCount(diaryN);
-        setBodyMind(bodyMindResult);
+        setBest(bestLink);
         setMoodValue(moodRow ? moodRow.value : null);
         setStreakWeeks(review.streakWeeks);
         setPaused(settings.paused);
+        setSummary(
+          daySummary({
+            steps: stepCount,
+            mood: moodRow ? moodRow.value : null,
+            hasWinToday: wonToday,
+          }),
+        );
       })();
       return () => {
         active = false;
@@ -105,6 +128,11 @@ export default function HomeScreen() {
     setMoodValue(value);
   }
 
+  // The signal the hero speaks about (steps / sleep / protein), and today's
+  // value + glyph for its body column. Defaults to steps while still forming.
+  const heroSignal: BodyMindSignal = best?.signal ?? 'steps';
+  const signalNoun = t(`home.hero.signalNoun.${heroSignal}`);
+
   // Map the structured Body↔Mind result onto the presentational hero. Every
   // honesty state is preserved: building placeholder below the gate, an honest
   // no-link line, and the "association, not cause" caption on real findings.
@@ -116,35 +144,54 @@ export default function HomeScreen() {
     caption?: string;
   } => {
     const eyebrow = t('home.hero.eyebrow');
-    if (!bodyMind || bodyMind.kind === 'insufficient') {
-      const remaining = Math.max(1, MIN_PAIRED_DAYS - (bodyMind?.pairedDays ?? 0));
+    const result = best?.result;
+    if (!result || result.kind === 'insufficient') {
+      const remaining = Math.max(1, MIN_PAIRED_DAYS - (result?.pairedDays ?? 0));
       return {
         eyebrow,
-        headline: t(buildingKey(remaining), { days: remaining }),
+        headline: t(buildingKey(remaining), { days: remaining, signal: signalNoun }),
         caption: t('home.hero.buildingCaption'),
       };
     }
-    const basis = t('home.bodyMind.basis', { days: bodyMind.pairedDays });
-    if (bodyMind.kind === 'no_link') {
-      return { eyebrow, headline: t('bodyMind.hero.noLink'), basis, caption: t('home.hero.caption') };
+    const basis = t('home.bodyMind.basis', { days: result.pairedDays, signal: signalNoun });
+    if (result.kind === 'no_link') {
+      return {
+        eyebrow,
+        headline: t(`bodyMind.hero.signalNoLink.${heroSignal}`),
+        basis,
+        caption: t('home.hero.caption'),
+      };
     }
-    const headlineKey =
-      bodyMind.direction === 'more_steps_better_mood'
-        ? 'bodyMind.hero.moreStepsBetterMood'
-        : 'bodyMind.hero.moreStepsWorseMood';
+    const dir = result.direction === 'more_better' ? 'better' : 'worse';
     return {
       eyebrow,
-      accent: t('bodyMind.hero.accent', { gap: bodyMind.moodGap }),
-      headline: t(headlineKey, { gap: bodyMind.moodGap }),
+      accent: t('bodyMind.hero.accent', { gap: result.moodGap }),
+      headline: t(`bodyMind.hero.signal.${heroSignal}.${dir}`, { gap: result.moodGap }),
       basis,
       caption: t('home.hero.caption'),
     };
   })();
 
+  const bodyColValue = ((): string => {
+    if (heroSignal === 'sleep') {
+      return sleepMin != null ? `${sleepHours(sleepMin)} ${t('units.h')}` : '—';
+    }
+    if (heroSignal === 'protein') {
+      return `${Math.round(proteinG)} ${t('units.g')}`;
+    }
+    return steps != null ? formatSteps(steps) : '—';
+  })();
+  const bodyColIcon = SIGNAL_ICON[heroSignal];
+
   const stepsSubtitle =
     steps == null || stepsMeaning == null
       ? t('home.comingSoon')
       : `${formatSteps(steps)} — ${stepsMeaning}`;
+
+  const sleepSubtitle =
+    sleepMin == null
+      ? t('home.comingSoon')
+      : `${sleepHours(sleepMin)} ${t('units.h')} — ${t(`home.sleep.meaning.${sleepBand(sleepMin)}`)}`;
 
   const feeders: RowSpec[] = [
     {
@@ -154,6 +201,14 @@ export default function HomeScreen() {
       iconBg: theme.scheme === 'light' ? '#FBEFD9' : '#33261F',
       title: t('home.feeders.steps'),
       subtitle: stepsSubtitle,
+    },
+    {
+      key: 'sleep',
+      icon: 'moon-outline',
+      tint: theme.primary,
+      iconBg: theme.scheme === 'light' ? '#E9E2FA' : '#272138',
+      title: t('home.feeders.sleep'),
+      subtitle: sleepSubtitle,
     },
     {
       key: 'diary',
@@ -200,6 +255,15 @@ export default function HomeScreen() {
           {t('home.greeting')}
         </Text>
 
+        {summary ? (
+          <Text style={[styles.daySummary, { color: theme.text }, theme.font.bodyMedium]}>
+            {t(`home.daySummary.${summary.key}`, {
+              steps: summary.steps != null ? formatSteps(summary.steps) : '',
+              mood: summary.mood ?? '',
+            })}
+          </Text>
+        ) : null}
+
         {paused ? (
           <Card style={styles.pauseBanner}>
             <Text style={[styles.pauseTitle, { color: theme.text }, theme.font.bodySemiBold]}>
@@ -226,8 +290,9 @@ export default function HomeScreen() {
             headline={hero.headline}
             basis={hero.basis}
             caption={hero.caption}
-            bodyLabel={t('home.bodyMindCol.body')}
-            bodyValue={steps != null ? formatSteps(steps) : '—'}
+            bodyLabel={t(`home.bodyMindCol.bodySignal.${heroSignal}`)}
+            bodyValue={bodyColValue}
+            bodyIcon={bodyColIcon}
             mindLabel={t('home.bodyMindCol.mind')}
             mindValue={moodValue != null ? `${moodValue}/10` : '—'}
           />
@@ -293,11 +358,19 @@ function formatSteps(n: number): string {
   return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
 }
 
+/// The body-column glyph for each hero signal.
+const SIGNAL_ICON: Record<BodyMindSignal, 'walk-outline' | 'moon-outline' | 'nutrition-outline'> = {
+  steps: 'walk-outline',
+  sleep: 'moon-outline',
+  protein: 'nutrition-outline',
+};
+
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   androidContent: { paddingHorizontal: 18, paddingTop: 4, paddingBottom: 96 },
   iosContent: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 96 },
   greeting: { fontSize: 14, lineHeight: 20, marginBottom: 2 },
+  daySummary: { fontSize: 15, lineHeight: 21, marginTop: 8 },
   hero: { marginTop: 14 },
   moodCard: { marginTop: 14 },
   moodHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },

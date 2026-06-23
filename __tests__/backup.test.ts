@@ -15,6 +15,7 @@ import { logMood } from '@/lib/core/db/mood';
 import { applySchema } from '@/lib/core/db/init';
 import * as schema from '@/lib/core/db/schema';
 import { addWin, updateSettings } from '@/lib/core/db/settings';
+import { upsertSleep } from '@/lib/core/db/sleep';
 import { upsertSteps } from '@/lib/core/db/steps';
 import { upsertWeight } from '@/lib/core/db/weight';
 
@@ -52,6 +53,7 @@ async function seed(db: ReturnType<typeof makeDb>['db']) {
     carbG: 2,
   });
   await upsertSteps(db, '2026-06-18', 8123);
+  await upsertSleep(db, '2026-06-18', 450);
   await upsertWeight(db, '2026-06-18', 71.4);
   await logMood(db, 7);
   await saveDiaryEntry(db, {
