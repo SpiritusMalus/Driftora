@@ -11,7 +11,9 @@
       "bundleIdentifier": "com.driftora.app",
       "supportsTablet": true,
       "infoPlist": {
-        "NSHealthShareUsageDescription": "Доступ к данным о шагах нужен, чтобы показывать вашу активность и её пользу для здоровья."
+        "NSHealthShareUsageDescription": "Доступ к данным о шагах нужен, чтобы показывать вашу активность и её пользу для здоровья.",
+        "NSSpeechRecognitionUsageDescription": "Распознавание речи используется для голосового ввода еды.",
+        "NSMicrophoneUsageDescription": "Микрофон нужен для голосового ввода того, что вы съели."
       },
       "entitlements": {
         "com.apple.developer.healthkit": true
@@ -28,7 +30,9 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.RECORD_AUDIO",
-        "android.permission.POST_NOTIFICATIONS"
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT"
       ]
     },
     "web": {
@@ -46,7 +50,9 @@
         {
           "microphonePermission": "Микрофон нужен для голосового ввода того, что вы съели.",
           "speechRecognitionPermission": "Распознавание речи используется для голосового ввода еды.",
-          "androidSpeechServicePackages": ["com.google.android.googlequicksearchbox"]
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox"
+          ]
         }
       ],
       [
@@ -67,7 +73,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "c10b5ed7-277d-46b0-97e6-79dde3fa07d3"
+        "projectId": "5d1181a1-14af-48d8-af76-b2ad161eae42"
       }
     },
     "owner": "tihonenkoeugene"
