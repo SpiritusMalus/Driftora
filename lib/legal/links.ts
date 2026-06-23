@@ -3,9 +3,9 @@
 /// `legal/*.md` + `lib/legal/documents.ts` and the family-pie page mirrors it.
 /// `combined` is the single page; `/terms` + `/privacy` deep-link its tabs.
 export const LEGAL_URL = {
-  combined: 'https://family-pie.ru/health_routine/legal',
-  terms: 'https://family-pie.ru/health_routine/terms',
-  privacy: 'https://family-pie.ru/health_routine/privacy',
+  combined: 'https://family-pie.ru/driftora/legal',
+  terms: 'https://family-pie.ru/driftora/terms',
+  privacy: 'https://family-pie.ru/driftora/privacy',
 } as const;
 
 /// Neutral studio landing page (not a purchase/steering link — iOS-safe).

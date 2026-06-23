@@ -7,7 +7,7 @@ import { buildBackupFile, decryptBackupBody, parseBackupFile } from '../db/backu
 import { ensureSettings } from '../db/settings';
 
 /**
- * Client sync layer (HealthRoutine Phase 3) — pushes an encrypted full-DB snapshot
+ * Client sync layer (Driftora Phase 3) — pushes an encrypted full-DB snapshot
  * to the `sync-server/` and pulls it on another device. Last-writer-wins.
  *
  * E2E INVARIANT (asserted in `__tests__/syncClient.test.ts`): the only things that
@@ -55,7 +55,7 @@ export type FetchLike = (
 }>;
 
 export interface SyncConfig {
-  /// Base URL of the sync server, e.g. "https://sync.healthroutine.app". No trailing slash.
+  /// Base URL of the sync server, e.g. "https://sync.driftora.app". No trailing slash.
   baseUrl: string;
   /// Stable opaque identifier for this device (NOT PII the server interprets).
   deviceId: string;

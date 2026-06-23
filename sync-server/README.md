@@ -1,6 +1,6 @@
-# HealthRoutine E2E Sync Server
+# Driftora E2E Sync Server
 
-A thin, **end-to-end-encrypted** sync service for HealthRoutine. It lets a user
+A thin, **end-to-end-encrypted** sync service for Driftora. It lets a user
 push an **encrypted full-DB snapshot** from one device and pull it on another,
 authenticated by **proving possession of their E2E private key** (no password as
 the encryption secret). Last-writer-wins by `updated_at`.

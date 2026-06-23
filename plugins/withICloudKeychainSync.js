@@ -22,7 +22,7 @@ const withICloudKeychainSync = (config) => {
   return withEntitlementsPlist(config, (cfg) => {
     const entitlements = cfg.modResults;
     const bundleId =
-      (config.ios && config.ios.bundleIdentifier) || 'com.healthroutine.app';
+      (config.ios && config.ios.bundleIdentifier) || 'com.driftora.app';
     const group = `$(AppIdentifierPrefix)${bundleId}`;
     const existing = entitlements['keychain-access-groups'];
     if (!Array.isArray(existing)) {

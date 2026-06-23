@@ -64,7 +64,7 @@ type Status =
   | { kind: 'error'; message: string };
 
 const BACKUP_EXTENSION = 'hrbackup';
-const KEYFILE_NAME = 'healthroutine-key.json';
+const KEYFILE_NAME = 'driftora-key.json';
 
 export default function BackupScreen() {
   const { t } = useTranslation();
@@ -142,7 +142,7 @@ export default function BackupScreen() {
       const fileBytes = await buildBackupFile(doc, master, gatePhrase);
 
       const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-      const file = new File(Paths.cache, `healthroutine-backup-${stamp}.${BACKUP_EXTENSION}`);
+      const file = new File(Paths.cache, `driftora-backup-${stamp}.${BACKUP_EXTENSION}`);
       file.create({ overwrite: true });
       file.write(fileBytes);
 

@@ -16,7 +16,7 @@ import Security
 // physical devices. See modules/platform-key-store/README.md.
 public class PlatformKeyStoreModule: Module {
   // A dedicated service name so these items never collide with expo-secure-store's.
-  private let service = "com.healthroutine.e2ee.keysync"
+  private let service = "com.driftora.e2ee.keysync"
 
   public func definition() -> ModuleDefinition {
     Name("PlatformKeyStore")

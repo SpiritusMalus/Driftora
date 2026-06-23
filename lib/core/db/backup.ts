@@ -9,7 +9,7 @@ type AnyDb = BaseSQLiteDatabase<any, any, any>;
 /// Bump when the on-disk JSON shape changes in a non-additive way. `importAllTables`
 /// rejects a document whose major version it doesn't understand.
 export const BACKUP_FORMAT_VERSION = 1;
-const APP_ID = 'health-routine';
+const APP_ID = 'driftora';
 
 /// Every app table that holds user data, in FK-safe insert order (parents before
 /// children: `food_items.entry_id` references `food_entries.id`). Logical export

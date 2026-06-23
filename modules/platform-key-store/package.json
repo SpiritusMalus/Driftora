@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Local Expo module: E2E master-key custody via iCloud Keychain (iOS) and Google Block Store (Android).",
   "main": "index.ts",
-  "author": "HealthRoutine",
+  "author": "Driftora",
   "license": "UNLICENSED",
   "private": true
 }

@@ -1,4 +1,4 @@
-"""Runtime configuration for the HealthRoutine E2E sync server.
+"""Runtime configuration for the Driftora E2E sync server.
 
 Settings are read from the environment (12-factor); a `.env` file is loaded for
 local dev via pydantic-settings. SQLite is the default for dev/tests — see

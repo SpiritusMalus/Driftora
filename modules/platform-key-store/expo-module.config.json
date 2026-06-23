@@ -4,6 +4,6 @@
     "modules": ["PlatformKeyStoreModule"]
   },
   "android": {
-    "modules": ["com.healthroutine.platformkeystore.PlatformKeyStoreModule"]
+    "modules": ["com.driftora.platformkeystore.PlatformKeyStoreModule"]
   }
 }

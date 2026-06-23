@@ -9,7 +9,7 @@ Pod::Spec.new do |s|
   s.description    = package['description']
   s.license        = package['license']
   s.author         = package['author']
-  s.homepage       = package['homepage'] || 'https://github.com/SpiritusMalus/HealthRoutine'
+  s.homepage       = package['homepage'] || 'https://github.com/SpiritusMalus/Driftora'
   s.platforms      = { :ios => '15.1' }
   s.swift_version  = '5.4'
   s.source         = { git: '' }

@@ -92,7 +92,7 @@ describe('DB backup (exportAllTables / importAllTables)', () => {
     }
 
     const doc = await exportAllTables(a.db);
-    expect(doc.app).toBe('health-routine');
+    expect(doc.app).toBe('driftora');
     expect(doc.formatVersion).toBe(BACKUP_FORMAT_VERSION);
 
     // Fresh, empty DB — simulate a new install / wiped device.
@@ -145,7 +145,7 @@ describe('DB backup (exportAllTables / importAllTables)', () => {
     await expect(importAllTables(a.db, wrongApp)).rejects.toThrow();
 
     const wrongVersion = {
-      app: 'health-routine',
+      app: 'driftora',
       formatVersion: 999,
       exportedAt: '',
       tables: {},

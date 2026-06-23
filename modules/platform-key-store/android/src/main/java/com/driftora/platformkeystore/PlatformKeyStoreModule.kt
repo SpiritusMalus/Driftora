@@ -1,4 +1,4 @@
-package com.healthroutine.platformkeystore
+package com.driftora.platformkeystore
 
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition

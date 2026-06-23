@@ -1,5 +1,5 @@
 export const en = {
-  appTitle: 'HealthRoutine',
+  appTitle: 'Driftora',
   // First-launch offer gate (GENERAL consent: Terms + Privacy). Kept separate
   // from the AI cross-border consent below — Russian law bans bundled consent.
   legal: {
@@ -315,7 +315,7 @@ export const en = {
     dbUnavailable: 'Settings are available in a device dev build.',
   },
   notifications: {
-    reminderTitle: 'HealthRoutine',
+    reminderTitle: 'Driftora',
     reminderBody: 'A minute for you — log your mood or steps.',
   },
   wins: {
@@ -443,7 +443,7 @@ export const en = {
     },
     // Errors from key-file import (codes map to recovery.ts RecoveryFileError).
     keyFileError: {
-      invalidFormat: 'Invalid file format. It must be a healthroutine-key.json key-file.',
+      invalidFormat: 'Invalid file format. It must be a driftora-key.json key-file.',
       noPrivateKey: 'The file has no private key.',
       noPublicKey: 'The file has no public key.',
       mismatch: 'The key-file is corrupt: the keys do not match.',
