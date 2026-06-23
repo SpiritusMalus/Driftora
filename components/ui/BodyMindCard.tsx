@@ -22,6 +22,7 @@ export function BodyMindCard({
   caption,
   bodyLabel,
   bodyValue,
+  bodyIcon = 'walk-outline',
   mindLabel,
   mindValue,
 }: {
@@ -32,6 +33,9 @@ export function BodyMindCard({
   caption?: string;
   bodyLabel: string;
   bodyValue: string;
+  /// The body-column glyph — adapts to the signal the hero speaks about
+  /// (steps → walk, sleep → moon, protein → nutrition). Defaults to steps.
+  bodyIcon?: React.ComponentProps<typeof Ionicons>['name'];
   mindLabel: string;
   mindValue: string;
 }) {
@@ -57,7 +61,7 @@ export function BodyMindCard({
       <View style={styles.columns}>
         <Column
           theme={theme}
-          icon="walk-outline"
+          icon={bodyIcon}
           tint={theme.primary}
           tile={theme.primarySoft}
           label={bodyLabel}

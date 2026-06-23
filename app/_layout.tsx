@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import '@/lib/i18n';
 import { LegalGate } from '@/components/legal/LegalGate';
+import { Onboarding } from '@/components/Onboarding';
 import { DatabaseProvider } from '@/lib/core/db/DatabaseProvider';
 import { resolveTheme } from '@/lib/theme/theme';
 import { fontAssets } from '@/lib/theme/typography';
@@ -54,6 +55,7 @@ export default function RootLayout() {
     <DatabaseProvider>
       <SafeAreaProvider>
         <LegalGate>
+        <Onboarding>
         <Stack screenOptions={headerOptions}>
           <Stack.Screen name="index" options={{ title: t('home.title') }} />
           <Stack.Screen name="more/index" options={{ title: t('more.title') }} />
@@ -68,6 +70,7 @@ export default function RootLayout() {
           <Stack.Screen name="settings/backup" options={{ title: t('backup.title') }} />
           <Stack.Screen name="review/index" options={{ title: t('review.title') }} />
         </Stack>
+        </Onboarding>
         </LegalGate>
       </SafeAreaProvider>
     </DatabaseProvider>

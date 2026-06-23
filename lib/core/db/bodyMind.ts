@@ -2,11 +2,16 @@ import { isNotNull } from 'drizzle-orm';
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
 import {
+  associationInsight,
+  bestAssociation,
   bodyMindInsight,
   type BodyMindResult,
+  type BodyMindSignal,
   type MoodStepDay,
+  type SignalAssociation,
+  type SignalMoodDay,
 } from '../insights/bodyMind';
-import { diaryEntries, moods, stepsDays } from './schema';
+import { diaryEntries, foodEntries, moods, sleepDays, stepsDays } from './schema';
 import { dayKey } from './steps';
 
 /// Accepts any drizzle SQLite database (op-sqlite async on device,
@@ -14,13 +19,9 @@ import { dayKey } from './steps';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyDb = BaseSQLiteDatabase<any, any, any>;
 
-/// Builds the day-by-day (mood, steps) pairs the Body↔Mind insight reads.
-///
-/// A day qualifies only if it has BOTH a recorded step count and at least one
-/// diary entry with a (non-null) mood. Diary moods are averaged per local day;
-/// days missing either side are dropped (a missing step row is "no data", not
-/// zero — so it must not be paired).
-export async function gatherMoodStepDays(db: AnyDb): Promise<MoodStepDay[]> {
+/// Average of ALL moods per local day — diary moods + standalone check-ins — so
+/// a one-tap mood feeds the same insight as a full thought record.
+async function moodByDay(db: AnyDb): Promise<Map<string, number>> {
   const diaryRows = (await db
     .select({ ts: diaryEntries.ts, mood: diaryEntries.mood })
     .from(diaryEntries)
@@ -30,36 +31,95 @@ export async function gatherMoodStepDays(db: AnyDb): Promise<MoodStepDay[]> {
     .select({ ts: moods.ts, value: moods.value })
     .from(moods)) as { ts: Date; value: number }[];
 
-  const stepRows = (await db
-    .select({ date: stepsDays.date, steps: stepsDays.steps })
-    .from(stepsDays)) as { date: string; steps: number }[];
-
-  // Average ALL moods per local day — diary moods + standalone check-ins — so a
-  // one-tap mood feeds the same insight as a full thought record.
-  const moodByDay = new Map<string, { sum: number; count: number }>();
-  const addMood = (ts: Date, value: number) => {
+  const acc = new Map<string, { sum: number; count: number }>();
+  const add = (ts: Date, value: number) => {
     const day = dayKey(ts);
-    const acc = moodByDay.get(day) ?? { sum: 0, count: 0 };
-    acc.sum += Number(value);
-    acc.count += 1;
-    moodByDay.set(day, acc);
+    const a = acc.get(day) ?? { sum: 0, count: 0 };
+    a.sum += Number(value);
+    a.count += 1;
+    acc.set(day, a);
   };
   for (const row of diaryRows) {
     if (row.mood == null) continue; // defensive; the query already filters nulls
-    addMood(row.ts, row.mood);
+    add(row.ts, row.mood);
   }
-  for (const row of moodRows) addMood(row.ts, row.value);
+  for (const row of moodRows) add(row.ts, row.value);
 
-  const stepsByDay = new Map<string, number>();
-  for (const row of stepRows) stepsByDay.set(row.date, Number(row.steps));
+  const out = new Map<string, number>();
+  for (const [day, m] of acc) out.set(day, m.sum / m.count);
+  return out;
+}
 
-  const points: MoodStepDay[] = [];
-  for (const [day, m] of moodByDay) {
-    const steps = stepsByDay.get(day);
-    if (steps == null) continue; // need both sides
-    points.push({ day, steps, mood: m.sum / m.count });
+/// The per-local-day value of a body signal: steps (count), sleep (minutes) or
+/// protein (grams). A day with no record for that signal is absent from the map
+/// (= "no data", which must not be paired as zero — same rule as steps).
+async function signalByDay(db: AnyDb, signal: BodyMindSignal): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (signal === 'steps') {
+    const rows = (await db
+      .select({ date: stepsDays.date, steps: stepsDays.steps })
+      .from(stepsDays)) as { date: string; steps: number }[];
+    for (const r of rows) out.set(r.date, Number(r.steps));
+    return out;
+  }
+  if (signal === 'sleep') {
+    const rows = (await db
+      .select({ date: sleepDays.date, minutes: sleepDays.minutes })
+      .from(sleepDays)) as { date: string; minutes: number }[];
+    for (const r of rows) out.set(r.date, Number(r.minutes));
+    return out;
+  }
+  // protein: sum each day's logged protein (grams) from the food log.
+  const rows = (await db
+    .select({ ts: foodEntries.ts, proteinG: foodEntries.proteinG })
+    .from(foodEntries)) as { ts: Date; proteinG: number }[];
+  for (const r of rows) {
+    const day = dayKey(r.ts);
+    out.set(day, (out.get(day) ?? 0) + Number(r.proteinG));
+  }
+  return out;
+}
+
+/// Pairs each day's mood with the chosen body signal — a day qualifies only if
+/// it has BOTH. The generic input to `associationInsight`.
+export async function gatherSignalMoodDays(
+  db: AnyDb,
+  signal: BodyMindSignal,
+): Promise<SignalMoodDay[]> {
+  const [moodM, signalM] = await Promise.all([moodByDay(db), signalByDay(db, signal)]);
+  const points: SignalMoodDay[] = [];
+  for (const [day, mood] of moodM) {
+    const value = signalM.get(day);
+    if (value == null) continue; // need both sides
+    points.push({ day, signal: value, mood });
   }
   return points;
+}
+
+/// Runs the honest association read for every body signal we pair against mood.
+export async function bodyMindSignalsFromDb(db: AnyDb): Promise<SignalAssociation[]> {
+  const signals: BodyMindSignal[] = ['steps', 'sleep', 'protein'];
+  return Promise.all(
+    signals.map(async (signal) => ({
+      signal,
+      result: associationInsight(await gatherSignalMoodDays(db, signal)),
+    })),
+  );
+}
+
+/// The single Body↔Mind read the hero shows: the strongest honest link across
+/// signals (see `bestAssociation`), or null only if there is no data at all.
+export async function bestBodyMindFromDb(db: AnyDb): Promise<SignalAssociation | null> {
+  return bestAssociation(await bodyMindSignalsFromDb(db));
+}
+
+// ---- original steps↔mood API (kept for back-compat + existing tests) --------
+
+/// Builds the day-by-day (mood, steps) pairs the original Body↔Mind insight
+/// reads. Thin wrapper over `gatherSignalMoodDays(db, 'steps')`.
+export async function gatherMoodStepDays(db: AnyDb): Promise<MoodStepDay[]> {
+  const points = await gatherSignalMoodDays(db, 'steps');
+  return points.map((p) => ({ day: p.day, steps: p.signal, mood: p.mood }));
 }
 
 /// Convenience: gather the paired days and run the pure insight over them.

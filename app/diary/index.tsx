@@ -12,6 +12,8 @@ import {
   listDistortionTagsSince,
   type DiaryEntryView,
 } from '@/lib/core/db/diary';
+import { ensureSettings } from '@/lib/core/db/settings';
+import { diaryInsight, type DiarySuggestion } from '@/lib/core/insights/diaryInsight';
 import { thinkingTrapOfWeek, type ThinkingTrap } from '@/lib/core/insights/distortions';
 import { buildDiaryExport } from '@/lib/core/insights/diaryExport';
 import { useTheme } from '@/lib/theme/theme';
@@ -25,6 +27,9 @@ export default function DiaryListScreen() {
   const db = useDatabase();
   const [entries, setEntries] = useState<DiaryEntryView[] | null>(null);
   const [trap, setTrap] = useState<ThinkingTrap | null>(null);
+  // The on-device CBT suggestion (A1), only when the user opted into diary assist.
+  const [suggestion, setSuggestion] = useState<DiarySuggestion | null>(null);
+  const [assistDismissed, setAssistDismissed] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -33,19 +38,40 @@ export default function DiaryListScreen() {
         if (!db) return;
         const weekAgo = new Date();
         weekAgo.setDate(weekAgo.getDate() - 7);
-        const [list, tagLists] = await Promise.all([
+        const [list, tagLists, settings] = await Promise.all([
           listDiaryEntries(db),
           listDistortionTagsSince(db, weekAgo),
+          ensureSettings(db),
         ]);
         if (!active) return;
         setEntries(list);
         setTrap(thinkingTrapOfWeek(tagLists));
+        // On-device only: compute the gentle CBT suggestion from already-stored
+        // fields. No network, no LLM — gated by the opt-in flag (default OFF).
+        setSuggestion(settings.llmDiaryAssist ? diaryInsight(list) : null);
+        setAssistDismissed(false);
       })();
       return () => {
         active = false;
       };
     }, [db]),
   );
+
+  function assistText(s: DiarySuggestion): string {
+    switch (s.kind) {
+      case 'crisis_support':
+        return t('diary.assist.crisis');
+      case 'recurring_distortion':
+        return t('diary.assist.recurringDistortion', {
+          name: t(`diary.distortions.${s.distortion}`),
+          count: s.count,
+        });
+      case 'high_intensity_emotion':
+        return t('diary.assist.highIntensity');
+      case 'missing_reframe':
+        return t('diary.assist.missingReframe');
+    }
+  }
 
   async function onShare() {
     if (!entries || entries.length === 0) return;
@@ -80,6 +106,32 @@ export default function DiaryListScreen() {
             {t('diary.export.button')}
           </Text>
         </Pressable>
+      ) : null}
+
+      {suggestion && !assistDismissed ? (
+        <Card
+          style={[
+            styles.assistCard,
+            {
+              backgroundColor: theme.iconBg,
+              borderColor: suggestion.kind === 'crisis_support' ? theme.primary : theme.cardBorder,
+            },
+          ]}
+        >
+          <View style={styles.assistHead}>
+            <Text style={[styles.assistTitle, { color: theme.text }, theme.font.bodySemiBold]}>
+              {t('diary.assist.title')}
+            </Text>
+            <Pressable onPress={() => setAssistDismissed(true)} hitSlop={8} accessibilityRole="button">
+              <Text style={[styles.assistDismiss, { color: theme.subtle }, theme.font.body]}>
+                {t('diary.assist.dismiss')}
+              </Text>
+            </Pressable>
+          </View>
+          <Text style={[styles.assistBody, { color: theme.subtle }, theme.font.body]}>
+            {assistText(suggestion)}
+          </Text>
+        </Card>
       ) : null}
 
       {trap ? (
@@ -132,6 +184,11 @@ const styles = StyleSheet.create({
   add: { marginTop: 4, marginBottom: 12 },
   shareBtn: { borderWidth: 1.5, borderRadius: 999, paddingVertical: 12, alignItems: 'center', marginBottom: 16 },
   shareText: { fontSize: 15 },
+  assistCard: { marginBottom: 16 },
+  assistHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  assistTitle: { fontSize: 14, flex: 1, paddingRight: 12 },
+  assistDismiss: { fontSize: 13 },
+  assistBody: { fontSize: 13, marginTop: 4, lineHeight: 19 },
   trapCard: { marginBottom: 16 },
   trapTitle: { fontSize: 14 },
   trapBody: { fontSize: 13, marginTop: 4, lineHeight: 18 },

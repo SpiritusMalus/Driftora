@@ -21,4 +21,14 @@ export class StubHealthService implements HealthService {
       day.getFullYear() * 372 + (day.getMonth() + 1) * 31 + day.getDate();
     return 2500 + (seed % 70) * 100;
   }
+
+  async sleepForDay(day: Date): Promise<number> {
+    // Deterministic 5h00–8h50 (300–530 min) from the calendar day, in 10-min
+    // steps, so the spread crosses several sleep bands. A different seed mix
+    // than steps so sleep and steps don't move in lockstep (the Body↔Mind
+    // pairings stay genuinely independent).
+    const seed =
+      day.getFullYear() * 145 + (day.getMonth() + 1) * 17 + day.getDate() * 7;
+    return 300 + (seed % 24) * 10;
+  }
 }

@@ -68,6 +68,7 @@ describe('steps storage (steps_days)', () => {
     const nullService: HealthService = {
       requestPermissions: async () => false,
       stepsForDay: async () => null,
+      sleepForDay: async () => null,
     };
     expect(await syncDaySteps(db, nullService, day)).toBe(5200);
 
