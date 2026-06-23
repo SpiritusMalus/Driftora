@@ -8,6 +8,7 @@
     "scheme": "healthroutine",
     "userInterfaceStyle": "automatic",
     "ios": {
+      "bundleIdentifier": "com.healthroutine.app",
       "supportsTablet": true,
       "infoPlist": {
         "NSHealthShareUsageDescription": "Доступ к данным о шагах нужен, чтобы показывать вашу активность и её пользу для здоровья."
