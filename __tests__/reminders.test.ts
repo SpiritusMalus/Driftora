@@ -1,9 +1,21 @@
 import { describe, expect, it } from '@jest/globals';
 
+import type { PlannedNudge } from '@/lib/core/insights/nudgeRules';
 import type { NotificationService } from '@/lib/core/services/notifications';
-import { buildDailyReminders, rescheduleReminders } from '@/lib/core/services/reminders';
+import {
+  buildContextNudgeReminders,
+  buildDailyReminders,
+  rescheduleReminders,
+  type NudgeCopy,
+} from '@/lib/core/services/reminders';
 
 const copy = { title: 'T', body: 'B' };
+
+const nudgeCopy: NudgeCopy = {
+  mood_walk: { title: 'mood-t', body: 'mood-b' },
+  afternoon_walk: { title: 'aft-t', body: 'aft-b' },
+  evening_walk: { title: 'eve-t', body: 'eve-b' },
+};
 
 describe('buildDailyReminders', () => {
   it('maps valid times to specs with stable, time-derived ids', () => {
@@ -27,6 +39,34 @@ describe('buildDailyReminders', () => {
 
   it('returns nothing when paused (a break mutes reminders)', () => {
     expect(buildDailyReminders(['09:00', '21:30'], copy, true)).toEqual([]);
+  });
+});
+
+describe('buildContextNudgeReminders', () => {
+  const nudges: PlannedNudge[] = [
+    { type: 'mood_walk', hour: 14, minute: 0 },
+    { type: 'afternoon_walk', hour: 15, minute: 30 },
+  ];
+
+  it('maps planned nudges to specs with type-derived ids and per-type copy', () => {
+    expect(buildContextNudgeReminders(nudges, nudgeCopy)).toEqual([
+      { id: 'nudge-mood_walk', hour: 14, minute: 0, title: 'mood-t', body: 'mood-b' },
+      { id: 'nudge-afternoon_walk', hour: 15, minute: 30, title: 'aft-t', body: 'aft-b' },
+    ]);
+  });
+
+  it('returns nothing when paused', () => {
+    expect(buildContextNudgeReminders(nudges, nudgeCopy, true)).toEqual([]);
+  });
+
+  it('dedupes a repeated nudge type (stable id, no duplicate schedule)', () => {
+    const dupes: PlannedNudge[] = [
+      { type: 'evening_walk', hour: 19, minute: 30 },
+      { type: 'evening_walk', hour: 20, minute: 0 },
+    ];
+    const specs = buildContextNudgeReminders(dupes, nudgeCopy);
+    expect(specs).toHaveLength(1);
+    expect(specs[0].id).toBe('nudge-evening_walk');
   });
 });
 

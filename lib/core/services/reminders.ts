@@ -5,6 +5,7 @@
  * actual OS scheduling is device-gated.
  */
 
+import type { NudgeType, PlannedNudge } from '../insights/nudgeRules';
 import type { NotificationService } from './notifications';
 import { parseTimeOfDay } from './reminderSchedule';
 
@@ -35,6 +36,38 @@ export function buildDailyReminders(
     if (seen.has(id)) continue;
     seen.add(id);
     out.push({ id, hour: t.hour, minute: t.minute, title: copy.title, body: copy.body });
+  }
+  return out;
+}
+
+/// Per-type copy for a context nudge — the UI/i18n layer owns the wording; this
+/// service stays translation-free and just carries the chosen strings through.
+export type NudgeCopy = Record<NudgeType, { title: string; body: string }>;
+
+/// Turns the planned JITAI nudges (from `planNudges`) into daily-reminder specs
+/// that ride the same `NotificationService` seam as fixed-time reminders. The id
+/// is derived from the nudge *type* (not the time) so a reschedule with a fresh
+/// context replaces the previous nudge instead of stacking a duplicate. Empty
+/// when `paused` — a break mutes nudges exactly like fixed reminders (defensive;
+/// `planNudges` already returns nothing when paused).
+export function buildContextNudgeReminders(
+  nudges: PlannedNudge[],
+  copy: NudgeCopy,
+  paused = false,
+): DailyReminderSpec[] {
+  if (paused) return [];
+  const seen = new Set<NudgeType>();
+  const out: DailyReminderSpec[] = [];
+  for (const n of nudges) {
+    if (seen.has(n.type)) continue;
+    seen.add(n.type);
+    out.push({
+      id: `nudge-${n.type}`,
+      hour: n.hour,
+      minute: n.minute,
+      title: copy[n.type].title,
+      body: copy[n.type].body,
+    });
   }
   return out;
 }

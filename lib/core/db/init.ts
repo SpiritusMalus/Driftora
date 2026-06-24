@@ -79,6 +79,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
   llm_diary_assist INTEGER NOT NULL DEFAULT 0,
   onboarding_seen INTEGER NOT NULL DEFAULT 0,
   paused INTEGER NOT NULL DEFAULT 0,
+  contextual_nudges INTEGER NOT NULL DEFAULT 0,
   show_population_stats INTEGER NOT NULL DEFAULT 0,
   region TEXT NOT NULL DEFAULT 'auto',
   legal_accepted_version TEXT NOT NULL DEFAULT '',
@@ -118,6 +119,9 @@ export const MIGRATIONS: string[] = [
   // (The new `sleep_days` table needs no ALTER — CREATE TABLE IF NOT EXISTS above
   // covers both fresh and existing installs.)
   `ALTER TABLE app_settings ADD COLUMN onboarding_seen INTEGER NOT NULL DEFAULT 0`,
+  // 2026-06-24: opt-in gentle context (JITAI) nudges (TASK-2026-06-23-jitai-reminders).
+  // Ships off; local notifications only, conservatively capped.
+  `ALTER TABLE app_settings ADD COLUMN contextual_nudges INTEGER NOT NULL DEFAULT 0`,
 ];
 
 /// Runs each CREATE statement through [run], then the idempotent [MIGRATIONS].
