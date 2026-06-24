@@ -110,15 +110,15 @@ export const en = {
     skip: 'Skip',
     hero: {
       title: 'Body and mind, together',
-      body: 'Driftora looks for one honest link: how moving, sleep and food shape how you feel. An association, never an order.',
+      body: 'Driftora looks for one honest link: how moving, sleep and food shape how you feel. An association, not a cause.',
     },
     privacy: {
       title: 'Your data stays yours',
-      body: 'Everything lives on your device in an encrypted database. Your diary and mood never leave it. Backup is optional and end-to-end encrypted.',
+      body: 'Everything lives on your device in an encrypted database. Your diary and mood never leave it. Backup is optional and end-to-end encrypted. To survive a lost phone, make an encrypted backup (Settings → Backup); the key comes back via your Apple/Google account or your recovery phrase.',
     },
     feed: {
       title: 'One tap a day is enough',
-      body: 'Check in your mood with a single tap; steps and sleep follow on their own. In a few days your personal pattern shows up here.',
+      body: 'Check in your mood with one tap — Driftora pulls steps and sleep from Health. In a few days your personal pattern shows up here.',
     },
   },
   more: {
