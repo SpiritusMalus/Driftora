@@ -5,6 +5,7 @@ import { identifyFromPhoto, identifyFromText, VisionUnavailableError } from './g
 import { metrics } from './metrics.js';
 import { Resolver } from './nutrition/resolver.js';
 import { buildMealDraft, buildProviders } from './orchestrator.js';
+import { buildLimiters, type RateLimits, resolveLimits } from './rateLimit.js';
 import { emptyMealDraft, type IdentifiedItem, type MealDraft, type Region } from './types.js';
 
 const APP_TOKEN = process.env.APP_TOKEN || '';
@@ -40,12 +41,34 @@ function regionOf(body: { region?: unknown }): Region {
   return body.region === 'RU' || body.region === 'US' ? body.region : defaultRegion();
 }
 
+/** Options for `createApp` (mirrors the injectable-resolver pattern). */
+export interface CreateAppOptions {
+  /** Override per-IP rate limits (tests set tiny, deterministic caps). */
+  limits?: Partial<RateLimits>;
+}
+
 /**
  * Build the Express app (no listener — see `server.ts`). A custom `resolver`
  * can be injected for tests; production wires it from env-configured providers.
  */
-export function createApp(resolver: Resolver = new Resolver(buildProviders())): express.Express {
+export function createApp(
+  resolver: Resolver = new Resolver(buildProviders()),
+  opts: CreateAppOptions = {},
+): express.Express {
   const app = express();
+
+  // Caddy is a single hop (family-pie/Caddyfile reverse_proxy → 127.0.0.1:8787),
+  // so trust exactly 1 proxy and read the real client IP from X-Forwarded-For.
+  // Use the integer hop count, never `true` (spoofable, rejected by the limiter).
+  // Bump only if a CDN/LB is ever added in front.
+  app.set('trust proxy', 1);
+
+  const limiters = buildLimiters(resolveLimits(opts.limits), fail);
+
+  // Global per-IP burst guard, before body parsing/routes so abuse is cheap to
+  // reject; /health is never limited (skip lives in the limiter).
+  app.use(limiters.burst);
+
   app.use(express.json({ limit: '16kb' }));
 
   // Minimal CORS — only emitted when an origin is configured.
@@ -96,7 +119,7 @@ export function createApp(resolver: Resolver = new Resolver(buildProviders())): 
     }
   }
 
-  app.post('/food/parse', requireToken, async (req: Request, res: Response) => {
+  app.post('/food/parse', requireToken, limiters.textDaily, async (req: Request, res: Response) => {
     const body = (req.body ?? {}) as { text?: unknown; region?: unknown };
     const text = typeof body.text === 'string' ? body.text.trim() : '';
     const region = regionOf(body);
@@ -116,7 +139,9 @@ export function createApp(resolver: Resolver = new Resolver(buildProviders())): 
   // Photo input (BUILD SPEC §5.1): multipart `image` + `region` → MealDraft via
   // Gemini vision. The client downscales + strips EXIF before upload; the file
   // stays in memory and is never persisted (privacy §2).
-  app.post('/food/parse-photo', requireToken, upload.single('image'), async (req: Request, res: Response) => {
+  // Daily cap runs before multer buffers the (up to 8 MB) upload and before the
+  // Gemini vision call, so an over-limit request is rejected cheaply.
+  app.post('/food/parse-photo', requireToken, limiters.photoDaily, upload.single('image'), async (req: Request, res: Response) => {
     const region = regionOf((req.body ?? {}) as { region?: unknown });
     const file = req.file;
     if (!file || file.size === 0) {
