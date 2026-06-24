@@ -16,8 +16,16 @@ import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { ensureSettings, parseReminderTimes, updateSettings } from '@/lib/core/db/settings';
 import type { LegalDoc } from '@/lib/legal/documents';
 import { LEGAL_URL, SITE_URL } from '@/lib/legal/links';
+import { getStepsForDay, dayKey } from '@/lib/core/db/steps';
+import { latestMood } from '@/lib/core/db/mood';
+import { planNudges } from '@/lib/core/insights/nudgeRules';
 import { getNotificationService } from '@/lib/core/services/notificationProvider';
-import { buildDailyReminders, rescheduleReminders } from '@/lib/core/services/reminders';
+import {
+  buildContextNudgeReminders,
+  buildDailyReminders,
+  rescheduleReminders,
+  type NudgeCopy,
+} from '@/lib/core/services/reminders';
 import { nextReminder } from '@/lib/core/services/reminderSchedule';
 import { type Theme, useTheme } from '@/lib/theme/theme';
 
@@ -43,6 +51,7 @@ export default function SettingsScreen() {
   const [hideCalories, setHideCalories] = useState(false);
   const [llmDiaryAssist, setLlmDiaryAssist] = useState(false);
   const [paused, setPaused] = useState(false);
+  const [contextualNudges, setContextualNudges] = useState(false);
   const [showPopulationStats, setShowPopulationStats] = useState(false);
   const [region, setRegion] = useState<'auto' | 'RU' | 'US'>('auto');
   const [saving, setSaving] = useState(false);
@@ -70,6 +79,7 @@ export default function SettingsScreen() {
         setHideCalories(s.hideCalories);
         setLlmDiaryAssist(s.llmDiaryAssist);
         setPaused(s.paused);
+        setContextualNudges(s.contextualNudges);
         setShowPopulationStats(s.showPopulationStats);
         setRegion(s.region);
         setAiConsent(s.aiFoodParseConsent);
@@ -106,6 +116,7 @@ export default function SettingsScreen() {
         hideCalories,
         llmDiaryAssist,
         paused,
+        contextualNudges,
         showPopulationStats,
         region,
       });
@@ -118,6 +129,9 @@ export default function SettingsScreen() {
 
   /// Re-applies the saved reminders to the OS scheduler. A break (`paused`)
   /// clears them; otherwise we ask for permission once and schedule the set.
+  /// When contextual nudges are on, today's passive signals are read and the
+  /// pure JITAI rules decide whether to add a gentle, capped movement nudge —
+  /// recomputed on every save so it reflects the latest context.
   /// Best-effort — a missing notification backend never blocks saving.
   async function syncReminders() {
     try {
@@ -128,6 +142,22 @@ export default function SettingsScreen() {
         { title: t('notifications.reminderTitle'), body: t('notifications.reminderBody') },
         paused,
       );
+      if (db && contextualNudges && !paused) {
+        const now = new Date();
+        const steps = await getStepsForDay(db, now);
+        const lastMood = await latestMood(db);
+        // Only count a mood logged *today* — yesterday's check-in is not context.
+        const moodToday =
+          lastMood && dayKey(new Date(lastMood.ts)) === dayKey(now) ? lastMood.value : null;
+        const nudges = planNudges({
+          hour: now.getHours(),
+          steps,
+          stepsGoal: Math.round(toNumber(stepsGoal)),
+          mood: moodToday,
+          paused,
+        });
+        specs.push(...buildContextNudgeReminders(nudges, nudgeCopy(t), paused));
+      }
       if (specs.length > 0) await service.requestPermissions();
       await rescheduleReminders(service, specs);
     } catch (e) {
@@ -217,6 +247,8 @@ export default function SettingsScreen() {
         const when = `${isToday ? t('settings.today') : t('settings.tomorrow')} ${pad(next.getHours())}:${pad(next.getMinutes())}`;
         return <Note theme={theme}>{t('settings.nextReminder', { when })}</Note>;
       })()}
+      <ToggleRow label={t('settings.contextualNudges')} value={contextualNudges} onChange={(v) => { setContextualNudges(v); dirty(); }} theme={theme} />
+      <Note theme={theme}>{t('settings.contextualNudgesNote')}</Note>
 
       <SectionHeader>{t('settings.regionTitle')}</SectionHeader>
       <View style={styles.segment}>
@@ -372,6 +404,16 @@ function ToggleRow({
       />
     </Card>
   );
+}
+
+/// Maps each nudge type to its localized title/body. Kept here (UI layer) so the
+/// rules engine and the reminders service stay translation-free.
+function nudgeCopy(t: (key: string) => string): NudgeCopy {
+  return {
+    mood_walk: { title: t('notifications.nudge.moodWalkTitle'), body: t('notifications.nudge.moodWalkBody') },
+    afternoon_walk: { title: t('notifications.nudge.afternoonWalkTitle'), body: t('notifications.nudge.afternoonWalkBody') },
+    evening_walk: { title: t('notifications.nudge.eveningWalkTitle'), body: t('notifications.nudge.eveningWalkBody') },
+  };
 }
 
 function toNumber(v: string): number {

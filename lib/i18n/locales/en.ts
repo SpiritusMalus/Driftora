@@ -367,6 +367,8 @@ export const en = {
     reminderAddBtn: 'Add',
     remindersNote: 'Fire on a device with notification permission (Expo Go may be limited). A break turns them off.',
     nextReminder: 'Next: {{when}}',
+    contextualNudges: 'Smart movement nudges (optional)',
+    contextualNudgesNote: 'If you’re moving less than usual during the day, the app gently suggests a short walk — care, not a command. Computed on your phone, nothing leaves it; at most once a day. Off by default; a break turns them off.',
     today: 'today',
     tomorrow: 'tomorrow',
     flags: 'Privacy & mode',
@@ -395,6 +397,14 @@ export const en = {
   notifications: {
     reminderTitle: 'Driftora',
     reminderBody: 'A minute for you — log your mood or steps.',
+    nudge: {
+      moodWalkTitle: 'A short walk?',
+      moodWalkBody: 'If today feels heavy, a short walk gently steadies your nervous system and mood. No pressure.',
+      afternoonWalkTitle: 'Stretch your legs?',
+      afternoonWalkBody: 'You’ve moved a little less than usual today. 10 minutes on foot eases both heart and head.',
+      eveningWalkTitle: 'An evening step',
+      eveningWalkBody: 'The day’s almost done. A short stroll is a pleasant way to close it out.',
+    },
   },
   wins: {
     title: 'Wins',

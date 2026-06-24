@@ -109,6 +109,14 @@ export const appSettings = sqliteTable('app_settings', {
   onboardingSeen: integer('onboarding_seen', { mode: 'boolean' }).notNull().default(false),
   // "Take a break" — mutes auto-wins and target pressure without losing data.
   paused: integer('paused', { mode: 'boolean' }).notNull().default(false),
+  // Opt-in (default off): gentle context (JITAI) nudges — e.g. "behind your
+  // usual pace this afternoon, fancy a short walk?". Rules are pure + on-device
+  // (lib/core/insights/nudgeRules.ts); delivery is local notifications only,
+  // nothing leaves the phone. Off by default and conservatively capped
+  // (anti-fatigue, Roadmap §5); `paused` mutes it like every other nudge.
+  contextualNudges: integer('contextual_nudges', { mode: 'boolean' })
+    .notNull()
+    .default(false),
   // Opt-in (default off): show sourced step reference points vs. the user's
   // average. Off by default — social comparison can demotivate (Roadmap §5).
   showPopulationStats: integer('show_population_stats', { mode: 'boolean' })

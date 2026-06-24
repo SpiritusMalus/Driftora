@@ -31,6 +31,7 @@ export interface SettingsPatch {
   llmDiaryAssist?: boolean;
   onboardingSeen?: boolean;
   paused?: boolean;
+  contextualNudges?: boolean;
   showPopulationStats?: boolean;
   region?: 'auto' | 'RU' | 'US';
   // РКН-safe consent fields — see schema.ts. The two consents are independent;
@@ -64,6 +65,7 @@ export async function updateSettings(
   if (patch.llmDiaryAssist != null) set.llmDiaryAssist = patch.llmDiaryAssist;
   if (patch.onboardingSeen != null) set.onboardingSeen = patch.onboardingSeen;
   if (patch.paused != null) set.paused = patch.paused;
+  if (patch.contextualNudges != null) set.contextualNudges = patch.contextualNudges;
   if (patch.showPopulationStats != null) set.showPopulationStats = patch.showPopulationStats;
   if (patch.region != null) set.region = patch.region;
   if (patch.legalAcceptedVersion != null) set.legalAcceptedVersion = patch.legalAcceptedVersion;
