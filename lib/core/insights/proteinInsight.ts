@@ -26,24 +26,35 @@ export function proteinBand(proteinG: number, targetG: number): ProteinBand {
   return 'met';
 }
 
-/// Honest phrasings per band. Today each band holds a single sentence, so the
-/// output is byte-identical to before for any seed; the `food-protein-variants`
-/// brief grows these to 3–4 variants (keeping element 0 as the legacy default).
-const PROTEIN_COPY: Record<ProteinBand, readonly string[]> = {
+/// Honest phrasings per band — 3 warm variants each. Element 0 is the original
+/// wording (so `seed = 0` reproduces the legacy output byte-for-byte). ED rule:
+/// every variant is framed as a habit to grow / satiety / muscle — never a cap,
+/// never "too much", never calories.
+export const PROTEIN_COPY: Record<ProteinBand, readonly string[]> = {
   unset: [
     'Белок дольше держит сытость и бережёт мышцы. Задайте личную цель — так будет понятнее, к чему идти.',
+    'Белок помогает дольше оставаться сытым и сохранять мышцы. С личной целью будет яснее, к чему стремиться.',
+    'Белок — это сытость и поддержка мышц. Поставьте личную цель, и ориентир появится сам.',
   ],
   none: [
     'Белка пока нет. Он дольше держит сытость и помогает сохранять мышцы — добавьте источник белка к следующему приёму.',
+    'Белка сегодня ещё не было. Он даёт сытость и бережёт мышцы — добавьте белковое к следующему приёму.',
+    'Пока без белка. Источник белка в следующий приём — и дольше будете сытым, и мышцы поддержите.',
   ],
   low: [
     'Белка пока немного. Он помогает реже испытывать голод и беречь мышцы при снижении веса.',
+    'Белка пока маловато. Чуть больше — и сытость держится дольше, и мышцы под защитой.',
+    'Белок только набирается. Он помогает реже чувствовать голод и сохранять мышцы.',
   ],
   building: [
     'Хороший задел по белку. Достаточный белок держит сытость и поддерживает мышцы.',
+    'Белок набирается хорошо. Он держит сытость и помогает беречь мышцы.',
+    'Уверенный задел по белку — это и сытость, и поддержка мышц.',
   ],
   met: [
     'Цель по белку на сегодня закрыта — это поддержка сытости и мышц. Хорошая привычка.',
+    'Белковая цель на сегодня достигнута — сытость и мышцы под поддержкой. Так держать.',
+    'Цель по белку выполнена. Это помогает сытости и мышцам — отличная привычка.',
   ],
 };
 
