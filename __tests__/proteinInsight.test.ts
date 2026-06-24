@@ -1,6 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 
-import { proteinBand, proteinInsight } from '@/lib/core/insights/proteinInsight';
+import { PROTEIN_COPY, proteinBand, proteinInsight } from '@/lib/core/insights/proteinInsight';
 
 describe('proteinBand', () => {
   it('treats a 0 target as "unset"', () => {
@@ -32,6 +32,50 @@ describe('proteinInsight', () => {
       expect(sentence.length).toBeGreaterThan(0);
       // ED safeguard: protein copy must not turn into calorie pressure.
       expect(sentence.toLowerCase()).not.toContain('калор');
+    }
+  });
+
+  it('seed 0 reproduces the legacy first variant for every band', () => {
+    const probes: [number, number][] = [
+      [100, 0], // unset
+      [0, 120], // none
+      [40, 120], // low
+      [80, 120], // building
+      [130, 120], // met
+    ];
+    for (const [p, target] of probes) {
+      const band = proteinBand(p, target);
+      expect(proteinInsight(p, target, 0)).toBe(PROTEIN_COPY[band][0]);
+    }
+  });
+
+  it('returns a member of the band set for any seed, deterministically', () => {
+    const probes: [number, number][] = [
+      [100, 0],
+      [0, 120],
+      [40, 120],
+      [80, 120],
+      [130, 120],
+    ];
+    for (const [p, target] of probes) {
+      const band = proteinBand(p, target);
+      for (let seed = 0; seed < 9; seed++) {
+        const out = proteinInsight(p, target, seed);
+        expect(PROTEIN_COPY[band]).toContain(out);
+        expect(proteinInsight(p, target, seed)).toBe(out); // determinism
+      }
+    }
+  });
+
+  it('keeps every variant ED-safe (no calories / cap / "too much" language)', () => {
+    for (const variants of Object.values(PROTEIN_COPY)) {
+      for (const v of variants) {
+        const low = v.toLowerCase();
+        expect(low).not.toContain('калор');
+        expect(low).not.toContain('слишком');
+        expect(low).not.toContain('лимит');
+        expect(low).not.toContain('много белка');
+      }
     }
   });
 });

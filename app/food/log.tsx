@@ -396,7 +396,7 @@ export default function FoodLogScreen() {
 
           {proteinTarget > 0 ? (
             <Text style={[styles.proteinNote, { color: theme.subtle }, theme.font.body]}>
-              {proteinInsight(todayProteinG + draft.totals.prot, proteinTarget)}
+              {proteinInsight(todayProteinG + draft.totals.prot, proteinTarget, Math.round(todayProteinG))}
             </Text>
           ) : null}
           <PrimaryButton
