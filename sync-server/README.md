@@ -1,13 +1,33 @@
 # Driftora E2E Sync Server
 
+> ## ⚠️ DEPRECATED — off the product path (ADR-2026-06-23)
+>
+> This operator server is **no longer the way Driftora syncs.** Per
+> **ADR-2026-06-23 (platform-native E2E sync)**, multi-device sync now rides the
+> **user's own platform account** — **CloudKit** (iOS) and the **Google Drive App
+> Data folder** (Android) — so there is **no operator server on the product path**.
+> Its only unique value was cross-ecosystem sync, which is now out of scope
+> (recovery phrase covers that rare case).
+>
+> **Why it stays in the repo:** reference + a **developer-only fallback**. The
+> client reaches it only through `serverDataSyncProvider` (default **OFF**;
+> `getDataSyncProvider` selects it only when explicitly allowed → **never in
+> production**). It is **un-deployable by intent**: nothing wires it into EAS,
+> `app.json`, CI, or any container/systemd unit. **Do NOT deploy it** and do not
+> add deploy wiring. Dropping the operator server also removes the РКН/152-ФЗ
+> "health data on our server, even as ciphertext" question entirely.
+>
+> Code + tests are kept (not deleted) so the E2E challenge-auth design remains
+> documented. Everything below describes that retained dev-only implementation.
+
 A thin, **end-to-end-encrypted** sync service for Driftora. It lets a user
 push an **encrypted full-DB snapshot** from one device and pull it on another,
 authenticated by **proving possession of their E2E private key** (no password as
 the encryption secret). Last-writer-wins by `updated_at`.
 
-> **Status: code + tests only.** Not deployed, not a production service. Hosting,
-> the real database, TLS, and the 152-ФЗ review are owner/legal decisions — see
-> "Before go-live" below. SQLite is **dev/test only**.
+> **Status: deprecated; code + tests only.** Not deployed, not a production
+> service, and not intended to be — see the deprecation banner above. SQLite is
+> **dev/test only**.
 
 ## The non-negotiable invariant
 
@@ -99,6 +119,10 @@ push→pull across devices), `test_e2e_invariant.py` (no decrypt code path, no
 server-side private key, no plaintext leak, a real sealed blob is server-inaccessible).
 
 ## Before go-live (OWNER + lawyer — NOT in this codebase)
+
+> **Superseded by ADR-2026-06-23 — retained for reference only.** The decision is
+> **not to deploy this server**; the checklist below is what *would* have been
+> required and is kept to document the trade-off, not as a live plan.
 
 1. **Pick a host & jurisdiction.** RU vs abroad has 152-ФЗ / РКН localization and
    trans-border implications **even though only ciphertext is stored** — confirm with
