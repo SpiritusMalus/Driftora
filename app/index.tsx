@@ -20,8 +20,9 @@ import { todayMacroTotals } from '@/lib/core/db/food';
 import { latestMood, logMood } from '@/lib/core/db/mood';
 import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
 import { syncDaySleep } from '@/lib/core/db/sleep';
-import { syncDaySteps } from '@/lib/core/db/steps';
+import { dayKey, listStepsDays, syncDaySteps } from '@/lib/core/db/steps';
 import { weekReview } from '@/lib/core/db/weekReview';
+import { personalBaseline, type PersonalBaseline } from '@/lib/core/insights/baseline';
 import {
   MIN_PAIRED_DAYS,
   type BodyMindSignal,
@@ -50,6 +51,10 @@ export default function HomeScreen() {
 
   const [steps, setSteps] = useState<number | null>(null);
   const [stepsMeaning, setStepsMeaning] = useState<string | null>(null);
+  // Today's steps vs the user's OWN recent normal (personal baseline). null/
+  // 'forming' while we don't have enough days to make an honest high/low claim.
+  const [stepsBaselineKind, setStepsBaselineKind] =
+    useState<PersonalBaseline['kind'] | null>(null);
   const [sleepMin, setSleepMin] = useState<number | null>(null);
   const [proteinG, setProteinG] = useState(0);
   const [diaryCount, setDiaryCount] = useState(0);
@@ -79,6 +84,14 @@ export default function HomeScreen() {
         // as 0 (no steps → no steps win).
         const stepCount = await syncDaySteps(db, svc);
         const stepsForGoals = stepCount ?? 0;
+        // Personal baseline: today vs the median of recent prior days (steps
+        // only — ED-safe). Pull a generous window, drop today, feed the totals.
+        const todayKey = dayKey();
+        const recentSteps = (await listStepsDays(db, 31))
+          .filter((r) => r.date !== todayKey)
+          .map((r) => Number(r.steps));
+        const stepsBaseline =
+          stepCount == null ? null : personalBaseline(recentSteps, stepCount);
         const sleepMinutes = await syncDaySleep(db, svc);
         const bestLink = await bestBodyMindFromDb(db);
         // Celebrate the day's earned goals automatically (deduped per day). A
@@ -130,6 +143,7 @@ export default function HomeScreen() {
         if (!active) return;
         setSteps(stepCount);
         setStepsMeaning(stepCount == null ? null : stepInsight(stepCount, settings.stepsGoal));
+        setStepsBaselineKind(stepsBaseline ? stepsBaseline.kind : null);
         setSleepMin(sleepMinutes);
         setProteinG(tot.proteinG);
         setDiaryCount(diaryN);
@@ -223,10 +237,18 @@ export default function HomeScreen() {
   })();
   const bodyColIcon = SIGNAL_ICON[heroSignal];
 
+  // Personalize the steps line once there's enough history: speak to the user's
+  // OWN normal ("above/typical/quieter than usual") instead of the generic
+  // evidence line. While still 'forming' (or with no baseline yet) keep the
+  // honest generic meaning — never a high/low claim we can't back.
+  const stepsMeaningLine =
+    stepsBaselineKind != null && stepsBaselineKind !== 'forming'
+      ? t(`home.baseline.${stepsBaselineKind}`)
+      : stepsMeaning;
   const stepsSubtitle =
-    steps == null || stepsMeaning == null
+    steps == null || stepsMeaningLine == null
       ? t('home.comingSoon')
-      : `${formatSteps(steps)} — ${stepsMeaning}`;
+      : `${formatSteps(steps)} — ${stepsMeaningLine}`;
 
   const sleepSubtitle =
     sleepMin == null
