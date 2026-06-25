@@ -11,9 +11,16 @@ import { Screen } from '@/components/ui/Screen';
 import { TextField } from '@/components/ui/TextField';
 import { AI_CONSENT_VERSION, grantAiConsent, needsAiConsent } from '@/lib/core/consent/consent';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
-import { quickMeals, saveParsedEntry, todayMacroTotals, type QuickMeal } from '@/lib/core/db/food';
+import {
+  distinctFoodItemsToday,
+  quickMeals,
+  saveParsedEntry,
+  todayMacroTotals,
+  type QuickMeal,
+} from '@/lib/core/db/food';
 import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
 import { proteinInsight } from '@/lib/core/insights/proteinInsight';
+import { varietyInsight } from '@/lib/core/insights/varietyInsight';
 import type { MealDraft, Minerals, NutritionItem, PhotoInput, Region } from '@/lib/core/services/foodParser';
 import { getFoodParser, resolveRegion } from '@/lib/core/services/foodParserProvider';
 import { recomputeDraft, withItemGrams } from '@/lib/core/services/mealDraft';
@@ -52,6 +59,7 @@ export default function FoodLogScreen() {
   // line shown once a meal is parsed (the meaning-rules library).
   const [proteinTarget, setProteinTarget] = useState(0);
   const [todayProteinG, setTodayProteinG] = useState(0);
+  const [varietyCount, setVarietyCount] = useState(0);
   const [hideCalories, setHideCalories] = useState(false);
   // Cross-border AI consent — mirrors app_settings; drives the parser gate, the
   // just-in-time prompt and the on-screen notice. Starts false (opt-in).
@@ -128,14 +136,16 @@ export default function FoodLogScreen() {
     let active = true;
     void (async () => {
       if (!db) return;
-      const [settings, totals, quickAdd] = await Promise.all([
+      const [settings, totals, quickAdd, variety] = await Promise.all([
         ensureSettings(db),
         todayMacroTotals(db),
         quickMeals(db),
+        distinctFoodItemsToday(db),
       ]);
       if (!active) return;
       setProteinTarget(settings.targetProteinG);
       setTodayProteinG(totals.proteinG);
+      setVarietyCount(variety);
       setHideCalories(settings.hideCalories);
       setRegionSetting(settings.region);
       setAiConsent(settings.aiFoodParseConsent);
@@ -411,6 +421,11 @@ export default function FoodLogScreen() {
           {proteinTarget > 0 ? (
             <Text style={[styles.proteinNote, { color: theme.subtle }, theme.font.body]}>
               {proteinInsight(todayProteinG + draft.totals.prot, proteinTarget, Math.round(todayProteinG))}
+            </Text>
+          ) : null}
+          {varietyCount > 0 ? (
+            <Text style={[styles.proteinNote, { color: theme.subtle }, theme.font.body]}>
+              {varietyInsight(varietyCount)}
             </Text>
           ) : null}
           <PrimaryButton

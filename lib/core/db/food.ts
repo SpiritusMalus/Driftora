@@ -93,6 +93,24 @@ export async function todayMacroTotals(
   );
 }
 
+/// How many DISTINCT food items were logged today (case-insensitive on the
+/// item name). Powers the body-neutral "variety" line (A5) — no nutrition data
+/// beyond what's already stored is assumed.
+export async function distinctFoodItemsToday(
+  db: AnyDb,
+  date: Date = new Date(),
+): Promise<number> {
+  const { start, end } = dayBounds(date);
+  const rows = (await db
+    .select({ name: foodItems.name })
+    .from(foodItems)
+    .innerJoin(foodEntries, eq(foodItems.entryId, foodEntries.id))
+    .where(and(gte(foodEntries.ts, start), lt(foodEntries.ts, end)))) as { name: string }[];
+  const distinct = new Set<string>();
+  for (const r of rows) distinct.add(r.name.trim().toLowerCase());
+  return distinct.size;
+}
+
 /// A one-tap re-loggable meal derived from history (no LLM, no typing).
 export interface QuickMeal {
   rawText: string;
