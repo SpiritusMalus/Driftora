@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Stateless food-parse service for Driftora — voice/text/photo → honest MealDraft. Gemini identifies foods + grams; exact per-100g nutrition comes from a region DB (USDA/Skurikhin/OFF), never the LLM.",
+  "description": "Stateless food-parse service for Driftora — voice/text/photo → honest MealDraft. An LLM (via OpenRouter) identifies foods + grams; exact per-100g nutrition comes from a region DB (USDA/Skurikhin/OFF), never the LLM.",
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",

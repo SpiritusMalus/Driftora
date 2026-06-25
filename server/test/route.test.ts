@@ -4,7 +4,7 @@ import { afterEach, beforeEach, test } from 'node:test';
 
 const realFetch = globalThis.fetch;
 
-process.env.GEMINI_API_KEY = 'test-gemini-key';
+process.env.OPENROUTER_API_KEY = 'test-openrouter-key';
 process.env.USDA_API_KEY = 'test-usda-key';
 
 // Imported after env is set so providers/clients see the test keys.
@@ -14,8 +14,8 @@ function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }
 
-function geminiReply(items: unknown[]): Response {
-  return json({ candidates: [{ content: { parts: [{ text: JSON.stringify({ items }) }] } }] });
+function llmReply(items: unknown[]): Response {
+  return json({ choices: [{ message: { content: JSON.stringify({ items }) } }] });
 }
 
 const usdaHit = {
@@ -47,7 +47,7 @@ async function startApp(): Promise<{ base: string; stop: () => Promise<void> }> 
 
 function post(base: string, body: unknown): Promise<Response> {
   // The app's own routes must use the real fetch; the mock only intercepts
-  // outbound Gemini/USDA calls (both on different hosts).
+  // outbound OpenRouter/USDA calls (both on different hosts).
   return realFetch(`${base}/food/parse`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -59,8 +59,8 @@ beforeEach(() => {
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString();
     if (url.includes('127.0.0.1')) return realFetch(input as never, init);
-    if (url.includes('generativelanguage.googleapis.com')) {
-      return geminiReply([
+    if (url.includes('openrouter.ai')) {
+      return llmReply([
         { name_ru: 'яйцо', name_en: 'egg', est_grams: 165, confidence: 0.9 },
         { name_ru: 'тост', name_en: 'toast', est_grams: 30, confidence: 0.8 },
       ]);
@@ -98,8 +98,8 @@ test('unknown food (USDA miss) → per100.source estimate + has_estimate, no cra
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString();
     if (url.includes('127.0.0.1')) return realFetch(input as never, init);
-    if (url.includes('generativelanguage.googleapis.com')) {
-      return geminiReply([{ name_ru: 'нечто', name_en: 'unobtanium stew', est_grams: 200, confidence: 0.4 }]);
+    if (url.includes('openrouter.ai')) {
+      return llmReply([{ name_ru: 'нечто', name_en: 'unobtanium stew', est_grams: 200, confidence: 0.4 }]);
     }
     if (url.includes('api.nal.usda.gov')) return json({ foods: [] }); // miss
     throw new Error(`unexpected fetch: ${url}`);
@@ -122,8 +122,8 @@ test('region RU → served by the RU table, USDA API never queried', async () =>
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString();
     if (url.includes('127.0.0.1')) return realFetch(input as never, init);
-    if (url.includes('generativelanguage.googleapis.com')) {
-      return geminiReply([{ name_ru: 'куриная грудка', name_en: 'chicken breast', est_grams: 150, confidence: 0.9 }]);
+    if (url.includes('openrouter.ai')) {
+      return llmReply([{ name_ru: 'куриная грудка', name_en: 'chicken breast', est_grams: 150, confidence: 0.9 }]);
     }
     if (url.includes('api.nal.usda.gov')) throw new Error('USDA must not be called for RU');
     throw new Error(`unexpected fetch: ${url}`);

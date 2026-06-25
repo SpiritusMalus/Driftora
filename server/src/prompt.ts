@@ -21,22 +21,24 @@ Rules:
 - NEVER output calories, protein, fat, carbs, or minerals. Identification and grams only.
 - If nothing food-like is present, return an empty items array.`;
 
-/** Gemini structured-output schema (OpenAPI subset) — identification only. */
+/**
+ * JSON Schema for structured output — identification only. Passed to OpenRouter
+ * as `response_format.json_schema.schema` (OpenAI Chat-Completions format).
+ */
 export const IDENTIFY_SCHEMA = {
-  type: 'OBJECT',
+  type: 'object',
   properties: {
     items: {
-      type: 'ARRAY',
+      type: 'array',
       items: {
-        type: 'OBJECT',
+        type: 'object',
         properties: {
-          name_ru: { type: 'STRING' },
-          name_en: { type: 'STRING' },
-          est_grams: { type: 'NUMBER' },
-          confidence: { type: 'NUMBER' },
+          name_ru: { type: 'string' },
+          name_en: { type: 'string' },
+          est_grams: { type: 'number' },
+          confidence: { type: 'number' },
         },
         required: ['name_ru', 'name_en', 'est_grams', 'confidence'],
-        propertyOrdering: ['name_ru', 'name_en', 'est_grams', 'confidence'],
       },
     },
   },

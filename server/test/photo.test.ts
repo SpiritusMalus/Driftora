@@ -4,7 +4,7 @@ import { afterEach, beforeEach, test } from 'node:test';
 
 const realFetch = globalThis.fetch;
 
-process.env.GEMINI_API_KEY = 'test-gemini-key';
+process.env.OPENROUTER_API_KEY = 'test-openrouter-key';
 process.env.USDA_API_KEY = 'test-usda-key';
 
 const { createApp } = await import('../src/app.js');
@@ -13,8 +13,8 @@ function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }
 
-function geminiReply(items: unknown[]): Response {
-  return json({ candidates: [{ content: { parts: [{ text: JSON.stringify({ items }) }] } }] });
+function llmReply(items: unknown[]): Response {
+  return json({ choices: [{ message: { content: JSON.stringify({ items }) } }] });
 }
 
 const usdaHit = {
@@ -32,7 +32,7 @@ const usdaHit = {
   ],
 };
 
-let lastGeminiBody: any = null;
+let lastLlmBody: any = null;
 
 async function startApp(): Promise<{ base: string; stop: () => Promise<void> }> {
   const server = createApp().listen(0);
@@ -45,13 +45,13 @@ async function startApp(): Promise<{ base: string; stop: () => Promise<void> }> 
 }
 
 beforeEach(() => {
-  lastGeminiBody = null;
+  lastLlmBody = null;
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString();
     if (url.includes('127.0.0.1')) return realFetch(input as never, init);
-    if (url.includes('generativelanguage.googleapis.com')) {
-      lastGeminiBody = JSON.parse(String(init?.body ?? '{}'));
-      return geminiReply([{ name_ru: 'яичница', name_en: 'fried eggs', est_grams: 120, confidence: 0.7 }]);
+    if (url.includes('openrouter.ai')) {
+      lastLlmBody = JSON.parse(String(init?.body ?? '{}'));
+      return llmReply([{ name_ru: 'яичница', name_en: 'fried eggs', est_grams: 120, confidence: 0.7 }]);
     }
     if (url.includes('api.nal.usda.gov')) return json(usdaHit);
     throw new Error(`unexpected fetch: ${url}`);
@@ -68,7 +68,7 @@ function photoForm(bytes: Uint8Array, region: string): FormData {
   return form;
 }
 
-test('POST /food/parse-photo → MealDraft; image sent to Gemini as inline data', async () => {
+test('POST /food/parse-photo → MealDraft; image sent to OpenRouter as a data URL', async () => {
   const { base, stop } = await startApp();
   try {
     const res = await realFetch(`${base}/food/parse-photo`, {
@@ -81,12 +81,14 @@ test('POST /food/parse-photo → MealDraft; image sent to Gemini as inline data'
     assert.equal(draft.items[0].per100.source, 'usda');
     assert.equal(draft.approximate, true);
 
-    // The photo reached Gemini as base64 inlineData, not as nutrition numbers.
-    const parts = lastGeminiBody.contents[0].parts;
-    const inline = parts.find((p: any) => p.inlineData);
-    assert.ok(inline, 'expected an inlineData image part');
-    assert.equal(inline.inlineData.mimeType, 'image/jpeg');
-    assert.equal(Buffer.from(inline.inlineData.data, 'base64').length, 5);
+    // The photo reached OpenRouter as a base64 data URL, not as nutrition numbers.
+    const userMsg = lastLlmBody.messages.find((m: any) => m.role === 'user');
+    const imgPart = userMsg.content.find((p: any) => p.type === 'image_url');
+    assert.ok(imgPart, 'expected an image_url part');
+    const dataUrl: string = imgPart.image_url.url;
+    const prefix = 'data:image/jpeg;base64,';
+    assert.ok(dataUrl.startsWith(prefix), 'expected a jpeg data URL');
+    assert.equal(Buffer.from(dataUrl.slice(prefix.length), 'base64').length, 5);
   } finally {
     await stop();
   }
