@@ -1,0 +1,74 @@
+name: Android APK (preview)
+
+# Cloud APK build that does NOT use the EAS build quota. Runs the Expo prebuild
+# + Gradle pipeline on a free GitHub-hosted runner and uploads the APK as a
+# build artifact. The release buildType in the default Expo template is signed
+# with the debug keystore, so the APK installs for internal testing without any
+# extra signing secrets.
+#
+# Trigger manually from the Actions tab (or `gh workflow run android-apk.yml`).
+
+on:
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: Gradle variant
+        type: choice
+        default: assembleRelease
+        options:
+          - assembleRelease
+          - assembleDebug
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      # Inlined into the JS bundle at build time (already public in eas.json).
+      # Override with a repo secret of the same name if it ever changes.
+      EXPO_PUBLIC_FOOD_API_URL: ${{ secrets.EXPO_PUBLIC_FOOD_API_URL || 'https://food.family-pie.ru/food/parse' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      # ubuntu-latest ships the Android SDK; this also wires ANDROID_HOME and
+      # accepts licenses so prebuild/Gradle can resolve build-tools.
+      - uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Expo prebuild (android)
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Build APK (${{ inputs.variant }})
+        working-directory: android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew ${{ inputs.variant }} --no-daemon
+
+      - name: Locate APK
+        id: apk
+        run: |
+          path="$(find android/app/build/outputs/apk -name '*.apk' | head -1)"
+          echo "path=$path" >> "$GITHUB_OUTPUT"
+          echo "Built: $path"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: driftora-android-apk
+          path: ${{ steps.apk.outputs.path }}
+          if-no-files-found: error
+          retention-days: 14
