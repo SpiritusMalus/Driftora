@@ -142,6 +142,23 @@ export function deriveQuickMeals(
   const recentLimit = opts.recentLimit ?? 6;
   const favoriteLimit = opts.favoriteLimit ?? 6;
 
+  const all = groupMeals(entries);
+  const recents = [...all]
+    .sort((a, b) => b.latestTs - a.latestTs)
+    .slice(0, recentLimit)
+    .map((g) => g.meal);
+  const favorites = all
+    .filter((g) => g.meal.count >= 2)
+    .sort((a, b) => b.meal.count - a.meal.count || b.latestTs - a.latestTs)
+    .slice(0, favoriteLimit)
+    .map((g) => g.meal);
+  return { recents, favorites };
+}
+
+/// Groups entries by normalized name → one `QuickMeal` each (count = repeats,
+/// macros/label from the most recent occurrence). Order-independent; shared by
+/// `deriveQuickMeals` and `deriveDayMeals`.
+function groupMeals(entries: QuickSourceEntry[]): { meal: QuickMeal; latestTs: number }[] {
   const groups = new Map<string, { meal: QuickMeal; latestTs: number }>();
   for (const e of entries) {
     const key = e.rawText.trim().toLowerCase();
@@ -176,25 +193,30 @@ export function deriveQuickMeals(
       };
     }
   }
+  return [...groups.values()];
+}
 
-  const all = [...groups.values()];
-  const recents = [...all]
+/// Distinct meals logged on [date]'s local day, newest first — powers the
+/// one-tap "same as yesterday" re-log (A4). Pure; no schema change.
+export function deriveDayMeals(
+  entries: QuickSourceEntry[],
+  date: Date,
+  limit = 6,
+): QuickMeal[] {
+  const { start, end } = dayBounds(date);
+  const onDay = entries.filter((e) => e.ts >= start && e.ts < end);
+  return groupMeals(onDay)
     .sort((a, b) => b.latestTs - a.latestTs)
-    .slice(0, recentLimit)
+    .slice(0, limit)
     .map((g) => g.meal);
-  const favorites = all
-    .filter((g) => g.meal.count >= 2)
-    .sort((a, b) => b.meal.count - a.meal.count || b.latestTs - a.latestTs)
-    .slice(0, favoriteLimit)
-    .map((g) => g.meal);
-  return { recents, favorites };
 }
 
 /// Quick-add lists drawn from the last [scan] confirmed entries.
 export async function quickMeals(
   db: AnyDb,
   opts: { recentLimit?: number; favoriteLimit?: number; scan?: number } = {},
-): Promise<{ recents: QuickMeal[]; favorites: QuickMeal[] }> {
+  now: Date = new Date(),
+): Promise<{ recents: QuickMeal[]; favorites: QuickMeal[]; yesterday: QuickMeal[] }> {
   const rows = (await db
     .select({
       rawText: foodEntries.rawText,
@@ -208,7 +230,12 @@ export async function quickMeals(
     .where(eq(foodEntries.confirmed, true))
     .orderBy(desc(foodEntries.ts))
     .limit(opts.scan ?? 200)) as QuickSourceEntry[];
-  return deriveQuickMeals(rows, opts);
+  const yesterdayDate = new Date(now);
+  yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+  return {
+    ...deriveQuickMeals(rows, opts),
+    yesterday: deriveDayMeals(rows, yesterdayDate, opts.recentLimit ?? 6),
+  };
 }
 
 /// Entries logged on [date]'s local day, newest first.

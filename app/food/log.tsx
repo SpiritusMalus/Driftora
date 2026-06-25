@@ -69,9 +69,14 @@ export default function FoodLogScreen() {
   // the user accepts (so accept resumes the exact parse they triggered).
   const [consentPrompt, setConsentPrompt] = useState<'text' | 'photo' | null>(null);
   const [pendingPhoto, setPendingPhoto] = useState<PhotoInput | null>(null);
-  const [quick, setQuick] = useState<{ recents: QuickMeal[]; favorites: QuickMeal[] }>({
+  const [quick, setQuick] = useState<{
+    recents: QuickMeal[];
+    favorites: QuickMeal[];
+    yesterday: QuickMeal[];
+  }>({
     recents: [],
     favorites: [],
+    yesterday: [],
   });
   const [speechAvailable, setSpeechAvailable] = useState(false);
   const [photoAvailable, setPhotoAvailable] = useState(false);
@@ -340,10 +345,12 @@ export default function FoodLogScreen() {
         </>
       ) : null}
 
-      {draft == null && (quick.favorites.length > 0 || quick.recents.length > 0) ? (
+      {draft == null &&
+      (quick.favorites.length > 0 || quick.recents.length > 0 || quick.yesterday.length > 0) ? (
         <View style={styles.quick}>
           {(
             [
+              { label: t('food.sameAsYesterday'), meals: quick.yesterday },
               { label: t('food.favorites'), meals: quick.favorites },
               { label: t('food.recent'), meals: quick.recents },
             ] as const

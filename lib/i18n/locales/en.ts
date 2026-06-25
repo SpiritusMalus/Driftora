@@ -230,6 +230,7 @@ export const en = {
     dbUnavailable: 'The database is only available in a device dev build.',
     favorites: 'Favorites',
     recent: 'Recent',
+    sameAsYesterday: 'Same as yesterday',
     per100: 'per 100 g',
     approx: '≈ approx',
     disclaimer:

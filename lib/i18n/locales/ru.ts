@@ -228,6 +228,7 @@ export const ru = {
     dbUnavailable: 'База данных доступна только в dev-сборке на устройстве.',
     favorites: 'Избранное',
     recent: 'Недавнее',
+    sameAsYesterday: 'Как вчера',
     per100: 'на 100 г',
     approx: '≈ примерно',
     disclaimer:
