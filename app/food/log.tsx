@@ -21,6 +21,7 @@ import {
 import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
 import { mealPromptKeyForHour } from '@/lib/core/insights/mealPrompt';
 import { proteinInsight } from '@/lib/core/insights/proteinInsight';
+import { pickVariant } from '@/lib/core/insights/variant';
 import { varietyInsight } from '@/lib/core/insights/varietyInsight';
 import type { MealDraft, Minerals, NutritionItem, PhotoInput, Region } from '@/lib/core/services/foodParser';
 import { getFoodParser, resolveRegion } from '@/lib/core/services/foodParserProvider';
@@ -61,6 +62,8 @@ export default function FoodLogScreen() {
   const [proteinTarget, setProteinTarget] = useState(0);
   const [todayProteinG, setTodayProteinG] = useState(0);
   const [varietyCount, setVarietyCount] = useState(0);
+  const [savedAck, setSavedAck] = useState<string | null>(null);
+  const saveSeedRef = useRef(0);
   const [hideCalories, setHideCalories] = useState(false);
   // Cross-border AI consent — mirrors app_settings; drives the parser gate, the
   // just-in-time prompt and the on-screen notice. Starts false (opt-in).
@@ -276,8 +279,21 @@ export default function FoodLogScreen() {
     setSaving(true);
     try {
       await saveParsedEntry(db, { rawText: text, source, draft });
-      router.back();
-    } finally {
+      // Warm, rotating acknowledgment of the *act* of logging (SDT relatedness)
+      // — never a score or a limit. Briefly shown, then we return to Home.
+      setSavedAck(
+        pickVariant(
+          [
+            t('food.savedWarm1'),
+            t('food.savedWarm2'),
+            t('food.savedWarm3'),
+            t('food.savedWarm4'),
+          ],
+          saveSeedRef.current++,
+        ),
+      );
+      setTimeout(() => router.back(), 1100);
+    } catch {
       setSaving(false);
     }
   }
@@ -434,6 +450,11 @@ export default function FoodLogScreen() {
           {varietyCount > 0 ? (
             <Text style={[styles.proteinNote, { color: theme.subtle }, theme.font.body]}>
               {varietyInsight(varietyCount)}
+            </Text>
+          ) : null}
+          {savedAck ? (
+            <Text style={[styles.savedAck, { color: theme.accent }, theme.font.bodyMedium]}>
+              {`${savedAck} ✓`}
             </Text>
           ) : null}
           <PrimaryButton
@@ -610,6 +631,7 @@ const styles = StyleSheet.create({
   badge: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
   badgeText: { fontSize: 11 },
   proteinNote: { fontSize: 12, marginTop: 4, marginBottom: 8, lineHeight: 17 },
+  savedAck: { fontSize: 13, marginTop: 4, marginBottom: 10, textAlign: 'center', lineHeight: 18 },
   quick: { marginTop: 16 },
   quickGroup: { marginBottom: 14 },
   quickLabel: { fontSize: 11, letterSpacing: 1.2, marginBottom: 8 },
