@@ -212,6 +212,12 @@ export const en = {
   food: {
     title: 'Add food',
     inputPlaceholder: 'What did you eat? e.g. three-egg omelette and coffee with milk',
+    prompt: {
+      morning: 'What was breakfast?',
+      midday: 'What was lunch?',
+      evening: 'What was dinner?',
+      lateNight: 'A little something to eat?',
+    },
     parse: 'Parse',
     parsing: 'Parsing…',
     voice: '🎤 Say it',
