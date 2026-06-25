@@ -46,6 +46,14 @@ export const en = {
       mood: 'Mood',
     },
     steps: { unit: 'steps' },
+    // Compare today to the user's own normal (personal step baseline). Tone is
+    // curious and supportive — never a target, never "you're behind".
+    baseline: {
+      above: 'Above your usual today',
+      typical: 'A typical day for you',
+      below: "Quieter than usual today — and that's okay",
+      forming: 'Still learning your rhythm',
+    },
     bodyMind: { basis: 'Based on {{days}} days with mood + {{signal}}' },
     hero: {
       eyebrow: 'Body & mind',
