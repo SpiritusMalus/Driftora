@@ -222,6 +222,8 @@ export const en = {
     saving: 'Saving…',
     empty: 'Describe your meal and tap “Parse”.',
     total: 'Whole-dish total',
+    hideCalories: 'Hide calories — keep protein only',
+    showCalories: 'Show calories and macros',
     name: 'Name',
     stubNote: 'Offline estimate (stub) for now. AI parsing comes later.',
     needHelp: 'Could not recognize it. Add more detail.',

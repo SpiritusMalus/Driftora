@@ -12,7 +12,7 @@ import { TextField } from '@/components/ui/TextField';
 import { AI_CONSENT_VERSION, grantAiConsent, needsAiConsent } from '@/lib/core/consent/consent';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { quickMeals, saveParsedEntry, todayMacroTotals, type QuickMeal } from '@/lib/core/db/food';
-import { ensureSettings } from '@/lib/core/db/settings';
+import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
 import { proteinInsight } from '@/lib/core/insights/proteinInsight';
 import type { MealDraft, Minerals, NutritionItem, PhotoInput, Region } from '@/lib/core/services/foodParser';
 import { getFoodParser, resolveRegion } from '@/lib/core/services/foodParserProvider';
@@ -211,6 +211,15 @@ export default function FoodLogScreen() {
     await runPhotoParse(photo, aiConsent);
   }
 
+  /// One-tap, fully reversible comfort: hide or show calorie numbers. The
+  /// setting already exists (default off) — this just makes it discoverable at
+  /// the moment numbers appear, for anyone who'd rather not see them.
+  async function onToggleHideCalories() {
+    const next = !hideCalories;
+    setHideCalories(next);
+    if (db) await updateSettings(db, { hideCalories: next });
+  }
+
   /// Accept on either consent modal: record the consent fact, flip local state,
   /// then resume the exact parse the user triggered — now online.
   async function onConsentAccept() {
@@ -386,6 +395,11 @@ export default function FoodLogScreen() {
                 ? `${t('macros.protein')} ${draft.totals.prot} ${t('units.g')}`
                 : `${draft.totals.kcal} ${t('units.kcal')} · ${t('macros.protein')} ${draft.totals.prot} ${t('units.g')} · ${t('macros.fat')} ${draft.totals.fat} · ${t('macros.carbs')} ${draft.totals.carb}`}
             </Text>
+            <Pressable onPress={onToggleHideCalories} hitSlop={8} style={styles.hideCaloriesToggle}>
+              <Text style={[styles.hideCaloriesText, { color: theme.subtle }, theme.font.body]}>
+                {hideCalories ? t('food.showCalories') : t('food.hideCalories')}
+              </Text>
+            </Pressable>
             {draft.approximate ? (
               <Text style={[styles.disclaimer, { color: theme.subtle }, theme.font.body]}>{t('food.disclaimer')}</Text>
             ) : null}
@@ -567,6 +581,8 @@ const styles = StyleSheet.create({
   totalHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
   totalLabel: { fontSize: 15 },
   totalValue: { fontSize: 14 },
+  hideCaloriesToggle: { marginTop: 8, alignSelf: 'flex-start' },
+  hideCaloriesText: { fontSize: 12, textDecorationLine: 'underline' },
   disclaimer: { fontSize: 11, marginTop: 8, lineHeight: 16 },
   badge: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
   badgeText: { fontSize: 11 },
