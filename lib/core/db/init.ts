@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS food_items (
 CREATE TABLE IF NOT EXISTS steps_days (
   date TEXT PRIMARY KEY,
   steps INTEGER NOT NULL DEFAULT 0,
+  source TEXT NOT NULL DEFAULT 'stub',
   synced_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS sleep_days (
@@ -122,6 +123,10 @@ export const MIGRATIONS: string[] = [
   // 2026-06-24: opt-in gentle context (JITAI) nudges (TASK-2026-06-23-jitai-reminders).
   // Ships off; local notifications only, conservatively capped.
   `ALTER TABLE app_settings ADD COLUMN contextual_nudges INTEGER NOT NULL DEFAULT 0`,
+  // 2026-06-25: steps provenance (TASK-2026-06-24-steps-sources). Existing rows
+  // were all stub fills, so they default to 'stub'; manual entries and real
+  // device reads tag themselves. Lets the passive sync skip manual days.
+  `ALTER TABLE steps_days ADD COLUMN source TEXT NOT NULL DEFAULT 'stub'`,
 ];
 
 /// Runs each CREATE statement through [run], then the idempotent [MIGRATIONS].

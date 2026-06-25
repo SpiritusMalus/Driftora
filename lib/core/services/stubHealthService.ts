@@ -10,6 +10,8 @@ import type { HealthService } from './health';
  * `HealthService` interface — see `healthProvider.ts`.
  */
 export class StubHealthService implements HealthService {
+  readonly source = 'stub' as const;
+
   async requestPermissions(): Promise<boolean> {
     return true;
   }

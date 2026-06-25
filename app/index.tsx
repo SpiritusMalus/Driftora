@@ -73,7 +73,12 @@ export default function HomeScreen() {
         ]);
         const svc = getHealthService();
         // Sync today's passive signals first so the read reflects today too.
+        // `stepCount` is null when there's genuinely no data (no device source
+        // wired + nothing entered) — kept distinct from a real 0 so Home shows
+        // "no data", not a fabricated count. Goal/celebration math treats null
+        // as 0 (no steps → no steps win).
         const stepCount = await syncDaySteps(db, svc);
+        const stepsForGoals = stepCount ?? 0;
         const sleepMinutes = await syncDaySleep(db, svc);
         const bestLink = await bestBodyMindFromDb(db);
         // Celebrate the day's earned goals automatically (deduped per day). A
@@ -81,7 +86,7 @@ export default function HomeScreen() {
         await runAutoWins(
           db,
           {
-            steps: stepCount,
+            steps: stepsForGoals,
             stepsGoal: settings.stepsGoal,
             proteinG: tot.proteinG,
             proteinTargetG: settings.targetProteinG,
@@ -93,10 +98,10 @@ export default function HomeScreen() {
             // once-per-day award dedup so the stored message stays consistent.
             stepsGoal: pickVariant(
               [
-                t('wins.auto.stepsGoal', { steps: stepCount }),
-                t('wins.auto.stepsGoal2', { steps: stepCount }),
-                t('wins.auto.stepsGoal3', { steps: stepCount }),
-                t('wins.auto.stepsGoal4', { steps: stepCount }),
+                t('wins.auto.stepsGoal', { steps: stepsForGoals }),
+                t('wins.auto.stepsGoal2', { steps: stepsForGoals }),
+                t('wins.auto.stepsGoal3', { steps: stepsForGoals }),
+                t('wins.auto.stepsGoal4', { steps: stepsForGoals }),
               ],
               dayOfYear(),
             ),
@@ -124,7 +129,7 @@ export default function HomeScreen() {
         const daysGap = daysSince(lastActivity);
         if (!active) return;
         setSteps(stepCount);
-        setStepsMeaning(stepInsight(stepCount, settings.stepsGoal));
+        setStepsMeaning(stepCount == null ? null : stepInsight(stepCount, settings.stepsGoal));
         setSleepMin(sleepMinutes);
         setProteinG(tot.proteinG);
         setDiaryCount(diaryN);
@@ -236,6 +241,7 @@ export default function HomeScreen() {
       iconBg: theme.scheme === 'light' ? '#FBEFD9' : '#33261F',
       title: t('home.feeders.steps'),
       subtitle: stepsSubtitle,
+      onPress: () => router.push('/steps'),
     },
     {
       key: 'sleep',

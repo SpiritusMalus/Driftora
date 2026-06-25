@@ -133,6 +133,7 @@ export const en = {
     intro: 'Everything else lives here, off the daily screen.',
     sections: {
       food: 'Food log',
+      steps: 'Steps',
       weight: 'Weight',
       wins: 'Wins',
       review: 'Weekly review',
@@ -140,6 +141,7 @@ export const en = {
     },
     subtitles: {
       food: 'Calories and protein, when you want them',
+      steps: 'Enter by hand or from Health',
       weight: 'One optional signal',
       wins: 'Small things that went well',
       review: 'You vs your past self',
@@ -199,6 +201,20 @@ export const en = {
       steady: 'Over {{days}} days your weight held steady (±{{abs}} kg).',
       down: 'Over {{days}} days your weight is down {{abs}} kg.',
       up: 'Over {{days}} days your weight is up {{abs}} kg.',
+    },
+  },
+  steps: {
+    title: 'Steps',
+    placeholder: 'Steps today',
+    unit: 'steps',
+    save: 'Save',
+    saving: 'Saving…',
+    note: 'A number you enter by hand stays put — the automatic sync from Health never overwrites it.',
+    empty: 'No step entries yet. Enter a number or connect Health in a dev build.',
+    dbUnavailable: 'Steps are available in a device dev build.',
+    source: {
+      manual: 'Entered by hand',
+      device: 'From Health',
     },
   },
   mood: {

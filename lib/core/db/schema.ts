@@ -31,6 +31,13 @@ export const foodItems = sqliteTable('food_items', {
 export const stepsDays = sqliteTable('steps_days', {
   date: text('date').primaryKey(), // 'YYYY-MM-DD'
   steps: integer('steps').notNull().default(0),
+  // Provenance, so the passive OS sync never silently overwrites a number the
+  // user typed: 'manual' = entered by hand (sticky), 'device' = read from the
+  // OS health store, 'stub' = offline deterministic fill (dev/Expo Go only,
+  // never production).
+  source: text('source', { enum: ['manual', 'device', 'stub'] })
+    .notNull()
+    .default('stub'),
   syncedAt: integer('synced_at', { mode: 'timestamp' }).notNull(),
 });
 
@@ -156,3 +163,4 @@ export type DiaryEntry = typeof diaryEntries.$inferSelect;
 export type WeightRow = typeof weights.$inferSelect;
 export type MoodRow = typeof moods.$inferSelect;
 export type SleepRow = typeof sleepDays.$inferSelect;
+export type StepsRow = typeof stepsDays.$inferSelect;
