@@ -1,7 +1,7 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import multer from 'multer';
 
-import { identifyFromPhoto, identifyFromText, VisionUnavailableError } from './gemini.js';
+import { identifyFromPhoto, identifyFromText, VisionUnavailableError } from './llm.js';
 import { metrics } from './metrics.js';
 import { Resolver } from './nutrition/resolver.js';
 import { buildMealDraft, buildProviders } from './orchestrator.js';
@@ -137,10 +137,10 @@ export function createApp(
   });
 
   // Photo input (BUILD SPEC §5.1): multipart `image` + `region` → MealDraft via
-  // Gemini vision. The client downscales + strips EXIF before upload; the file
+  // the vision model. The client downscales + strips EXIF before upload; the file
   // stays in memory and is never persisted (privacy §2).
   // Daily cap runs before multer buffers the (up to 8 MB) upload and before the
-  // Gemini vision call, so an over-limit request is rejected cheaply.
+  // vision call, so an over-limit request is rejected cheaply.
   app.post('/food/parse-photo', requireToken, limiters.photoDaily, upload.single('image'), async (req: Request, res: Response) => {
     const region = regionOf((req.body ?? {}) as { region?: unknown });
     const file = req.file;

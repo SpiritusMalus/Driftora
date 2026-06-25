@@ -1,19 +1,21 @@
 /**
  * TEMPORARY identification stub (operator request, 2026-06-21).
  *
- * WHY THIS EXISTS — the free Gemini tier geo-blocks this deploy's VPS egress IP
- * ("400 User location is not supported"), so the real model is unreachable from
- * the server right now. To let the operator run Driftora end-to-end for the
- * off-store test, this stub stands in for the LLM's IDENTIFICATION step only:
- * text/photo → `IdentifiedItem[]` (food name + estimated grams). It emits NO
- * nutrition numbers — every kcal/macro/mineral still comes from the real
- * region resolver (Skurikhin / OpenFoodFacts), so THE HONESTY RULE (§1/§4) holds.
+ * WHY THIS EXISTS — the direct Gemini endpoint geo-blocked this deploy's NL VPS
+ * ("400 User location is not supported"). The fix is the move to OpenRouter
+ * (2026-06-25), but until an OpenRouter key is provisioned + verified the real
+ * model is still unreachable from the server. To let the operator run Driftora
+ * end-to-end for the off-store test, this stub stands in for the LLM's
+ * IDENTIFICATION step only: text/photo → `IdentifiedItem[]` (food name +
+ * estimated grams). It emits NO nutrition numbers — every kcal/macro/mineral
+ * still comes from the real region resolver (Skurikhin / OpenFoodFacts), so THE
+ * HONESTY RULE (§1/§4) holds.
  *
- * HOW TO REMOVE when Gemini becomes reachable (paid Vertex or an unblocked
- * egress) — it's deliberately isolated:
- *   1. unset `GEMINI_STUB` in `server/.env` and `systemctl restart`
+ * HOW TO REMOVE once an OpenRouter key is set + a live call verified — it's
+ * deliberately isolated:
+ *   1. unset `LLM_STUB` in `server/.env` and `systemctl restart`
  *      (instant rollback — no code change, no rebuild needed); then
- *   2. delete this file + the two `STUB` guards at the top of `gemini.ts`.
+ *   2. delete this file + the two `STUB` guards at the top of `llm.ts`.
  */
 import { round1, type IdentifiedItem } from './types.js';
 
@@ -81,7 +83,7 @@ export function stubIdentifyFromText(text: string): IdentifiedItem[] {
  * Layer 1 stand-in: with no vision model reachable, a photo can't be read, so
  * return a fixed, plausible plate whose names resolve in the RU table. This is a
  * placeholder so the photo flow is exercisable end-to-end — it does NOT reflect
- * the actual photo. Removed together with the text stub when Gemini returns.
+ * the actual photo. Removed together with the text stub when the live model returns.
  */
 export function stubIdentifyFromPhoto(): IdentifiedItem[] {
   return [

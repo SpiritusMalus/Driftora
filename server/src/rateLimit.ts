@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import { ipKeyGenerator, rateLimit, type RateLimitRequestHandler } from 'express-rate-limit';
 
-// Per-IP throttling for the Gemini-backed parse endpoints — an abuse / cost
+// Per-IP throttling for the LLM-backed parse endpoints — an abuse / cost
 // guard, NOT per-user identity (the static APP_TOKEN is shared, so it can't key
 // limits). In-memory store is correct: a single Node instance behind Caddy. If
 // the service is ever horizontally scaled, swap to a shared store (Redis).
@@ -73,7 +73,7 @@ function limiter(
 export interface Limiters {
   /** Global burst guard — mount early (after `trust proxy`); skips `/health`. */
   burst: RateLimitRequestHandler;
-  /** Daily cap — mount on POST /food/parse before the Gemini call. */
+  /** Daily cap — mount on POST /food/parse before the LLM call. */
   textDaily: RateLimitRequestHandler;
   /** Daily cap — mount on POST /food/parse-photo before multer buffers the upload. */
   photoDaily: RateLimitRequestHandler;
