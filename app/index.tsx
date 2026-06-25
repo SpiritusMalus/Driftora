@@ -28,6 +28,7 @@ import {
 } from '@/lib/core/insights/bodyMind';
 import { daySummary, type DaySummary } from '@/lib/core/insights/daySummary';
 import { sleepBand, sleepHours } from '@/lib/core/insights/sleepInsight';
+import { dayOfYear, pickVariant } from '@/lib/core/insights/variant';
 import { stepInsight } from '@/lib/core/insights/stepInsight';
 import { getHealthService } from '@/lib/core/services/healthProvider';
 import { useTheme } from '@/lib/theme/theme';
@@ -221,6 +222,18 @@ export default function HomeScreen() {
     },
   ];
 
+  // Rotate the feeder section header across a few warm variants — stable within
+  // a day (day-of-year seed), so Home feels alive without changing mid-session.
+  const feederHeader = pickVariant(
+    [
+      t('home.feeders.header'),
+      t('home.feeders.header2'),
+      t('home.feeders.header3'),
+      t('home.feeders.header4'),
+    ],
+    dayOfYear(),
+  );
+
   return (
     <View style={[styles.fill, { backgroundColor: theme.background }]}>
       <Stack.Screen
@@ -312,7 +325,7 @@ export default function HomeScreen() {
           </View>
         </Card>
 
-        <SectionHeader>{t('home.feeders.header')}</SectionHeader>
+        <SectionHeader>{feederHeader}</SectionHeader>
         <ListGroup rows={feeders} />
 
         {streakWeeks > 0 ? (

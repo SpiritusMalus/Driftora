@@ -80,6 +80,9 @@ export const en = {
     },
     feeders: {
       header: 'Feed your insight',
+      header2: 'What will you add today?',
+      header3: 'Every check-in feeds your insight',
+      header4: 'Share a little — see the day clearer',
       mood: 'Mood check-in',
       moodCta: 'One tap — how are you right now?',
       moodValue: 'Last: {{value}}/10',
