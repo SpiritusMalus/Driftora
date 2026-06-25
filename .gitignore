@@ -58,8 +58,11 @@ dist.stale.*
 
 .claude/
 dist.stale.*
-# Anchored to repo root: ignore a top-level Driftora/ dir (nested duplicate
-# / .dc.html mockups) WITHOUT matching nested package dirs like
-# modules/.../com/driftora/ (macOS git is case-insensitive).
+# Anchored to repo root: ignore the top-level nested mockup / handoff-ref dirs
+# (duplicate UI, .dc.html, *-frame.jsx — never part of the RN build) WITHOUT
+# matching nested package dirs like modules/.../com/driftora/ (macOS git is
+# case-insensitive). The dir is named HealthRoutine/ on disk today; /Driftora/
+# future-proofs the rebrand rename — keep both.
 /Driftora/
+/HealthRoutine/
 .DS_Store
