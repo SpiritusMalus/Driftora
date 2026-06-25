@@ -424,7 +424,13 @@ export const en = {
     dbUnavailable: 'Wins are available in a device dev build.',
     auto: {
       stepsGoal: 'Daily step goal reached — {{steps}} steps 🎉',
+      stepsGoal2: 'Step goal done today — {{steps}} steps. Your legs carried you 🎉',
+      stepsGoal3: '{{steps}} steps — daily goal taken. Your body thanks you 🚶',
+      stepsGoal4: 'Done: {{steps}} steps today. A small win that counts ✨',
       proteinGoal: 'Protein goal reached — {{protein}} g 💪',
+      proteinGoal2: 'Protein goal done — {{protein}} g. Muscle supported 💪',
+      proteinGoal3: '{{protein}} g protein — goal met. Satiety and strength up 🍳',
+      proteinGoal4: 'Done: {{protein}} g protein today. A good habit growing 🌱',
     },
   },
   review: {

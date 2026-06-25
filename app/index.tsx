@@ -88,8 +88,27 @@ export default function HomeScreen() {
             paused: settings.paused,
           },
           {
-            stepsGoal: t('wins.auto.stepsGoal', { steps: stepCount }),
-            proteinGoal: t('wins.auto.proteinGoal', { protein: Math.round(tot.proteinG) }),
+            // Rotate the celebration copy by day-of-year — varied & specific,
+            // never a hollow "Отлично!". Stable per day, matching the
+            // once-per-day award dedup so the stored message stays consistent.
+            stepsGoal: pickVariant(
+              [
+                t('wins.auto.stepsGoal', { steps: stepCount }),
+                t('wins.auto.stepsGoal2', { steps: stepCount }),
+                t('wins.auto.stepsGoal3', { steps: stepCount }),
+                t('wins.auto.stepsGoal4', { steps: stepCount }),
+              ],
+              dayOfYear(),
+            ),
+            proteinGoal: pickVariant(
+              [
+                t('wins.auto.proteinGoal', { protein: Math.round(tot.proteinG) }),
+                t('wins.auto.proteinGoal2', { protein: Math.round(tot.proteinG) }),
+                t('wins.auto.proteinGoal3', { protein: Math.round(tot.proteinG) }),
+                t('wins.auto.proteinGoal4', { protein: Math.round(tot.proteinG) }),
+              ],
+              dayOfYear(),
+            ),
           },
         );
         const wonToday = await hasAnyWinOnDay(db);
