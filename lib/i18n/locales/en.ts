@@ -77,6 +77,10 @@ export const en = {
       stepsWin: '{{steps}} steps today — and already a win.',
       moodWin: 'Mood {{mood}}/10 and a win in the bag. Good day.',
       stepsMoodWin: '{{steps}} steps, mood {{mood}}/10 — and already a win today.',
+      returning1: 'Good to see you back. Returning is itself a kind of care.',
+      returning2: 'Welcome back. Any day is a good day to pick this up again.',
+      returning3: 'You\'re here again — and that\'s the habit. Start small whenever you\'re ready.',
+      returning4: 'Back together. No need to catch up — just note how you are right now.',
     },
     feeders: {
       header: 'Feed your insight',

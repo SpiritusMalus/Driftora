@@ -11,6 +11,7 @@ import { FoodBar } from '@/components/ui/FoodBar';
 import { ListGroup, type RowSpec } from '@/components/ui/ListGroup';
 import { MoodScale } from '@/components/ui/MoodScale';
 import { SectionHeader } from '@/components/ui/SectionHeader';
+import { selfInitiatedLogDays } from '@/lib/core/db/activity';
 import { hasAnyWinOnDay, runAutoWins } from '@/lib/core/db/autoWins';
 import { bestBodyMindFromDb } from '@/lib/core/db/bodyMind';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
@@ -26,7 +27,7 @@ import {
   type BodyMindSignal,
   type SignalAssociation,
 } from '@/lib/core/insights/bodyMind';
-import { daySummary, type DaySummary } from '@/lib/core/insights/daySummary';
+import { daySummary, daysSince, type DaySummary } from '@/lib/core/insights/daySummary';
 import { sleepBand, sleepHours } from '@/lib/core/insights/sleepInsight';
 import { dayOfYear, pickVariant } from '@/lib/core/insights/variant';
 import { stepInsight } from '@/lib/core/insights/stepInsight';
@@ -92,6 +93,16 @@ export default function HomeScreen() {
           },
         );
         const wonToday = await hasAnyWinOnDay(db);
+        // Days since the last self-initiated log (mood/food/diary/win/weight) —
+        // drives the forgiving "welcome back" line when today is otherwise empty.
+        const logDays = await selfInitiatedLogDays(db);
+        let lastActivity: Date | null = null;
+        for (const d of logDays) {
+          const [y, m, day] = d.split('-').map(Number);
+          const dt = new Date(y, m - 1, day);
+          if (lastActivity == null || dt > lastActivity) lastActivity = dt;
+        }
+        const daysGap = daysSince(lastActivity);
         if (!active) return;
         setSteps(stepCount);
         setStepsMeaning(stepInsight(stepCount, settings.stepsGoal));
@@ -103,11 +114,15 @@ export default function HomeScreen() {
         setStreakWeeks(review.streakWeeks);
         setPaused(settings.paused);
         setSummary(
-          daySummary({
-            steps: stepCount,
-            mood: moodRow ? moodRow.value : null,
-            hasWinToday: wonToday,
-          }),
+          daySummary(
+            {
+              steps: stepCount,
+              mood: moodRow ? moodRow.value : null,
+              hasWinToday: wonToday,
+              daysSinceLastActivity: daysGap,
+            },
+            dayOfYear(),
+          ),
         );
       })();
       return () => {
