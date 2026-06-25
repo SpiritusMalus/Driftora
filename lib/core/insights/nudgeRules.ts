@@ -7,7 +7,7 @@
  *
  * Why JITAI over fixed-time reminders: contextual prompts tied to a real signal
  * beat clock-only reminders (JITAI literature — PMC11583291, PMC12481328,
- * JMIR 2025 e66750), and HealthRoutine already has the passive signal most
+ * JMIR 2025 e66750), and Driftora already has the passive signal most
  * JITAIs lack (steps on device). Walking raises parasympathetic tone, regulates
  * the HPA axis and lifts mood (PMC11594215) — so a "behind your usual pace,
  * fancy a short walk?" nudge is evidence-aligned, not nagging.
