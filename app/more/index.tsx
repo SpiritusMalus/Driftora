@@ -30,6 +30,15 @@ export default function MoreScreen() {
       onPress: () => router.push('/food/log'),
     },
     {
+      key: 'steps',
+      icon: 'walk-outline',
+      tint: theme.accent,
+      iconBg: amberTile,
+      title: t('more.sections.steps'),
+      subtitle: t('more.subtitles.steps'),
+      onPress: () => router.push('/steps'),
+    },
+    {
       key: 'weight',
       icon: 'scale-outline',
       tint: theme.accent,

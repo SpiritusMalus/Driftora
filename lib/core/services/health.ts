@@ -1,6 +1,11 @@
 /// Reads activity from the OS health store (HealthKit / Health Connect).
 /// Implemented in M2 over react-native-health + react-native-health-connect.
 export interface HealthService {
+  /// Provenance of the counts this service reports, used to tag stored steps.
+  /// 'device' = real OS health store; 'stub' = offline deterministic fill
+  /// (dev/Expo Go only). Optional — absent is treated as 'device'.
+  readonly source?: 'device' | 'stub';
+
   /// Requests read permission for steps (and sleep). Returns whether granted.
   requestPermissions(): Promise<boolean>;
 
