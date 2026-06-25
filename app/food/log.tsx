@@ -19,6 +19,7 @@ import {
   type QuickMeal,
 } from '@/lib/core/db/food';
 import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
+import { mealPromptKeyForHour } from '@/lib/core/insights/mealPrompt';
 import { proteinInsight } from '@/lib/core/insights/proteinInsight';
 import { varietyInsight } from '@/lib/core/insights/varietyInsight';
 import type { MealDraft, Minerals, NutritionItem, PhotoInput, Region } from '@/lib/core/services/foodParser';
@@ -289,7 +290,7 @@ export default function FoodLogScreen() {
           setText(v);
           if (!listening) setSource('text');
         }}
-        placeholder={t('food.inputPlaceholder')}
+        placeholder={t(`food.prompt.${mealPromptKeyForHour(new Date().getHours())}`)}
         multiline
         style={styles.input}
       />
