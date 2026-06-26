@@ -30,6 +30,7 @@ function entry(over: Partial<DiaryEntryView> = {}): DiaryEntryView {
     evidenceFor: '',
     evidenceAgainst: '',
     reframe: '',
+    moodBefore: null,
     mood: null,
     emotions: [],
     distortions: [],

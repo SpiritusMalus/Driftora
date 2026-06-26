@@ -81,7 +81,10 @@ export const diaryEntries = sqliteTable('diary_entries', {
   evidenceFor: text('evidence_for').notNull().default(''),
   evidenceAgainst: text('evidence_against').notNull().default(''),
   reframe: text('reframe').notNull().default(''),
-  mood: integer('mood'), // 0..10, nullable
+  // Mood BEFORE the thought record (0..10, nullable) — captured at the very start,
+  // so a record shows the shift across the СМЭР work next to `mood` (after).
+  moodBefore: integer('mood_before'),
+  mood: integer('mood'), // 0..10, nullable — mood AFTER the thought record
   // JSON array of cognitive-distortion keys (see insights/distortions.ts).
   distortions: text('distortions').notNull().default('[]'),
 });

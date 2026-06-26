@@ -32,7 +32,9 @@
         "android.permission.RECORD_AUDIO",
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.USE_BIOMETRIC",
-        "android.permission.USE_FINGERPRINT"
+        "android.permission.USE_FINGERPRINT",
+        "android.permission.health.READ_STEPS",
+        "android.permission.health.READ_SLEEP"
       ]
     },
     "web": {
@@ -68,6 +70,7 @@
           "faceIDPermission": "Face ID разблокирует ваш ключ шифрования, чтобы открыть резервную копию."
         }
       ],
+      "react-native-health-connect",
       "./plugins/withICloudKeychainSync"
     ],
     "extra": {

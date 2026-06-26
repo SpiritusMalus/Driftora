@@ -274,6 +274,16 @@ export default function FoodLogScreen() {
     setDraft((prev) => (prev ? withItemGrams(prev, index, grams) : prev));
   }
 
+  /// Discard the current result and return to the empty / quick-pick state. Without
+  /// this, tapping a saved meal (or parsing) left no obvious way back (user
+  /// feedback 2026-06-25: "не понятно как закрыть обратно").
+  function onClearDraft() {
+    setFreshDraft(null);
+    setText('');
+    setSavedAck(null);
+    setSource('text');
+  }
+
   async function onSave() {
     if (!draft || !db) return;
     setSaving(true);
@@ -327,6 +337,9 @@ export default function FoodLogScreen() {
           </Text>
         </Pressable>
       ) : null}
+      {speechAvailable && !listening ? (
+        <Text style={[styles.voiceHint, { color: theme.subtle }, theme.font.body]}>{t('food.voiceHint')}</Text>
+      ) : null}
       {photoAvailable ? (
         <>
           <Pressable
@@ -360,7 +373,9 @@ export default function FoodLogScreen() {
           <Text style={[styles.aiNotice, { color: theme.subtle }, theme.font.body]}>{t('food.inputGuard')}</Text>
           <Text style={[styles.aiNotice, { color: theme.subtle }, theme.font.body]}>{t('food.aiNotice')}</Text>
         </>
-      ) : null}
+      ) : (
+        <Text style={[styles.aiNotice, { color: theme.subtle }, theme.font.body]}>{t('food.offlineNotice')}</Text>
+      )}
 
       {draft == null &&
       (quick.favorites.length > 0 || quick.recents.length > 0 || quick.yesterday.length > 0) ? (
@@ -462,6 +477,9 @@ export default function FoodLogScreen() {
             onPress={onSave}
             disabled={saving || db == null}
           />
+          <Pressable onPress={onClearDraft} disabled={saving} hitSlop={8} style={styles.clearBtn}>
+            <Text style={[styles.clearText, { color: theme.subtle }, theme.font.body]}>{t('food.clear')}</Text>
+          </Pressable>
           {db == null ? (
             <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('food.dbUnavailable')}</Text>
           ) : null}
@@ -603,6 +621,9 @@ const styles = StyleSheet.create({
   input: { marginBottom: 12 },
   micButton: { borderRadius: 999, borderWidth: 1.5, paddingVertical: 12, alignItems: 'center', marginBottom: 8 },
   micText: { fontSize: 15 },
+  voiceHint: { fontSize: 11, lineHeight: 16, marginTop: -2, marginBottom: 10, marginHorizontal: 4 },
+  clearBtn: { alignSelf: 'center', marginTop: 12, paddingVertical: 4 },
+  clearText: { fontSize: 13, textDecorationLine: 'underline' },
   photoWarn: { fontSize: 11, lineHeight: 16, marginTop: -2, marginBottom: 10, marginHorizontal: 4 },
   aiNotice: { fontSize: 11, lineHeight: 16, marginTop: 10, marginHorizontal: 4 },
   hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },

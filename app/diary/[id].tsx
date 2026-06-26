@@ -42,14 +42,12 @@ export default function DiaryEntryScreen() {
       <Text style={[styles.date, { color: theme.subtle }, theme.font.body]}>{formatDate(entry.ts)}</Text>
       <Card>
         <Section label={t('diary.steps.situation.title')} value={entry.situation} dash={dash} theme={theme} first />
-        <Section label={t('diary.steps.thoughts.title')} value={entry.thoughts} dash={dash} theme={theme} />
-        {entry.distortions.length > 0 ? (
-          <Block label={t('diary.distortions.label')} theme={theme}>
-            <Text style={[styles.value, { color: theme.text }, theme.font.body]}>
-              {entry.distortions.map((k) => t(`diary.distortions.${k}`)).join(' · ')}
-            </Text>
-          </Block>
-        ) : null}
+        <Section
+          label={t('diary.fields.moodBefore')}
+          value={entry.moodBefore != null ? `${entry.moodBefore}/10` : ''}
+          dash={dash}
+          theme={theme}
+        />
 
         <Block label={t('diary.steps.emotions.title')} theme={theme}>
           {entry.emotions.length === 0 ? (
@@ -65,11 +63,21 @@ export default function DiaryEntryScreen() {
 
         <Section label={t('diary.reaction.body')} value={entry.reactionBody} dash={dash} theme={theme} />
         <Section label={t('diary.reaction.behavior')} value={entry.reactionBehavior} dash={dash} theme={theme} />
+
+        <Section label={t('diary.steps.thoughts.title')} value={entry.thoughts} dash={dash} theme={theme} />
+        {entry.distortions.length > 0 ? (
+          <Block label={t('diary.distortions.label')} theme={theme}>
+            <Text style={[styles.value, { color: theme.text }, theme.font.body]}>
+              {entry.distortions.map((k) => t(`diary.distortions.${k}`)).join(' · ')}
+            </Text>
+          </Block>
+        ) : null}
+
         <Section label={t('diary.evidence.for')} value={entry.evidenceFor} dash={dash} theme={theme} />
         <Section label={t('diary.evidence.against')} value={entry.evidenceAgainst} dash={dash} theme={theme} />
         <Section label={t('diary.steps.reframe.title')} value={entry.reframe} dash={dash} theme={theme} />
         <Section
-          label={t('diary.fields.mood')}
+          label={t('diary.fields.moodAfter')}
           value={entry.mood != null ? `${entry.mood}/10` : ''}
           dash={dash}
           theme={theme}

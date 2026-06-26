@@ -11,9 +11,11 @@ import { saveDiaryEntry, type Emotion } from '@/lib/core/db/diary';
 import { DISTORTION_KEYS, type DistortionKey } from '@/lib/core/insights/distortions';
 import { type Theme, useTheme } from '@/lib/theme/theme';
 
-/// The СМЭР thought record, one gentle step at a time:
-/// Situation → Thoughts → Emotions → Reaction → Evidence → Balanced reframe.
-const STEPS = ['situation', 'thoughts', 'emotions', 'reaction', 'evidence', 'reframe'] as const;
+/// The thought record, one gentle step at a time. Order tuned from user feedback
+/// (2026-06-25): the automatic stuff first (situation, feeling, reaction), THEN
+/// name the thought, then weigh it. Mood is rated before (on `situation`) and
+/// after (on `reframe`) so the record shows the shift.
+const STEPS = ['situation', 'emotions', 'reaction', 'thoughts', 'evidence', 'reframe'] as const;
 
 export default function DiaryNewScreen() {
   const { t } = useTranslation();
@@ -30,6 +32,7 @@ export default function DiaryNewScreen() {
   const [evidenceFor, setEvidenceFor] = useState('');
   const [evidenceAgainst, setEvidenceAgainst] = useState('');
   const [reframe, setReframe] = useState('');
+  const [moodBefore, setMoodBefore] = useState<number | null>(null);
   const [mood, setMood] = useState<number | null>(null);
   const [distortions, setDistortions] = useState<DistortionKey[]>([]);
   const [saving, setSaving] = useState(false);
@@ -54,6 +57,7 @@ export default function DiaryNewScreen() {
         evidenceFor,
         evidenceAgainst,
         reframe,
+        moodBefore,
         mood,
         distortions,
       });
@@ -82,7 +86,15 @@ export default function DiaryNewScreen() {
 
       <View style={styles.fields}>
         {key === 'situation' && (
-          <Field value={situation} onChange={setSituation} placeholder={t('diary.steps.situation.placeholder')} theme={theme} />
+          <>
+            <Field value={situation} onChange={setSituation} placeholder={t('diary.steps.situation.placeholder')} theme={theme} />
+            <View style={styles.moodWrap}>
+              <Text style={[styles.fieldLabel, { color: theme.subtle }, theme.font.bodyMedium]}>
+                {t('diary.fields.moodBefore')}
+              </Text>
+              <MoodScale selected={moodBefore} onPick={setMoodBefore} variant="grid" />
+            </View>
+          </>
         )}
         {key === 'thoughts' && (
           <>
@@ -99,6 +111,21 @@ export default function DiaryNewScreen() {
         )}
         {key === 'evidence' && (
           <>
+            {/* Echo the thought being weighed, so "за/против" has a clear target
+                (user feedback: "в доводах нет того, что я выбрал в мыслях"). */}
+            <View style={[styles.thoughtRecall, { backgroundColor: theme.iconBg, borderColor: theme.cardBorder }]}>
+              <Text style={[styles.thoughtRecallLabel, { color: theme.subtle }, theme.font.bodyMedium]}>
+                {t('diary.evidence.thoughtRecall')}
+              </Text>
+              <Text style={[styles.thoughtRecallText, { color: theme.text }, theme.font.body]}>
+                {thoughts.trim().length > 0 ? thoughts : t('diary.evidence.thoughtRecallEmpty')}
+              </Text>
+              {distortions.length > 0 ? (
+                <Text style={[styles.thoughtRecallTags, { color: theme.subtle }, theme.font.body]}>
+                  {distortions.map((k) => t(`diary.distortions.${k}`)).join(' · ')}
+                </Text>
+              ) : null}
+            </View>
             <Field label={t('diary.evidence.for')} value={evidenceFor} onChange={setEvidenceFor} placeholder={t('diary.evidence.forPlaceholder')} theme={theme} />
             <Field label={t('diary.evidence.against')} value={evidenceAgainst} onChange={setEvidenceAgainst} placeholder={t('diary.evidence.againstPlaceholder')} theme={theme} />
           </>
@@ -108,7 +135,7 @@ export default function DiaryNewScreen() {
             <Field value={reframe} onChange={setReframe} placeholder={t('diary.reframePlaceholder')} theme={theme} />
             <View style={styles.moodWrap}>
               <Text style={[styles.fieldLabel, { color: theme.subtle }, theme.font.bodyMedium]}>
-                {t('diary.fields.mood')}
+                {t('diary.fields.moodAfter')}
               </Text>
               <MoodScale selected={mood} onPick={setMood} variant="grid" />
             </View>
@@ -298,6 +325,10 @@ const styles = StyleSheet.create({
   emotionAddText: { fontSize: 14 },
   scaleHint: { fontSize: 11, marginTop: 8, fontStyle: 'italic' },
   moodWrap: { marginTop: 12 },
+  thoughtRecall: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 14, padding: 14, marginBottom: 14 },
+  thoughtRecallLabel: { fontSize: 12, marginBottom: 6 },
+  thoughtRecallText: { fontSize: 15, lineHeight: 21 },
+  thoughtRecallTags: { fontSize: 12, marginTop: 8, fontStyle: 'italic' },
   distortWrap: { marginTop: 16 },
   distortRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
   distortChip: { borderWidth: 1.5, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 },

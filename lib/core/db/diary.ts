@@ -25,7 +25,8 @@ export interface DiaryDraft {
   evidenceFor: string;
   evidenceAgainst: string;
   reframe: string;
-  mood: number | null; // 0–10, optional
+  moodBefore?: number | null; // 0–10, rated before the record (optional)
+  mood: number | null; // 0–10, rated after the record (optional)
   distortions?: DistortionKey[]; // tagged cognitive distortions (optional)
 }
 
@@ -86,6 +87,7 @@ export async function saveDiaryEntry(
       evidenceFor: draft.evidenceFor,
       evidenceAgainst: draft.evidenceAgainst,
       reframe: draft.reframe,
+      moodBefore: draft.moodBefore ?? null,
       mood: draft.mood,
       distortions: JSON.stringify(draft.distortions ?? []),
     })

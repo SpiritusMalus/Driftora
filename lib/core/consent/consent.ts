@@ -20,7 +20,9 @@ import { updateSettings } from '../db/settings';
 /// Bump when the Terms/Privacy text materially changes — re-prompts the gate.
 /// `-r2`: Privacy Policy + Terms reconciled to the shipped E2E backup and the
 /// opt-in (not-yet-deployed) E2E sync (docs/privacy-e2e-reconcile, 2026-06-19).
-export const LEGAL_VERSION = '2026-06-19-r2';
+/// `2026-06-22`: synced to the finalized family-pie canon — operator identified
+/// (ИП Тихоненко Е.Ю.), effective date 22.06.2026, РКН registration filled in.
+export const LEGAL_VERSION = '2026-06-22';
 
 /// Bump when the AI cross-border disclosure materially changes — re-prompts the
 /// just-in-time consent the next time the user triggers an AI parse.

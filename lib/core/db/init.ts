@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS diary_entries (
   evidence_for TEXT NOT NULL DEFAULT '',
   evidence_against TEXT NOT NULL DEFAULT '',
   reframe TEXT NOT NULL DEFAULT '',
+  mood_before INTEGER,
   mood INTEGER,
   distortions TEXT NOT NULL DEFAULT '[]'
 );
@@ -127,6 +128,9 @@ export const MIGRATIONS: string[] = [
   // were all stub fills, so they default to 'stub'; manual entries and real
   // device reads tag themselves. Lets the passive sync skip manual days.
   `ALTER TABLE steps_days ADD COLUMN source TEXT NOT NULL DEFAULT 'stub'`,
+  // 2026-06-25: mood BEFORE the diary thought record (user feedback) — pairs with
+  // the existing `mood` (after) to show the shift across one СМЭР record.
+  `ALTER TABLE diary_entries ADD COLUMN mood_before INTEGER`,
 ];
 
 /// Runs each CREATE statement through [run], then the idempotent [MIGRATIONS].
