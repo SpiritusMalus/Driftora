@@ -18,7 +18,7 @@ export const en = {
   consent: {
     ai: {
       title: 'Send this meal for recognition?',
-      body: 'To identify the foods, the meal text is sent to Google Gemini (servers in the USA). Calories and macros are computed by the built-in database, not the AI. Your diary, mood and weight are not sent. This is a cross-border data transfer; you can withdraw consent in Settings.',
+      body: 'To identify the foods, your input — text, photo, or voice — is sent to Google Gemini (servers in the USA). Calories and macros are computed by the built-in database, not the AI. Your diary, mood and weight are not sent. Share only the dish — no extra words or other people’s data. This is a cross-border data transfer; you can withdraw consent in Settings.',
       accept: 'Send',
       decline: "Don't send",
       declineCaption: "You'll keep the offline estimate from the built-in database.",
@@ -254,8 +254,9 @@ export const en = {
     parse: 'Parse',
     parsing: 'Parsing…',
     voice: '🎤 Say it',
-    voiceHint: 'Speech becomes text right on your device — just like keyboard dictation. The recording is never sent anywhere.',
     voiceListening: '● Listening… tap to stop',
+    voiceNote: '🎙 Record a voice note',
+    voiceRecording: '● Recording… tap to send',
     photo: '📷 Take a photo',
     photoAnalyzing: 'Reading the photo…',
     save: 'Save',
@@ -280,14 +281,6 @@ export const en = {
     approx: '≈ approx',
     disclaimer:
       'Per-100g composition is from the database. The whole-dish total is approximate (portion estimated). Confirm the weight for accuracy.',
-    // Persistent notice shown on the food screen while AI parsing is enabled
-    // (NOT the weight-accuracy disclaimer above — kept as a separate key).
-    aiNotice: 'Recognized by Google Gemini (USA). Numbers come from the database. Your diary is not sent.',
-    // Shown when AI parsing is off — the parse runs on the device (offline stub).
-    offlineNotice: 'Parsing runs on your device. Nothing is sent to the internet — including Google.',
-    // Point-of-input guardrail (РКН/152-ФЗ minimization): the free text goes to
-    // the model as-is, so nudge against typing personal/third-party data.
-    inputGuard: 'Enter only the dish name. Do not type your contacts, documents, or other people’s data — the text goes to Google (USA).',
     grams: 'Weight',
     gramsHint: 'Confirm the weight to make the total exact.',
     presetLess: 'Less',

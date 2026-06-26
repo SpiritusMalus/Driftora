@@ -22,11 +22,15 @@ import { updateSettings } from '../db/settings';
 /// opt-in (not-yet-deployed) E2E sync (docs/privacy-e2e-reconcile, 2026-06-19).
 /// `2026-06-22`: synced to the finalized family-pie canon — operator identified
 /// (ИП Тихоненко Е.Ю.), effective date 22.06.2026, РКН registration filled in.
-export const LEGAL_VERSION = '2026-06-22';
+/// `2026-06-26`: voice/audio added as a third AI-recognition input (cross-border
+/// transfer disclosure extended), so the entry gate re-prompts.
+export const LEGAL_VERSION = '2026-06-26';
 
 /// Bump when the AI cross-border disclosure materially changes — re-prompts the
 /// just-in-time consent the next time the user triggers an AI parse.
-export const AI_CONSENT_VERSION = '2026-06-19';
+/// `2026-06-26`: the same one-time consent now also covers VOICE input (audio →
+/// model), so its text was extended from "text or photo" to "text, photo or voice".
+export const AI_CONSENT_VERSION = '2026-06-26';
 
 /// Bump when the sync disclosure materially changes (e.g. a hosting/jurisdiction
 /// change after the §G owner decision) — re-prompts the sync opt-in.

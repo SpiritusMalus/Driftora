@@ -1,7 +1,7 @@
 import express, { type NextFunction, type Request, type Response } from 'express';
 import multer from 'multer';
 
-import { identifyFromPhoto, identifyFromText, VisionUnavailableError } from './llm.js';
+import { identifyFromAudio, identifyFromPhoto, identifyFromText, VisionUnavailableError } from './llm.js';
 import { metrics } from './metrics.js';
 import { Resolver } from './nutrition/resolver.js';
 import { buildMealDraft, buildProviders } from './orchestrator.js';
@@ -12,9 +12,24 @@ const APP_TOKEN = process.env.APP_TOKEN || '';
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '';
 const MAX_TEXT = 1000;
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024; // 8 MB — client downscales to ≤~1024px
+const MAX_AUDIO_BYTES = 8 * 1024 * 1024; // 8 MB — short voice clips are far under this
 
 // In-memory upload (stateless, nothing written to disk) — privacy §2.
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_PHOTO_BYTES } });
+// Separate instance so an audio upload is bounded by its own cap (same size).
+const uploadAudio = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_AUDIO_BYTES } });
+
+/** Map an upload's mime/filename to an OpenRouter `input_audio` format token. */
+function audioFormat(mime: string | undefined, name: string | undefined): string {
+  const s = `${mime ?? ''} ${name ?? ''}`.toLowerCase();
+  if (s.includes('wav')) return 'wav';
+  if (s.includes('mp3') || s.includes('mpeg')) return 'mp3';
+  if (s.includes('ogg') || s.includes('opus')) return 'ogg';
+  if (s.includes('flac')) return 'flac';
+  if (s.includes('aac')) return 'aac';
+  // expo-audio defaults to m4a (AAC in an MP4 container) on iOS + Android.
+  return 'm4a';
+}
 
 function defaultRegion(): Region {
   return process.env.DEFAULT_REGION === 'RU' ? 'RU' : 'US';
@@ -99,7 +114,7 @@ export function createApp(
   // same error mapping + aggregate metrics. Never leaks the input or a stack trace.
   async function respondWithDraft(
     res: Response,
-    route: 'text' | 'photo',
+    route: 'text' | 'photo' | 'audio',
     region: Region,
     identify: () => Promise<IdentifiedItem[]>,
   ): Promise<void> {
@@ -151,6 +166,21 @@ export function createApp(
     const mimeType = file.mimetype || 'image/jpeg';
     const base64 = file.buffer.toString('base64');
     await respondWithDraft(res, 'photo', region, () => identifyFromPhoto(base64, mimeType, region));
+  });
+
+  // Voice input: multipart `audio` (a short spoken meal description) + `region` →
+  // MealDraft via the multimodal model. The clip stays in memory and is never
+  // persisted (privacy §2). Reuses the photo daily cap (similar cost profile).
+  app.post('/food/parse-audio', requireToken, limiters.photoDaily, uploadAudio.single('audio'), async (req: Request, res: Response) => {
+    const region = regionOf((req.body ?? {}) as { region?: unknown });
+    const file = req.file;
+    if (!file || file.size === 0) {
+      fail(res, 400, 'empty_input', 'Field "audio" is required.');
+      return;
+    }
+    const format = audioFormat(file.mimetype, file.originalname);
+    const base64 = file.buffer.toString('base64');
+    await respondWithDraft(res, 'audio', region, () => identifyFromAudio(base64, format, region));
   });
 
   // Map multer rejections (e.g. oversized upload) to a clean error envelope.

@@ -48,3 +48,12 @@ export const IDENTIFY_SCHEMA = {
 export function userInstruction(region: Region): string {
   return `Region: ${region}. Identify the foods and estimate grams for the meal below.`;
 }
+
+/**
+ * Instruction for AUDIO input: a person describing, in Russian, what they ate.
+ * The model transcribes internally, then identifies foods + grams — still NO
+ * nutrition numbers (those come from the DB). Same JSON schema as text/photo.
+ */
+export function userAudioInstruction(region: Region): string {
+  return `Region: ${region}. The audio is a person describing, in Russian, a meal they ate. Understand what they said, then identify the foods and estimate grams. Identification and grams only — never calories, macros, or minerals.`;
+}

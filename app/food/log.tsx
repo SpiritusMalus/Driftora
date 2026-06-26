@@ -23,7 +23,12 @@ import { mealPromptKeyForHour } from '@/lib/core/insights/mealPrompt';
 import { proteinInsight } from '@/lib/core/insights/proteinInsight';
 import { pickVariant } from '@/lib/core/insights/variant';
 import { varietyInsight } from '@/lib/core/insights/varietyInsight';
-import type { MealDraft, Minerals, NutritionItem, PhotoInput, Region } from '@/lib/core/services/foodParser';
+import {
+  isAudioRecordingAvailable,
+  startRecording,
+  type ActiveRecording,
+} from '@/lib/core/services/audioRecorder';
+import type { AudioInput, MealDraft, Minerals, NutritionItem, PhotoInput, Region } from '@/lib/core/services/foodParser';
 import { getFoodParser, resolveRegion } from '@/lib/core/services/foodParserProvider';
 import { recomputeDraft, withItemGrams } from '@/lib/core/services/mealDraft';
 import { capturePhoto, isPhotoCaptureAvailable } from '@/lib/core/services/photoProvider';
@@ -71,8 +76,9 @@ export default function FoodLogScreen() {
   const [aiConsentVersion, setAiConsentVersion] = useState('');
   // Which just-in-time consent modal is open, and the captured input to send if
   // the user accepts (so accept resumes the exact parse they triggered).
-  const [consentPrompt, setConsentPrompt] = useState<'text' | 'photo' | null>(null);
+  const [consentPrompt, setConsentPrompt] = useState<'text' | 'photo' | 'audio' | null>(null);
   const [pendingPhoto, setPendingPhoto] = useState<PhotoInput | null>(null);
+  const [pendingAudio, setPendingAudio] = useState<AudioInput | null>(null);
   const [quick, setQuick] = useState<{
     recents: QuickMeal[];
     favorites: QuickMeal[];
@@ -85,6 +91,11 @@ export default function FoodLogScreen() {
   const [speechAvailable, setSpeechAvailable] = useState(false);
   const [photoAvailable, setPhotoAvailable] = useState(false);
   const [listening, setListening] = useState(false);
+  // Voice-note recording (AI path): record a clip → send audio → draft. Only the
+  // primary voice control when an online parser is built in (AI_CONFIGURED).
+  const [recordingAvailable, setRecordingAvailable] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const recRef = useRef<ActiveRecording | null>(null);
   // Origin of the current draft, so the saved entry's `source` is honest.
   const [source, setSource] = useState<'text' | 'voice' | 'photo'>('text');
   const autoStarted = useRef(false);
@@ -105,9 +116,11 @@ export default function FoodLogScreen() {
     void isPhotoCaptureAvailable().then((ok) => {
       if (active) setPhotoAvailable(ok);
     });
+    setRecordingAvailable(isAudioRecordingAvailable());
     return () => {
       active = false;
       void speech.stop();
+      void recRef.current?.cancel();
     };
   }, []);
 
@@ -204,6 +217,47 @@ export default function FoodLogScreen() {
     }
   }
 
+  async function runAudioParse(audio: AudioInput, consentNow: boolean) {
+    setParsing(true);
+    try {
+      setFreshDraft(await getFoodParser(consentNow).parseAudio(audio, region));
+    } finally {
+      setParsing(false);
+    }
+  }
+
+  /// Telegram-style voice note: tap to start recording, tap again to stop + send.
+  /// On stop the clip goes to the AI parser (the model transcribes + identifies;
+  /// numbers still come from the DB). The cross-border AI consent is the same
+  /// one-time gate as text/photo.
+  async function toggleRecording() {
+    if (parsing || listening) return;
+    if (recording) {
+      const rec = recRef.current;
+      recRef.current = null;
+      setRecording(false);
+      const audio = rec ? await rec.stop() : null;
+      if (audio) await onAudio(audio);
+      return;
+    }
+    setFreshDraft(null);
+    const rec = await startRecording();
+    if (!rec) return; // permission denied / module missing — stay on text/STT
+    recRef.current = rec;
+    setSource('voice');
+    setRecording(true);
+  }
+
+  async function onAudio(audio: AudioInput) {
+    setSource('voice');
+    if (AI_CONFIGURED && needsAiConsent({ aiFoodParseConsent: aiConsent, aiFoodParseConsentVersion: aiConsentVersion })) {
+      setPendingAudio(audio);
+      setConsentPrompt('audio');
+      return;
+    }
+    await runAudioParse(audio, aiConsent);
+  }
+
   async function onParse() {
     if (text.trim().length === 0) return;
     // Just-in-time cross-border consent: only when an online parser exists and
@@ -251,6 +305,10 @@ export default function FoodLogScreen() {
       const photo = pendingPhoto;
       setPendingPhoto(null);
       if (photo) await runPhotoParse(photo, true);
+    } else if (kind === 'audio') {
+      const audio = pendingAudio;
+      setPendingAudio(null);
+      if (audio) await runAudioParse(audio, true);
     } else if (kind === 'text') {
       await runTextParse(true);
     }
@@ -265,6 +323,10 @@ export default function FoodLogScreen() {
       const photo = pendingPhoto;
       setPendingPhoto(null);
       if (photo) await runPhotoParse(photo, false);
+    } else if (kind === 'audio') {
+      const audio = pendingAudio;
+      setPendingAudio(null);
+      if (audio) await runAudioParse(audio, false);
     } else if (kind === 'text') {
       await runTextParse(false);
     }
@@ -320,7 +382,27 @@ export default function FoodLogScreen() {
         multiline
         style={styles.input}
       />
-      {speechAvailable ? (
+      {/* Voice: the AI voice-note (record → send the clip → draft) is primary when
+          an online parser is built in; otherwise the on-device STT mic fills the
+          text field. */}
+      {AI_CONFIGURED && recordingAvailable ? (
+        <Pressable
+          onPress={toggleRecording}
+          disabled={parsing}
+          style={({ pressed }) => [
+            styles.micButton,
+            {
+              borderColor: recording ? theme.primary : theme.separator,
+              backgroundColor: recording ? theme.primary : theme.card,
+              opacity: pressed || parsing ? 0.7 : 1,
+            },
+          ]}
+        >
+          <Text style={[styles.micText, { color: recording ? theme.onPrimary : theme.primary }, theme.font.bodySemiBold]}>
+            {recording ? t('food.voiceRecording') : t('food.voiceNote')}
+          </Text>
+        </Pressable>
+      ) : speechAvailable ? (
         <Pressable
           onPress={toggleListening}
           style={({ pressed }) => [
@@ -337,45 +419,23 @@ export default function FoodLogScreen() {
           </Text>
         </Pressable>
       ) : null}
-      {speechAvailable && !listening ? (
-        <Text style={[styles.voiceHint, { color: theme.subtle }, theme.font.body]}>{t('food.voiceHint')}</Text>
-      ) : null}
       {photoAvailable ? (
-        <>
-          <Pressable
-            onPress={onPhoto}
-            disabled={parsing || listening}
-            style={({ pressed }) => [
-              styles.micButton,
-              { borderColor: theme.separator, backgroundColor: theme.card, opacity: pressed || parsing || listening ? 0.6 : 1 },
-            ]}
-          >
-            <Text style={[styles.micText, { color: theme.primary }, theme.font.bodySemiBold]}>{t('food.photo')}</Text>
-          </Pressable>
-          {/* Persistent line on the photo control: photos carry higher risk (§C). */}
-          {AI_CONFIGURED && aiConsent ? (
-            <Text style={[styles.photoWarn, { color: theme.subtle }, theme.font.body]}>{t('consent.photo.body')}</Text>
-          ) : null}
-        </>
+        <Pressable
+          onPress={onPhoto}
+          disabled={parsing || listening || recording}
+          style={({ pressed }) => [
+            styles.micButton,
+            { borderColor: theme.separator, backgroundColor: theme.card, opacity: pressed || parsing || listening || recording ? 0.6 : 1 },
+          ]}
+        >
+          <Text style={[styles.micText, { color: theme.primary }, theme.font.bodySemiBold]}>{t('food.photo')}</Text>
+        </Pressable>
       ) : null}
       <PrimaryButton
         label={parsing ? t('food.parsing') : t('food.parse')}
         onPress={onParse}
-        disabled={parsing || listening || text.trim().length === 0}
+        disabled={parsing || listening || recording || text.trim().length === 0}
       />
-
-      {/* Persistent notice while AI parsing is enabled — NEW key, not the
-          weight-accuracy disclaimer (§B). Includes a point-of-input guardrail
-          telling the user not to type personal/third-party data (РКН/152-ФЗ
-          minimization — the text analog of the photo→face warning). */}
-      {AI_CONFIGURED && aiConsent ? (
-        <>
-          <Text style={[styles.aiNotice, { color: theme.subtle }, theme.font.body]}>{t('food.inputGuard')}</Text>
-          <Text style={[styles.aiNotice, { color: theme.subtle }, theme.font.body]}>{t('food.aiNotice')}</Text>
-        </>
-      ) : (
-        <Text style={[styles.aiNotice, { color: theme.subtle }, theme.font.body]}>{t('food.offlineNotice')}</Text>
-      )}
 
       {draft == null &&
       (quick.favorites.length > 0 || quick.recents.length > 0 || quick.yesterday.length > 0) ? (
@@ -487,7 +547,7 @@ export default function FoodLogScreen() {
       )}
 
       <ConsentModal
-        visible={consentPrompt === 'text'}
+        visible={consentPrompt === 'text' || consentPrompt === 'audio'}
         title={t('consent.ai.title')}
         body={t('consent.ai.body')}
         confirmLabel={t('consent.ai.accept')}
@@ -621,11 +681,8 @@ const styles = StyleSheet.create({
   input: { marginBottom: 12 },
   micButton: { borderRadius: 999, borderWidth: 1.5, paddingVertical: 12, alignItems: 'center', marginBottom: 8 },
   micText: { fontSize: 15 },
-  voiceHint: { fontSize: 11, lineHeight: 16, marginTop: -2, marginBottom: 10, marginHorizontal: 4 },
   clearBtn: { alignSelf: 'center', marginTop: 12, paddingVertical: 4 },
   clearText: { fontSize: 13, textDecorationLine: 'underline' },
-  photoWarn: { fontSize: 11, lineHeight: 16, marginTop: -2, marginBottom: 10, marginHorizontal: 4 },
-  aiNotice: { fontSize: 11, lineHeight: 16, marginTop: 10, marginHorizontal: 4 },
   hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
   results: { marginTop: 16 },
   item: { marginBottom: 10 },

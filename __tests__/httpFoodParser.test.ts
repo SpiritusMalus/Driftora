@@ -19,12 +19,17 @@ const SENTINEL: MealDraft = {
 class SpyFallback implements FoodParser {
   calls = 0;
   photoCalls = 0;
+  audioCalls = 0;
   async parse(): Promise<MealDraft> {
     this.calls += 1;
     return SENTINEL;
   }
   async parsePhoto(): Promise<MealDraft> {
     this.photoCalls += 1;
+    return SENTINEL;
+  }
+  async parseAudio(): Promise<MealDraft> {
+    this.audioCalls += 1;
     return SENTINEL;
   }
 }
