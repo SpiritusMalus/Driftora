@@ -3,14 +3,19 @@ import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 
+import { Card } from '@/components/ui/Card';
 import { ListGroup, type RowSpec } from '@/components/ui/ListGroup';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
+import { SectionHeader } from '@/components/ui/SectionHeader';
 import { TextField } from '@/components/ui/TextField';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import type { StepsRow } from '@/lib/core/db/schema';
-import { listStepsDays, setManualSteps } from '@/lib/core/db/steps';
+import { listStepsDays, setManualSteps, syncDaySteps } from '@/lib/core/db/steps';
+import { getHealthService } from '@/lib/core/services/healthProvider';
 import { useTheme } from '@/lib/theme/theme';
+
+type HealthState = 'idle' | 'connecting' | 'connected' | 'denied' | 'unavailable';
 
 /// Enter today's steps by hand (one row per day) and review recent days. A
 /// manual entry is sticky — the passive OS sync never overwrites it (source
@@ -23,6 +28,7 @@ export default function StepsScreen() {
   const [items, setItems] = useState<StepsRow[] | null>(null);
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
+  const [health, setHealth] = useState<HealthState>('idle');
 
   useFocusEffect(
     useCallback(() => {
@@ -48,6 +54,28 @@ export default function StepsScreen() {
       setItems(await listStepsDays(db, 30));
     } finally {
       setSaving(false);
+    }
+  }
+
+  /// Ask the OS health store for read permission. On grant, immediately pull
+  /// today's count (device reads never overwrite a 'manual' day — see
+  /// syncDaySteps) and refresh the list. Failures degrade honestly to a status
+  /// line; manual entry always remains available.
+  async function onConnectHealth() {
+    if (!db || health === 'connecting') return;
+    setHealth('connecting');
+    try {
+      const svc = getHealthService();
+      const granted = await svc.requestPermissions();
+      if (!granted) {
+        setHealth('denied');
+        return;
+      }
+      await syncDaySteps(db, svc);
+      setItems(await listStepsDays(db, 30));
+      setHealth('connected');
+    } catch {
+      setHealth('unavailable');
     }
   }
 
@@ -84,6 +112,24 @@ export default function StepsScreen() {
       />
 
       <Text style={[styles.note, { color: theme.subtle }, theme.font.body]}>{t('steps.note')}</Text>
+
+      <SectionHeader>{t('steps.auto.title')}</SectionHeader>
+      <Card style={styles.autoCard}>
+        <Text style={[styles.autoExplainer, { color: theme.subtle }, theme.font.body]}>
+          {t('steps.auto.explainer')}
+        </Text>
+        <PrimaryButton
+          label={health === 'connecting' ? t('steps.auto.connecting') : t('steps.auto.connect')}
+          onPress={onConnectHealth}
+          disabled={db == null || health === 'connecting'}
+          style={styles.autoBtn}
+        />
+        {health === 'connected' || health === 'denied' || health === 'unavailable' ? (
+          <Text style={[styles.autoStatus, { color: theme.subtle }, theme.font.body]}>
+            {t(`steps.auto.${health}`)}
+          </Text>
+        ) : null}
+      </Card>
 
       {db == null ? (
         <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('steps.dbUnavailable')}</Text>
@@ -122,6 +168,10 @@ const styles = StyleSheet.create({
   unit: { fontSize: 15 },
   save: { marginBottom: 16 },
   note: { fontSize: 12, lineHeight: 17, marginHorizontal: 4, marginBottom: 16 },
+  autoCard: { marginTop: 4 },
+  autoExplainer: { fontSize: 13, lineHeight: 19 },
+  autoBtn: { marginTop: 12 },
+  autoStatus: { fontSize: 12, lineHeight: 17, marginTop: 10 },
   hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
   history: { marginTop: 4 },
   rowSteps: { fontSize: 16 },

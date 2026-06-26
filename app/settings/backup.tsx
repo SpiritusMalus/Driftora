@@ -31,6 +31,14 @@ import {
 import { ensureSettings } from '@/lib/core/db/settings';
 import { type Theme, useTheme } from '@/lib/theme/theme';
 
+/// Between-device sync is not shippable yet: the operator-server transport is
+/// deprecated (ADR-2026-06-23) and the platform-native one (CloudKit / Drive App
+/// Data) hasn't landed, so `getDataSyncProvider` resolves to "unavailable" and
+/// the toggle would transfer nothing. Hide the whole section until a real
+/// transport exists — showing a dead "синхронизация через наш сервер" switch only
+/// confuses (user feedback 2026-06-25). Flip to `true` when sync actually works.
+const SYNC_UI_ENABLED = false;
+
 /// "Резервная копия" — local encrypted backup & restore (no server), now with the
 /// Phase-2 user-held RECOVERY fallback so a backup restores on a NEW device.
 ///
@@ -396,24 +404,28 @@ export default function BackupScreen() {
       <PrimaryButton label={t('recovery.keyFile.exportCta')} onPress={onExportKeyFile} disabled={working} style={styles.btn} />
       <PrimaryButton label={t('recovery.keyFile.importCta')} onPress={onImportKeyFile} disabled={working} style={styles.btn} />
 
-      {/* Server-backed E2E sync — opt-in, OFF by default. Honest copy: the data is
-          stored encrypted and the server cannot read it. */}
-      <SectionHeader>{t('backup.sync.title')}</SectionHeader>
-      <Note theme={theme}>{t('backup.sync.explainer')}</Note>
-      <Card style={styles.toggleRow} padded={false}>
-        <Text style={[styles.toggleLabel, { color: theme.text }, theme.font.body]}>
-          {t('backup.sync.toggle')}
-        </Text>
-        <Switch
-          value={syncEnabled}
-          onValueChange={onToggleSync}
-          disabled={db == null}
-          trackColor={{ true: theme.primary, false: theme.separator }}
-          ios_backgroundColor={theme.separator}
-        />
-      </Card>
-      <Note theme={theme}>{syncEnabled ? t('backup.sync.on') : t('backup.sync.off')}</Note>
-      <Note theme={theme}>{t('backup.sync.limitNote')}</Note>
+      {/* Between-device sync — hidden until a real transport ships (SYNC_UI_ENABLED).
+          When live: opt-in, OFF by default, end-to-end encrypted (server can't read). */}
+      {SYNC_UI_ENABLED ? (
+        <>
+          <SectionHeader>{t('backup.sync.title')}</SectionHeader>
+          <Note theme={theme}>{t('backup.sync.explainer')}</Note>
+          <Card style={styles.toggleRow} padded={false}>
+            <Text style={[styles.toggleLabel, { color: theme.text }, theme.font.body]}>
+              {t('backup.sync.toggle')}
+            </Text>
+            <Switch
+              value={syncEnabled}
+              onValueChange={onToggleSync}
+              disabled={db == null}
+              trackColor={{ true: theme.primary, false: theme.separator }}
+              ios_backgroundColor={theme.separator}
+            />
+          </Card>
+          <Note theme={theme}>{syncEnabled ? t('backup.sync.on') : t('backup.sync.off')}</Note>
+          <Note theme={theme}>{t('backup.sync.limitNote')}</Note>
+        </>
+      ) : null}
 
       <SectionHeader>{t('backup.safetyTitle')}</SectionHeader>
       <Note theme={theme}>{t('backup.safetyNote')}</Note>

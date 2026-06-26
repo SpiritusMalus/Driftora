@@ -217,9 +217,18 @@ export const en = {
     unit: 'steps',
     save: 'Save',
     saving: 'Saving…',
-    note: 'A number you enter by hand stays put — the automatic sync from Health never overwrites it.',
-    empty: 'No step entries yet. Enter a number or connect Health in a dev build.',
+    note: 'A number you enter by hand always wins — the automatic count never overwrites it.',
+    empty: 'No step entries yet. Enter a number by hand or connect Health below.',
     dbUnavailable: 'Steps are available in a device dev build.',
+    auto: {
+      title: 'Automatic count',
+      explainer: 'Connect Health and Driftora reads your daily step count for you. Read-only access to steps and sleep; the data stays on your device and is never sent anywhere.',
+      connect: 'Connect Health',
+      connecting: 'Connecting…',
+      connected: 'Connected. Your daily steps will be counted automatically.',
+      denied: 'Access not granted. Allow step reading in Health / Health Connect — or keep entering by hand.',
+      unavailable: 'Health isn’t available on this device. Enter steps by hand.',
+    },
     source: {
       manual: 'Entered by hand',
       device: 'From Health',
@@ -245,11 +254,13 @@ export const en = {
     parse: 'Parse',
     parsing: 'Parsing…',
     voice: '🎤 Say it',
+    voiceHint: 'Speech becomes text right on your device — just like keyboard dictation. The recording is never sent anywhere.',
     voiceListening: '● Listening… tap to stop',
     photo: '📷 Take a photo',
     photoAnalyzing: 'Reading the photo…',
     save: 'Save',
     saving: 'Saving…',
+    clear: 'Clear and go back',
     savedWarm1: 'Logged. Noticing what you eat is already self-care',
     savedWarm2: 'Noted. Thanks for keeping track',
     savedWarm3: 'Saved. A small step is care too',
@@ -272,6 +283,8 @@ export const en = {
     // Persistent notice shown on the food screen while AI parsing is enabled
     // (NOT the weight-accuracy disclaimer above — kept as a separate key).
     aiNotice: 'Recognized by Google Gemini (USA). Numbers come from the database. Your diary is not sent.',
+    // Shown when AI parsing is off — the parse runs on the device (offline stub).
+    offlineNotice: 'Parsing runs on your device. Nothing is sent to the internet — including Google.',
     // Point-of-input guardrail (РКН/152-ФЗ minimization): the free text goes to
     // the model as-is, so nudge against typing personal/third-party data.
     inputGuard: 'Enter only the dish name. Do not type your contacts, documents, or other people’s data — the text goes to Google (USA).',
@@ -308,7 +321,8 @@ export const en = {
     cta: 'Record a thought',
     moodShort: 'Mood',
     fields: {
-      mood: 'Mood right now (0–10)',
+      moodBefore: 'Mood right now, before the record (0–10)',
+      moodAfter: 'Mood after the record (0–10)',
     },
     distortions: {
       label: 'Thinking distortions (if any fit)',
@@ -359,6 +373,8 @@ export const en = {
       behaviorPlaceholder: 'e.g. went quiet and left',
     },
     evidence: {
+      thoughtRecall: 'Weighing this thought',
+      thoughtRecallEmpty: 'No thought written yet — you can step back and add it.',
       for: 'For',
       forPlaceholder: 'Facts that support the thought',
       against: 'Against',
@@ -503,12 +519,12 @@ export const en = {
     title: 'Backup',
     openRow: 'Backup & restore',
     openRowNote: 'An encrypted copy of all your data, saved to your own cloud. Helps if you lose your phone.',
-    intro: 'Save an encrypted copy of your data to your own cloud (iCloud Drive, Files, Google Drive). This protects you if you lose or change phones.',
+    intro: 'An encrypted copy of all your data — one file in your own cloud (iCloud, Google Drive). It saves you if you lose or change phones.',
     backupTitle: 'Create a backup',
-    backupExplainer: 'All your records are exported and encrypted with this device’s key, then the Share sheet opens so you choose where to save the file. Nothing is sent to a server.',
+    backupExplainer: 'Your data is encrypted with this device’s key and saved as one file: the Share sheet opens — pick a cloud. Nothing is sent to our server.',
     backupCta: 'Create backup',
     restoreTitle: 'Restore',
-    restoreExplainer: 'Pick a backup file you saved earlier. It is decrypted with this device’s key and your data is restored.',
+    restoreExplainer: 'Pick a backup file you saved — it is decrypted with this device’s key and your data comes back.',
     restoreReplaceWarning: 'Warning: restoring replaces all current data on this device with the backup’s contents.',
     restoreCta: 'Restore from file',
     working: 'Working…',
@@ -520,7 +536,7 @@ export const en = {
     restoreError: 'Could not restore from the file.',
     restoreWrongKey: 'This file could not be decrypted with this device’s key. A backup made on another phone can’t be restored yet (cross-device key transfer comes later).',
     safetyTitle: 'What to know',
-    safetyNote: 'Your backup is encrypted with your key. Without a saved recovery phrase or key-file, no one can restore your data — not even us.',
+    safetyNote: 'The copy is encrypted with your key. Without a saved recovery phrase or key-file, no one can decrypt it — not even us.',
     dbUnavailable: 'Backup is available in a device dev build.',
     // Phase 3: server-backed E2E sync. Off by default; honest that the data is
     // stored encrypted and the server can't read it.

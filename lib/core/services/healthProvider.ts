@@ -26,23 +26,40 @@ export class NullHealthService implements HealthService {
 }
 
 /**
- * Picks the health source. The deterministic [StubHealthService] is restricted
- * to dev / Expo Go so its fake counts can never reach production; a real build
- * gets [NullHealthService] (honest "no data") until the native modules land —
- * at which point construct the real impl here when its module is present and
- * fall back to [NullHealthService] otherwise. Pure + injectable so the gate is
- * unit-testable.
+ * Picks the OFFLINE health source: the deterministic [StubHealthService] in dev /
+ * Expo Go (so its fake counts can never reach production), else the honest
+ * [NullHealthService] ("no data"). Pure + injectable so the honesty gate is
+ * unit-testable. The REAL device source is wired separately in
+ * [getHealthService] — it needs native modules absent from jest / Expo Go.
  */
 export function selectHealthService(isDev: boolean): HealthService {
   return isDev ? new StubHealthService() : new NullHealthService();
 }
 
 /**
- * Returns the active health source (memoized). Stub only in dev; honest
- * "no data" in production. Callers don't change when the real native impl lands.
+ * Tries to construct the real device source (HealthKit / Health Connect). Loaded
+ * LAZILY so the native packages are never touched in dev / jest. Returns null if
+ * the native modules aren't installed/linked (e.g. Expo Go) — the caller then
+ * falls back to the honest no-data source.
+ */
+function tryDeviceHealthService(): HealthService | null {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require('./deviceHealthService') as typeof import('./deviceHealthService');
+    return mod.createDeviceHealthService();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Returns the active health source (memoized). Dev → deterministic stub. A real
+ * build → the native device source (HealthKit / Health Connect) when its module
+ * is present, else the honest no-data source. Callers don't change.
  */
 export function getHealthService(): HealthService {
+  if (_service) return _service;
   const isDev = typeof __DEV__ !== 'undefined' && __DEV__;
-  _service ??= selectHealthService(isDev);
+  _service = isDev ? selectHealthService(true) : (tryDeviceHealthService() ?? new NullHealthService());
   return _service;
 }
