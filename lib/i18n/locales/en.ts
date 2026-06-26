@@ -1,5 +1,11 @@
 export const en = {
   appTitle: 'Driftora',
+  // Shown by the top-level crash net when a screen throws during render.
+  errorBoundary: {
+    title: 'Something went wrong',
+    body: 'The screen ran into an unexpected problem. Your data is safe on this device. Try again.',
+    retry: 'Try again',
+  },
   // First-launch offer gate (GENERAL consent: Terms + Privacy). Kept separate
   // from the AI cross-border consent below — Russian law bans bundled consent.
   legal: {

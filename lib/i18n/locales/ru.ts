@@ -1,5 +1,11 @@
 export const ru = {
   appTitle: 'Driftora',
+  // Показывается верхним «страховочным» экраном, когда экран падает при отрисовке.
+  errorBoundary: {
+    title: 'Что-то пошло не так',
+    body: 'На экране возникла непредвиденная ошибка. Ваши данные в безопасности на устройстве. Попробуйте ещё раз.',
+    retry: 'Попробовать снова',
+  },
   // First-launch offer gate (GENERAL consent: Terms + Privacy). Kept separate
   // from the AI cross-border consent below — 152-ФЗ bans bundled consent.
   legal: {

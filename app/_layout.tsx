@@ -5,6 +5,7 @@ import { Platform, useColorScheme } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import '@/lib/i18n';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { LegalGate } from '@/components/legal/LegalGate';
 import { Onboarding } from '@/components/Onboarding';
 import { DatabaseProvider } from '@/lib/core/db/DatabaseProvider';
@@ -52,6 +53,15 @@ export default function RootLayout() {
         };
 
   return (
+    <ErrorBoundary
+      colors={{
+        background: theme.background,
+        text: theme.text,
+        subtle: theme.subtle,
+        primary: theme.primary,
+        onPrimary: theme.onPrimary,
+      }}
+    >
     <DatabaseProvider>
       <SafeAreaProvider>
         <LegalGate>
@@ -75,5 +85,6 @@ export default function RootLayout() {
         </LegalGate>
       </SafeAreaProvider>
     </DatabaseProvider>
+    </ErrorBoundary>
   );
 }
