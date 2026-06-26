@@ -8,7 +8,7 @@ import { updateSettings } from '../db/settings';
 ///   1. GENERAL consent to use the app — the first-launch offer gate over the
 ///      Terms of Use + Privacy Policy. Tracked by [LEGAL_VERSION].
 ///   2. SPECIFIC, opt-in consent to the cross-border food→AI transfer (meal
-///      text or photo → Google Gemini, US). Tracked by [AI_CONSENT_VERSION];
+///      text or photo → OpenRouter, US). Tracked by [AI_CONSENT_VERSION];
 ///      ships off, gates the online parser.
 ///
 /// Each version is a free-form string compared by inequality: a stored value
@@ -24,13 +24,17 @@ import { updateSettings } from '../db/settings';
 /// (ИП Тихоненко Е.Ю.), effective date 22.06.2026, РКН registration filled in.
 /// `2026-06-26`: voice/audio added as a third AI-recognition input (cross-border
 /// transfer disclosure extended), so the entry gate re-prompts.
-export const LEGAL_VERSION = '2026-06-26';
+/// `2026-06-27`: AI sub-processor changed from Google Gemini (Google LLC) to
+/// OpenRouter, Inc. (US) — Privacy Policy recipient + storage/DPA clauses updated.
+export const LEGAL_VERSION = '2026-06-27';
 
 /// Bump when the AI cross-border disclosure materially changes — re-prompts the
 /// just-in-time consent the next time the user triggers an AI parse.
 /// `2026-06-26`: the same one-time consent now also covers VOICE input (audio →
 /// model), so its text was extended from "text or photo" to "text, photo or voice".
-export const AI_CONSENT_VERSION = '2026-06-26';
+/// `2026-06-27`: recipient changed from Google Gemini to OpenRouter, Inc. (US) —
+/// a new sub-processor, so the just-in-time AI consent re-prompts.
+export const AI_CONSENT_VERSION = '2026-06-27';
 
 /// Bump when the sync disclosure materially changes (e.g. a hosting/jurisdiction
 /// change after the §G owner decision) — re-prompts the sync opt-in.
