@@ -92,3 +92,16 @@ export function stubIdentifyFromPhoto(): IdentifiedItem[] {
     { name_ru: 'брокколи', name_en: 'broccoli', est_grams: 80, confidence: STUB_CONFIDENCE },
   ];
 }
+
+/**
+ * Layer 1 stand-in for VOICE: with no audio model reachable, speech can't be
+ * transcribed, so return a fixed, plausible plate whose names resolve in the RU
+ * table — a placeholder so the voice flow is exercisable end-to-end. Removed
+ * together with the text/photo stubs when the live model returns.
+ */
+export function stubIdentifyFromAudio(): IdentifiedItem[] {
+  return [
+    { name_ru: 'омлет', name_en: 'omelette', est_grams: 165, confidence: STUB_CONFIDENCE },
+    { name_ru: 'тост', name_en: 'white bread toast', est_grams: 30, confidence: STUB_CONFIDENCE },
+  ];
+}

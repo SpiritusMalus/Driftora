@@ -64,13 +64,20 @@ export interface PhotoInput {
   mimeType: string;
 }
 
-/// Turns a free-form food description (or a photo) into a structured, honest
-/// [MealDraft].
+/// A recorded voice clip ready for upload (e.g. m4a from expo-audio).
+export interface AudioInput {
+  uri: string;
+  mimeType: string;
+}
+
+/// Turns a free-form food description (text, a photo, or a voice clip) into a
+/// structured, honest [MealDraft].
 ///
 /// Online (HttpFoodParser) it calls the food-parse backend — the app's ONLY
 /// external network call. Offline it falls back to a deterministic local stub
-/// (text), or an empty draft for photos (no on-device vision).
+/// (text), or an empty draft for photo/voice (no on-device vision or speech).
 export interface FoodParser {
   parse(text: string, region: Region): Promise<MealDraft>;
   parsePhoto(photo: PhotoInput, region: Region): Promise<MealDraft>;
+  parseAudio(audio: AudioInput, region: Region): Promise<MealDraft>;
 }

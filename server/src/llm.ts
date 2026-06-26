@@ -1,6 +1,6 @@
-import { stubIdentifyFromPhoto, stubIdentifyFromText } from './identifyStub.js';
+import { stubIdentifyFromAudio, stubIdentifyFromPhoto, stubIdentifyFromText } from './identifyStub.js';
 import { metrics } from './metrics.js';
-import { IDENTIFY_SCHEMA, IDENTIFY_SYSTEM_PROMPT, userInstruction } from './prompt.js';
+import { IDENTIFY_SCHEMA, IDENTIFY_SYSTEM_PROMPT, userAudioInstruction, userInstruction } from './prompt.js';
 import { normalizeIdentified, type IdentifiedItem, type Region } from './types.js';
 
 /**
@@ -31,10 +31,15 @@ const STUB = process.env.LLM_STUB === '1';
 /** Raised when the model is unreachable/failing — routes map it to 503. */
 export class VisionUnavailableError extends Error {}
 
-/** One OpenAI chat message; user content may be multimodal (text + image). */
+/** One OpenAI chat message; user content may be multimodal (text + image + audio). */
 type TextPart = { type: 'text'; text: string };
 type ImagePart = { type: 'image_url'; image_url: { url: string } };
-export type ChatMessage = { role: 'system' | 'user'; content: string | (TextPart | ImagePart)[] };
+/** OpenRouter audio input (base64 + container format, e.g. 'm4a'/'wav'/'mp3'). */
+type AudioPart = { type: 'input_audio'; input_audio: { data: string; format: string } };
+export type ChatMessage = {
+  role: 'system' | 'user';
+  content: string | (TextPart | ImagePart | AudioPart)[];
+};
 
 /** Max per-item confidence (0 for an empty result) — the escalation signal. */
 function topConfidence(items: IdentifiedItem[]): number {
@@ -157,6 +162,30 @@ export async function identifyFromPhoto(
       content: [
         { type: 'text', text: userInstruction(region) },
         { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } },
+      ],
+    },
+  ]);
+}
+
+/**
+ * Voice meal → identified foods + estimated grams. The audio (base64, e.g. m4a)
+ * goes to the same multimodal model as text/photo via OpenRouter's `input_audio`
+ * content part; the model understands the speech and returns the SAME identify
+ * schema. Numbers still come from the DB (§4 honesty rule).
+ */
+export async function identifyFromAudio(
+  base64: string,
+  format: string,
+  region: Region,
+): Promise<IdentifiedItem[]> {
+  if (STUB) return stubIdentifyFromAudio(); // TEMPORARY — see identifyStub.ts
+  return identifyWithEscalation([
+    { role: 'system', content: IDENTIFY_SYSTEM_PROMPT },
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: userAudioInstruction(region) },
+        { type: 'input_audio', input_audio: { data: base64, format } },
       ],
     },
   ]);

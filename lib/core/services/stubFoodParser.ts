@@ -1,4 +1,4 @@
-import type { FoodParser, MealDraft, Minerals, NutritionItem, Per100, PhotoInput, Region } from './foodParser';
+import type { AudioInput, FoodParser, MealDraft, Minerals, NutritionItem, Per100, PhotoInput, Region } from './foodParser';
 import { recomputeDraft, scaleToGrams } from './mealDraft';
 
 /**
@@ -97,6 +97,12 @@ export class StubFoodParser implements FoodParser {
   /// Offline has no on-device vision — return an empty draft so the UI shows the
   /// "couldn't recognize, add detail" hint instead of breaking.
   async parsePhoto(_photo: PhotoInput, region: Region): Promise<MealDraft> {
+    return recomputeDraft(region, []);
+  }
+
+  /// Offline can't transcribe + identify a voice clip — empty draft, same as
+  /// photo, so the UI shows the "add detail" hint instead of breaking.
+  async parseAudio(_audio: AudioInput, region: Region): Promise<MealDraft> {
     return recomputeDraft(region, []);
   }
 }

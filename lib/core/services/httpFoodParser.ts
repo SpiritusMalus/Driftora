@@ -1,4 +1,5 @@
 import type {
+  AudioInput,
   FoodParser,
   MealDraft,
   NutrientValues,
@@ -68,23 +69,26 @@ function isMealDraft(v: unknown): v is MealDraft {
  * match the contract — it silently falls back to the offline stub so the
  * food-log screen never breaks (BUILD SPEC §5.3: offline resilience stays).
  */
-/** Derive the photo endpoint from the text one (/food/parse → /food/parse-photo). */
-function derivePhotoEndpoint(endpoint: string): string {
+/** Derive a sibling endpoint from the text one (/food/parse → /food/parse-<kind>). */
+function deriveEndpoint(endpoint: string, kind: 'photo' | 'audio'): string {
   return /\/food\/parse$/.test(endpoint)
-    ? endpoint.replace(/\/food\/parse$/, '/food/parse-photo')
-    : `${endpoint}-photo`;
+    ? endpoint.replace(/\/food\/parse$/, `/food/parse-${kind}`)
+    : `${endpoint}-${kind}`;
 }
 
 export class HttpFoodParser implements FoodParser {
   private readonly photoEndpoint: string;
+  private readonly audioEndpoint: string;
 
   constructor(
     private readonly endpoint: string,
     private readonly fallback: FoodParser,
     private readonly timeoutMs: number = DEFAULT_TIMEOUT_MS,
     photoEndpoint?: string,
+    audioEndpoint?: string,
   ) {
-    this.photoEndpoint = photoEndpoint ?? derivePhotoEndpoint(endpoint);
+    this.photoEndpoint = photoEndpoint ?? deriveEndpoint(endpoint, 'photo');
+    this.audioEndpoint = audioEndpoint ?? deriveEndpoint(endpoint, 'audio');
   }
 
   async parse(text: string, region: Region): Promise<MealDraft> {
@@ -138,6 +142,40 @@ export class HttpFoodParser implements FoodParser {
       return data;
     } catch {
       return this.fallback.parsePhoto(photo, region);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Upload a recorded voice clip as multipart/form-data and return a `MealDraft`.
+   * Same fail-safe contract as `parsePhoto`: any failure falls back to the offline
+   * parser (which, for voice, yields an empty draft → the "add detail" hint).
+   */
+  async parseAudio(audio: AudioInput, region: Region): Promise<MealDraft> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const form = new FormData();
+      form.append('region', region);
+      // React Native multipart file shape — { uri, name, type }.
+      form.append('audio', {
+        uri: audio.uri,
+        name: 'meal.m4a',
+        type: audio.mimeType,
+      } as unknown as Blob);
+
+      const res = await fetch(this.audioEndpoint, {
+        method: 'POST',
+        body: form,
+        signal: controller.signal,
+      });
+      if (!res.ok) return this.fallback.parseAudio(audio, region);
+      const data: unknown = await res.json();
+      if (!isMealDraft(data)) return this.fallback.parseAudio(audio, region);
+      return data;
+    } catch {
+      return this.fallback.parseAudio(audio, region);
     } finally {
       clearTimeout(timer);
     }

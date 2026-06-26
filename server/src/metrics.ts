@@ -8,7 +8,7 @@ import type { MealDraft, NutritionSource, Region } from './types.js';
  */
 class MetricsRegistry {
   private readonly startedAt = Date.now();
-  private readonly requests: Record<string, number> = { text: 0, photo: 0 };
+  private readonly requests: Record<string, number> = { text: 0, photo: 0, audio: 0 };
   private readonly byRegion: Record<Region, number> = { RU: 0, US: 0 };
   private readonly sources: Record<NutritionSource, number> = {
     usda: 0,
@@ -23,10 +23,11 @@ class MetricsRegistry {
   private readonly latency: Record<string, { sum: number; count: number }> = {
     text: { sum: 0, count: 0 },
     photo: { sum: 0, count: 0 },
+    audio: { sum: 0, count: 0 },
   };
 
   /** Record one completed parse from its result draft (no content touched). */
-  recordParse(route: 'text' | 'photo', region: Region, draft: MealDraft, ms: number): void {
+  recordParse(route: 'text' | 'photo' | 'audio', region: Region, draft: MealDraft, ms: number): void {
     this.requests[route] = (this.requests[route] ?? 0) + 1;
     this.byRegion[region] += 1;
     const lat = this.latency[route];

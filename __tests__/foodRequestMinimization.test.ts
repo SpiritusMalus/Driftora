@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 
-import type { MealDraft, PhotoInput } from '@/lib/core/services/foodParser';
+import type { AudioInput, MealDraft, PhotoInput } from '@/lib/core/services/foodParser';
 import { HttpFoodParser } from '@/lib/core/services/httpFoodParser';
 
 const ENDPOINT = 'https://api.example.com/food/parse';
 const PHOTO: PhotoInput = { uri: 'file:///tmp/meal.jpg', mimeType: 'image/jpeg' };
+const AUDIO: AudioInput = { uri: 'file:///tmp/meal.m4a', mimeType: 'audio/m4a' };
 
 const VALID: MealDraft = {
   region: 'US',
@@ -19,6 +20,7 @@ const VALID: MealDraft = {
 const noopFallback = {
   parse: async () => VALID,
   parsePhoto: async () => VALID,
+  parseAudio: async () => VALID,
 };
 
 function mockFetch(impl: (...a: unknown[]) => Promise<unknown>): void {
@@ -65,6 +67,23 @@ describe('food-parse request minimization', () => {
     expect(form).toBeInstanceOf(FormData);
     const keys = [...(form as unknown as FormData).keys()].sort();
     expect(keys).toEqual(['image', 'region']);
+    for (const key of FORBIDDEN) {
+      expect((form as unknown as FormData).has(key)).toBe(false);
+    }
+  });
+
+  it('voice parse sends only the audio + region form fields, no user data', async () => {
+    let form: FormData | null = null;
+    mockFetch(async (...args: unknown[]) => {
+      form = (args[1] as { body: FormData }).body;
+      return { ok: true, json: async () => VALID } as unknown;
+    });
+
+    await new HttpFoodParser(ENDPOINT, noopFallback).parseAudio(AUDIO, 'US');
+
+    expect(form).toBeInstanceOf(FormData);
+    const keys = [...(form as unknown as FormData).keys()].sort();
+    expect(keys).toEqual(['audio', 'region']);
     for (const key of FORBIDDEN) {
       expect((form as unknown as FormData).has(key)).toBe(false);
     }
