@@ -1,5 +1,11 @@
 export const en = {
   appTitle: 'Driftora',
+  // Shown by the top-level crash net when a screen throws during render.
+  errorBoundary: {
+    title: 'Something went wrong',
+    body: 'The screen ran into an unexpected problem. Your data is safe on this device. Try again.',
+    retry: 'Try again',
+  },
   // First-launch offer gate (GENERAL consent: Terms + Privacy). Kept separate
   // from the AI cross-border consent below — Russian law bans bundled consent.
   legal: {
@@ -18,13 +24,13 @@ export const en = {
   consent: {
     ai: {
       title: 'Send this meal for recognition?',
-      body: 'To identify the foods, your input — text, photo, or voice — is sent to Google Gemini (servers in the USA). Calories and macros are computed by the built-in database, not the AI. Your diary, mood and weight are not sent. Share only the dish — no extra words or other people’s data. This is a cross-border data transfer; you can withdraw consent in Settings.',
+      body: 'To identify the foods, your input — text, photo, or voice — is sent via our server to OpenRouter (OpenRouter, Inc., servers in the USA), which performs the AI recognition. Calories and macros are computed by the built-in database, not the AI. Your diary, mood and weight are not sent. Share only the dish — no extra words or other people’s data. This is a cross-border data transfer; you can withdraw consent in Settings.',
       accept: 'Send',
       decline: "Don't send",
       declineCaption: "You'll keep the offline estimate from the built-in database.",
     },
     photo: {
-      title: 'This photo goes to Google (USA)',
+      title: 'This photo goes to OpenRouter (USA)',
       body: 'Photograph the plate only. A face, people or documents in the frame may count as personal data. The photo is downscaled and stripped of geotags before sending.',
       confirm: 'Take photo',
       cancel: 'Cancel',
@@ -425,10 +431,10 @@ export const en = {
     today: 'today',
     tomorrow: 'tomorrow',
     flags: 'Privacy & mode',
-    privacyLine: 'Your data stays only on the phone, in an encrypted database. Only the food parse (text or photo) leaves it → Google Gemini, USA. Diary, mood and weight never do.',
+    privacyLine: 'Your data stays only on the phone, in an encrypted database. Only the food parse (text or photo) leaves it → OpenRouter, USA. Diary, mood and weight never do.',
     aiToggle: 'AI food recognition',
-    aiOff: 'Off — the app works offline. Turn on to recognize food from text or a photo via Google Gemini (USA).',
-    aiOn: 'On. Food text and photos are sent to Google Gemini (USA). Turn off to return to offline estimates.',
+    aiOff: 'Off — the app works offline. Turn on to recognize food from text or a photo via OpenRouter (USA).',
+    aiOn: 'On. Food text and photos are sent to OpenRouter (USA). Turn off to return to offline estimates.',
     hideCalories: 'Hide calories (focus on protein and habits)',
     llmDiaryAssist: 'AI help in the diary (optional, off by default)',
     showPopulationStats: 'Step reference comparison (optional)',
