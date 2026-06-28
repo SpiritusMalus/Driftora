@@ -290,6 +290,16 @@ export const ru = {
     presetLess: 'Меньше',
     presetMid: 'Обычно',
     presetMore: 'Больше',
+    // Способ приготовления — нейтрально, без «полезнее/вреднее».
+    cookMethod: {
+      label: 'Как приготовлено',
+      raw: 'Сырое',
+      boiled: 'Варёное',
+      fried: 'Жареное',
+      baked: 'Запечённое',
+      grilled: 'Гриль',
+      stewed: 'Тушёное',
+    },
     estimateNote: 'Часть значений — приблизительная оценка (нет в базе).',
     source: {
       usda: 'по базе USDA',

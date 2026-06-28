@@ -40,9 +40,14 @@ export interface NutritionItem {
   grams: number;
   grams_source: 'estimated' | 'confirmed';
   confidence: number; // 0..1
-  per100: Per100; // EXACT (or estimate on a DB miss)
+  per100: Per100; // EXACT (or estimate on a DB miss); may be cook-method-adjusted
   scaled: NutrientValues; // per100 * grams / 100
-  approximate: boolean; // true while grams_source === 'estimated'
+  approximate: boolean; // true while grams_source === 'estimated' OR cook-adjusted
+  // Cooking-method branch (client-side, offline). `cook_method` is the chosen
+  // method ('raw' = DB baseline); `basePer100` preserves the unadjusted DB row so
+  // switching methods is reversible. Both absent until the user picks a method.
+  cook_method?: import('../insights/cookMethod').CookMethod;
+  basePer100?: Per100;
 }
 
 /// A parsed meal awaiting the user's grams confirmation, then saved.
