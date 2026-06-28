@@ -69,7 +69,9 @@ export default function RootLayout() {
         <Stack screenOptions={headerOptions}>
           <Stack.Screen name="index" options={{ title: t('home.title') }} />
           <Stack.Screen name="more/index" options={{ title: t('more.title') }} />
+          <Stack.Screen name="food/index" options={{ title: t('food.todayTitle') }} />
           <Stack.Screen name="food/log" options={{ title: t('food.title') }} />
+          <Stack.Screen name="food/[id]" options={{ title: t('food.entryTitle') }} />
           <Stack.Screen name="weight/index" options={{ title: t('weight.title') }} />
           <Stack.Screen name="steps/index" options={{ title: t('steps.title') }} />
           <Stack.Screen name="mood/index" options={{ title: t('mood.title') }} />

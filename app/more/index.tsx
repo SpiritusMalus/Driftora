@@ -27,7 +27,7 @@ export default function MoreScreen() {
       iconBg: coralTile,
       title: t('more.sections.food'),
       subtitle: t('more.subtitles.food'),
-      onPress: () => router.push('/food/log'),
+      onPress: () => router.push('/food'),
     },
     {
       key: 'steps',

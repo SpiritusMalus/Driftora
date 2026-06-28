@@ -1,8 +1,9 @@
 import { and, desc, eq, gte, lt } from 'drizzle-orm';
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
-import type { MealDraft } from '../services/foodParser';
-import { foodEntries, foodItems, type FoodEntry } from './schema';
+import type { MealDraft, NutritionItem, Per100, Region } from '../services/foodParser';
+import { recomputeDraft } from '../services/mealDraft';
+import { foodEntries, foodItems, type FoodEntry, type FoodItem } from './schema';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyDb = BaseSQLiteDatabase<any, any, any>;
@@ -56,20 +57,111 @@ export async function saveParsedEntry(
 
   const entryId = inserted[0].id as number;
 
-  if (d.items.length > 0) {
-    await db.insert(foodItems).values(
-      d.items.map((it) => ({
-        entryId,
-        name: it.name_ru,
-        qtyG: it.grams,
-        kcal: it.scaled.kcal,
-        proteinG: it.scaled.prot,
-        fatG: it.scaled.fat,
-        carbG: it.scaled.carb,
-      })),
-    );
-  }
+  await insertDraftItems(db, entryId, d);
   return entryId;
+}
+
+/// Insert the draft's item breakdown for an entry (each row holds the SCALED
+/// macros for its confirmed grams). Shared by save + update so the two paths
+/// can never drift apart.
+async function insertDraftItems(db: AnyDb, entryId: number, d: MealDraft): Promise<void> {
+  if (d.items.length === 0) return;
+  await db.insert(foodItems).values(
+    d.items.map((it) => ({
+      entryId,
+      name: it.name_ru,
+      qtyG: it.grams,
+      kcal: it.scaled.kcal,
+      proteinG: it.scaled.prot,
+      fatG: it.scaled.fat,
+      carbG: it.scaled.carb,
+    })),
+  );
+}
+
+/// One stored entry plus its item rows — backs the view/edit screen.
+export interface FoodEntryDetail {
+  entry: FoodEntry;
+  items: FoodItem[];
+}
+
+/// Load a single entry and its item breakdown, or null if it's gone.
+export async function getFoodEntry(db: AnyDb, id: number): Promise<FoodEntryDetail | null> {
+  const entries = (await db.select().from(foodEntries).where(eq(foodEntries.id, id))) as FoodEntry[];
+  if (entries.length === 0) return null;
+  const items = (await db
+    .select()
+    .from(foodItems)
+    .where(eq(foodItems.entryId, id))
+    .orderBy(foodItems.id)) as FoodItem[];
+  return { entry: entries[0], items };
+}
+
+/// Replace a saved entry's macros/meta AND its full item set in one logical
+/// edit: UPDATE the entry row, DELETE its old `food_items`, INSERT the new set.
+/// The original `ts` is preserved unless a new one is given. Stays `confirmed`.
+export async function updateFoodEntry(
+  db: AnyDb,
+  id: number,
+  opts: { rawText: string; source: 'voice' | 'text' | 'photo'; draft: MealDraft; ts?: Date },
+): Promise<void> {
+  const d = opts.draft;
+  await db
+    .update(foodEntries)
+    .set({
+      rawText: opts.rawText,
+      source: opts.source,
+      kcal: d.totals.kcal,
+      proteinG: d.totals.prot,
+      fatG: d.totals.fat,
+      carbG: d.totals.carb,
+      confirmed: true,
+      ...(opts.ts ? { ts: opts.ts } : {}),
+    })
+    .where(eq(foodEntries.id, id));
+  // Replace the item set as a unit. Delete explicitly (not relying on the FK
+  // cascade) so no `food_items` are orphaned even if PRAGMA foreign_keys is off.
+  await db.delete(foodItems).where(eq(foodItems.entryId, id));
+  await insertDraftItems(db, id, d);
+}
+
+/// Delete an entry and its items. Items are removed explicitly first so there
+/// are never orphan `food_items` rows regardless of the FK-cascade pragma.
+export async function deleteFoodEntry(db: AnyDb, id: number): Promise<void> {
+  await db.delete(foodItems).where(eq(foodItems.entryId, id));
+  await db.delete(foodEntries).where(eq(foodEntries.id, id));
+}
+
+/// Rebuild an editable [MealDraft] from a stored entry + items. Storage keeps
+/// only the SCALED macros (provenance/minerals are lost), so each item's per-100g
+/// is *derived back* from `scaled / grams` purely to let grams edits rescale; the
+/// initially-shown `scaled` stays the exact stored fact. Pure — no db access.
+export function draftFromStoredEntry(region: Region, items: FoodItem[]): MealDraft {
+  const nItems: NutritionItem[] = items.map((it) => {
+    const grams = it.qtyG && it.qtyG > 0 ? it.qtyG : 100;
+    const factor = grams / 100;
+    const per100: Per100 = {
+      kcal: Math.round(it.kcal / factor),
+      prot: Math.round((it.proteinG / factor) * 10) / 10,
+      fat: Math.round((it.fatG / factor) * 10) / 10,
+      carb: Math.round((it.carbG / factor) * 10) / 10,
+      minerals: {},
+      // Provenance wasn't stored; the saved scaled macro is the fact we keep.
+      source: 'estimate',
+    };
+    return {
+      name_ru: it.name,
+      name_en: it.name,
+      grams,
+      grams_source: 'confirmed',
+      confidence: 1,
+      per100,
+      // Keep the exact stored totals for the initial render (lossless until edited).
+      scaled: { kcal: it.kcal, prot: it.proteinG, fat: it.fatG, carb: it.carbG, minerals: {} },
+      approximate: false,
+    };
+  });
+  return recomputeDraft(region, nItems);
 }
 
 /// Sums macro totals across all entries logged on [date]'s local day.
