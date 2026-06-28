@@ -303,9 +303,6 @@ export const en = {
       'Per-100g composition is from the database. The whole-dish total is approximate (portion estimated). Confirm the weight for accuracy.',
     grams: 'Weight',
     gramsHint: 'Confirm the weight to make the total exact.',
-    presetLess: 'Less',
-    presetMid: 'Usual',
-    presetMore: 'More',
     // Cooking method — neutral, never "healthier/worse".
     cookMethod: {
       label: 'How it was cooked',

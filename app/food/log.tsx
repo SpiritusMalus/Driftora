@@ -63,8 +63,6 @@ export default function FoodLogScreen() {
   const [parsing, setParsing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState<MealDraft | null>(null);
-  // The original estimated grams per item, for the S/M/L presets.
-  const [baseGrams, setBaseGrams] = useState<number[]>([]);
   // Today's protein-so-far + personal target, for the honest "what it means"
   // line shown once a meal is parsed (the meaning-rules library).
   const [proteinTarget, setProteinTarget] = useState(0);
@@ -109,7 +107,6 @@ export default function FoodLogScreen() {
 
   function setFreshDraft(d: MealDraft | null) {
     setDraft(d);
-    setBaseGrams(d ? d.items.map((it) => it.grams) : []);
   }
 
   // Probe the on-device recognizer once; off-device this stays false and the
@@ -528,7 +525,6 @@ export default function FoodLogScreen() {
             <ItemCard
               key={i}
               item={item}
-              baseGrams={baseGrams[i] ?? item.grams}
               hideCalories={hideCalories}
               theme={theme}
               onGrams={(g) => onItemGrams(i, g)}
@@ -631,7 +627,6 @@ function mineralLine(item: NutritionItem, t: (k: string) => string): string {
 
 function ItemCard({
   item,
-  baseGrams,
   hideCalories,
   theme,
   onGrams,
@@ -639,7 +634,6 @@ function ItemCard({
   onManualMacros,
 }: {
   item: NutritionItem;
-  baseGrams: number;
   hideCalories: boolean;
   theme: Theme;
   onGrams: (grams: number) => void;
@@ -652,11 +646,6 @@ function ItemCard({
   // A full DB miss: the resolver's coarse placeholder. We show NO fabricated
   // numbers for it — only an honest "not in our database" + manual entry.
   const isMiss = item.per100.source === 'estimate';
-  const presets: { label: string; grams: number }[] = [
-    { label: t('food.presetLess'), grams: Math.max(5, Math.round(baseGrams * 0.6)) },
-    { label: t('food.presetMid'), grams: Math.max(5, Math.round(baseGrams)) },
-    { label: t('food.presetMore'), grams: Math.max(5, Math.round(baseGrams * 1.6)) },
-  ];
 
   return (
     <Card style={styles.item}>
@@ -703,7 +692,7 @@ function ItemCard({
                 key={m}
                 onPress={() => onCookMethod(m)}
                 style={({ pressed }) => [
-                  styles.preset,
+                  styles.cookChip,
                   {
                     backgroundColor: active ? theme.primary : theme.card,
                     borderColor: active ? theme.primary : theme.separator,
@@ -711,7 +700,7 @@ function ItemCard({
                   },
                 ]}
               >
-                <Text style={[styles.presetText, { color: active ? theme.onPrimary : theme.text }, theme.font.body]}>
+                <Text style={[styles.cookChipText, { color: active ? theme.onPrimary : theme.text }, theme.font.body]}>
                   {t(`food.cookMethod.${m}`)}
                 </Text>
               </Pressable>
@@ -720,32 +709,10 @@ function ItemCard({
         </View>
       </View>
 
-      {/* Confirm grams → flips the item out of "approximate". */}
+      {/* Confirm grams → flips the item out of "approximate". The exact weight
+          input is the whole control now (the S/M/L presets were redundant). */}
       <View style={styles.gramsRow}>
         <Text style={[styles.gramsLabel, { color: theme.subtle }, theme.font.body]}>{t('food.grams')}</Text>
-        <View style={styles.presets}>
-          {presets.map((p) => {
-            const active = Math.round(item.grams) === p.grams;
-            return (
-              <Pressable
-                key={p.label}
-                onPress={() => onGrams(p.grams)}
-                style={({ pressed }) => [
-                  styles.preset,
-                  {
-                    backgroundColor: active ? theme.primary : theme.card,
-                    borderColor: active ? theme.primary : theme.separator,
-                    opacity: pressed ? 0.7 : 1,
-                  },
-                ]}
-              >
-                <Text style={[styles.presetText, { color: active ? theme.onPrimary : theme.text }, theme.font.body]}>
-                  {p.label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
         <TextField
           value={String(Math.round(item.grams))}
           onChangeText={(v) => onGrams(toNumber(v))}
@@ -855,6 +822,8 @@ const styles = StyleSheet.create({
   minerals: { fontSize: 11, marginBottom: 8, lineHeight: 16 },
   cookRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6, flexWrap: 'wrap' },
   cookChips: { flexDirection: 'row', gap: 6, flexWrap: 'wrap', flexShrink: 1 },
+  cookChip: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 6 },
+  cookChipText: { fontSize: 12 },
   notInDb: { fontSize: 13, marginBottom: 6, lineHeight: 18 },
   manualWrap: { marginTop: 4, marginBottom: 4 },
   manualLabel: { fontSize: 12, marginBottom: 6 },
@@ -864,9 +833,6 @@ const styles = StyleSheet.create({
   manualInput: { textAlign: 'center' },
   gramsRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' },
   gramsLabel: { fontSize: 12 },
-  presets: { flexDirection: 'row', gap: 6 },
-  preset: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 6 },
-  presetText: { fontSize: 12 },
   gramsInput: { width: 64, paddingVertical: 8, fontSize: 14, textAlign: 'center' },
   gramsUnit: { fontSize: 12 },
   itemTotalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 },
