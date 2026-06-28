@@ -250,6 +250,19 @@ export const en = {
   },
   food: {
     title: 'Add food',
+    // "Food today" screen: list of entries + view/edit/delete.
+    todayTitle: 'Food today',
+    entryTitle: 'Entry',
+    entryLabel: 'What it was',
+    update: 'Save changes',
+    edit: 'Edit',
+    delete: 'Delete entry',
+    deleteTitle: 'Delete this entry?',
+    deleteConfirm: 'The entry and its items will be removed from this device. This cannot be undone.',
+    deleteCancel: 'Keep it',
+    untitled: 'Untitled',
+    emptyDay: 'Nothing logged today yet. Add something whenever you are ready.',
+    entryGone: 'This entry has already been deleted.',
     inputPlaceholder: 'What did you eat? e.g. three-egg omelette and coffee with milk',
     prompt: {
       morning: 'What was breakfast?',

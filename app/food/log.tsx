@@ -384,7 +384,10 @@ export default function FoodLogScreen() {
           saveSeedRef.current++,
         ),
       );
-      setTimeout(() => router.back(), 1100);
+      // Land on the day's food list (not a bare back to Home) so the just-saved
+      // entry is visibly there and can be reopened/edited. `replace` keeps the
+      // log screen out of the back stack.
+      setTimeout(() => router.replace('/food'), 1100);
     } catch {
       setSaving(false);
     }

@@ -162,6 +162,7 @@ export const appSettings = sqliteTable('app_settings', {
 export type AppSettings = typeof appSettings.$inferSelect;
 export type Win = typeof wins.$inferSelect;
 export type FoodEntry = typeof foodEntries.$inferSelect;
+export type FoodItem = typeof foodItems.$inferSelect;
 export type DiaryEntry = typeof diaryEntries.$inferSelect;
 export type WeightRow = typeof weights.$inferSelect;
 export type MoodRow = typeof moods.$inferSelect;
