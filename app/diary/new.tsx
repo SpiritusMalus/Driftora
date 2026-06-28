@@ -1,5 +1,5 @@
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
@@ -7,7 +7,7 @@ import { MoodScale } from '@/components/ui/MoodScale';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { TextField } from '@/components/ui/TextField';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
-import { saveDiaryEntry, type Emotion } from '@/lib/core/db/diary';
+import { getDiaryEntry, saveDiaryEntry, updateDiaryEntry, type Emotion } from '@/lib/core/db/diary';
 import { DISTORTION_KEYS, type DistortionKey } from '@/lib/core/insights/distortions';
 import { type Theme, useTheme } from '@/lib/theme/theme';
 
@@ -22,6 +22,11 @@ export default function DiaryNewScreen() {
   const theme = useTheme();
   const router = useRouter();
   const db = useDatabase();
+  // Same screen edits an existing record when opened with ?id= (lower-risk than
+  // lifting the whole stepper into a shared component): pre-fill from the stored
+  // entry and switch Save → update, preserving the original ts.
+  const { id } = useLocalSearchParams<{ id?: string }>();
+  const editId = id != null && id !== '' ? Number(id) : null;
 
   const [step, setStep] = useState(0);
   const [situation, setSituation] = useState('');
@@ -37,6 +42,30 @@ export default function DiaryNewScreen() {
   const [distortions, setDistortions] = useState<DistortionKey[]>([]);
   const [saving, setSaving] = useState(false);
 
+  // When editing, load the record once and pre-fill every field.
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      if (!db || editId == null || !Number.isFinite(editId)) return;
+      const e = await getDiaryEntry(db, editId);
+      if (!active || !e) return;
+      setSituation(e.situation);
+      setThoughts(e.thoughts);
+      setEmotions(e.emotions);
+      setReactionBody(e.reactionBody);
+      setReactionBehavior(e.reactionBehavior);
+      setEvidenceFor(e.evidenceFor);
+      setEvidenceAgainst(e.evidenceAgainst);
+      setReframe(e.reframe);
+      setMoodBefore(e.moodBefore ?? null);
+      setMood(e.mood);
+      setDistortions(e.distortions);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [db, editId]);
+
   const key = STEPS[step];
   const isLast = step === STEPS.length - 1;
   // Don't force every field, but avoid saving an entirely empty record.
@@ -48,7 +77,7 @@ export default function DiaryNewScreen() {
     if (!db) return;
     setSaving(true);
     try {
-      await saveDiaryEntry(db, {
+      const draft = {
         situation,
         thoughts,
         emotions,
@@ -60,7 +89,13 @@ export default function DiaryNewScreen() {
         moodBefore,
         mood,
         distortions,
-      });
+      };
+      // Editing preserves the original ts (no ts arg); a new record gets now().
+      if (editId != null) {
+        await updateDiaryEntry(db, editId, draft);
+      } else {
+        await saveDiaryEntry(db, draft);
+      }
       router.back();
     } finally {
       setSaving(false);
@@ -158,7 +193,7 @@ export default function DiaryNewScreen() {
         )}
         {isLast ? (
           <PrimaryButton
-            label={saving ? t('diary.saving') : t('diary.save')}
+            label={saving ? t('diary.saving') : editId != null ? t('diary.update') : t('diary.save')}
             onPress={onSave}
             disabled={!canSave || saving}
             style={styles.navBtn}
