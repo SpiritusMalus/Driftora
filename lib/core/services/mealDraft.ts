@@ -8,6 +8,7 @@ import type {
   Minerals,
   NutrientValues,
   NutritionItem,
+  Per100,
   Region,
 } from './foodParser';
 
@@ -76,6 +77,30 @@ export function recomputeDraft(region: Region, items: NutritionItem[]): MealDraf
       low_confidence: items.some((it) => it.confidence < LOW_CONFIDENCE_FLOOR),
     },
   };
+}
+
+/// Set user-entered per-100g macros for one item (a DB miss the user is filling
+/// in by hand) and recompute. The source becomes the honest `'manual'` label —
+/// never a fabricated DB number — and the scaled total follows the current grams.
+/// Macros only (minerals stay empty for v1); negatives are floored to 0.
+export function withItemManualMacros(
+  draft: MealDraft,
+  index: number,
+  macros: { kcal: number; prot: number; fat: number; carb: number },
+): MealDraft {
+  const items = draft.items.map((it, i) => {
+    if (i !== index) return it;
+    const per100: Per100 = {
+      kcal: Math.max(0, Math.round(macros.kcal)),
+      prot: Math.max(0, round1(macros.prot)),
+      fat: Math.max(0, round1(macros.fat)),
+      carb: Math.max(0, round1(macros.carb)),
+      minerals: {},
+      source: 'manual',
+    };
+    return { ...it, per100, scaled: scaleToGrams(per100, it.grams) };
+  });
+  return recomputeDraft(draft.region, items);
 }
 
 /// Set a confirmed weight for one item and recompute everything. Confirming

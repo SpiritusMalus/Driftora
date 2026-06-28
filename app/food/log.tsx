@@ -32,7 +32,7 @@ import {
 } from '@/lib/core/services/audioRecorder';
 import type { AudioInput, MealDraft, Minerals, NutritionItem, PhotoInput, Region } from '@/lib/core/services/foodParser';
 import { getFoodParser, resolveRegion } from '@/lib/core/services/foodParserProvider';
-import { recomputeDraft, withItemCookMethod, withItemGrams } from '@/lib/core/services/mealDraft';
+import { recomputeDraft, withItemCookMethod, withItemGrams, withItemManualMacros } from '@/lib/core/services/mealDraft';
 import { COOK_METHODS, type CookMethod } from '@/lib/core/insights/cookMethod';
 import { capturePhoto, isPhotoCaptureAvailable } from '@/lib/core/services/photoProvider';
 import { getSpeechService } from '@/lib/core/services/speechProvider';
@@ -197,7 +197,7 @@ export default function FoodLogScreen() {
       grams: 100,
       grams_source: 'confirmed',
       confidence: 1,
-      per100: { source: 'estimate', kcal: meal.kcal, prot: meal.proteinG, fat: meal.fatG, carb: meal.carbG, minerals: {} },
+      per100: { source: 'history', kcal: meal.kcal, prot: meal.proteinG, fat: meal.fatG, carb: meal.carbG, minerals: {} },
       scaled: { kcal: meal.kcal, prot: meal.proteinG, fat: meal.fatG, carb: meal.carbG, minerals: {} },
       approximate: false,
     };
@@ -354,6 +354,13 @@ export default function FoodLogScreen() {
 
   function onItemCookMethod(index: number, method: CookMethod) {
     setDraft((prev) => (prev ? withItemCookMethod(prev, index, method) : prev));
+  }
+
+  function onItemManualMacros(
+    index: number,
+    macros: { kcal: number; prot: number; fat: number; carb: number },
+  ) {
+    setDraft((prev) => (prev ? withItemManualMacros(prev, index, macros) : prev));
   }
 
   /// Discard the current result and return to the empty / quick-pick state. Without
@@ -526,6 +533,7 @@ export default function FoodLogScreen() {
               theme={theme}
               onGrams={(g) => onItemGrams(i, g)}
               onCookMethod={(m) => onItemCookMethod(i, m)}
+              onManualMacros={(m) => onItemManualMacros(i, m)}
             />
           ))}
 
@@ -628,6 +636,7 @@ function ItemCard({
   theme,
   onGrams,
   onCookMethod,
+  onManualMacros,
 }: {
   item: NutritionItem;
   baseGrams: number;
@@ -635,10 +644,14 @@ function ItemCard({
   theme: Theme;
   onGrams: (grams: number) => void;
   onCookMethod: (method: CookMethod) => void;
+  onManualMacros: (macros: { kcal: number; prot: number; fat: number; carb: number }) => void;
 }) {
   const { t } = useTranslation();
   const minerals = mineralLine(item, t);
   const activeMethod: CookMethod = item.cook_method ?? 'raw';
+  // A full DB miss: the resolver's coarse placeholder. We show NO fabricated
+  // numbers for it — only an honest "not in our database" + manual entry.
+  const isMiss = item.per100.source === 'estimate';
   const presets: { label: string; grams: number }[] = [
     { label: t('food.presetLess'), grams: Math.max(5, Math.round(baseGrams * 0.6)) },
     { label: t('food.presetMid'), grams: Math.max(5, Math.round(baseGrams)) },
@@ -649,17 +662,30 @@ function ItemCard({
     <Card style={styles.item}>
       <Text style={[styles.itemName, { color: theme.text }, theme.font.bodySemiBold]}>{item.name_ru}</Text>
 
-      {/* Per-100g composition — EXACT, presented as fact. */}
-      <Text style={[styles.per100Label, { color: theme.subtle }, theme.font.body]}>
-        {t('food.per100')} · {t(`food.source.${item.per100.source}`)}
-      </Text>
-      <Text style={[styles.per100Value, { color: theme.text }, theme.font.body]}>
-        {hideCalories
-          ? `${t('macros.protein')} ${item.per100.prot} · ${t('macros.fat')} ${item.per100.fat} · ${t('macros.carbs')} ${item.per100.carb}`
-          : `${item.per100.kcal} ${t('units.kcal')} · ${t('macros.protein')} ${item.per100.prot} · ${t('macros.fat')} ${item.per100.fat} · ${t('macros.carbs')} ${item.per100.carb}`}
-      </Text>
-      {minerals.length > 0 ? (
-        <Text style={[styles.minerals, { color: theme.subtle }, theme.font.body]}>{minerals}</Text>
+      {isMiss ? (
+        /* DB miss → never render the placeholder macros. State it plainly and
+           let the user supply real per-100g numbers below. */
+        <Text style={[styles.notInDb, { color: theme.subtle }, theme.font.body]}>{t('food.notInDb')}</Text>
+      ) : (
+        <>
+          {/* Per-100g composition — EXACT (DB) or user-entered (manual). */}
+          <Text style={[styles.per100Label, { color: theme.subtle }, theme.font.body]}>
+            {t('food.per100')} · {t(`food.source.${item.per100.source}`)}
+          </Text>
+          <Text style={[styles.per100Value, { color: theme.text }, theme.font.body]}>
+            {hideCalories
+              ? `${t('macros.protein')} ${item.per100.prot} · ${t('macros.fat')} ${item.per100.fat} · ${t('macros.carbs')} ${item.per100.carb}`
+              : `${item.per100.kcal} ${t('units.kcal')} · ${t('macros.protein')} ${item.per100.prot} · ${t('macros.fat')} ${item.per100.fat} · ${t('macros.carbs')} ${item.per100.carb}`}
+          </Text>
+          {minerals.length > 0 ? (
+            <Text style={[styles.minerals, { color: theme.subtle }, theme.font.body]}>{minerals}</Text>
+          ) : null}
+        </>
+      )}
+
+      {/* Manual per-100g entry for a DB miss (and editing once entered). */}
+      {isMiss || item.per100.source === 'manual' ? (
+        <ManualMacros item={item} isMiss={isMiss} theme={theme} onManualMacros={onManualMacros} />
       ) : null}
 
       {/* Cooking method — neutral chips ("how it was cooked"), never framed as
@@ -729,16 +755,82 @@ function ItemCard({
         <Text style={[styles.gramsUnit, { color: theme.subtle }, theme.font.body]}>{t('units.g')}</Text>
       </View>
 
-      {/* Scaled component total — approximate until grams confirmed. */}
-      <View style={styles.itemTotalRow}>
-        <Text style={[styles.itemTotal, { color: theme.text }, theme.font.bodyMedium]}>
-          {hideCalories
-            ? `${t('macros.protein')} ${item.scaled.prot} ${t('units.g')}`
-            : `${item.scaled.kcal} ${t('units.kcal')} · ${t('macros.protein')} ${item.scaled.prot} ${t('units.g')}`}
-        </Text>
-        {item.approximate ? <ApproxBadge theme={theme} label={t('food.approx')} /> : null}
-      </View>
+      {/* Scaled component total — hidden on a DB miss (the placeholder total is
+          fabricated too); it appears once the user enters real macros. */}
+      {isMiss ? null : (
+        <View style={styles.itemTotalRow}>
+          <Text style={[styles.itemTotal, { color: theme.text }, theme.font.bodyMedium]}>
+            {hideCalories
+              ? `${t('macros.protein')} ${item.scaled.prot} ${t('units.g')}`
+              : `${item.scaled.kcal} ${t('units.kcal')} · ${t('macros.protein')} ${item.scaled.prot} ${t('units.g')}`}
+          </Text>
+          {item.approximate ? <ApproxBadge theme={theme} label={t('food.approx')} /> : null}
+        </View>
+      )}
     </Card>
+  );
+}
+
+/// Per-100g macro entry for a DB miss (and editing it afterwards). Keeps its own
+/// input strings so partial typing isn't clobbered by re-renders; every change
+/// pushes the parsed macros up via `onManualMacros` (→ source becomes 'manual').
+function ManualMacros({
+  item,
+  isMiss,
+  theme,
+  onManualMacros,
+}: {
+  item: NutritionItem;
+  isMiss: boolean;
+  theme: Theme;
+  onManualMacros: (macros: { kcal: number; prot: number; fat: number; carb: number }) => void;
+}) {
+  const { t } = useTranslation();
+  // Seed from the current per100 when the user is editing already-entered manual
+  // macros; blank on a fresh miss so nothing fabricated is shown.
+  const init = (n: number) => (isMiss ? '' : String(n));
+  const [kcal, setKcal] = useState(init(item.per100.kcal));
+  const [prot, setProt] = useState(init(item.per100.prot));
+  const [fat, setFat] = useState(init(item.per100.fat));
+  const [carb, setCarb] = useState(init(item.per100.carb));
+
+  function push(next: { kcal: string; prot: string; fat: string; carb: string }) {
+    onManualMacros({
+      kcal: toNumber(next.kcal),
+      prot: toNumber(next.prot),
+      fat: toNumber(next.fat),
+      carb: toNumber(next.carb),
+    });
+  }
+
+  const fields: { key: 'kcal' | 'prot' | 'fat' | 'carb'; label: string; value: string; set: (v: string) => void }[] = [
+    { key: 'kcal', label: t('units.kcal'), value: kcal, set: setKcal },
+    { key: 'prot', label: t('macros.protein'), value: prot, set: setProt },
+    { key: 'fat', label: t('macros.fat'), value: fat, set: setFat },
+    { key: 'carb', label: t('macros.carbs'), value: carb, set: setCarb },
+  ];
+
+  return (
+    <View style={styles.manualWrap}>
+      <Text style={[styles.manualLabel, { color: theme.subtle }, theme.font.body]}>{t('food.enterMacros')}</Text>
+      <View style={styles.manualRow}>
+        {fields.map((f) => (
+          <View key={f.key} style={styles.manualField}>
+            <Text style={[styles.manualFieldLabel, { color: theme.subtle }, theme.font.body]}>{f.label}</Text>
+            <TextField
+              value={f.value}
+              onChangeText={(v) => {
+                f.set(v);
+                push({ kcal, prot, fat, carb, [f.key]: v });
+              }}
+              keyboardType="numeric"
+              placeholder="0"
+              style={styles.manualInput}
+            />
+          </View>
+        ))}
+      </View>
+    </View>
   );
 }
 
@@ -763,6 +855,13 @@ const styles = StyleSheet.create({
   minerals: { fontSize: 11, marginBottom: 8, lineHeight: 16 },
   cookRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6, flexWrap: 'wrap' },
   cookChips: { flexDirection: 'row', gap: 6, flexWrap: 'wrap', flexShrink: 1 },
+  notInDb: { fontSize: 13, marginBottom: 6, lineHeight: 18 },
+  manualWrap: { marginTop: 4, marginBottom: 4 },
+  manualLabel: { fontSize: 12, marginBottom: 6 },
+  manualRow: { flexDirection: 'row', gap: 8 },
+  manualField: { flex: 1 },
+  manualFieldLabel: { fontSize: 11, marginBottom: 2 },
+  manualInput: { textAlign: 'center' },
   gramsRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' },
   gramsLabel: { fontSize: 12 },
   presets: { flexDirection: 'row', gap: 6 },
