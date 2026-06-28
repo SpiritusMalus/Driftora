@@ -261,6 +261,7 @@ export const ru = {
     voiceListening: '● Слушаю… нажмите, чтобы остановить',
     voiceNote: '🎙 Записать голосом',
     voiceRecording: '● Запись… нажмите, чтобы отправить',
+    voiceProcessing: 'Обрабатываю запись…',
     photo: '📷 Сфотографировать',
     photoAnalyzing: 'Распознаю фото…',
     save: 'Сохранить',
