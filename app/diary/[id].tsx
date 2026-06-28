@@ -1,22 +1,41 @@
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card } from '@/components/ui/Card';
+import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
-import { getDiaryEntry, type DiaryEntryView } from '@/lib/core/db/diary';
+import { deleteDiaryEntry, getDiaryEntry, type DiaryEntryView } from '@/lib/core/db/diary';
 import { type Theme, useTheme } from '@/lib/theme/theme';
 
 /// Read-only view of one thought record (reread support for M3).
 export default function DiaryEntryScreen() {
   const { t } = useTranslation();
   const theme = useTheme();
+  const router = useRouter();
   const db = useDatabase();
   const { id } = useLocalSearchParams<{ id: string }>();
   // undefined = still loading, null = not found.
   const [entry, setEntry] = useState<DiaryEntryView | null | undefined>(undefined);
+
+  function onDelete() {
+    Alert.alert(t('diary.deleteTitle'), t('diary.deleteConfirm'), [
+      { text: t('diary.deleteCancel'), style: 'cancel' },
+      {
+        text: t('diary.delete'),
+        style: 'destructive',
+        onPress: () => {
+          if (!db) return;
+          void (async () => {
+            await deleteDiaryEntry(db, Number(id));
+            router.back();
+          })();
+        },
+      },
+    ]);
+  }
 
   useFocusEffect(
     useCallback(() => {
@@ -83,6 +102,14 @@ export default function DiaryEntryScreen() {
           theme={theme}
         />
       </Card>
+
+      <PrimaryButton label={t('diary.edit')} onPress={() => router.push(`/diary/new?id=${id}`)} style={styles.edit} />
+      <Pressable
+        onPress={onDelete}
+        style={({ pressed }) => [styles.deleteBtn, { borderColor: theme.separator, opacity: pressed ? 0.6 : 1 }]}
+      >
+        <Text style={[styles.deleteText, { color: theme.primary }, theme.font.bodySemiBold]}>{t('diary.delete')}</Text>
+      </Pressable>
     </Screen>
   );
 }
@@ -133,6 +160,9 @@ function formatDate(d: Date): string {
 
 const styles = StyleSheet.create({
   date: { fontSize: 12, marginTop: 4, marginBottom: 12, marginHorizontal: 4 },
+  edit: { marginTop: 16 },
+  deleteBtn: { borderWidth: 1.5, borderRadius: 999, paddingVertical: 12, alignItems: 'center', marginTop: 10 },
+  deleteText: { fontSize: 15 },
   section: { marginTop: 16 },
   sectionFirst: { marginTop: 0 },
   label: { fontSize: 12, marginBottom: 4 },

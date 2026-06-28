@@ -69,6 +69,25 @@ function toView(row: DiaryEntry): DiaryEntryView {
   };
 }
 
+/// Maps a draft to its column values (incl. the JSON-serialized `emotions` /
+/// `distortions`). Shared by save + update so the two paths can't drift apart.
+/// `ts` is omitted so the caller decides whether to set/preserve it.
+function draftToColumns(draft: DiaryDraft) {
+  return {
+    situation: draft.situation,
+    thoughts: draft.thoughts,
+    emotions: JSON.stringify(draft.emotions ?? []),
+    reactionBody: draft.reactionBody,
+    reactionBehavior: draft.reactionBehavior,
+    evidenceFor: draft.evidenceFor,
+    evidenceAgainst: draft.evidenceAgainst,
+    reframe: draft.reframe,
+    moodBefore: draft.moodBefore ?? null,
+    mood: draft.mood,
+    distortions: JSON.stringify(draft.distortions ?? []),
+  };
+}
+
 /// Saves a thought record. Returns the new entry id.
 export async function saveDiaryEntry(
   db: AnyDb,
@@ -77,22 +96,30 @@ export async function saveDiaryEntry(
 ): Promise<number> {
   const inserted = await db
     .insert(diaryEntries)
-    .values({
-      ts,
-      situation: draft.situation,
-      thoughts: draft.thoughts,
-      emotions: JSON.stringify(draft.emotions ?? []),
-      reactionBody: draft.reactionBody,
-      reactionBehavior: draft.reactionBehavior,
-      evidenceFor: draft.evidenceFor,
-      evidenceAgainst: draft.evidenceAgainst,
-      reframe: draft.reframe,
-      moodBefore: draft.moodBefore ?? null,
-      mood: draft.mood,
-      distortions: JSON.stringify(draft.distortions ?? []),
-    })
+    .values({ ts, ...draftToColumns(draft) })
     .returning({ id: diaryEntries.id });
   return inserted[0].id as number;
+}
+
+/// Updates every field of an existing thought record (same column mapping as
+/// save, incl. re-serialized `emotions` / `distortions` JSON). The original `ts`
+/// is preserved unless a new one is passed — the record's "when" anchors the
+/// СМЭР timeline.
+export async function updateDiaryEntry(
+  db: AnyDb,
+  id: number,
+  draft: DiaryDraft,
+  ts?: Date,
+): Promise<void> {
+  await db
+    .update(diaryEntries)
+    .set({ ...draftToColumns(draft), ...(ts ? { ts } : {}) })
+    .where(eq(diaryEntries.id, id));
+}
+
+/// Permanently removes a thought record.
+export async function deleteDiaryEntry(db: AnyDb, id: number): Promise<void> {
+  await db.delete(diaryEntries).where(eq(diaryEntries.id, id));
 }
 
 /// Distortion tag lists from entries since [since] — the input to
