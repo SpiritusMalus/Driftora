@@ -1,3 +1,8 @@
+import {
+  applyCookFactor,
+  isNeutralCookMethod,
+  type CookMethod,
+} from '../insights/cookMethod';
 import type {
   MealDraft,
   Minerals,
@@ -83,5 +88,31 @@ export function withItemGrams(draft: MealDraft, index: number, grams: number): M
       ? { ...it, grams: g, grams_source: 'confirmed' as const, approximate: false, scaled: scaleToGrams(it.per100, g) }
       : it,
   );
+  return recomputeDraft(draft.region, items);
+}
+
+/// Switch one item's cooking method and recompute everything, OFFLINE. The DB
+/// row is the `raw` baseline (captured once in `basePer100`); a non-neutral
+/// method applies coarse factors and honestly raises `approximate`, while
+/// switching back to a neutral method (raw/boiled) restores the grams-based
+/// state. Reversible because we always recompute from `basePer100`, never from
+/// the already-adjusted per100.
+export function withItemCookMethod(draft: MealDraft, index: number, method: CookMethod): MealDraft {
+  const items = draft.items.map((it, i) => {
+    if (i !== index) return it;
+    const base = it.basePer100 ?? it.per100;
+    const per100 = applyCookFactor(base, method);
+    const neutral = isNeutralCookMethod(method);
+    return {
+      ...it,
+      basePer100: base,
+      cook_method: method,
+      per100,
+      // Coarse method factors → estimate; neutral methods fall back to the
+      // item's grams-confirmation state.
+      approximate: neutral ? it.grams_source === 'estimated' : true,
+      scaled: scaleToGrams(per100, it.grams),
+    };
+  });
   return recomputeDraft(draft.region, items);
 }

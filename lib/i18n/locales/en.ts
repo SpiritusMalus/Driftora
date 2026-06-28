@@ -293,6 +293,16 @@ export const en = {
     presetLess: 'Less',
     presetMid: 'Usual',
     presetMore: 'More',
+    // Cooking method — neutral, never "healthier/worse".
+    cookMethod: {
+      label: 'How it was cooked',
+      raw: 'Raw',
+      boiled: 'Boiled',
+      fried: 'Fried',
+      baked: 'Baked',
+      grilled: 'Grilled',
+      stewed: 'Stewed',
+    },
     estimateNote: 'Some values are a rough estimate (not in the database).',
     source: {
       usda: 'from USDA',

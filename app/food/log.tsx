@@ -32,7 +32,8 @@ import {
 } from '@/lib/core/services/audioRecorder';
 import type { AudioInput, MealDraft, Minerals, NutritionItem, PhotoInput, Region } from '@/lib/core/services/foodParser';
 import { getFoodParser, resolveRegion } from '@/lib/core/services/foodParserProvider';
-import { recomputeDraft, withItemGrams } from '@/lib/core/services/mealDraft';
+import { recomputeDraft, withItemCookMethod, withItemGrams } from '@/lib/core/services/mealDraft';
+import { COOK_METHODS, type CookMethod } from '@/lib/core/insights/cookMethod';
 import { capturePhoto, isPhotoCaptureAvailable } from '@/lib/core/services/photoProvider';
 import { getSpeechService } from '@/lib/core/services/speechProvider';
 import { type Theme, useTheme } from '@/lib/theme/theme';
@@ -351,6 +352,10 @@ export default function FoodLogScreen() {
     setDraft((prev) => (prev ? withItemGrams(prev, index, grams) : prev));
   }
 
+  function onItemCookMethod(index: number, method: CookMethod) {
+    setDraft((prev) => (prev ? withItemCookMethod(prev, index, method) : prev));
+  }
+
   /// Discard the current result and return to the empty / quick-pick state. Without
   /// this, tapping a saved meal (or parsing) left no obvious way back (user
   /// feedback 2026-06-25: "не понятно как закрыть обратно").
@@ -517,6 +522,7 @@ export default function FoodLogScreen() {
               hideCalories={hideCalories}
               theme={theme}
               onGrams={(g) => onItemGrams(i, g)}
+              onCookMethod={(m) => onItemCookMethod(i, m)}
             />
           ))}
 
@@ -618,15 +624,18 @@ function ItemCard({
   hideCalories,
   theme,
   onGrams,
+  onCookMethod,
 }: {
   item: NutritionItem;
   baseGrams: number;
   hideCalories: boolean;
   theme: Theme;
   onGrams: (grams: number) => void;
+  onCookMethod: (method: CookMethod) => void;
 }) {
   const { t } = useTranslation();
   const minerals = mineralLine(item, t);
+  const activeMethod: CookMethod = item.cook_method ?? 'raw';
   const presets: { label: string; grams: number }[] = [
     { label: t('food.presetLess'), grams: Math.max(5, Math.round(baseGrams * 0.6)) },
     { label: t('food.presetMid'), grams: Math.max(5, Math.round(baseGrams)) },
@@ -649,6 +658,38 @@ function ItemCard({
       {minerals.length > 0 ? (
         <Text style={[styles.minerals, { color: theme.subtle }, theme.font.body]}>{minerals}</Text>
       ) : null}
+
+      {/* Cooking method — neutral chips ("how it was cooked"), never framed as
+          healthier/worse. A non-baseline method coarsely adjusts kcal/fat and is
+          shown as approximate. Offline, deterministic. */}
+      <View style={styles.cookRow}>
+        <Text style={[styles.gramsLabel, { color: theme.subtle }, theme.font.body]}>
+          {t('food.cookMethod.label')}
+        </Text>
+        <View style={styles.cookChips}>
+          {COOK_METHODS.map((m) => {
+            const active = activeMethod === m;
+            return (
+              <Pressable
+                key={m}
+                onPress={() => onCookMethod(m)}
+                style={({ pressed }) => [
+                  styles.preset,
+                  {
+                    backgroundColor: active ? theme.primary : theme.card,
+                    borderColor: active ? theme.primary : theme.separator,
+                    opacity: pressed ? 0.7 : 1,
+                  },
+                ]}
+              >
+                <Text style={[styles.presetText, { color: active ? theme.onPrimary : theme.text }, theme.font.body]}>
+                  {t(`food.cookMethod.${m}`)}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
 
       {/* Confirm grams → flips the item out of "approximate". */}
       <View style={styles.gramsRow}>
@@ -717,6 +758,8 @@ const styles = StyleSheet.create({
   per100Label: { fontSize: 11, marginBottom: 2 },
   per100Value: { fontSize: 13, marginBottom: 2 },
   minerals: { fontSize: 11, marginBottom: 8, lineHeight: 16 },
+  cookRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6, flexWrap: 'wrap' },
+  cookChips: { flexDirection: 'row', gap: 6, flexWrap: 'wrap', flexShrink: 1 },
   gramsRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' },
   gramsLabel: { fontSize: 12 },
   presets: { flexDirection: 'row', gap: 6 },
