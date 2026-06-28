@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useTranslation } from 'react-i18next';
 
@@ -9,6 +9,8 @@ import { Card } from '@/components/ui/Card';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
 import { TextField } from '@/components/ui/TextField';
+import { Waveform } from '@/components/ui/Waveform';
+import { pushLevel } from '@/components/ui/waveformBuffer';
 import { AI_CONSENT_VERSION, grantAiConsent, needsAiConsent } from '@/lib/core/consent/consent';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import {
@@ -96,6 +98,10 @@ export default function FoodLogScreen() {
   const [recordingAvailable, setRecordingAvailable] = useState(false);
   const [recording, setRecording] = useState(false);
   const recRef = useRef<ActiveRecording | null>(null);
+  // Rolling buffer of recent mic amplitudes (0..1) feeding the live waveform.
+  // Empty in Expo Go / no metering → the waveform renders a flat baseline.
+  const [meterLevels, setMeterLevels] = useState<number[]>([]);
+  const meterUnsubRef = useRef<(() => void) | null>(null);
   // Origin of the current draft, so the saved entry's `source` is honest.
   const [source, setSource] = useState<'text' | 'voice' | 'photo'>('text');
   const autoStarted = useRef(false);
@@ -235,7 +241,10 @@ export default function FoodLogScreen() {
     if (recording) {
       const rec = recRef.current;
       recRef.current = null;
+      meterUnsubRef.current?.();
+      meterUnsubRef.current = null;
       setRecording(false);
+      setMeterLevels([]);
       const audio = rec ? await rec.stop() : null;
       if (audio) await onAudio(audio);
       return;
@@ -244,6 +253,12 @@ export default function FoodLogScreen() {
     const rec = await startRecording();
     if (!rec) return; // permission denied / module missing — stay on text/STT
     recRef.current = rec;
+    setMeterLevels([]);
+    // Live amplitude → rolling buffer for the waveform. No-op when the build has
+    // no metering (Expo Go), so the bars just stay at their idle baseline.
+    meterUnsubRef.current = rec.onMeter((level) => {
+      setMeterLevels((prev) => pushLevel(prev, level, 24));
+    });
     setSource('voice');
     setRecording(true);
   }
@@ -386,22 +401,33 @@ export default function FoodLogScreen() {
           an online parser is built in; otherwise the on-device STT mic fills the
           text field. */}
       {AI_CONFIGURED && recordingAvailable ? (
-        <Pressable
-          onPress={toggleRecording}
-          disabled={parsing}
-          style={({ pressed }) => [
-            styles.micButton,
-            {
-              borderColor: recording ? theme.primary : theme.separator,
-              backgroundColor: recording ? theme.primary : theme.card,
-              opacity: pressed || parsing ? 0.7 : 1,
-            },
-          ]}
-        >
-          <Text style={[styles.micText, { color: recording ? theme.onPrimary : theme.primary }, theme.font.bodySemiBold]}>
-            {recording ? t('food.voiceRecording') : t('food.voiceNote')}
-          </Text>
-        </Pressable>
+        <>
+          {recording ? <Waveform levels={meterLevels} /> : null}
+          <Pressable
+            onPress={toggleRecording}
+            disabled={parsing}
+            style={({ pressed }) => [
+              styles.micButton,
+              {
+                borderColor: recording ? theme.primary : theme.separator,
+                backgroundColor: recording ? theme.primary : theme.card,
+                opacity: pressed || parsing ? 0.7 : 1,
+              },
+            ]}
+          >
+            <Text style={[styles.micText, { color: recording ? theme.onPrimary : theme.primary }, theme.font.bodySemiBold]}>
+              {recording ? t('food.voiceRecording') : t('food.voiceNote')}
+            </Text>
+          </Pressable>
+          {parsing && source === 'voice' ? (
+            <View style={styles.processingRow}>
+              <ActivityIndicator size="small" color={theme.primary} />
+              <Text style={[styles.micText, { color: theme.subtle }, theme.font.body]}>
+                {t('food.voiceProcessing')}
+              </Text>
+            </View>
+          ) : null}
+        </>
       ) : speechAvailable ? (
         <Pressable
           onPress={toggleListening}
@@ -681,6 +707,7 @@ const styles = StyleSheet.create({
   input: { marginBottom: 12 },
   micButton: { borderRadius: 999, borderWidth: 1.5, paddingVertical: 12, alignItems: 'center', marginBottom: 8 },
   micText: { fontSize: 15 },
+  processingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 8 },
   clearBtn: { alignSelf: 'center', marginTop: 12, paddingVertical: 4 },
   clearText: { fontSize: 13, textDecorationLine: 'underline' },
   hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },

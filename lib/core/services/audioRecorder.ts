@@ -26,6 +26,21 @@ function audioModule(): any {
 export interface ActiveRecording {
   stop(): Promise<AudioInput | null>;
   cancel(): Promise<void>;
+  /// Subscribe to live amplitude samples (normalized 0..1) for a waveform.
+  /// No-op (returns a no-op unsubscribe) when metering isn't available, so the
+  /// caller never has to guard — recording still works, there are just no bars.
+  onMeter(cb: (level: number) => void): () => void;
+}
+
+/// Map expo-av's dB metering (negative, ~-160..0) onto a 0..1 amplitude. Floor
+/// at -60 dB so ambient quiet maps to ~0 and a normal voice fills the bar. Pure
+/// + exported so the normalization is unit-testable without the native module.
+export function normalizeMeterDb(db: number): number {
+  if (!Number.isFinite(db)) return 0;
+  const FLOOR = -60;
+  if (db <= FLOOR) return 0;
+  if (db >= 0) return 1;
+  return (db - FLOOR) / -FLOOR;
 }
 
 /// Whether voice-note recording is even possible in this build (native module
@@ -57,7 +72,30 @@ export async function startRecording(): Promise<ActiveRecording | null> {
     if (!(await requestAudioPermission())) return null;
     await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
     const recording = new Audio.Recording();
-    await recording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+    // Clone HIGH_QUALITY with metering on so status updates carry `metering` (dB),
+    // which feeds the live waveform. Falls back to the bare preset if cloning
+    // throws for any reason — recording must never depend on metering.
+    let options = Audio.RecordingOptionsPresets.HIGH_QUALITY;
+    try {
+      options = { ...options, isMeteringEnabled: true };
+    } catch {
+      /* keep the preset */
+    }
+    await recording.prepareToRecordAsync(options);
+
+    // Fan out metering samples to subscribers. We poll status at a steady cadence
+    // and read `metering` (dB) when present; subscribers get a normalized 0..1.
+    const meterCbs = new Set<(level: number) => void>();
+    try {
+      recording.setProgressUpdateInterval(80);
+      recording.setOnRecordingStatusUpdate((status: { metering?: number }) => {
+        if (status == null || typeof status.metering !== 'number') return;
+        const level = normalizeMeterDb(status.metering);
+        for (const cb of meterCbs) cb(level);
+      });
+    } catch {
+      /* no metering on this build — onMeter stays a no-op */
+    }
     await recording.startAsync();
 
     let done = false;
@@ -72,6 +110,7 @@ export async function startRecording(): Promise<ActiveRecording | null> {
       async stop(): Promise<AudioInput | null> {
         if (done) return null;
         done = true;
+        meterCbs.clear();
         try {
           await recording.stopAndUnloadAsync();
           const uri = recording.getURI();
@@ -85,12 +124,18 @@ export async function startRecording(): Promise<ActiveRecording | null> {
       async cancel(): Promise<void> {
         if (done) return;
         done = true;
+        meterCbs.clear();
         try {
           await recording.stopAndUnloadAsync();
         } catch {
           /* ignore */
         }
         await teardown();
+      },
+      onMeter(cb: (level: number) => void): () => void {
+        if (done) return () => {};
+        meterCbs.add(cb);
+        return () => meterCbs.delete(cb);
       },
     };
   } catch {

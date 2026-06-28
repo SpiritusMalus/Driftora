@@ -263,6 +263,7 @@ export const en = {
     voiceListening: '● Listening… tap to stop',
     voiceNote: '🎙 Record a voice note',
     voiceRecording: '● Recording… tap to send',
+    voiceProcessing: 'Processing your clip…',
     photo: '📷 Take a photo',
     photoAnalyzing: 'Reading the photo…',
     save: 'Save',
