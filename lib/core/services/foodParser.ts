@@ -7,7 +7,17 @@
 export type Region = 'RU' | 'US';
 
 /// Where a per-100g number came from. `estimate` = DB miss (coarse, not fact).
-export type NutritionSource = 'usda' | 'skurikhin' | 'openfoodfacts' | 'apininjas' | 'estimate';
+/// Where a per-100g block came from. `estimate` = a full DB miss (the client
+/// shows NO fabricated numbers for it); `manual` = the user typed the macros in;
+/// `history` = re-logged from the user's own earlier entry (real, their data).
+export type NutritionSource =
+  | 'usda'
+  | 'skurikhin'
+  | 'openfoodfacts'
+  | 'apininjas'
+  | 'estimate'
+  | 'manual'
+  | 'history';
 
 /// Mineral set v1 — mg per 100 g (or scaled). Any subset may be present.
 export interface Minerals {
