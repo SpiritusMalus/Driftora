@@ -252,6 +252,7 @@ export const en = {
     title: 'Add food',
     // "Food today" screen: list of entries + view/edit/delete.
     todayTitle: 'Food today',
+    add: 'Add food',
     entryTitle: 'Entry',
     entryLabel: 'What it was',
     update: 'Save changes',
