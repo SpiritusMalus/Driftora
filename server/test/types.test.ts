@@ -75,6 +75,25 @@ test('assembleMealDraft: confirmed grams + DB miss + low confidence flags', () =
   assert.equal(draft.portion_state, 'confirmed');
   assert.equal(draft.flags.has_estimate, true);
   assert.equal(draft.flags.low_confidence, true);
+  // The DB-miss placeholder is fabricated — it must NOT count toward the total.
+  assert.equal(draft.totals.kcal, 0);
+});
+
+test('assembleMealDraft: total counts real items, excludes DB-miss placeholder', () => {
+  const est: Per100 = { source: 'estimate', kcal: 150, prot: 5, fat: 5, carb: 20, minerals: {} };
+  const items: NutritionItem[] = [
+    {
+      name_ru: 'курица', name_en: 'chicken', grams: 100, grams_source: 'confirmed',
+      confidence: 0.9, per100: chicken, scaled: scaleToGrams(chicken, 100), approximate: false,
+    },
+    {
+      name_ru: 'пончик', name_en: 'donut', grams: 200, grams_source: 'estimated',
+      confidence: 0.3, per100: est, scaled: scaleToGrams(est, 200), approximate: true,
+    },
+  ];
+  const draft = assembleMealDraft('RU', items);
+  assert.equal(draft.flags.has_estimate, true);
+  assert.equal(draft.totals.kcal, 165); // chicken only — donut's 300 kcal placeholder excluded
 });
 
 test('normalizeIdentified: keeps named items, clamps confidence, defaults grams', () => {

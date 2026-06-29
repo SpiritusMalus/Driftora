@@ -145,7 +145,11 @@ export function assembleMealDraft(region: Region, items: NutritionItem[]): MealD
   return {
     region,
     items,
-    totals: sumNutrients(items),
+    // A full DB miss (`source: 'estimate'`) is a fabricated placeholder the
+    // client never shows numbers for, so it must not leak into the dish total
+    // either — it counts only once the user supplies real macros (THE HONESTY
+    // RULE, §1/§4). `has_estimate` still flags that a miss is present.
+    totals: sumNutrients(items.filter((it) => it.per100.source !== 'estimate')),
     portion_state: approximate ? 'estimated' : 'confirmed',
     approximate,
     flags: {
