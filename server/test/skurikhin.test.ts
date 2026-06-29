@@ -48,6 +48,16 @@ test('word-overlap fallback: "куриная грудка отварная" stil
   assert.ok(r!.confidence < 0.95, 'fuzzy match has lower confidence than exact');
 });
 
+test('curated common food: "пончик" resolves (was a DB miss → estimate)', async () => {
+  const r = await provider.search('пончик', 'RU');
+  assert.ok(r, 'пончик should now be found in the curated RU rows');
+  assert.equal(r!.per100.source, 'skurikhin'); // curated RU table, honestly attributed
+  assert.equal(r!.per100.kcal, 296);
+  // alias/plural still matches the same entry.
+  const plural = await provider.search('пончики', 'RU');
+  assert.equal(plural!.per100.kcal, 296);
+});
+
 test('miss returns null (chain moves on)', async () => {
   const r = await provider.search('абракадабра несъедобная', 'RU');
   assert.equal(r, null);

@@ -55,4 +55,15 @@ describe('mealDraft', () => {
     expect(after.items[1].approximate).toBe(true);
     expect(after.approximate).toBe(true);
   });
+
+  it('excludes unfilled DB-miss items from the total (no fabricated macros)', () => {
+    const miss: Per100 = { source: 'estimate', kcal: 150, prot: 5, fat: 5, carb: 20, minerals: {} };
+    const d = recomputeDraft('RU', [
+      item({ name_ru: 'курица', grams: 100, scaled: scaleToGrams(chicken, 100) }),
+      item({ name_ru: 'пончик', per100: miss, scaled: scaleToGrams(miss, 200), grams: 200 }),
+    ]);
+    // The miss is present (flag set) but its 300 kcal placeholder is NOT in the total.
+    expect(d.flags.has_estimate).toBe(true);
+    expect(d.totals.kcal).toBe(165); // chicken only — donut excluded
+  });
 });

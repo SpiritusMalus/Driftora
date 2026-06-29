@@ -1,4 +1,5 @@
 import type { Per100, Region } from '../types.js';
+import { CURATED_RU } from './curatedRu.js';
 import type { NutritionProvider, ProviderResult } from './provider.js';
 import { SKURIKHIN_TABLE } from './skurikhinData.js';
 import type { SkurikhinEntry } from './skurikhinTypes.js';
@@ -31,7 +32,9 @@ export class SkurikhinProvider implements NutritionProvider {
 
   private readonly index: IndexEntry[];
 
-  constructor(table: SkurikhinEntry[] = SKURIKHIN_TABLE) {
+  // The default RU table is the auto-generated USDA-SR import PLUS the
+  // hand-curated common-foods rows (пончик, булочка, …) that the import lacks.
+  constructor(table: SkurikhinEntry[] = [...SKURIKHIN_TABLE, ...CURATED_RU]) {
     this.index = [];
     for (const entry of table) {
       this.index.push({ key: normalizeRu(entry.name), entry });

@@ -313,7 +313,7 @@ export const en = {
       grilled: 'Grilled',
       stewed: 'Stewed',
     },
-    estimateNote: 'Some values are a rough estimate (not in the database).',
+    estimateNote: 'Items not in our database aren’t counted in the total. Enter their macros to include them.',
     notInDb: "Not in our database. Enter the per-100 g macros and calories yourself — we won't make numbers up for you.",
     enterMacros: 'Enter per 100 g:',
     source: {

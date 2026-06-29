@@ -65,9 +65,13 @@ export async function saveParsedEntry(
 /// macros for its confirmed grams). Shared by save + update so the two paths
 /// can never drift apart.
 async function insertDraftItems(db: AnyDb, entryId: number, d: MealDraft): Promise<void> {
-  if (d.items.length === 0) return;
+  // Drop unfilled DB misses: their macros are the fabricated 'estimate'
+  // placeholder, already excluded from the dish total, so persisting them would
+  // reintroduce phantom calories on reload. A filled miss is 'manual' and kept.
+  const items = d.items.filter((it) => it.per100.source !== 'estimate');
+  if (items.length === 0) return;
   await db.insert(foodItems).values(
-    d.items.map((it) => ({
+    items.map((it) => ({
       entryId,
       name: it.name_ru,
       qtyG: it.grams,
@@ -146,8 +150,10 @@ export function draftFromStoredEntry(region: Region, items: FoodItem[]): MealDra
       fat: Math.round((it.fatG / factor) * 10) / 10,
       carb: Math.round((it.carbG / factor) * 10) / 10,
       minerals: {},
-      // Provenance wasn't stored; the saved scaled macro is the fact we keep.
-      source: 'estimate',
+      // Provenance wasn't stored; the saved scaled macro is the user's own
+      // recorded fact, so tag it 'history' (their journal) — NOT 'estimate',
+      // which now means an unfilled DB miss the total deliberately skips.
+      source: 'history',
     };
     return {
       name_ru: it.name,

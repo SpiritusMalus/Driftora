@@ -69,7 +69,11 @@ export function recomputeDraft(region: Region, items: NutritionItem[]): MealDraf
   return {
     region,
     items,
-    totals: sumNutrients(items),
+    // A full DB miss (`source: 'estimate'`) is a fabricated placeholder — the
+    // item card shows NO numbers for it, so it must not leak into the dish total
+    // either. It starts counting only once the user fills real macros (which
+    // flips the source to 'manual'). THE HONESTY RULE, applied to the total.
+    totals: sumNutrients(items.filter((it) => it.per100.source !== 'estimate')),
     portion_state: approximate ? 'estimated' : 'confirmed',
     approximate,
     flags: {
