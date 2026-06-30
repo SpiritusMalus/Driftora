@@ -15,7 +15,7 @@ import { getDbDriver } from '@/lib/core/db/client';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { ensureSettings, parseReminderTimes, updateSettings } from '@/lib/core/db/settings';
 import type { LegalDoc } from '@/lib/legal/documents';
-import { LEGAL_URL, SITE_URL } from '@/lib/legal/links';
+import { SITE_URL } from '@/lib/legal/links';
 import { getStepsForDay, dayKey } from '@/lib/core/db/steps';
 import { latestMood } from '@/lib/core/db/mood';
 import { planNudges } from '@/lib/core/insights/nudgeRules';
@@ -295,12 +295,6 @@ export default function SettingsScreen() {
       <Card style={styles.toggleRow} padded={false} onPress={() => setReader('privacy')}>
         <Text style={[styles.toggleLabel, { color: theme.text }, theme.font.body]}>{t('legal.privacy')}</Text>
         <Text style={{ color: theme.primary, fontSize: 20 }}>›</Text>
-      </Card>
-      {/* Public copy hosted centrally at family-pie; in-app readers above stay
-          as the offline fallback. */}
-      <Card style={styles.toggleRow} padded={false} onPress={() => void Linking.openURL(LEGAL_URL.combined)}>
-        <Text style={[styles.toggleLabel, { color: theme.text }, theme.font.body]}>{t('legal.viewOnline')}</Text>
-        <Text style={{ color: theme.primary, fontSize: 16 }}>↗</Text>
       </Card>
       {/* Neutral studio landing page — no purchase/steering wording (iOS-safe). */}
       <Card style={styles.toggleRow} padded={false} onPress={() => void Linking.openURL(SITE_URL)}>

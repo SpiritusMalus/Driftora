@@ -1,7 +1,7 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { StyleSheet, Text, View } from 'react-native';
+import { Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card } from '@/components/ui/Card';
 import { ListGroup, type RowSpec } from '@/components/ui/ListGroup';
@@ -15,7 +15,18 @@ import { listStepsDays, setManualSteps, syncDaySteps } from '@/lib/core/db/steps
 import { getHealthService } from '@/lib/core/services/healthProvider';
 import { useTheme } from '@/lib/theme/theme';
 
-type HealthState = 'idle' | 'connecting' | 'connected' | 'denied' | 'unavailable';
+type HealthState =
+  | 'idle'
+  | 'connecting'
+  | 'connected'
+  | 'denied'
+  | 'unavailable'
+  | 'update_required'
+  | 'unsupported';
+
+/// Health Connect's package on Google Play — used to send the user to install or
+/// update the provider when `availability()` reports it's missing/outdated.
+const HEALTH_CONNECT_PKG = 'com.google.android.apps.healthdata';
 
 /// Enter today's steps by hand (one row per day) and review recent days. A
 /// manual entry is sticky — the passive OS sync never overwrites it (source
@@ -66,6 +77,14 @@ export default function StepsScreen() {
     setHealth('connecting');
     try {
       const svc = getHealthService();
+      // Probe the provider FIRST. Without this, a missing/outdated Health Connect
+      // makes requestPermissions a silent no-op (the app never even asks) — the
+      // exact "nothing opens" symptom. Now we report why and offer a fix.
+      const avail = svc.availability ? await svc.availability() : 'available';
+      if (avail !== 'available') {
+        setHealth(avail);
+        return;
+      }
       const granted = await svc.requestPermissions();
       if (!granted) {
         setHealth('denied');
@@ -76,6 +95,19 @@ export default function StepsScreen() {
       setHealth('connected');
     } catch {
       setHealth('unavailable');
+    }
+  }
+
+  /// Send the user to Health Connect on Google Play (install or update). Falls
+  /// back to the https listing if the Play Store app can't handle the market URI.
+  async function onOpenHealthConnectStore() {
+    const market = `market://details?id=${HEALTH_CONNECT_PKG}`;
+    const web = `https://play.google.com/store/apps/details?id=${HEALTH_CONNECT_PKG}`;
+    try {
+      if (await Linking.canOpenURL(market)) await Linking.openURL(market);
+      else await Linking.openURL(web);
+    } catch {
+      await Linking.openURL(web).catch(() => {});
     }
   }
 
@@ -124,10 +156,19 @@ export default function StepsScreen() {
           disabled={db == null || health === 'connecting'}
           style={styles.autoBtn}
         />
-        {health === 'connected' || health === 'denied' || health === 'unavailable' ? (
+        {health !== 'idle' && health !== 'connecting' ? (
           <Text style={[styles.autoStatus, { color: theme.subtle }, theme.font.body]}>
             {t(`steps.auto.${health}`)}
           </Text>
+        ) : null}
+        {/* When the provider is missing/outdated, give the user a way out:
+            install or update Health Connect on Google Play (Android only). */}
+        {Platform.OS === 'android' && (health === 'update_required' || health === 'unavailable') ? (
+          <Pressable onPress={onOpenHealthConnectStore} hitSlop={8} style={styles.installRow}>
+            <Text style={[styles.installLink, { color: theme.primary }, theme.font.bodySemiBold]}>
+              {t('steps.auto.installAction')}
+            </Text>
+          </Pressable>
         ) : null}
       </Card>
 
@@ -172,6 +213,8 @@ const styles = StyleSheet.create({
   autoExplainer: { fontSize: 13, lineHeight: 19 },
   autoBtn: { marginTop: 12 },
   autoStatus: { fontSize: 12, lineHeight: 17, marginTop: 10 },
+  installRow: { marginTop: 10, paddingVertical: 4 },
+  installLink: { fontSize: 14, textDecorationLine: 'underline' },
   hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
   history: { marginTop: 4 },
   rowSteps: { fontSize: 16 },
