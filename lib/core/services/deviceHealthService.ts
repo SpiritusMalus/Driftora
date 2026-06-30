@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 
 import { dayKey } from '../db/steps';
-import type { HealthService } from './health';
+import type { HealthAvailability, HealthService } from './health';
 
 /// REAL device health source — reads steps + sleep from the OS health store via
 /// `react-native-health` (iOS HealthKit) and `react-native-health-connect`
@@ -112,6 +112,23 @@ class AndroidHealthService implements HealthService {
       return this.ready;
     } catch {
       return false;
+    }
+  }
+
+  /// Probe Health Connect's SDK status BEFORE requesting permission. This is why
+  /// "Connect" could silently do nothing: on a device without an up-to-date
+  /// Health Connect provider, `requestPermission` never launches its UI. Mapping
+  /// `getSdkStatus` lets the screen guide the user (install / update) instead.
+  async availability(): Promise<HealthAvailability> {
+    try {
+      const status = await this.hc.getSdkStatus();
+      const S = this.hc.SdkAvailabilityStatus ?? {};
+      if (status === S.SDK_AVAILABLE) return 'available';
+      if (status === S.SDK_AVAILABLE_PROVIDER_UPDATE_REQUIRED) return 'update_required';
+      return 'unavailable';
+    } catch {
+      // getSdkStatus itself unavailable → the module/provider isn't usable here.
+      return 'unavailable';
     }
   }
 

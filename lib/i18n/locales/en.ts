@@ -233,7 +233,10 @@ export const en = {
       connecting: 'Connecting…',
       connected: 'Connected. Your daily steps will be counted automatically.',
       denied: 'Access not granted. Allow step reading in Health / Health Connect — or keep entering by hand.',
-      unavailable: 'Health isn’t available on this device. Enter steps by hand.',
+      unavailable: 'Health / Health Connect isn’t available on this device. Enter steps by hand.',
+      update_required: 'Health Connect needs an update before it can grant access. Update it and try again.',
+      unsupported: 'Health reading isn’t built into this build. Enter steps by hand.',
+      installAction: 'Open Health Connect in Google Play',
     },
     source: {
       manual: 'Entered by hand',

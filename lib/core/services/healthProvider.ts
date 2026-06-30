@@ -1,4 +1,4 @@
-import type { HealthService } from './health';
+import type { HealthAvailability, HealthService } from './health';
 import { StubHealthService } from './stubHealthService';
 
 let _service: HealthService | null = null;
@@ -11,6 +11,12 @@ let _service: HealthService | null = null;
  */
 export class NullHealthService implements HealthService {
   readonly source = 'device' as const;
+
+  /// No native health module in this build → the screen says "not available in
+  /// this build" rather than mislabelling it as a permission denial.
+  async availability(): Promise<HealthAvailability> {
+    return 'unsupported';
+  }
 
   async requestPermissions(): Promise<boolean> {
     return false;
