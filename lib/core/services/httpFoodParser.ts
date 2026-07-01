@@ -3,6 +3,7 @@ import type {
   FoodParser,
   MealDraft,
   NutrientValues,
+  NutritionAlternative,
   NutritionItem,
   NutritionSource,
   Per100,
@@ -10,7 +11,7 @@ import type {
   Region,
 } from './foodParser';
 
-const SOURCES: readonly NutritionSource[] = ['usda', 'skurikhin', 'openfoodfacts', 'apininjas', 'estimate'];
+const SOURCES: readonly NutritionSource[] = ['usda', 'skurikhin', 'openfoodfacts', 'apininjas', 'fatsecret', 'estimate'];
 const DEFAULT_TIMEOUT_MS = 12_000;
 
 function isNutrientValues(v: unknown): v is NutrientValues {
@@ -41,8 +42,15 @@ function isItem(v: unknown): v is NutritionItem {
     typeof i.confidence === 'number' &&
     isPer100(i.per100) &&
     isNutrientValues(i.scaled) &&
-    typeof i.approximate === 'boolean'
+    typeof i.approximate === 'boolean' &&
+    (i.alternatives === undefined || (Array.isArray(i.alternatives) && i.alternatives.every(isAlternative)))
   );
+}
+
+function isAlternative(v: unknown): v is NutritionAlternative {
+  if (v === null || typeof v !== 'object') return false;
+  const a = v as Record<string, unknown>;
+  return typeof a.name === 'string' && isPer100(a.per100);
 }
 
 /** Structural guard: the backend may be down, stale, or misbehaving. */
@@ -76,9 +84,15 @@ function deriveEndpoint(endpoint: string, kind: 'photo' | 'audio'): string {
     : `${endpoint}-${kind}`;
 }
 
+/** Derive the search endpoint from the text one (/food/parse → /food/search). */
+function deriveSearchEndpoint(endpoint: string): string {
+  return /\/food\/parse$/.test(endpoint) ? endpoint.replace(/\/food\/parse$/, '/food/search') : `${endpoint}-search`;
+}
+
 export class HttpFoodParser implements FoodParser {
   private readonly photoEndpoint: string;
   private readonly audioEndpoint: string;
+  private readonly searchEndpoint: string;
 
   constructor(
     private readonly endpoint: string,
@@ -86,9 +100,39 @@ export class HttpFoodParser implements FoodParser {
     private readonly timeoutMs: number = DEFAULT_TIMEOUT_MS,
     photoEndpoint?: string,
     audioEndpoint?: string,
+    searchEndpoint?: string,
   ) {
     this.photoEndpoint = photoEndpoint ?? deriveEndpoint(endpoint, 'photo');
     this.audioEndpoint = audioEndpoint ?? deriveEndpoint(endpoint, 'audio');
+    this.searchEndpoint = searchEndpoint ?? deriveSearchEndpoint(endpoint);
+  }
+
+  /**
+   * Query the backend's free-text DB search and return ranked candidates. Same
+   * fail-safe contract as `parse`: any failure (network, timeout, non-2xx, bad
+   * shape) falls back to the offline parser, which returns an empty list.
+   */
+  async searchFoods(query: string, region: Region): Promise<NutritionAlternative[]> {
+    if (query.trim().length === 0) return [];
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const res = await fetch(this.searchEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query, region }),
+        signal: controller.signal,
+      });
+      if (!res.ok) return this.fallback.searchFoods(query, region);
+      const data: unknown = await res.json();
+      const candidates = (data as { candidates?: unknown })?.candidates;
+      if (!Array.isArray(candidates)) return this.fallback.searchFoods(query, region);
+      return candidates.filter(isAlternative);
+    } catch {
+      return this.fallback.searchFoods(query, region);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   async parse(text: string, region: Region): Promise<MealDraft> {

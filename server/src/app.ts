@@ -151,6 +151,25 @@ export function createApp(
     await respondWithDraft(res, 'text', region, () => identifyFromText(text, region));
   });
 
+  // Free-text DB search for the manual "find it yourself" picker (disambiguation
+  // layer 4). Returns ranked candidates ({ candidates: NutritionAlternative[] }),
+  // never a stack trace. Reuses the text daily cap (it hits the same providers).
+  app.post('/food/search', requireToken, limiters.textDaily, async (req: Request, res: Response) => {
+    const body = (req.body ?? {}) as { query?: unknown; region?: unknown };
+    const query = typeof body.query === 'string' ? body.query.trim() : '';
+    const region = regionOf(body);
+    if (query.length === 0) {
+      fail(res, 400, 'empty_input', 'Field "query" is required and cannot be empty.');
+      return;
+    }
+    if (query.length > MAX_TEXT) {
+      fail(res, 400, 'input_too_long', `Field "query" must be at most ${MAX_TEXT} characters.`);
+      return;
+    }
+    const candidates = await resolver.search(query, region).catch(() => []);
+    res.json({ candidates });
+  });
+
   // Photo input (BUILD SPEC §5.1): multipart `image` + `region` → MealDraft via
   // the vision model. The client downscales + strips EXIF before upload; the file
   // stays in memory and is never persisted (privacy §2).

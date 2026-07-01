@@ -20,6 +20,8 @@ import {
   todayMacroTotals,
   type QuickMeal,
 } from '@/lib/core/db/food';
+import { loadRememberedChoices, rememberFoodChoice } from '@/lib/core/db/foodChoices';
+import { applyRememberedChoices, lookupNameForItem } from '@/lib/core/services/foodChoice';
 import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
 import { mealPromptKeyForHour } from '@/lib/core/insights/mealPrompt';
 import { proteinInsight } from '@/lib/core/insights/proteinInsight';
@@ -30,9 +32,9 @@ import {
   startRecording,
   type ActiveRecording,
 } from '@/lib/core/services/audioRecorder';
-import type { AudioInput, MealDraft, Minerals, NutritionItem, PhotoInput, Region } from '@/lib/core/services/foodParser';
+import type { AudioInput, MealDraft, Minerals, NutritionAlternative, NutritionItem, PhotoInput, Region } from '@/lib/core/services/foodParser';
 import { getFoodParser, resolveRegion } from '@/lib/core/services/foodParserProvider';
-import { recomputeDraft, withItemCookMethod, withItemGrams, withItemManualMacros } from '@/lib/core/services/mealDraft';
+import { recomputeDraft, withItemAlternative, withItemCookMethod, withItemGrams, withItemManualMacros, withItemReplacement } from '@/lib/core/services/mealDraft';
 import { COOK_METHODS, type CookMethod } from '@/lib/core/insights/cookMethod';
 import { capturePhoto, isPhotoCaptureAvailable } from '@/lib/core/services/photoProvider';
 import { getSpeechService } from '@/lib/core/services/speechProvider';
@@ -92,6 +94,10 @@ export default function FoodLogScreen() {
   const [speechAvailable, setSpeechAvailable] = useState(false);
   const [photoAvailable, setPhotoAvailable] = useState(false);
   const [listening, setListening] = useState(false);
+  // Why on-device recognition last failed (localized) — shown under the mic so a
+  // dropped session explains itself instead of silently resetting. Cleared on a
+  // new attempt and whenever the user edits the text.
+  const [voiceError, setVoiceError] = useState<string | null>(null);
   // Voice-note recording (AI path): record a clip → send audio → draft. Only the
   // primary voice control when an online parser is built in (AI_CONFIGURED).
   const [recordingAvailable, setRecordingAvailable] = useState(false);
@@ -136,6 +142,7 @@ export default function FoodLogScreen() {
       return;
     }
     setFreshDraft(null);
+    setVoiceError(null);
     setSource('voice');
     setListening(true);
     await speech.listen(
@@ -143,9 +150,13 @@ export default function FoodLogScreen() {
         setText(transcript);
         if (isFinal) setListening(false);
       },
-      // Always clear the listening state when the session ends, even with no
-      // final result (no match / error / timeout / denied permission).
-      () => setListening(false),
+      // Session ended: always reset the listening UI. On a failure, explain why
+      // instead of silently resetting — and we deliberately DON'T clear `text`,
+      // so any words already transcribed survive for the user to edit + Parse.
+      (reason) => {
+        setListening(false);
+        if (reason) setVoiceError(t(`food.voiceError.${reason.code}`));
+      },
     );
   }
 
@@ -203,10 +214,18 @@ export default function FoodLogScreen() {
 
   /// Run the text parse with a known consent value. `getFoodParser` only goes
   /// online when AI is configured AND consent is true; otherwise it's the stub.
+  // Re-apply the user's remembered per-food corrections (disambiguation layer 2)
+  // to a freshly parsed draft, so a fix made once sticks on the next log.
+  async function applyMemory(draft: MealDraft): Promise<MealDraft> {
+    if (!db) return draft;
+    const choices = await loadRememberedChoices(db, region, draft);
+    return applyRememberedChoices(draft, region, choices);
+  }
+
   async function runTextParse(consentNow: boolean) {
     setParsing(true);
     try {
-      setFreshDraft(await getFoodParser(consentNow).parse(text, region));
+      setFreshDraft(await applyMemory(await getFoodParser(consentNow).parse(text, region)));
     } finally {
       setParsing(false);
     }
@@ -215,7 +234,7 @@ export default function FoodLogScreen() {
   async function runPhotoParse(photo: PhotoInput, consentNow: boolean) {
     setParsing(true);
     try {
-      setFreshDraft(await getFoodParser(consentNow).parsePhoto(photo, region));
+      setFreshDraft(await applyMemory(await getFoodParser(consentNow).parsePhoto(photo, region)));
     } finally {
       setParsing(false);
     }
@@ -224,7 +243,7 @@ export default function FoodLogScreen() {
   async function runAudioParse(audio: AudioInput, consentNow: boolean) {
     setParsing(true);
     try {
-      setFreshDraft(await getFoodParser(consentNow).parseAudio(audio, region));
+      setFreshDraft(await applyMemory(await getFoodParser(consentNow).parseAudio(audio, region)));
     } finally {
       setParsing(false);
     }
@@ -353,6 +372,20 @@ export default function FoodLogScreen() {
     setDraft((prev) => (prev ? withItemCookMethod(prev, index, method) : prev));
   }
 
+  function onItemSelectAlternative(index: number, altIndex: number) {
+    setDraft((prev) => (prev ? withItemAlternative(prev, index, altIndex) : prev));
+  }
+
+  // Manual DB search for one item ("найти вручную") and the swap when the user
+  // picks a result. Search uses the active parser (online when consented, else
+  // the offline stub which returns nothing).
+  function onItemSearch(query: string): Promise<NutritionAlternative[]> {
+    return getFoodParser(aiConsent).searchFoods(query, region);
+  }
+  function onItemReplace(index: number, replacement: NutritionAlternative) {
+    setDraft((prev) => (prev ? withItemReplacement(prev, index, replacement) : prev));
+  }
+
   function onItemManualMacros(
     index: number,
     macros: { kcal: number; prot: number; fat: number; carb: number },
@@ -375,6 +408,14 @@ export default function FoodLogScreen() {
     setSaving(true);
     try {
       await saveParsedEntry(db, { rawText: text, source, draft });
+      // Remember every match the user explicitly corrected (swap / manual search),
+      // so the same food resolves to their choice next time (layer 2). Skip DB
+      // misses — their placeholder per-100g isn't a real, re-appliable fact.
+      for (const it of draft.items) {
+        if (it.userChosen && it.per100.source !== 'estimate') {
+          await rememberFoodChoice(db, region, lookupNameForItem(it, region), { name: it.name_ru, per100: it.per100 });
+        }
+      }
       // Warm, rotating acknowledgment of the *act* of logging (SDT relatedness)
       // — never a score or a limit. Briefly shown, then we return to Home.
       setSavedAck(
@@ -403,6 +444,7 @@ export default function FoodLogScreen() {
         value={text}
         onChangeText={(v) => {
           setText(v);
+          if (voiceError) setVoiceError(null);
           if (!listening) setSource('text');
         }}
         placeholder={t(`food.prompt.${mealPromptKeyForHour(new Date().getHours())}`)}
@@ -456,6 +498,9 @@ export default function FoodLogScreen() {
             {listening ? t('food.voiceListening') : t('food.voice')}
           </Text>
         </Pressable>
+      ) : null}
+      {voiceError && !listening ? (
+        <Text style={[styles.voiceError, { color: theme.subtle }, theme.font.body]}>{voiceError}</Text>
       ) : null}
       {photoAvailable ? (
         <Pressable
@@ -530,6 +575,9 @@ export default function FoodLogScreen() {
               onGrams={(g) => onItemGrams(i, g)}
               onCookMethod={(m) => onItemCookMethod(i, m)}
               onManualMacros={(m) => onItemManualMacros(i, m)}
+              onSelectAlternative={(altIndex) => onItemSelectAlternative(i, altIndex)}
+              onSearch={onItemSearch}
+              onReplace={(alt) => onItemReplace(i, alt)}
             />
           ))}
 
@@ -632,6 +680,9 @@ function ItemCard({
   onGrams,
   onCookMethod,
   onManualMacros,
+  onSelectAlternative,
+  onSearch,
+  onReplace,
 }: {
   item: NutritionItem;
   hideCalories: boolean;
@@ -639,6 +690,9 @@ function ItemCard({
   onGrams: (grams: number) => void;
   onCookMethod: (method: CookMethod) => void;
   onManualMacros: (macros: { kcal: number; prot: number; fat: number; carb: number }) => void;
+  onSelectAlternative: (altIndex: number) => void;
+  onSearch: (query: string) => Promise<NutritionAlternative[]>;
+  onReplace: (replacement: NutritionAlternative) => void;
 }) {
   const { t } = useTranslation();
   const minerals = mineralLine(item, t);
@@ -646,6 +700,26 @@ function ItemCard({
   // A full DB miss: the resolver's coarse placeholder. We show NO fabricated
   // numbers for it — only an honest "not in our database" + manual entry.
   const isMiss = item.per100.source === 'estimate';
+  // Other DB matches the user can switch to. Low confidence in the auto-pick
+  // opens the list proactively; otherwise it hides behind a "не то?" toggle.
+  const alternatives = item.alternatives ?? [];
+  const [showAlts, setShowAlts] = useState(item.confidence < 0.5);
+  // Manual DB search ("найти вручную"): query field + ranked results.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchText, setSearchText] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<NutritionAlternative[] | null>(null);
+
+  async function runSearch() {
+    const q = searchText.trim();
+    if (q.length === 0) return;
+    setSearching(true);
+    try {
+      setSearchResults(await onSearch(q));
+    } finally {
+      setSearching(false);
+    }
+  }
 
   return (
     <Card style={styles.item}>
@@ -671,6 +745,105 @@ function ItemCard({
           ) : null}
         </>
       )}
+
+      {/* "не то?" — switch to another DB match. Shown only when the source
+          returned runners-up; opens proactively on a low-confidence auto-pick. */}
+      {!isMiss && alternatives.length > 0 ? (
+        <View style={styles.altWrap}>
+          <Pressable onPress={() => setShowAlts((s) => !s)} hitSlop={6}>
+            <Text style={[styles.altToggle, { color: theme.primary }, theme.font.body]}>
+              {showAlts ? t('food.alternatives.hide') : t('food.alternatives.prompt')}
+            </Text>
+          </Pressable>
+          {showAlts ? (
+            <View style={styles.altList}>
+              {alternatives.map((alt, j) => (
+                <Pressable
+                  key={`${alt.name}-${j}`}
+                  onPress={() => onSelectAlternative(j)}
+                  style={({ pressed }) => [
+                    styles.altRow,
+                    { borderColor: theme.separator, backgroundColor: theme.card, opacity: pressed ? 0.6 : 1 },
+                  ]}
+                >
+                  <Text style={[styles.altName, { color: theme.text }, theme.font.body]} numberOfLines={1}>
+                    {alt.name}
+                  </Text>
+                  <Text style={[styles.altMacros, { color: theme.subtle }, theme.font.body]}>
+                    {hideCalories
+                      ? `${t('macros.protein')} ${alt.per100.prot}`
+                      : `${alt.per100.kcal} ${t('units.kcal')} · ${t('macros.protein')} ${alt.per100.prot}`}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+
+      {/* "найти вручную" — search the DB and replace this item with a real
+          match. Especially useful on a miss or a wrong auto-pick. */}
+      <View style={styles.altWrap}>
+        <Pressable onPress={() => setSearchOpen((s) => !s)} hitSlop={6}>
+          <Text style={[styles.altToggle, { color: theme.primary }, theme.font.body]}>
+            {searchOpen ? t('food.manualSearch.hide') : t('food.manualSearch.open')}
+          </Text>
+        </Pressable>
+        {searchOpen ? (
+          <View style={styles.altList}>
+            <View style={styles.searchRow}>
+              <TextField
+                value={searchText}
+                onChangeText={setSearchText}
+                onSubmitEditing={runSearch}
+                placeholder={t('food.manualSearch.placeholder')}
+                style={styles.searchInput}
+              />
+              <Pressable
+                onPress={runSearch}
+                disabled={searching || searchText.trim().length === 0}
+                style={({ pressed }) => [
+                  styles.searchBtn,
+                  { borderColor: theme.separator, backgroundColor: theme.card, opacity: pressed || searching ? 0.6 : 1 },
+                ]}
+              >
+                <Text style={[styles.cookChipText, { color: theme.primary }, theme.font.body]}>
+                  {searching ? t('food.manualSearch.searching') : t('food.manualSearch.action')}
+                </Text>
+              </Pressable>
+            </View>
+            {searchResults != null && searchResults.length === 0 && !searching ? (
+              <Text style={[styles.altMacros, { color: theme.subtle }, theme.font.body]}>
+                {t('food.manualSearch.empty')}
+              </Text>
+            ) : null}
+            {(searchResults ?? []).map((alt, j) => (
+              <Pressable
+                key={`s-${alt.name}-${j}`}
+                onPress={() => {
+                  onReplace(alt);
+                  setSearchOpen(false);
+                  setSearchResults(null);
+                  setSearchText('');
+                }}
+                style={({ pressed }) => [
+                  styles.altRow,
+                  { borderColor: theme.separator, backgroundColor: theme.card, opacity: pressed ? 0.6 : 1 },
+                ]}
+              >
+                <Text style={[styles.altName, { color: theme.text }, theme.font.body]} numberOfLines={1}>
+                  {alt.name}
+                </Text>
+                <Text style={[styles.altMacros, { color: theme.subtle }, theme.font.body]}>
+                  {hideCalories
+                    ? `${t('macros.protein')} ${alt.per100.prot}`
+                    : `${alt.per100.kcal} ${t('units.kcal')} · ${t('macros.protein')} ${alt.per100.prot}`}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+      </View>
 
       {/* Manual per-100g entry for a DB miss (and editing once entered). */}
       {isMiss || item.per100.source === 'manual' ? (
@@ -810,6 +983,16 @@ const styles = StyleSheet.create({
   input: { marginBottom: 12 },
   micButton: { borderRadius: 999, borderWidth: 1.5, paddingVertical: 12, alignItems: 'center', marginBottom: 8 },
   micText: { fontSize: 15 },
+  voiceError: { fontSize: 13, textAlign: 'center', marginTop: -2, marginBottom: 8, lineHeight: 18 },
+  altWrap: { marginTop: 8 },
+  altToggle: { fontSize: 13 },
+  altList: { gap: 6, marginTop: 6 },
+  altRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 10 },
+  altName: { fontSize: 13, flex: 1 },
+  altMacros: { fontSize: 12 },
+  searchRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  searchInput: { flex: 1 },
+  searchBtn: { borderWidth: 1, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 14 },
   processingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 8 },
   clearBtn: { alignSelf: 'center', marginTop: 12, paddingVertical: 4 },
   clearText: { fontSize: 13, textDecorationLine: 'underline' },

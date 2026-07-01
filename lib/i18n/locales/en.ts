@@ -274,10 +274,30 @@ export const en = {
       evening: 'What was dinner?',
       lateNight: 'A little something to eat?',
     },
+    // Section headers in the "food today" list — meals of the day.
+    meal: {
+      breakfast: 'Breakfast',
+      lunch: 'Lunch',
+      snack: 'Snack',
+      dinner: 'Dinner',
+    },
     parse: 'Parse',
     parsing: 'Parsing…',
     voice: '🎤 Say it',
     voiceListening: '● Listening… tap to stop',
+    // A clear reason when recognition cuts out (whatever was already transcribed
+    // stays in the field — edit it and tap “Parse”).
+    voiceError: {
+      'no-speech': 'Didn’t catch any speech. Try again or type it in.',
+      'speech-timeout': 'Too quiet or a long pause. You can finish typing.',
+      network: 'No connection for recognition. Check the internet or type it in.',
+      'not-allowed': 'No microphone access. Allow it in settings.',
+      'language-not-supported': 'No speech recognition for this language. Type it in.',
+      'audio-capture': 'Couldn’t record from the mic. You can type instead.',
+      busy: 'Recognition is busy. Wait a second and try again.',
+      aborted: 'Recognition stopped. What you said is kept — carry on.',
+      unknown: 'Couldn’t recognize it. What you said is kept — finish by typing.',
+    },
     voiceNote: '🎙 Record a voice note',
     voiceRecording: '● Recording… tap to send',
     voiceProcessing: 'Processing your clip…',
@@ -297,6 +317,20 @@ export const en = {
     name: 'Name',
     stubNote: 'Offline estimate (stub) for now. AI parsing comes later.',
     needHelp: 'Could not recognize it. Add more detail.',
+    // Switch to another DB match when the wrong food was picked.
+    alternatives: {
+      prompt: 'Not it? Pick another food',
+      hide: 'Hide options',
+    },
+    // Manual DB search — find and replace the food yourself.
+    manualSearch: {
+      open: 'Find it manually',
+      hide: 'Hide search',
+      placeholder: 'Food name',
+      action: 'Search',
+      searching: 'Searching…',
+      empty: 'Nothing found',
+    },
     dbUnavailable: 'The database is only available in a device dev build.',
     favorites: 'Favorites',
     recent: 'Recent',

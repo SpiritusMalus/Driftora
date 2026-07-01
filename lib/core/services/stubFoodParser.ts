@@ -1,4 +1,4 @@
-import type { AudioInput, FoodParser, MealDraft, Minerals, NutritionItem, Per100, PhotoInput, Region } from './foodParser';
+import type { AudioInput, FoodParser, MealDraft, Minerals, NutritionAlternative, NutritionItem, Per100, PhotoInput, Region } from './foodParser';
 import { recomputeDraft, scaleToGrams } from './mealDraft';
 
 /**
@@ -104,5 +104,11 @@ export class StubFoodParser implements FoodParser {
   /// photo, so the UI shows the "add detail" hint instead of breaking.
   async parseAudio(_audio: AudioInput, region: Region): Promise<MealDraft> {
     return recomputeDraft(region, []);
+  }
+
+  /// Offline has no real nutrition DB to search — return nothing so the manual
+  /// picker shows "ничего не найдено" rather than offering coarse estimates.
+  async searchFoods(_query: string, _region: Region): Promise<NutritionAlternative[]> {
+    return [];
   }
 }

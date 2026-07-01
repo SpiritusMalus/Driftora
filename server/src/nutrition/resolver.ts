@@ -2,11 +2,23 @@ import {
   coercePer100,
   scaleToGrams,
   type IdentifiedItem,
+  type NutritionAlternative,
   type NutritionItem,
   type Per100,
   type Region,
 } from '../types.js';
-import type { NutritionProvider } from './provider.js';
+import type { NutritionProvider, ProviderResult } from './provider.js';
+
+/** How many runner-up matches to carry as switchable alternatives. */
+const MAX_ALTERNATIVES = 4;
+
+/** The primary match plus its ranked runners-up and the match confidence. */
+interface LookupResult {
+  per100: Per100;
+  matchConfidence: number; // 0..1; 0 on a full miss (estimate)
+  name?: string; // primary candidate's display name (for manual search results)
+  alternatives: NutritionAlternative[];
+}
 
 /** Coarse per-100g used on a full DB miss — shown as an estimate, never fact. */
 const ESTIMATE_PER100: Per100 = {
@@ -60,7 +72,7 @@ class Lru<V> {
  * provider or the estimate fallback — never the LLM (THE HONESTY RULE, §1/§4).
  */
 export class Resolver {
-  private readonly cache = new Lru<Per100>(500);
+  private readonly cache = new Lru<LookupResult>(500);
 
   constructor(private readonly providers: NutritionProvider[]) {}
 
@@ -70,35 +82,74 @@ export class Resolver {
     return (name || item.name_en || item.name_ru).trim();
   }
 
-  private async lookupPer100(name: string, region: Region): Promise<Per100> {
+  /** A provider's ranked candidates, preferring `searchMany` over single `search`. */
+  private async candidatesFrom(provider: NutritionProvider, name: string, region: Region): Promise<ProviderResult[]> {
+    if (provider.searchMany) return provider.searchMany(name, region).catch(() => []);
+    const one = await provider.search(name, region).catch(() => null);
+    return one ? [one] : [];
+  }
+
+  private async lookup(name: string, region: Region): Promise<LookupResult> {
     const key = cacheKey(name, region);
     const cached = this.cache.get(key);
     if (cached) return cached;
 
     for (const provider of chainFor(this.providers, region)) {
-      const hit = await provider.search(name, region).catch(() => null);
-      if (hit) {
-        const per100 = coercePer100(hit.per100);
-        this.cache.set(key, per100);
-        return per100;
+      const results = await this.candidatesFrom(provider, name, region);
+      const primary = results[0];
+      if (primary) {
+        const result: LookupResult = {
+          per100: coercePer100(primary.per100),
+          matchConfidence: clamp01(primary.confidence),
+          name: primary.name,
+          alternatives: results.slice(1, 1 + MAX_ALTERNATIVES).map((r) => ({
+            name: r.name ?? name,
+            per100: coercePer100(r.per100),
+          })),
+        };
+        this.cache.set(key, result);
+        return result;
       }
     }
-    // Full miss: coarse estimate. Not cached — a later DB import may resolve it.
-    return ESTIMATE_PER100;
+    // Full miss: coarse estimate, no alternatives. Not cached — a later DB
+    // import may resolve it. matchConfidence 0 marks it as not-a-fact.
+    return { per100: ESTIMATE_PER100, matchConfidence: 0, alternatives: [] };
+  }
+
+  /**
+   * Free-text DB search for the manual "find it yourself" picker (disambiguation
+   * layer 4). Runs the region chain and returns ranked candidates (primary first),
+   * or an empty list on a miss. Each carries an EXACT per-100g with its source.
+   */
+  async search(name: string, region: Region): Promise<NutritionAlternative[]> {
+    const trimmed = name.trim();
+    if (trimmed.length === 0) return [];
+    const found = await this.lookup(trimmed, region);
+    if (found.matchConfidence === 0) return []; // full miss → nothing to offer
+    return [{ name: found.name ?? trimmed, per100: found.per100 }, ...found.alternatives];
   }
 
   async resolveItem(item: IdentifiedItem, region: Region): Promise<NutritionItem> {
     const grams = item.est_grams > 0 ? item.est_grams : 100;
-    const per100 = await this.lookupPer100(this.lookupName(item, region), region);
+    const found = await this.lookup(this.lookupName(item, region), region);
+    // A weak DB match should drag the item's confidence down (so the client
+    // flags it + shows the picker), but never inflate it past identification.
+    const confidence = found.matchConfidence > 0 ? Math.min(item.confidence, found.matchConfidence) : item.confidence;
     return {
       name_ru: item.name_ru,
       name_en: item.name_en,
       grams,
       grams_source: 'estimated',
-      confidence: item.confidence,
-      per100,
-      scaled: scaleToGrams(per100, grams),
+      confidence,
+      per100: found.per100,
+      scaled: scaleToGrams(found.per100, grams),
       approximate: true, // estimated grams → approximate until the user confirms
+      ...(found.alternatives.length > 0 ? { alternatives: found.alternatives } : {}),
     };
   }
+}
+
+function clamp01(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(1, Math.max(0, n));
 }

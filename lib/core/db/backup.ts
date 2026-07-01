@@ -19,6 +19,7 @@ const APP_ID = 'driftora';
 const EXPORT_TABLES = [
   'food_entries',
   'food_items',
+  'food_choices',
   'steps_days',
   'sleep_days',
   'weights',

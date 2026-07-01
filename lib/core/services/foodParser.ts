@@ -15,6 +15,7 @@ export type NutritionSource =
   | 'skurikhin'
   | 'openfoodfacts'
   | 'apininjas'
+  | 'fatsecret'
   | 'estimate'
   | 'manual'
   | 'history';
@@ -43,6 +44,12 @@ export interface Per100 extends NutrientValues {
   source: NutritionSource;
 }
 
+/// A runner-up DB match the user can switch to when the primary is wrong.
+export interface NutritionAlternative {
+  name: string;
+  per100: Per100; // EXACT composition (carries its own source label)
+}
+
 /// One resolved component — exact per-100g + the scaled-to-grams total.
 export interface NutritionItem {
   name_ru: string;
@@ -58,6 +65,12 @@ export interface NutritionItem {
   // switching methods is reversible. Both absent until the user picks a method.
   cook_method?: import('../insights/cookMethod').CookMethod;
   basePer100?: Per100;
+  // Other ranked DB matches for the same item (best-first), surfaced behind
+  // "не то?" so the user can correct a wrong pick without retyping.
+  alternatives?: NutritionAlternative[];
+  // Client-only: the user explicitly picked this match (an alternative, a manual
+  // search result, or a remembered choice). Drives "remember my choice" on save.
+  userChosen?: boolean;
 }
 
 /// A parsed meal awaiting the user's grams confirmation, then saved.
@@ -95,4 +108,8 @@ export interface FoodParser {
   parse(text: string, region: Region): Promise<MealDraft>;
   parsePhoto(photo: PhotoInput, region: Region): Promise<MealDraft>;
   parseAudio(audio: AudioInput, region: Region): Promise<MealDraft>;
+  /// Free-text DB search for the manual "find it yourself" picker — ranked
+  /// candidates the user can swap an item to. Online it queries the backend;
+  /// offline it returns an empty list (no on-device nutrition DB).
+  searchFoods(query: string, region: Region): Promise<NutritionAlternative[]>;
 }
