@@ -32,6 +32,11 @@ class SpyFallback implements FoodParser {
     this.audioCalls += 1;
     return SENTINEL;
   }
+  searchCalls = 0;
+  async searchFoods() {
+    this.searchCalls += 1;
+    return [];
+  }
 }
 
 const VALID: MealDraft = {

@@ -60,6 +60,12 @@ async function seed(db: ReturnType<typeof makeDb>['db']) {
     fatG: 15,
     carbG: 2,
   });
+  await db.insert(schema.foodChoices).values({
+    key: 'RU::творог',
+    name: 'Творог 5%',
+    per100: JSON.stringify({ source: 'fatsecret', kcal: 121, prot: 17, fat: 5, carb: 3, minerals: {} }),
+    ts: new Date(2026, 5, 18, 9),
+  });
   await upsertSteps(db, '2026-06-18', 8123);
   await upsertSleep(db, '2026-06-18', 450);
   await upsertWeight(db, '2026-06-18', 71.4);

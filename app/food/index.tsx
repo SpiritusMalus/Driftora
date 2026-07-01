@@ -8,6 +8,7 @@ import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { listEntriesForDay } from '@/lib/core/db/food';
+import { groupEntriesByMeal } from '@/lib/core/insights/mealType';
 import type { FoodEntry } from '@/lib/core/db/schema';
 import { useTheme } from '@/lib/theme/theme';
 
@@ -45,20 +46,27 @@ export default function FoodDayScreen() {
         <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('food.emptyDay')}</Text>
       ) : (
         <View style={styles.list}>
-          {entries.map((e) => (
-            <Card key={e.id} style={styles.row} onPress={() => router.push(`/food/${e.id}`)}>
-              <View style={styles.rowHead}>
-                <Text style={[styles.rowText, { color: theme.text }, theme.font.bodySemiBold]} numberOfLines={1}>
-                  {e.rawText || t('food.untitled')}
-                </Text>
-                <Text style={[styles.rowTime, { color: theme.subtle }, theme.font.body]}>{formatTime(e.ts)}</Text>
-              </View>
-              <Text style={[styles.rowMacros, { color: theme.subtle }, theme.font.body]}>
-                {Math.round(e.kcal)} {t('units.kcal')} · {t('macros.protein')} {Math.round(e.proteinG)}{' '}
-                {t('units.g')} · {t('macros.fat')} {Math.round(e.fatG)} {t('units.g')} · {t('macros.carbs')}{' '}
-                {Math.round(e.carbG)} {t('units.g')}
+          {groupEntriesByMeal(entries).map((group) => (
+            <View key={group.type} style={styles.group}>
+              <Text style={[styles.mealHead, { color: theme.subtle }, theme.font.bodySemiBold]}>
+                {t(`food.meal.${group.type}`)}
               </Text>
-            </Card>
+              {group.entries.map((e) => (
+                <Card key={e.id} style={styles.row} onPress={() => router.push(`/food/${e.id}`)}>
+                  <View style={styles.rowHead}>
+                    <Text style={[styles.rowText, { color: theme.text }, theme.font.bodySemiBold]} numberOfLines={1}>
+                      {e.rawText || t('food.untitled')}
+                    </Text>
+                    <Text style={[styles.rowTime, { color: theme.subtle }, theme.font.body]}>{formatTime(e.ts)}</Text>
+                  </View>
+                  <Text style={[styles.rowMacros, { color: theme.subtle }, theme.font.body]}>
+                    {Math.round(e.kcal)} {t('units.kcal')} · {t('macros.protein')} {Math.round(e.proteinG)}{' '}
+                    {t('units.g')} · {t('macros.fat')} {Math.round(e.fatG)} {t('units.g')} · {t('macros.carbs')}{' '}
+                    {Math.round(e.carbG)} {t('units.g')}
+                  </Text>
+                </Card>
+              ))}
+            </View>
           ))}
         </View>
       )}
@@ -74,7 +82,9 @@ function formatTime(d: Date): string {
 const styles = StyleSheet.create({
   add: { marginTop: 4, marginBottom: 12 },
   hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
-  list: { gap: 10 },
+  list: { gap: 22 },
+  group: { gap: 10 },
+  mealHead: { fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 2 },
   row: {},
   rowHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
   rowText: { fontSize: 15, flex: 1 },

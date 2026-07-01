@@ -4,6 +4,8 @@ import type { Per100, Region } from '../types.js';
 export interface ProviderResult {
   per100: Per100;
   confidence: number;
+  /** The matched candidate's display name (for the "не то?" alternatives UI). */
+  name?: string;
 }
 
 /**
@@ -15,5 +17,13 @@ export interface NutritionProvider {
   readonly name: string;
   /** Region(s) this provider serves; the resolver only calls it for those. */
   readonly regions: readonly Region[];
+  /** Best single match (or null). For list sources this is `searchMany()[0]`. */
   search(name: string, region: Region): Promise<ProviderResult | null>;
+  /**
+   * Optional: ranked candidates, best-first, for sources that return a LIST
+   * (FatSecret, USDA, API Ninjas). The resolver uses the head as the primary
+   * match and the tail as user-switchable alternatives (disambiguation). Single-
+   * row sources (a barcode lookup, a curated table) omit this.
+   */
+  searchMany?(name: string, region: Region): Promise<ProviderResult[]>;
 }

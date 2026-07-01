@@ -6,6 +6,7 @@ import {
 import type {
   MealDraft,
   Minerals,
+  NutritionAlternative,
   NutrientValues,
   NutritionItem,
   Per100,
@@ -117,6 +118,47 @@ export function withItemGrams(draft: MealDraft, index: number, grams: number): M
       ? { ...it, grams: g, grams_source: 'confirmed' as const, approximate: false, scaled: scaleToGrams(it.per100, g) }
       : it,
   );
+  return recomputeDraft(draft.region, items);
+}
+
+/// Swap one item to a different DB match the user picked from its `alternatives`
+/// ("не то?"). The chosen candidate becomes the live per-100g; the previously
+/// shown match drops back into the alternatives list (so the swap is reversible),
+/// and the user's explicit choice clears the low-confidence state. Switching the
+/// underlying food resets the cook-method baseline. Recomputes the total.
+export function withItemAlternative(draft: MealDraft, index: number, altIndex: number): MealDraft {
+  const it = draft.items[index];
+  const chosen = it?.alternatives?.[altIndex];
+  if (!it || !chosen) return draft;
+  const remaining = (it.alternatives ?? []).filter((_, j) => j !== altIndex);
+  return withItemReplacement(draft, index, chosen, remaining);
+}
+
+/// Replace one item's match with an explicit candidate the user found via the
+/// manual DB search ("найти вручную") — same swap semantics as picking an
+/// alternative: the chosen per-100g goes live, the user's choice clears the
+/// low-confidence state, and the cook-method baseline resets. The previously
+/// shown match drops back into the alternatives so the swap stays reversible.
+export function withItemReplacement(
+  draft: MealDraft,
+  index: number,
+  replacement: NutritionAlternative,
+  keepAlternatives: NutritionAlternative[] = [],
+): MealDraft {
+  const items = draft.items.map((it, i) => {
+    if (i !== index) return it;
+    const previous: NutritionAlternative = { name: it.name_ru || it.name_en, per100: it.per100 };
+    return {
+      ...it,
+      per100: replacement.per100,
+      confidence: 1, // the user confirmed the match by hand
+      userChosen: true, // → "remember my choice" on save
+      cook_method: undefined,
+      basePer100: undefined,
+      alternatives: [previous, ...keepAlternatives],
+      scaled: scaleToGrams(replacement.per100, it.grams),
+    };
+  });
   return recomputeDraft(draft.region, items);
 }
 

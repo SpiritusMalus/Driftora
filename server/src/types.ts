@@ -20,6 +20,7 @@ export type NutritionSource =
   | 'skurikhin'
   | 'openfoodfacts'
   | 'apininjas'
+  | 'fatsecret'
   | 'estimate';
 
 /** Mineral set v1 (BUILD SPEC §10). mg per 100 g. Extend as data allows. */
@@ -63,6 +64,12 @@ export interface Identified {
 }
 
 /** Layer 3 output, per component — exact per-100g + scaled-to-grams total. */
+/** A runner-up DB match the user can switch to when the primary is wrong. */
+export interface NutritionAlternative {
+  name: string; // display name from the source
+  per100: Per100; // EXACT composition (carries its own source label)
+}
+
 export interface NutritionItem {
   name_ru: string;
   name_en: string;
@@ -72,6 +79,10 @@ export interface NutritionItem {
   per100: Per100; // EXACT (or estimate on a DB miss)
   scaled: NutrientValues; // per100 * grams / 100
   approximate: boolean; // true while grams_source === 'estimated'
+  // Other ranked DB matches for the same item (best-first), present when the
+  // source returned >1 candidate. The client offers them behind "не то?" and
+  // shows the picker proactively when confidence is low.
+  alternatives?: NutritionAlternative[];
 }
 
 export interface MealDraft {
@@ -176,6 +187,7 @@ const SOURCES: readonly NutritionSource[] = [
   'skurikhin',
   'openfoodfacts',
   'apininjas',
+  'fatsecret',
   'estimate',
 ];
 

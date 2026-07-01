@@ -27,6 +27,17 @@ export const foodItems = sqliteTable('food_items', {
   carbG: real('carb_g').notNull().default(0),
 });
 
+/// A per-food match the user explicitly chose (disambiguation layer 2). Keyed by
+/// `${region}::${normalized name}`; the stored per-100g is re-applied to future
+/// logs of the same food so a correction sticks. `per100` is a JSON-encoded
+/// Per100 (kept as text — no dependency on the driver's JSON mode).
+export const foodChoices = sqliteTable('food_choices', {
+  key: text('key').primaryKey(),
+  name: text('name').notNull(), // display name of the chosen match
+  per100: text('per100').notNull(), // JSON.stringify(Per100)
+  ts: integer('ts', { mode: 'timestamp' }).notNull(),
+});
+
 /// Daily step count pulled from the OS health store (one row per day).
 export const stepsDays = sqliteTable('steps_days', {
   date: text('date').primaryKey(), // 'YYYY-MM-DD'

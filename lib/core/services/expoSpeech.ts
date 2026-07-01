@@ -1,4 +1,33 @@
-import type { SpeechService } from './speech';
+import type { SpeechEndReason, SpeechErrorCode, SpeechService } from './speech';
+
+/// Map the recognizer's raw error code (Web Speech / native) to our small,
+/// stable [SpeechErrorCode]. Unknown/empty codes fold to 'unknown'. Pure — the
+/// caller localizes the result and decides what to show.
+export function mapSpeechError(raw: string | undefined): SpeechErrorCode {
+  switch (raw) {
+    case 'no-speech':
+      return 'no-speech';
+    case 'speech-timeout':
+      return 'speech-timeout';
+    case 'network':
+      return 'network';
+    case 'not-allowed':
+    case 'service-not-allowed':
+      return 'not-allowed';
+    case 'language-not-supported':
+    case 'bad-grammar':
+      return 'language-not-supported';
+    case 'audio-capture':
+      return 'audio-capture';
+    case 'busy':
+    case 'recognizer-busy':
+      return 'busy';
+    case 'aborted':
+      return 'aborted';
+    default:
+      return 'unknown';
+  }
+}
 
 /**
  * `SpeechService` backed by **expo-speech-recognition** — system on-device STT
@@ -47,31 +76,39 @@ export class ExpoSpeechService implements SpeechService {
 
   async listen(
     onResult: (text: string, isFinal: boolean) => void,
-    onEnd?: () => void,
+    onEnd?: (reason?: SpeechEndReason) => void,
     localeId = 'ru-RU',
   ): Promise<void> {
     // `onEnd` must fire exactly once, on the first terminal path we hit
     // (denied/missing module/end/error), so the caller's "listening" UI always
-    // resets even when no final result arrives.
+    // resets even when no final result arrives. A failure passes a reason so the
+    // caller can explain it; a clean end ('end' event, user stop) passes none.
     let ended = false;
-    const finish = () => {
+    const finish = (reason?: SpeechEndReason) => {
       if (ended) return;
       ended = true;
       this.removeSubs();
-      onEnd?.();
+      if (reason) {
+        // The ONLY place the failure cause is recorded. Code + a generic engine
+        // message (never the spoken text — privacy §2). Dev-only to avoid noise.
+        if (typeof __DEV__ !== 'undefined' && __DEV__) {
+          console.warn(`[speech] recognition failed: ${reason.code}${reason.message ? ` — ${reason.message}` : ''}`);
+        }
+      }
+      onEnd?.(reason);
     };
 
     const mod = await this.load();
-    if (!mod) return finish();
+    if (!mod) return finish({ code: 'unknown', message: 'speech module unavailable' });
     const recognizer = mod.ExpoSpeechRecognitionModule;
 
-    // Ask for mic + speech permission on first use; bail quietly if denied so
-    // the caller's listening state resets and text entry stays usable.
+    // Ask for mic + speech permission on first use; surface a denial as a real
+    // reason so the caller can prompt for access (text entry stays usable too).
     try {
       const perm = await recognizer.requestPermissionsAsync();
-      if (!perm.granted) return finish();
+      if (!perm.granted) return finish({ code: 'not-allowed', message: 'microphone permission denied' });
     } catch {
-      return finish();
+      return finish({ code: 'not-allowed', message: 'permission request failed' });
     }
 
     this.removeSubs();
@@ -80,8 +117,10 @@ export class ExpoSpeechService implements SpeechService {
         const transcript = e.results?.[0]?.transcript;
         if (transcript != null && transcript.length > 0) onResult(transcript, e.isFinal);
       }),
-      recognizer.addListener('end', finish),
-      recognizer.addListener('error', finish),
+      recognizer.addListener('end', () => finish()),
+      recognizer.addListener('error', (e) =>
+        finish({ code: mapSpeechError((e as { error?: string }).error), message: (e as { message?: string }).message }),
+      ),
     );
 
     recognizer.start({ lang: localeId, interimResults: true, continuous: false });

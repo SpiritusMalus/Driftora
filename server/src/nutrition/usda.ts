@@ -1,5 +1,6 @@
 import type { Minerals, Per100, Region } from '../types.js';
 import type { NutritionProvider, ProviderResult } from './provider.js';
+import { rankByName, scoreToConfidence } from './scoring.js';
 
 const SEARCH_URL = 'https://api.nal.usda.gov/fdc/v1/foods/search';
 
@@ -83,32 +84,46 @@ export class UsdaProvider implements NutritionProvider {
 
   constructor(private readonly apiKey: string) {}
 
-  async search(name: string, _region: Region): Promise<ProviderResult | null> {
-    if (!this.apiKey || name.trim().length === 0) return null;
+  async search(name: string, region: Region): Promise<ProviderResult | null> {
+    return (await this.searchMany(name, region))[0] ?? null;
+  }
+
+  /**
+   * Ranked candidates, best-first. USDA returns its own search score, but we
+   * re-rank by NAME similarity (scoring.ts) so "rice" prefers plain rice over a
+   * higher-USDA-scored "rice, fried". Non-foods (no kcal/protein) are dropped.
+   */
+  async searchMany(name: string, _region: Region): Promise<ProviderResult[]> {
+    if (!this.apiKey || name.trim().length === 0) return [];
     const url = new URL(SEARCH_URL);
     url.searchParams.set('api_key', this.apiKey);
     url.searchParams.set('query', name);
     url.searchParams.set('dataType', DATA_TYPES.join(','));
-    url.searchParams.set('pageSize', '5');
+    url.searchParams.set('pageSize', '10');
 
     let res: Response;
     try {
       res = await fetch(url, { method: 'GET' });
     } catch {
-      return null;
+      return [];
     }
-    if (!res.ok) return null;
+    if (!res.ok) return [];
 
     const data = (await res.json().catch(() => null)) as { foods?: UsdaFood[] } | null;
-    const food = data?.foods?.[0];
-    if (!food || !Array.isArray(food.foodNutrients)) return null;
+    const foods = (data?.foods ?? []).filter((f) => Array.isArray(f.foodNutrients));
 
-    const per100 = toPer100(food);
-    // A real food must at least carry calories or protein.
-    if (per100.kcal === 0 && per100.prot === 0) return null;
+    const ranked = rankByName(
+      name,
+      foods.map((f) => ({ value: f, name: f.description ?? '' })),
+    );
 
-    const score = typeof food.score === 'number' ? food.score : 0;
-    const confidence = Math.min(1, Math.max(0.5, score / 200));
-    return { per100, confidence };
+    const out: ProviderResult[] = [];
+    for (const c of ranked) {
+      const per100 = toPer100(c.value);
+      // A real food must at least carry calories or protein.
+      if (per100.kcal === 0 && per100.prot === 0) continue;
+      out.push({ per100, name: c.value.description ?? name, confidence: scoreToConfidence(c.score) });
+    }
+    return out;
   }
 }
