@@ -9,19 +9,20 @@ import { assembleMealDraft, type IdentifiedItem, type MealDraft, type Region } f
 
 /**
  * Build the region-aware provider chains (BUILD SPEC §5.2):
- *   US → [Usda, FatSecret, OpenFoodFacts(barcode), ApiNinjas]
- *   RU → [Skurikhin, FatSecret, OpenFoodFacts(barcode), ApiNinjas]
+ *   US → [Usda, FatSecret, OpenFoodFacts(text+barcode), ApiNinjas]
+ *   RU → [Skurikhin, Usda(by name_en), FatSecret, OpenFoodFacts(text+barcode), ApiNinjas]
  *
- * Construction order IS the chain order; the resolver filters by region. Open
- * Food Facts, API Ninjas and FatSecret serve both regions; USDA is US-only and
- * Skurikhin is RU-only. FatSecret sits right after the curated tables as the
- * broad free-text fallback (esp. for RU, where the curated table is small).
+ * Construction order IS the chain order; the resolver filters by region.
+ * Skurikhin (curated RU dishes) always leads the RU chain; USDA then serves as
+ * the broad free-text fallback for BOTH regions — for RU it is queried with
+ * the item's English name (`queryLang: 'en'`), which the LLM always returns.
+ * Open Food Facts free-text search covers branded products (RU names included);
+ * FatSecret/ApiNinjas remain optional keyed fallbacks.
  */
 export function buildProviders(): NutritionProvider[] {
   const providers: NutritionProvider[] = [];
   // RU-first and US-first cores. The resolver filters by region, so order here
-  // IS the per-region chain order: RU → [Skurikhin, OFF, ApiNinjas];
-  // US → [Usda, OFF, ApiNinjas].
+  // IS the per-region chain order.
   providers.push(new SkurikhinProvider());
   providers.push(new UsdaProvider(process.env.USDA_API_KEY || ''));
   // Broad free-text fallback (both regions) — only when credentials are set.

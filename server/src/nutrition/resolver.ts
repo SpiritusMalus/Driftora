@@ -77,9 +77,21 @@ export class Resolver {
   constructor(private readonly providers: NutritionProvider[]) {}
 
   /** US uses the English name; RU uses the Russian name (BUILD SPEC §6). */
-  private lookupName(item: IdentifiedItem, region: Region): string {
+  private nativeName(item: IdentifiedItem, region: Region): string {
     const name = region === 'US' ? item.name_en : item.name_ru;
     return (name || item.name_en || item.name_ru).trim();
+  }
+
+  /**
+   * The name a given provider is queried with: its declared `queryLang` wins
+   * (an English-only source gets `name_en` even in the RU chain — this is what
+   * lets USDA serve as the broad RU fallback), else the region-native name.
+   */
+  private nameFor(provider: NutritionProvider, item: IdentifiedItem, region: Region): string {
+    const native = this.nativeName(item, region);
+    if (provider.queryLang === 'en') return (item.name_en || native).trim();
+    if (provider.queryLang === 'ru') return (item.name_ru || native).trim();
+    return native;
   }
 
   /** A provider's ranked candidates, preferring `searchMany` over single `search`. */
@@ -89,16 +101,15 @@ export class Resolver {
     return one ? [one] : [];
   }
 
-  private async lookup(name: string, region: Region): Promise<LookupResult> {
-    const key = cacheKey(name, region);
-    const cached = this.cache.get(key);
-    if (cached) return cached;
-
+  /** Walk the region chain, querying each provider by its own name choice. */
+  private async runChain(region: Region, nameFor: (p: NutritionProvider) => string): Promise<LookupResult | null> {
     for (const provider of chainFor(this.providers, region)) {
+      const name = nameFor(provider);
+      if (name.length === 0) continue;
       const results = await this.candidatesFrom(provider, name, region);
       const primary = results[0];
       if (primary) {
-        const result: LookupResult = {
+        return {
           per100: coercePer100(primary.per100),
           matchConfidence: clamp01(primary.confidence),
           name: primary.name,
@@ -107,12 +118,38 @@ export class Resolver {
             per100: coercePer100(r.per100),
           })),
         };
-        this.cache.set(key, result);
-        return result;
       }
+    }
+    return null;
+  }
+
+  /** Single-string lookup (manual search): every provider gets the same text. */
+  private async lookup(name: string, region: Region): Promise<LookupResult> {
+    const key = cacheKey(name, region);
+    const cached = this.cache.get(key);
+    if (cached) return cached;
+
+    const found = await this.runChain(region, () => name);
+    if (found) {
+      this.cache.set(key, found);
+      return found;
     }
     // Full miss: coarse estimate, no alternatives. Not cached — a later DB
     // import may resolve it. matchConfidence 0 marks it as not-a-fact.
+    return { per100: ESTIMATE_PER100, matchConfidence: 0, alternatives: [] };
+  }
+
+  /** Item lookup: providers may be queried by name_ru or name_en (queryLang). */
+  private async lookupItem(item: IdentifiedItem, region: Region): Promise<LookupResult> {
+    const key = cacheKey(`${item.name_ru}|${item.name_en}`, region);
+    const cached = this.cache.get(key);
+    if (cached) return cached;
+
+    const found = await this.runChain(region, (p) => this.nameFor(p, item, region));
+    if (found) {
+      this.cache.set(key, found);
+      return found;
+    }
     return { per100: ESTIMATE_PER100, matchConfidence: 0, alternatives: [] };
   }
 
@@ -131,7 +168,7 @@ export class Resolver {
 
   async resolveItem(item: IdentifiedItem, region: Region): Promise<NutritionItem> {
     const grams = item.est_grams > 0 ? item.est_grams : 100;
-    const found = await this.lookup(this.lookupName(item, region), region);
+    const found = await this.lookupItem(item, region);
     // A weak DB match should drag the item's confidence down (so the client
     // flags it + shows the picker), but never inflate it past identification.
     const confidence = found.matchConfidence > 0 ? Math.min(item.confidence, found.matchConfidence) : item.confidence;

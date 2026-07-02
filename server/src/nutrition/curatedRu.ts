@@ -3,15 +3,97 @@ import type { SkurikhinEntry } from './skurikhinTypes.js';
 /**
  * Hand-curated RU composition rows for common foods ABSENT from the
  * USDA-SR-Legacy import in `skurikhinData.ts` (that file is auto-generated — do
- * not hand-edit it; add to this list instead). These are everyday RU items
- * (выпечка / готовые блюда) the resolver otherwise missed → fell back to the
- * coarse `estimate`, which the UI shows as "not in our database".
+ * not hand-edit it; add to this list instead). These are national dishes and
+ * everyday RU items (супы / салаты / вторые / каши / выпечка) the resolver
+ * otherwise missed → fell back to the coarse `estimate`, which the UI shows as
+ * "not in our database".
  *
- * Per-100g values are standard published Russian composition figures; provenance
- * is attributed as 'skurikhin' (curated RU table) so the UI labels them honestly.
- * Minerals are left empty for now (macros are the figures we can stand behind).
+ * Per-100g values are standard published Russian composition figures for the
+ * classic recipe of each dish (editorial calorie-table rows, not user recipes);
+ * provenance is attributed as 'skurikhin' (curated RU table) so the UI labels
+ * them honestly. Composite dishes vary by recipe — these are the reference
+ * figures, and the client's "не то?" picker + food_choices memory let the user
+ * correct any specific case. Minerals are left empty for now (macros are the
+ * figures we can stand behind).
  */
 export const CURATED_RU: SkurikhinEntry[] = [
+  // — Супы (классические рецептуры; на 100 г готового блюда) —
+  { name: 'борщ', aliases: ['борщ', 'борщ украинский'], source: 'skurikhin',
+    per100: { kcal: 49, prot: 1.1, fat: 2.2, carb: 6.7, minerals: {} } },
+  { name: 'борщ с мясом', aliases: ['борщ с мясом', 'борщ с говядиной', 'борщ со свининой'], source: 'skurikhin',
+    per100: { kcal: 63, prot: 4.4, fat: 3.6, carb: 5.5, minerals: {} } },
+  { name: 'щи', aliases: ['щи', 'щи из свежей капусты'], source: 'skurikhin',
+    per100: { kcal: 38, prot: 1, fat: 3.8, carb: 2.1, minerals: {} } },
+  { name: 'щи из квашеной капусты', aliases: ['щи из квашеной капусты', 'щи кислые'], source: 'skurikhin',
+    per100: { kcal: 32, prot: 0.6, fat: 2.1, carb: 2.7, minerals: {} } },
+  { name: 'солянка', aliases: ['солянка', 'солянка мясная', 'солянка сборная'], source: 'skurikhin',
+    per100: { kcal: 69, prot: 5.2, fat: 4.6, carb: 1.7, minerals: {} } },
+  { name: 'рассольник', aliases: ['рассольник'], source: 'skurikhin',
+    per100: { kcal: 42, prot: 1.4, fat: 2, carb: 5, minerals: {} } },
+  { name: 'окрошка', aliases: ['окрошка', 'окрошка на квасе'], source: 'skurikhin',
+    per100: { kcal: 52, prot: 2.1, fat: 1.7, carb: 6.3, minerals: {} } },
+  { name: 'окрошка на кефире', aliases: ['окрошка на кефире'], source: 'skurikhin',
+    per100: { kcal: 47, prot: 3.1, fat: 1.9, carb: 4.3, minerals: {} } },
+  { name: 'уха', aliases: ['уха', 'рыбный суп'], source: 'skurikhin',
+    per100: { kcal: 46, prot: 3.4, fat: 1, carb: 5.5, minerals: {} } },
+  { name: 'гороховый суп', aliases: ['гороховый суп', 'суп гороховый'], source: 'skurikhin',
+    per100: { kcal: 66, prot: 4.4, fat: 2.4, carb: 8.9, minerals: {} } },
+  { name: 'грибной суп', aliases: ['грибной суп', 'суп грибной'], source: 'skurikhin',
+    per100: { kcal: 50, prot: 1.9, fat: 2.4, carb: 5.7, minerals: {} } },
+  { name: 'суп харчо', aliases: ['харчо', 'суп харчо'], source: 'skurikhin',
+    per100: { kcal: 75, prot: 3.1, fat: 4.5, carb: 5.5, minerals: {} } },
+  { name: 'свекольник', aliases: ['свекольник', 'холодник'], source: 'skurikhin',
+    per100: { kcal: 36, prot: 0.5, fat: 2, carb: 4.2, minerals: {} } },
+  { name: 'щавелевый суп', aliases: ['щавелевый суп', 'суп из щавеля'], source: 'skurikhin',
+    per100: { kcal: 40, prot: 1.6, fat: 2.5, carb: 2.9, minerals: {} } },
+  { name: 'фасолевый суп', aliases: ['фасолевый суп', 'суп фасолевый'], source: 'skurikhin',
+    per100: { kcal: 62, prot: 4, fat: 1.8, carb: 10, minerals: {} } },
+  { name: 'куриный бульон', aliases: ['бульон', 'куриный бульон'], source: 'skurikhin',
+    per100: { kcal: 15, prot: 2, fat: 0.5, carb: 0.3, minerals: {} } },
+
+  // — Салаты —
+  { name: 'оливье', aliases: ['оливье', 'салат оливье', 'зимний салат'], source: 'skurikhin',
+    per100: { kcal: 115, prot: 4.6, fat: 8, carb: 5.9, minerals: {} } },
+  { name: 'винегрет', aliases: ['винегрет'], source: 'skurikhin',
+    per100: { kcal: 75, prot: 1.8, fat: 3.7, carb: 8.8, minerals: {} } },
+  { name: 'селёдка под шубой', aliases: ['селёдка под шубой', 'сельдь под шубой', 'шуба'], source: 'skurikhin',
+    per100: { kcal: 193, prot: 5.1, fat: 16.2, carb: 7.3, minerals: {} } },
+  { name: 'салат мимоза', aliases: ['мимоза', 'салат мимоза'], source: 'skurikhin',
+    per100: { kcal: 183, prot: 5.7, fat: 14.8, carb: 7.2, minerals: {} } },
+  { name: 'крабовый салат', aliases: ['крабовый салат', 'салат с крабовыми палочками'], source: 'skurikhin',
+    per100: { kcal: 128, prot: 9.2, fat: 7.4, carb: 5.9, minerals: {} } },
+
+  // — Вторые блюда —
+  { name: 'котлета', aliases: ['котлета', 'котлеты', 'котлета мясная', 'котлета говяжья'], source: 'skurikhin',
+    per100: { kcal: 260, prot: 18, fat: 20, carb: 0, minerals: {} } },
+  { name: 'котлета из индейки', aliases: ['котлета из индейки', 'котлеты индюшиные'], source: 'skurikhin',
+    per100: { kcal: 220, prot: 18.6, fat: 12.2, carb: 8.7, minerals: {} } },
+  { name: 'гуляш', aliases: ['гуляш', 'гуляш говяжий'], source: 'skurikhin',
+    per100: { kcal: 148, prot: 14, fat: 9.2, carb: 2.6, minerals: {} } },
+  { name: 'голубцы', aliases: ['голубцы', 'голубец'], source: 'skurikhin',
+    per100: { kcal: 130, prot: 5, fat: 9, carb: 6, minerals: {} } },
+  { name: 'бефстроганов', aliases: ['бефстроганов'], source: 'skurikhin',
+    per100: { kcal: 193, prot: 16.7, fat: 11.3, carb: 5.9, minerals: {} } },
+  { name: 'азу', aliases: ['азу'], source: 'skurikhin',
+    per100: { kcal: 214, prot: 11.9, fat: 14.2, carb: 10.2, minerals: {} } },
+  { name: 'сырники', aliases: ['сырники', 'сырник', 'творожники'], source: 'skurikhin',
+    per100: { kcal: 183, prot: 18.6, fat: 3.6, carb: 18.2, minerals: {} } },
+
+  // — Каши на молоке —
+  { name: 'гречневая каша на молоке', aliases: ['гречневая каша на молоке', 'гречка с молоком'], source: 'skurikhin',
+    per100: { kcal: 118, prot: 4.2, fat: 2.3, carb: 21.6, minerals: {} } },
+  { name: 'манная каша', aliases: ['манная каша', 'манка', 'манная каша на молоке'], source: 'skurikhin',
+    per100: { kcal: 98, prot: 3, fat: 3.2, carb: 15.3, minerals: {} } },
+  { name: 'овсяная каша на молоке', aliases: ['овсяная каша на молоке', 'овсянка на молоке'], source: 'skurikhin',
+    per100: { kcal: 102, prot: 3.2, fat: 4.1, carb: 14.2, minerals: {} } },
+
+  // — Напитки —
+  { name: 'компот из сухофруктов', aliases: ['компот', 'компот из сухофруктов'], source: 'skurikhin',
+    per100: { kcal: 60, prot: 0.8, fat: 0, carb: 14.2, minerals: {} } },
+  { name: 'кисель', aliases: ['кисель'], source: 'skurikhin',
+    per100: { kcal: 78, prot: 0.2, fat: 0, carb: 18.9, minerals: {} } },
+
+  // — Выпечка / сладкое —
   { name: 'пончик', aliases: ['пончик', 'пончики', 'пышка', 'пышки'], source: 'skurikhin',
     per100: { kcal: 296, prot: 5.8, fat: 13, carb: 38.8, minerals: {} } },
   { name: 'булочка', aliases: ['булочка', 'булка', 'сдоба', 'сдобная булочка'], source: 'skurikhin',

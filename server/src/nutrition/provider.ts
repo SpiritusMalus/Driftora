@@ -17,6 +17,13 @@ export interface NutritionProvider {
   readonly name: string;
   /** Region(s) this provider serves; the resolver only calls it for those. */
   readonly regions: readonly Region[];
+  /**
+   * Optional: the query language this source understands. An English-only DB
+   * (USDA) declares 'en' so the resolver queries it with the item's `name_en`
+   * even in the RU chain (the LLM always returns both names). Omit to receive
+   * the region-native name (RU → name_ru, US → name_en).
+   */
+  readonly queryLang?: 'en' | 'ru';
   /** Best single match (or null). For list sources this is `searchMany()[0]`. */
   search(name: string, region: Region): Promise<ProviderResult | null>;
   /**
