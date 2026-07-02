@@ -26,8 +26,12 @@ const MINERAL_NUMBERS: Record<keyof Minerals, string> = {
 
 const KCAL_LEGACY = '208';
 
-/** Prefer curated, per-100g data types over branded (which uses serving sizes). */
-const DATA_TYPES = ['Foundation', 'SR Legacy'];
+/**
+ * Prefer curated, per-100g data types over branded (which uses serving sizes).
+ * Survey (FNDDS) is included for its composite/cooked dishes (soups, stews,
+ * stroganoff…) — also per-100g — which the ingredient-only sets lack.
+ */
+const DATA_TYPES = ['Foundation', 'SR Legacy', 'Survey (FNDDS)'];
 
 interface UsdaNutrient {
   nutrientNumber?: string;
@@ -77,10 +81,17 @@ function toPer100(food: UsdaFood): Per100 {
  * Default match policy (BUILD SPEC §10): take the top-ranked Foundation/SR
  * Legacy result — no fuzzy re-scoring. USDA's own search score is mapped to a
  * 0..1 confidence (clamped) so the resolver can rank across providers.
+ *
+ * Also serves the RU chain as the broad free-text fallback AFTER the curated
+ * RU table: `queryLang: 'en'` makes the resolver query it with the item's
+ * `name_en` (the LLM always returns one), since the FDC corpus is English.
+ * Nutrition of generic foods doesn't depend on the market; RU-specific dishes
+ * are (and must stay) covered by the curated table first.
  */
 export class UsdaProvider implements NutritionProvider {
   readonly name = 'usda';
-  readonly regions = ['US'] as const;
+  readonly regions = ['US', 'RU'] as const;
+  readonly queryLang = 'en' as const;
 
   constructor(private readonly apiKey: string) {}
 

@@ -73,15 +73,17 @@ test('USDA mapping incl. minerals, then per100 → scaled math', async () => {
   assert.equal(r.grams_source, 'estimated');
 });
 
-test('region routing: USDA is skipped for RU (US-only provider)', async () => {
+test('region routing: USDA serves RU as the EN-name fallback', async () => {
   mockFetch(() => json(usdaChicken));
-  // USDA + OFF; for RU neither resolves a plain name → estimate, and USDA is
-  // never queried because it does not serve RU.
+  // USDA now serves BOTH regions; in the RU chain it is queried with the
+  // item's English name (queryLang: 'en'), so a RU item still gets real
+  // numbers instead of the estimate.
   const resolver = new Resolver([new UsdaProvider('KEY'), new OpenFoodFactsProvider()]);
 
   const r = await resolver.resolveItem(item(), 'RU');
-  assert.equal(r.per100.source, 'estimate');
-  assert.equal(calls.length, 0, 'no provider in the RU chain should hit the network here');
+  assert.equal(r.per100.source, 'usda');
+  assert.equal(calls.length, 1, 'USDA answered → OFF is never queried');
+  assert.ok(calls[0]!.includes('query=chicken+breast'), 'RU item is queried by its English name');
 });
 
 test('DB miss → coarse estimate, flagged not-fact', async () => {

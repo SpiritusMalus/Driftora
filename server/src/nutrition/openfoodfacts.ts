@@ -1,7 +1,26 @@
 import type { Minerals, Per100, Region } from '../types.js';
 import type { NutritionProvider, ProviderResult } from './provider.js';
+import { rankByName, scoreToConfidence } from './scoring.js';
 
 const PRODUCT_URL = 'https://world.openfoodfacts.org/api/v2/product';
+
+/**
+ * OFF's dedicated search service (search-a-licious). The legacy
+ * `cgi/search.pl` endpoint is being retired and intermittently 503s.
+ */
+const SEARCH_URL = 'https://search.openfoodfacts.org/search';
+
+/** Query language hint for the search index (RU names vs EN names). */
+const SEARCH_LANGS: Record<Region, string> = { RU: 'ru', US: 'en' };
+
+/** OFF etiquette: identify the app on every request. */
+const USER_AGENT = 'Driftora/1.0 (food-parse; support@family-pie.ru)';
+
+/** Crowd-sourced rows never outrank a curated/USDA hit on confidence alone. */
+const MAX_SEARCH_CONFIDENCE = 0.85;
+
+const SEARCH_TIMEOUT_MS = 5000;
+const SEARCH_PAGE_SIZE = 10;
 
 /** OFF stores per-100g nutriments; minerals are in grams → convert to mg. */
 const MINERAL_FIELDS: Record<keyof Minerals, string> = {
@@ -28,22 +47,58 @@ export function isBarcode(name: string): boolean {
   return /^\d{8,14}$/.test(name.trim());
 }
 
+/** kcal per 100g, falling back from the kcal field to the kJ variants. */
+function kcalOf(nutriments: OffNutriments): number | undefined {
+  const kcal = n(nutriments, 'energy-kcal_100g');
+  if (typeof kcal === 'number') return kcal;
+  const kj = n(nutriments, 'energy-kj_100g') ?? n(nutriments, 'energy_100g');
+  return typeof kj === 'number' ? kj / 4.184 : undefined;
+}
+
+function toPer100(nutriments: OffNutriments): Per100 {
+  const minerals: Minerals = {};
+  for (const key of Object.keys(MINERAL_FIELDS) as (keyof Minerals)[]) {
+    const grams = n(nutriments, MINERAL_FIELDS[key]);
+    if (typeof grams === 'number') minerals[key] = grams * 1000; // g → mg
+  }
+  return {
+    source: 'openfoodfacts',
+    kcal: Math.round(kcalOf(nutriments) ?? 0),
+    prot: n(nutriments, 'proteins_100g') ?? 0,
+    fat: n(nutriments, 'fat_100g') ?? 0,
+    carb: n(nutriments, 'carbohydrates_100g') ?? 0,
+    minerals,
+  };
+}
+
+interface OffSearchProduct {
+  product_name?: string;
+  product_name_ru?: string;
+  nutriments?: OffNutriments;
+}
+
 /**
- * Open Food Facts barcode lookup (free). Only fires when the name is a barcode;
- * for plain text names it returns null and the chain moves on. Region selects
- * the OFF locale subdomain but the global DB is used here for v1.
+ * Open Food Facts lookup (free, crowd-sourced). Two modes:
+ *  - barcode → exact product fetch (`search`);
+ *  - free text → the OFF search API (`searchMany`), which is what covers
+ *    branded RU products (сырки, йогурты, колбасы…) no curated table can.
+ * Crowd data is honest but uneven, so rows missing any of kcal/prot/fat/carb
+ * are dropped and confidence is capped below curated/USDA levels.
  */
 export class OpenFoodFactsProvider implements NutritionProvider {
   readonly name = 'openfoodfacts';
   readonly regions = ['RU', 'US'] as const;
 
-  async search(name: string, _region: Region): Promise<ProviderResult | null> {
-    if (!isBarcode(name)) return null;
+  async search(name: string, region: Region): Promise<ProviderResult | null> {
+    if (!isBarcode(name)) return (await this.searchMany(name, region))[0] ?? null;
     const barcode = name.trim();
 
     let res: Response;
     try {
-      res = await fetch(`${PRODUCT_URL}/${barcode}.json`, { method: 'GET' });
+      res = await fetch(`${PRODUCT_URL}/${barcode}.json`, {
+        method: 'GET',
+        headers: { 'User-Agent': USER_AGENT },
+      });
     } catch {
       return null;
     }
@@ -55,21 +110,67 @@ export class OpenFoodFactsProvider implements NutritionProvider {
     const nutriments = data?.product?.nutriments;
     if (data?.status !== 1 || !nutriments) return null;
 
-    const kcal = n(nutriments, 'energy-kcal_100g') ?? 0;
-    const minerals: Minerals = {};
-    for (const key of Object.keys(MINERAL_FIELDS) as (keyof Minerals)[]) {
-      const grams = n(nutriments, MINERAL_FIELDS[key]);
-      if (typeof grams === 'number') minerals[key] = grams * 1000; // g → mg
-    }
-    const per100: Per100 = {
-      source: 'openfoodfacts',
-      kcal: Math.round(kcal),
-      prot: n(nutriments, 'proteins_100g') ?? 0,
-      fat: n(nutriments, 'fat_100g') ?? 0,
-      carb: n(nutriments, 'carbohydrates_100g') ?? 0,
-      minerals,
-    };
+    const per100 = toPer100(nutriments);
     if (per100.kcal === 0 && per100.prot === 0) return null;
     return { per100, confidence: 0.9 };
+  }
+
+  /** Ranked free-text candidates from the OFF search API (best-first). */
+  async searchMany(name: string, region: Region): Promise<ProviderResult[]> {
+    const trimmed = name.trim();
+    if (trimmed.length === 0) return [];
+    if (isBarcode(trimmed)) {
+      const one = await this.search(trimmed, region);
+      return one ? [one] : [];
+    }
+
+    const url = new URL(SEARCH_URL);
+    url.searchParams.set('q', trimmed);
+    url.searchParams.set('langs', SEARCH_LANGS[region] ?? SEARCH_LANGS.US);
+    url.searchParams.set('page_size', String(SEARCH_PAGE_SIZE));
+    url.searchParams.set('fields', 'product_name,product_name_ru,nutriments');
+
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: 'GET',
+        headers: { 'User-Agent': USER_AGENT },
+        // OFF is community infra and can stall; never hold the parse hostage.
+        signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
+      });
+    } catch {
+      return [];
+    }
+    if (!res.ok) return [];
+
+    const data = (await res.json().catch(() => null)) as { hits?: OffSearchProduct[] } | null;
+    const products = data?.hits ?? [];
+
+    const usable = products.flatMap((p) => {
+      const nutriments = p.nutriments;
+      const displayName = (region === 'RU' ? p.product_name_ru || p.product_name : p.product_name)?.trim();
+      if (!nutriments || !displayName) return [];
+      // Require the full macro row — crowd entries missing any of them are out.
+      if (
+        kcalOf(nutriments) === undefined ||
+        n(nutriments, 'proteins_100g') === undefined ||
+        n(nutriments, 'fat_100g') === undefined ||
+        n(nutriments, 'carbohydrates_100g') === undefined
+      ) {
+        return [];
+      }
+      const per100 = toPer100(nutriments);
+      if (per100.kcal === 0 && per100.prot === 0) return [];
+      return [{ per100, name: displayName }];
+    });
+
+    return rankByName(
+      trimmed,
+      usable.map((u) => ({ value: u, name: u.name })),
+    ).map((c) => ({
+      per100: c.value.per100,
+      name: c.value.name,
+      confidence: Math.min(scoreToConfidence(c.score), MAX_SEARCH_CONFIDENCE),
+    }));
   }
 }
