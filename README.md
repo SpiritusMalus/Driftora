@@ -74,7 +74,9 @@ npm test                    # node:test
 Key env (`server/.env.example`): `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` (default
 `google/gemini-3.5-flash`), `USDA_API_KEY`, `DEFAULT_REGION` (US|RU), `PORT` (default **8787**),
 optional `APP_TOKEN`, `ALLOWED_ORIGIN`. The app points at the proxy via the
-`EXPO_PUBLIC_FOOD_API_URL` env var.
+`EXPO_PUBLIC_FOOD_API_URL` env var; when the server enforces `APP_TOKEN`, the app sends it from
+`EXPO_PUBLIC_FOOD_API_TOKEN` as a Bearer header — set it in a local `.env` (dev) and in EAS
+environment variables (cloud builds), never in `eas.json`: this repo is public.
 
 ## Sync server (`sync-server/`) — dev only
 

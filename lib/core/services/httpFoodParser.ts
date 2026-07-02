@@ -89,22 +89,32 @@ function deriveSearchEndpoint(endpoint: string): string {
   return /\/food\/parse$/.test(endpoint) ? endpoint.replace(/\/food\/parse$/, '/food/search') : `${endpoint}-search`;
 }
 
+/** Optional endpoint overrides + the static app token (server-side `APP_TOKEN`). */
+export interface HttpFoodParserOptions {
+  photoEndpoint?: string;
+  audioEndpoint?: string;
+  searchEndpoint?: string;
+  /** When set, every request carries `Authorization: Bearer <token>`. */
+  token?: string;
+}
+
 export class HttpFoodParser implements FoodParser {
   private readonly photoEndpoint: string;
   private readonly audioEndpoint: string;
   private readonly searchEndpoint: string;
+  /** Extra headers on every request — `Authorization` when a token is set. */
+  private readonly authHeaders: Record<string, string>;
 
   constructor(
     private readonly endpoint: string,
     private readonly fallback: FoodParser,
     private readonly timeoutMs: number = DEFAULT_TIMEOUT_MS,
-    photoEndpoint?: string,
-    audioEndpoint?: string,
-    searchEndpoint?: string,
+    opts: HttpFoodParserOptions = {},
   ) {
-    this.photoEndpoint = photoEndpoint ?? deriveEndpoint(endpoint, 'photo');
-    this.audioEndpoint = audioEndpoint ?? deriveEndpoint(endpoint, 'audio');
-    this.searchEndpoint = searchEndpoint ?? deriveSearchEndpoint(endpoint);
+    this.photoEndpoint = opts.photoEndpoint ?? deriveEndpoint(endpoint, 'photo');
+    this.audioEndpoint = opts.audioEndpoint ?? deriveEndpoint(endpoint, 'audio');
+    this.searchEndpoint = opts.searchEndpoint ?? deriveSearchEndpoint(endpoint);
+    this.authHeaders = opts.token ? { Authorization: `Bearer ${opts.token}` } : {};
   }
 
   /**
@@ -119,7 +129,7 @@ export class HttpFoodParser implements FoodParser {
     try {
       const res = await fetch(this.searchEndpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...this.authHeaders },
         body: JSON.stringify({ query, region }),
         signal: controller.signal,
       });
@@ -141,7 +151,7 @@ export class HttpFoodParser implements FoodParser {
     try {
       const res = await fetch(this.endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...this.authHeaders },
         body: JSON.stringify({ text, region }),
         signal: controller.signal,
       });
@@ -177,6 +187,7 @@ export class HttpFoodParser implements FoodParser {
 
       const res = await fetch(this.photoEndpoint, {
         method: 'POST',
+        headers: this.authHeaders,
         body: form,
         signal: controller.signal,
       });
@@ -211,6 +222,7 @@ export class HttpFoodParser implements FoodParser {
 
       const res = await fetch(this.audioEndpoint, {
         method: 'POST',
+        headers: this.authHeaders,
         body: form,
         signal: controller.signal,
       });

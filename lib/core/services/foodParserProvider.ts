@@ -24,11 +24,16 @@ function stub(): StubFoodParser {
  * other case the fully-offline [StubFoodParser] is returned and the server is
  * never contacted, so nothing leaves the device without opt-in consent. The
  * general entry-gate consent is deliberately NOT this flag (separate consents).
+ *
+ * `EXPO_PUBLIC_FOOD_API_TOKEN` (optional) is the server's static `APP_TOKEN`,
+ * sent as a Bearer header — an app-level gate, not a user identity.
  */
 export function getFoodParser(aiConsent: boolean): FoodParser {
   const base = process.env.EXPO_PUBLIC_FOOD_API_URL;
   if (!base || !aiConsent) return stub();
-  return (_online ??= new HttpFoodParser(base, stub()));
+  return (_online ??= new HttpFoodParser(base, stub(), undefined, {
+    token: process.env.EXPO_PUBLIC_FOOD_API_TOKEN,
+  }));
 }
 
 /**
