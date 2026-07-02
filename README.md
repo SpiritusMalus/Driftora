@@ -24,7 +24,7 @@ assets/             fonts, images
 android/            prebuilt native Android project
 legal/              legal text canon (PRIVACY_POLICY.md, TERMS_OF_USE.md)
                     (public page hosted centrally at family-pie.ru/driftora/legal)
-server/             food-parse proxy (Gemini identify + nutrition numbers)
+server/             food-parse proxy (LLM identify via OpenRouter + nutrition numbers)
 sync-server/        FastAPI E2E backup/sync (dev only, not deployed)
 ```
 
@@ -58,22 +58,23 @@ Metro runs on **:8081** (the Expo SDK 54 default).
 
 ## Food-parse proxy (`server/`)
 
-A small stateless service: it identifies a food from a photo or text with **Gemini** (identification
-only), then resolves nutrition numbers from authoritative tables (USDA FoodData Central for the US;
+A small stateless service: it identifies a food from a photo, text, or voice note with an LLM via
+**OpenRouter** (identification only), then resolves nutrition numbers from authoritative tables (USDA FoodData Central for the US;
 a regional table for RU, plus OpenFoodFacts) with an optional paid API-Ninjas fallback. **API keys
 live only on the server and are never bundled into the app.**
 
 ```bash
 cd server
 npm install
-cp .env.example .env        # set GEMINI_API_KEY (required), USDA_API_KEY for US numbers
+cp .env.example .env        # set OPENROUTER_API_KEY (required), USDA_API_KEY for nutrition numbers
 npm run dev                 # tsx watch on :8787   (prod: npm run build && npm start)
 npm test                    # node:test
 ```
 
-Key env (`server/.env.example`): `GEMINI_API_KEY`, `GEMINI_MODEL` (default `gemini-3-flash`),
-`USDA_API_KEY`, `DEFAULT_REGION` (US|RU), `PORT` (default **8787**), optional `APP_TOKEN`,
-`ALLOWED_ORIGIN`. The app points at the proxy via the `EXPO_PUBLIC_FOOD_API_URL` env var.
+Key env (`server/.env.example`): `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` (default
+`google/gemini-3.5-flash`), `USDA_API_KEY`, `DEFAULT_REGION` (US|RU), `PORT` (default **8787**),
+optional `APP_TOKEN`, `ALLOWED_ORIGIN`. The app points at the proxy via the
+`EXPO_PUBLIC_FOOD_API_URL` env var.
 
 ## Sync server (`sync-server/`) — dev only
 

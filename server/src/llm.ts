@@ -1,4 +1,3 @@
-import { stubIdentifyFromAudio, stubIdentifyFromPhoto, stubIdentifyFromText } from './identifyStub.js';
 import { metrics } from './metrics.js';
 import { IDENTIFY_SCHEMA, IDENTIFY_SYSTEM_PROMPT, userAudioInstruction, userInstruction } from './prompt.js';
 import { normalizeIdentified, type IdentifiedItem, type Region } from './types.js';
@@ -20,13 +19,6 @@ const PRO_MODEL = process.env.OPENROUTER_PRO_MODEL || '';
 /** Identification output is tiny (a short item list) — cap defensively. */
 const MAX_TOKENS = 1024;
 const CONFIDENCE_FLOOR = 0.5;
-
-/**
- * TEMPORARY: when `LLM_STUB=1`, identification is served by a local stub instead
- * of the live model (used while no OpenRouter key is provisioned). Numbers still
- * come from the resolver. Remove with `identifyStub.ts` once a key is verified.
- */
-const STUB = process.env.LLM_STUB === '1';
 
 /** Raised when the model is unreachable/failing — routes map it to 503. */
 export class VisionUnavailableError extends Error {}
@@ -141,7 +133,6 @@ async function identifyWithEscalation(messages: ChatMessage[]): Promise<Identifi
 
 /** Layer 2: free-text meal → identified foods + estimated grams (no numbers). */
 export async function identifyFromText(text: string, region: Region): Promise<IdentifiedItem[]> {
-  if (STUB) return stubIdentifyFromText(text); // TEMPORARY — see identifyStub.ts
   return identifyWithEscalation([
     { role: 'system', content: IDENTIFY_SYSTEM_PROMPT },
     { role: 'user', content: `${userInstruction(region)}\n\n${text}` },
@@ -154,7 +145,6 @@ export async function identifyFromPhoto(
   mimeType: string,
   region: Region,
 ): Promise<IdentifiedItem[]> {
-  if (STUB) return stubIdentifyFromPhoto(); // TEMPORARY — see identifyStub.ts
   return identifyWithEscalation([
     { role: 'system', content: IDENTIFY_SYSTEM_PROMPT },
     {
@@ -178,7 +168,6 @@ export async function identifyFromAudio(
   format: string,
   region: Region,
 ): Promise<IdentifiedItem[]> {
-  if (STUB) return stubIdentifyFromAudio(); // TEMPORARY — see identifyStub.ts
   return identifyWithEscalation([
     { role: 'system', content: IDENTIFY_SYSTEM_PROMPT },
     {
