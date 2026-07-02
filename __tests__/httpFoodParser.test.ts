@@ -153,4 +153,39 @@ describe('HttpFoodParser', () => {
     expect(r).toBe(SENTINEL);
     expect(fallback.calls).toBe(1);
   });
+
+  it('sends Authorization: Bearer on every route when a token is configured', async () => {
+    const headers: unknown[] = [];
+    mockFetch(async (...args: unknown[]) => {
+      headers.push((args[1] as { headers?: Record<string, string> }).headers);
+      return { ok: true, json: async () => VALID } as unknown;
+    });
+
+    const parser = new HttpFoodParser(ENDPOINT, new SpyFallback(), undefined, { token: 'app-secret' });
+    await parser.parse('банан', 'US');
+    await parser.parsePhoto(PHOTO, 'US');
+    await parser.searchFoods('banana', 'US');
+
+    expect(headers).toHaveLength(3);
+    for (const h of headers) {
+      expect((h as Record<string, string>).Authorization).toBe('Bearer app-secret');
+    }
+  });
+
+  it('sends no Authorization header when no token is configured', async () => {
+    const headers: unknown[] = [];
+    mockFetch(async (...args: unknown[]) => {
+      headers.push((args[1] as { headers?: Record<string, string> }).headers ?? {});
+      return { ok: true, json: async () => VALID } as unknown;
+    });
+
+    const parser = new HttpFoodParser(ENDPOINT, new SpyFallback());
+    await parser.parse('банан', 'US');
+    await parser.parsePhoto(PHOTO, 'US');
+
+    expect(headers).toHaveLength(2);
+    for (const h of headers) {
+      expect(h).not.toHaveProperty('Authorization');
+    }
+  });
 });
