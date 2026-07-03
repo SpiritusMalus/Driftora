@@ -99,37 +99,36 @@ export function contradictsSugarFree(per100: { sugar?: number; carb: number }): 
   return per100.carb > 10;
 }
 
-/** How far below the head's confidence a clean row may sit and still be promoted. */
-const PROMOTE_MARGIN = 0.2;
-
 /** Contradicting rows are capped to this confidence — below the client's 0.5 floor. */
 const CONTRADICTION_CONFIDENCE = 0.4;
 
 /**
- * Reorder candidates when their composition contradicts what the query
+ * Adjust candidates when their composition contradicts what the query
  * explicitly asked for (currently: sugar-negation).
  *
- * A non-contradicting row is promoted above the contradictions ONLY when its
- * name score is close to the head's (within PROMOTE_MARGIN) — a true «зеро»
- * variant shares the query tokens, so it qualifies; an unrelated-but-clean row
- * («конфеты без сахара» for an energy-drink query) does not, otherwise the fix
- * would swap one wrong product for a worse one. Contradicting rows keep their
- * relative order with confidence capped below the client's low-confidence
- * floor (0.5): if nothing clean exists, the top pick is honestly flagged and
- * the alternatives list opens proactively instead of reading as fact.
+ * Contradicting rows keep their relative order with confidence capped below
+ * the client's low-confidence floor (0.5): if nothing clean exists, the top
+ * pick is honestly flagged and the alternatives picker opens proactively
+ * instead of the wrong product reading as fact.
+ *
+ * A clean row is promoted above them ONLY when its confidence is STRICTLY
+ * above the cap. `scoreToConfidence` floors weak name matches at exactly 0.4,
+ * so a floored unrelated-but-clean row («конфеты без сахара» on an
+ * energy-drink query) never jumps ahead — while a true «зеро» variant shares
+ * the query tokens, scores above the floor, and wins. Comparing against the
+ * head's confidence instead would be meaningless in the floored tail.
  */
 export function demoteContradictions<T extends { per100: { sugar?: number; carb: number }; confidence: number }>(
   query: string,
   results: T[],
 ): T[] {
   if (results.length === 0 || !isSugarFreeQuery(query)) return results;
-  const headConfidence = results[0]!.confidence;
   const promoted: T[] = [];
   const rest: T[] = [];
   for (const r of results) {
     if (contradictsSugarFree(r.per100)) {
       rest.push({ ...r, confidence: Math.min(r.confidence, CONTRADICTION_CONFIDENCE) });
-    } else if (r.confidence >= headConfidence - PROMOTE_MARGIN) {
+    } else if (r.confidence > CONTRADICTION_CONFIDENCE) {
       promoted.push(r);
     } else {
       rest.push(r);
