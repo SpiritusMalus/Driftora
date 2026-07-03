@@ -216,11 +216,13 @@ export const en = {
       down: 'Over {{days}} days your weight is down {{abs}} kg.',
       up: 'Over {{days}} days your weight is up {{abs}} kg.',
     },
+    savedNow: '{{kg}} kg — logged ✓',
     height: 'Height',
     heightUnit: 'cm',
     bmi: {
       title: 'BMI',
       value: 'BMI {{value}} — {{category}}',
+      current: 'From your latest weight {{kg}} kg and height {{cm}} cm.',
       category: {
         underweight: 'below the normal range',
         normal: 'within the normal range',
@@ -237,9 +239,8 @@ export const en = {
     },
     targets: {
       title: 'Macro targets',
-      save: 'Save targets',
-      saved: 'Saved',
-      note: 'These targets show up on the Food screen — the daily total is compared against them.',
+      savedTick: 'Saved ✓',
+      note: 'Changes save themselves. These targets show up on the Food screen — the daily total is compared against them.',
     },
     formula: {
       title: 'Estimate with a formula',
@@ -251,7 +252,8 @@ export const en = {
       activityLevel: { sedentary: 'Sedentary', light: 'Light', moderate: 'Moderate', high: 'High' },
       activityNote: 'Sedentary — barely moving · light — 1–3 workouts a week · moderate — 3–5 · high — 6–7 or physical work.',
       result: 'Maintenance: {{kcal}} kcal · protein {{prot}} g · fat {{fat}} g · carbs {{carb}} g',
-      apply: 'Use as targets',
+      apply: 'Make these the targets',
+      applied: 'Targets updated ✓',
       incomplete: 'Fill in height, sex, birth year and activity — I’ll estimate maintenance with the Mifflin–St Jeor formula.',
       note: 'The Mifflin–St Jeor formula estimates the “average” person: real needs differ. Start from these numbers and adjust by your weight trend and how you feel. Split: protein 1.6 g/kg, fat 30% of calories, carbs the remainder.',
     },
