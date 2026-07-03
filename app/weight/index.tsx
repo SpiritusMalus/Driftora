@@ -1,7 +1,7 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card } from '@/components/ui/Card';
 import { ListGroup, type RowSpec } from '@/components/ui/ListGroup';
@@ -10,12 +10,24 @@ import { Screen } from '@/components/ui/Screen';
 import { TextField } from '@/components/ui/TextField';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import type { WeightRow } from '@/lib/core/db/schema';
+import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
 import { listWeights, upsertWeight } from '@/lib/core/db/weight';
+import {
+  ACTIVITY_LEVELS,
+  bmiCategory,
+  bmiValue,
+  suggestTargets,
+  type ActivityLevel,
+  type Sex,
+} from '@/lib/core/insights/bodyMetrics';
 import { summarizeWeightTrend, type WeightPoint } from '@/lib/core/insights/weightTrend';
-import { useTheme } from '@/lib/theme/theme';
+import { type Theme, useTheme } from '@/lib/theme/theme';
 
 /// Log today's weight (one row per day) and reread the trend. Deliberately
 /// low-pressure: optional, no daily nag, and the trend is stated neutrally.
+/// Also hosts the body-numbers context that belongs WITH the weight, not in
+/// settings: BMI (with an honest "population statistic" disclaimer) and the
+/// КБЖУ targets + their Mifflin–St Jeor maintenance estimate.
 export default function WeightScreen() {
   const { t } = useTranslation();
   const theme = useTheme();
@@ -25,6 +37,19 @@ export default function WeightScreen() {
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // Body profile + КБЖУ targets (single app_settings row, saved together).
+  const [profileLoaded, setProfileLoaded] = useState(false);
+  const [heightText, setHeightText] = useState('');
+  const [sex, setSex] = useState<'' | Sex>('');
+  const [birthYearText, setBirthYearText] = useState('');
+  const [activity, setActivity] = useState<'' | ActivityLevel>('');
+  const [kcal, setKcal] = useState('2000');
+  const [protein, setProtein] = useState('120');
+  const [fat, setFat] = useState('70');
+  const [carb, setCarb] = useState('200');
+  const [savingTargets, setSavingTargets] = useState(false);
+  const [savedTargets, setSavedTargets] = useState(false);
+
   useFocusEffect(
     useCallback(() => {
       let active = true;
@@ -32,11 +57,24 @@ export default function WeightScreen() {
         if (!db) return;
         const list = await listWeights(db, 30);
         if (active) setItems(list);
+        if (!profileLoaded) {
+          const s = await ensureSettings(db);
+          if (!active) return;
+          setHeightText(s.heightCm > 0 ? String(s.heightCm) : '');
+          setSex(s.sex);
+          setBirthYearText(s.birthYear > 0 ? String(s.birthYear) : '');
+          setActivity(s.activityLevel);
+          setKcal(String(s.targetKcal));
+          setProtein(String(s.targetProteinG));
+          setFat(String(s.targetFatG));
+          setCarb(String(s.targetCarbG));
+          setProfileLoaded(true);
+        }
       })();
       return () => {
         active = false;
       };
-    }, [db]),
+    }, [db, profileLoaded]),
   );
 
   async function onSave() {
@@ -52,6 +90,28 @@ export default function WeightScreen() {
     }
   }
 
+  async function onSaveTargets() {
+    if (!db) return;
+    setSavingTargets(true);
+    try {
+      await updateSettings(db, {
+        targetKcal: toNumber(kcal),
+        targetProteinG: toNumber(protein),
+        targetFatG: toNumber(fat),
+        targetCarbG: toNumber(carb),
+        heightCm: toNumber(heightText),
+        sex,
+        birthYear: Math.round(toNumber(birthYearText)),
+        activityLevel: activity,
+      });
+      setSavedTargets(true);
+    } finally {
+      setSavingTargets(false);
+    }
+  }
+
+  const dirtyTargets = () => setSavedTargets(false);
+
   const points: WeightPoint[] = (items ?? []).map((w) => ({ date: w.date, weightKg: w.weightKg }));
   const trend = summarizeWeightTrend(points);
   const trendLine = (() => {
@@ -64,6 +124,18 @@ export default function WeightScreen() {
   })();
 
   const valid = toNumber(text) > 0;
+
+  // BMI from the CURRENT height input (live) + the latest logged weight.
+  const latestKg = items != null && items.length > 0 ? items[0].weightKg : 0;
+  const bmi = bmiValue(latestKg, toNumber(heightText));
+  const bmiLine =
+    bmi != null ? t('weight.bmi.value', { value: bmi.toFixed(1), category: t(`weight.bmi.category.${bmiCategory(bmi)}`) }) : null;
+
+  // Maintenance estimate goes live as soon as the profile is complete.
+  const suggested = suggestTargets(
+    { sex, birthYear: Math.round(toNumber(birthYearText)), heightCm: toNumber(heightText), activityLevel: activity },
+    latestKg,
+  );
 
   const rows: RowSpec[] = (items ?? []).map((w) => ({
     key: w.date,
@@ -101,6 +173,112 @@ export default function WeightScreen() {
         </Card>
       ) : null}
 
+      {/* BMI — the WHO bands, framed honestly: a 19th-century POPULATION
+          statistic that cannot see muscle mass, shown as reference, not verdict. */}
+      {db != null ? (
+        <Card style={styles.trendCard}>
+          <Text style={[styles.cardTitle, { color: theme.text }, theme.font.bodySemiBold]}>{t('weight.bmi.title')}</Text>
+          <View style={styles.heightRow}>
+            <Text style={[styles.fieldLabel, { color: theme.subtle }, theme.font.body]}>{t('weight.height')}</Text>
+            <TextField
+              value={heightText}
+              onChangeText={(v) => { setHeightText(v); dirtyTargets(); }}
+              keyboardType="numeric"
+              style={styles.heightInput}
+            />
+            <Text style={[styles.unit, { color: theme.subtle }, theme.font.body]}>{t('weight.heightUnit')}</Text>
+          </View>
+          {bmiLine != null ? (
+            <>
+              <Text style={[styles.bmiValue, { color: theme.text }, theme.font.bodySemiBold]}>{bmiLine}</Text>
+              <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>{t('weight.bmi.ranges')}</Text>
+            </>
+          ) : (
+            <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
+              {toNumber(heightText) > 0 ? t('weight.bmi.needWeight') : t('weight.bmi.needHeight')}
+            </Text>
+          )}
+          <Text style={[styles.disclaimer, { color: theme.subtle }, theme.font.body]}>{t('weight.bmi.disclaimer')}</Text>
+        </Card>
+      ) : null}
+
+      {/* КБЖУ targets (moved here from settings) + the formula estimate. */}
+      {db != null ? (
+        <Card style={styles.trendCard}>
+          <Text style={[styles.cardTitle, { color: theme.text }, theme.font.bodySemiBold]}>{t('weight.targets.title')}</Text>
+          <Field label={t('settings.targetKcal')} value={kcal} onChange={(v) => { setKcal(v); dirtyTargets(); }} theme={theme} />
+          <Field label={t('settings.targetProtein')} value={protein} onChange={(v) => { setProtein(v); dirtyTargets(); }} theme={theme} />
+          <Field label={t('settings.targetFat')} value={fat} onChange={(v) => { setFat(v); dirtyTargets(); }} theme={theme} />
+          <Field label={t('settings.targetCarb')} value={carb} onChange={(v) => { setCarb(v); dirtyTargets(); }} theme={theme} />
+          <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>{t('weight.targets.note')}</Text>
+
+          <Text style={[styles.formulaTitle, { color: theme.text }, theme.font.bodySemiBold]}>{t('weight.formula.title')}</Text>
+          <Text style={[styles.fieldLabel, { color: theme.subtle }, theme.font.body]}>{t('weight.formula.sex')}</Text>
+          <View style={styles.chips}>
+            {(['male', 'female'] as const).map((s) => (
+              <Chip
+                key={s}
+                label={t(`weight.formula.${s}`)}
+                active={sex === s}
+                onPress={() => { setSex(s); dirtyTargets(); }}
+                theme={theme}
+              />
+            ))}
+          </View>
+          <Field
+            label={t('weight.formula.birthYear')}
+            value={birthYearText}
+            onChange={(v) => { setBirthYearText(v); dirtyTargets(); }}
+            theme={theme}
+          />
+          <Text style={[styles.fieldLabel, { color: theme.subtle }, theme.font.body]}>{t('weight.formula.activity')}</Text>
+          <View style={styles.chips}>
+            {ACTIVITY_LEVELS.map((a) => (
+              <Chip
+                key={a}
+                label={t(`weight.formula.activityLevel.${a}`)}
+                active={activity === a}
+                onPress={() => { setActivity(a); dirtyTargets(); }}
+                theme={theme}
+              />
+            ))}
+          </View>
+          <Text style={[styles.disclaimer, { color: theme.subtle }, theme.font.body]}>{t('weight.formula.activityNote')}</Text>
+
+          {suggested != null ? (
+            <>
+              <Text style={[styles.bmiValue, { color: theme.text }, theme.font.bodySemiBold]}>
+                {t('weight.formula.result', { ...suggested })}
+              </Text>
+              <Pressable
+                onPress={() => {
+                  setKcal(String(suggested.kcal));
+                  setProtein(String(suggested.prot));
+                  setFat(String(suggested.fat));
+                  setCarb(String(suggested.carb));
+                  dirtyTargets();
+                }}
+                style={({ pressed }) => [styles.applyBtn, { borderColor: theme.primary, opacity: pressed ? 0.6 : 1 }]}
+              >
+                <Text style={[styles.applyText, { color: theme.primary }, theme.font.bodySemiBold]}>
+                  {t('weight.formula.apply')}
+                </Text>
+              </Pressable>
+            </>
+          ) : (
+            <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>{t('weight.formula.incomplete')}</Text>
+          )}
+          <Text style={[styles.disclaimer, { color: theme.subtle }, theme.font.body]}>{t('weight.formula.note')}</Text>
+
+          <PrimaryButton
+            label={savingTargets ? t('weight.saving') : savedTargets ? t('weight.targets.saved') : t('weight.targets.save')}
+            onPress={onSaveTargets}
+            disabled={db == null || savingTargets}
+            style={styles.saveTargets}
+          />
+        </Card>
+      ) : null}
+
       {db == null ? (
         <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('weight.dbUnavailable')}</Text>
       ) : items == null ? null : items.length === 0 ? (
@@ -111,6 +289,53 @@ export default function WeightScreen() {
         </View>
       )}
     </Screen>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChange,
+  theme,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  theme: Theme;
+}) {
+  return (
+    <View style={styles.field}>
+      <Text style={[styles.fieldLabel, { color: theme.subtle }, theme.font.body]}>{label}</Text>
+      <TextField value={value} onChangeText={onChange} keyboardType="numeric" />
+    </View>
+  );
+}
+
+function Chip({
+  label,
+  active,
+  onPress,
+  theme,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+  theme: Theme;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.chip,
+        {
+          backgroundColor: active ? theme.primary : theme.card,
+          borderColor: active ? theme.primary : theme.separator,
+          opacity: pressed ? 0.7 : 1,
+        },
+      ]}
+    >
+      <Text style={[styles.chipText, { color: active ? theme.onPrimary : theme.text }, theme.font.body]}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -133,6 +358,20 @@ const styles = StyleSheet.create({
   trendCard: { marginBottom: 16 },
   trendText: { fontSize: 15 },
   trendNote: { fontSize: 12, marginTop: 6, lineHeight: 17 },
+  cardTitle: { fontSize: 16, marginBottom: 8 },
+  heightRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
+  heightInput: { flex: 1 },
+  bmiValue: { fontSize: 15, marginTop: 8 },
+  disclaimer: { fontSize: 11, fontStyle: 'italic', marginTop: 8, lineHeight: 16 },
+  field: { marginBottom: 10 },
+  fieldLabel: { fontSize: 12, marginBottom: 5, marginTop: 4 },
+  formulaTitle: { fontSize: 15, marginTop: 14, marginBottom: 6 },
+  chips: { flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginBottom: 8 },
+  chip: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 7 },
+  chipText: { fontSize: 13 },
+  applyBtn: { borderWidth: 1.5, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 10, alignSelf: 'flex-start', marginTop: 10 },
+  applyText: { fontSize: 14 },
+  saveTargets: { marginTop: 14 },
   hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
   history: { marginTop: 4 },
   rowKg: { fontSize: 16 },

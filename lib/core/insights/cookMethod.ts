@@ -54,6 +54,57 @@ function round1(n: number): number {
   return Math.round(n * 10) / 10;
 }
 
+/// Drink markers that are safe to match ANYWHERE in a name (unambiguous stems).
+const DRINK_STEMS = [
+  'напит', // напиток/напитка/напитки
+  'лимонад',
+  'энергетик',
+  'коктейл',
+  'смузи',
+  'газиров',
+  'минералк',
+  'комбуч',
+  'drink',
+  'beverage',
+  'juice',
+  'lemonade',
+  'cocktail',
+  'smoothie',
+  'milkshake',
+  'kombucha',
+];
+
+/// Drink markers matched as EXACT word tokens (substrings would false-positive:
+/// «вино» is in «свинина»). JS `\b` doesn't work for Cyrillic, so common RU case
+/// forms are enumerated instead of stemmed. Bare EN 'milk' is deliberately
+/// absent — "milk porridge" must stay cookable.
+const DRINK_WORDS = new Set([
+  ...['сок', 'сока', 'соку', 'соком', 'соке', 'соки', 'соков'],
+  ...['кола', 'колы', 'пепси', 'спрайт', 'фанта', 'тархун', 'квас', 'кваса', 'морс', 'морса'],
+  ...['компот', 'компота', 'кисель', 'киселя', 'цикорий'],
+  ...['чай', 'чая', 'чаю', 'кофе', 'латте', 'капучино', 'эспрессо', 'американо', 'какао'],
+  ...['вода', 'воды', 'водой', 'пиво', 'пива', 'вино', 'вина', 'сидр', 'шампанское', 'глинтвейн', 'пунш'],
+  ...['водка', 'водки', 'виски', 'ром', 'рома', 'джин', 'коньяк', 'коньяка', 'ликёр', 'ликер'],
+  ...['кефир', 'кефира', 'ряженка', 'ряженки', 'простокваша', 'айран', 'тан', 'молоко'],
+  ...['tea', 'coffee', 'latte', 'cappuccino', 'espresso', 'americano', 'cocoa', 'water', 'soda'],
+  ...['cola', 'pepsi', 'sprite', 'fanta', 'kvass', 'mors', 'compote', 'kissel'],
+  ...['beer', 'wine', 'cider', 'champagne', 'vodka', 'whiskey', 'whisky', 'rum', 'gin', 'cognac', 'brandy', 'liqueur', 'punch'],
+  ...['kefir', 'ryazhenka', 'ayran', 'milkshake'],
+]);
+
+/// Whether the "how it was cooked" adjustment makes sense for this food at all.
+/// Drinks (энергетики, соки, кофе…) are consumed as-is — offering «жареное» for
+/// a can of energy drink is nonsense, and a stray chip tap would silently
+/// inflate its kcal. The wire contract carries no category, so this is a
+/// client-side name heuristic over BOTH names (the LLM always returns name_en).
+/// False positives are benign: the item just keeps its DB baseline.
+export function cookMethodApplies(nameRu: string, nameEn: string): boolean {
+  const hay = `${nameRu} ${nameEn}`.toLowerCase();
+  if (DRINK_STEMS.some((s) => hay.includes(s))) return false;
+  const tokens = hay.split(/[^a-zа-яё]+/u);
+  return !tokens.some((tok) => DRINK_WORDS.has(tok));
+}
+
 /// Apply a cooking method's coarse factors to a DB baseline per-100g block.
 /// Pure + deterministic; minerals and `source` pass through unchanged (per-method
 /// mineral changes are out of scope for v1). `raw` is the identity.

@@ -118,6 +118,14 @@ export const appSettings = sqliteTable('app_settings', {
   targetCarbG: real('target_carb_g').notNull().default(200),
   // Personal, achievable goal — deliberately NOT the "10,000 steps" myth.
   stepsGoal: integer('steps_goal').notNull().default(7000),
+  // Body profile for BMI + the Mifflin–St Jeor КБЖУ estimate (weight screen).
+  // Zero / empty string mean "not provided" — all four are optional and local.
+  heightCm: real('height_cm').notNull().default(0),
+  sex: text('sex', { enum: ['', 'male', 'female'] }).notNull().default(''),
+  birthYear: integer('birth_year').notNull().default(0),
+  activityLevel: text('activity_level', { enum: ['', 'sedentary', 'light', 'moderate', 'high'] })
+    .notNull()
+    .default(''),
   // Nutrition region for the food parser: 'auto' follows device locale, else
   // forces RU/US (resolveRegion: appSettings.region ?? deviceLocale.region).
   region: text('region', { enum: ['auto', 'RU', 'US'] }).notNull().default('auto'),

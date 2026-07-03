@@ -26,6 +26,11 @@ export interface SettingsPatch {
   targetFatG?: number;
   targetCarbG?: number;
   stepsGoal?: number;
+  // Body profile (weight screen): 0 / '' mean "clear back to not-provided".
+  heightCm?: number;
+  sex?: '' | 'male' | 'female';
+  birthYear?: number;
+  activityLevel?: '' | 'sedentary' | 'light' | 'moderate' | 'high';
   reminderTimes?: string[];
   hideCalories?: boolean;
   llmDiaryAssist?: boolean;
@@ -60,6 +65,10 @@ export async function updateSettings(
   if (patch.targetFatG != null) set.targetFatG = patch.targetFatG;
   if (patch.targetCarbG != null) set.targetCarbG = patch.targetCarbG;
   if (patch.stepsGoal != null) set.stepsGoal = patch.stepsGoal;
+  if (patch.heightCm != null) set.heightCm = patch.heightCm;
+  if (patch.sex != null) set.sex = patch.sex;
+  if (patch.birthYear != null) set.birthYear = patch.birthYear;
+  if (patch.activityLevel != null) set.activityLevel = patch.activityLevel;
   if (patch.reminderTimes != null) set.reminderTimes = JSON.stringify(patch.reminderTimes);
   if (patch.hideCalories != null) set.hideCalories = patch.hideCalories;
   if (patch.llmDiaryAssist != null) set.llmDiaryAssist = patch.llmDiaryAssist;

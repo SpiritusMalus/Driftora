@@ -32,10 +32,11 @@ import {
   startRecording,
   type ActiveRecording,
 } from '@/lib/core/services/audioRecorder';
-import type { AudioInput, MealDraft, Minerals, NutritionAlternative, NutritionItem, PhotoInput, Region } from '@/lib/core/services/foodParser';
+import type { AudioInput, MealDraft, NutrientValues, NutritionAlternative, NutritionItem, PhotoInput, Region } from '@/lib/core/services/foodParser';
+import { nutrientDetailRows } from '@/lib/core/insights/nutrientDetail';
 import { getFoodParser, resolveRegion } from '@/lib/core/services/foodParserProvider';
 import { recomputeDraft, withItemAlternative, withItemCookMethod, withItemGrams, withItemManualMacros, withItemReplacement } from '@/lib/core/services/mealDraft';
-import { COOK_METHODS, type CookMethod } from '@/lib/core/insights/cookMethod';
+import { COOK_METHODS, cookMethodApplies, type CookMethod } from '@/lib/core/insights/cookMethod';
 import { capturePhoto, isPhotoCaptureAvailable } from '@/lib/core/services/photoProvider';
 import { getSpeechService } from '@/lib/core/services/speechProvider';
 import { type Theme, useTheme } from '@/lib/theme/theme';
@@ -45,7 +46,6 @@ import { type Theme, useTheme } from '@/lib/theme/theme';
 /// offline and nothing can leave the device.
 const AI_CONFIGURED = !!process.env.EXPO_PUBLIC_FOOD_API_URL;
 
-const MINERAL_KEYS: readonly (keyof Minerals)[] = ['na', 'k', 'ca', 'mg', 'fe', 'zn'];
 
 /// Text/voice → parse → two-tier honest result (exact per-100g + approximate
 /// whole-dish total) → confirm grams → save.
@@ -591,6 +591,8 @@ export default function FoodLogScreen() {
                 ? `${t('macros.protein')} ${draft.totals.prot} ${t('units.g')}`
                 : `${draft.totals.kcal} ${t('units.kcal')} · ${t('macros.protein')} ${draft.totals.prot} ${t('units.g')} · ${t('macros.fat')} ${draft.totals.fat} · ${t('macros.carbs')} ${draft.totals.carb}`}
             </Text>
+            {/* Meal-level extended composition — an honest partial sum. */}
+            <NutrientDetail values={draft.totals} caption={t('food.detail.totalsNote')} theme={theme} />
             <Pressable onPress={onToggleHideCalories} hitSlop={8} style={styles.hideCaloriesToggle}>
               <Text style={[styles.hideCaloriesText, { color: theme.subtle }, theme.font.body]}>
                 {hideCalories ? t('food.showCalories') : t('food.hideCalories')}
@@ -664,13 +666,46 @@ function ApproxBadge({ theme, label }: { theme: Theme; label: string }) {
   );
 }
 
-function mineralLine(item: NutritionItem, t: (k: string) => string): string {
-  const parts: string[] = [];
-  for (const key of MINERAL_KEYS) {
-    const v = item.per100.minerals[key];
-    if (typeof v === 'number' && v > 0) parts.push(`${t(`food.minerals.${key}`)} ${Math.round(v)}`);
-  }
-  return parts.join(' · ');
+/// Expandable extended-composition block (fiber/sugar/sat. fat + minerals) for
+/// a scaled nutrient set. Renders nothing when the source gave only КБЖУ —
+/// we never pad the list with zeros the DB didn't state (HONESTY RULE).
+function NutrientDetail({
+  values,
+  caption,
+  theme,
+}: {
+  values: NutrientValues;
+  caption: string;
+  theme: Theme;
+}) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const rows = nutrientDetailRows(values);
+  if (rows.length === 0) return null;
+  return (
+    <View style={styles.altWrap}>
+      <Pressable onPress={() => setOpen((s) => !s)} hitSlop={6}>
+        <Text style={[styles.altToggle, { color: theme.primary }, theme.font.body]}>
+          {open ? t('food.detail.hide') : t('food.detail.show')}
+        </Text>
+      </Pressable>
+      {open ? (
+        <View style={styles.detailBox}>
+          {rows.map((r) => (
+            <View key={r.key} style={styles.detailRow}>
+              <Text style={[styles.detailLabel, { color: theme.subtle }, theme.font.body]}>
+                {t(`food.detail.label.${r.key}`)}
+              </Text>
+              <Text style={[styles.detailValue, { color: theme.text }, theme.font.bodyMedium]}>
+                {r.value} {t(`food.detail.unit.${r.unit}`)}
+              </Text>
+            </View>
+          ))}
+          <Text style={[styles.detailCaption, { color: theme.subtle }, theme.font.body]}>{caption}</Text>
+        </View>
+      ) : null}
+    </View>
+  );
 }
 
 function ItemCard({
@@ -695,8 +730,12 @@ function ItemCard({
   onReplace: (replacement: NutritionAlternative) => void;
 }) {
   const { t } = useTranslation();
-  const minerals = mineralLine(item, t);
   const activeMethod: CookMethod = item.cook_method ?? 'raw';
+  // Drinks are consumed as-is — no "how it was cooked" row for them.
+  const cookable = cookMethodApplies(item.name_ru, item.name_en);
+  // The "per 100 g · <source>" line always shows the DB row itself (that's the
+  // promise in the footnote); a cook-method adjustment only moves the totals.
+  const dbPer100 = item.basePer100 ?? item.per100;
   // A full DB miss: the resolver's coarse placeholder. We show NO fabricated
   // numbers for it — only an honest "not in our database" + manual entry.
   const isMiss = item.per100.source === 'estimate';
@@ -737,12 +776,15 @@ function ItemCard({
           </Text>
           <Text style={[styles.per100Value, { color: theme.text }, theme.font.body]}>
             {hideCalories
-              ? `${t('macros.protein')} ${item.per100.prot} · ${t('macros.fat')} ${item.per100.fat} · ${t('macros.carbs')} ${item.per100.carb}`
-              : `${item.per100.kcal} ${t('units.kcal')} · ${t('macros.protein')} ${item.per100.prot} · ${t('macros.fat')} ${item.per100.fat} · ${t('macros.carbs')} ${item.per100.carb}`}
+              ? `${t('macros.protein')} ${dbPer100.prot} · ${t('macros.fat')} ${dbPer100.fat} · ${t('macros.carbs')} ${dbPer100.carb}`
+              : `${dbPer100.kcal} ${t('units.kcal')} · ${t('macros.protein')} ${dbPer100.prot} · ${t('macros.fat')} ${dbPer100.fat} · ${t('macros.carbs')} ${dbPer100.carb}`}
           </Text>
-          {minerals.length > 0 ? (
-            <Text style={[styles.minerals, { color: theme.subtle }, theme.font.body]}>{minerals}</Text>
-          ) : null}
+          {/* Fiber/sugar/sat-fat + minerals, scaled to the chosen weight. */}
+          <NutrientDetail
+            values={item.scaled}
+            caption={t('food.detail.basis', { grams: Math.round(item.grams) })}
+            theme={theme}
+          />
         </>
       )}
 
@@ -852,35 +894,37 @@ function ItemCard({
 
       {/* Cooking method — neutral chips ("how it was cooked"), never framed as
           healthier/worse. A non-baseline method coarsely adjusts kcal/fat and is
-          shown as approximate. Offline, deterministic. */}
-      <View style={styles.cookRow}>
-        <Text style={[styles.gramsLabel, { color: theme.subtle }, theme.font.body]}>
-          {t('food.cookMethod.label')}
-        </Text>
-        <View style={styles.cookChips}>
-          {COOK_METHODS.map((m) => {
-            const active = activeMethod === m;
-            return (
-              <Pressable
-                key={m}
-                onPress={() => onCookMethod(m)}
-                style={({ pressed }) => [
-                  styles.cookChip,
-                  {
-                    backgroundColor: active ? theme.primary : theme.card,
-                    borderColor: active ? theme.primary : theme.separator,
-                    opacity: pressed ? 0.7 : 1,
-                  },
-                ]}
-              >
-                <Text style={[styles.cookChipText, { color: active ? theme.onPrimary : theme.text }, theme.font.body]}>
-                  {t(`food.cookMethod.${m}`)}
-                </Text>
-              </Pressable>
-            );
-          })}
+          shown as approximate. Offline, deterministic. Hidden for drinks. */}
+      {cookable ? (
+        <View style={styles.cookRow}>
+          <Text style={[styles.gramsLabel, { color: theme.subtle }, theme.font.body]}>
+            {t('food.cookMethod.label')}
+          </Text>
+          <View style={styles.cookChips}>
+            {COOK_METHODS.map((m) => {
+              const active = activeMethod === m;
+              return (
+                <Pressable
+                  key={m}
+                  onPress={() => onCookMethod(m)}
+                  style={({ pressed }) => [
+                    styles.cookChip,
+                    {
+                      backgroundColor: active ? theme.primary : theme.card,
+                      borderColor: active ? theme.primary : theme.separator,
+                      opacity: pressed ? 0.7 : 1,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.cookChipText, { color: active ? theme.onPrimary : theme.text }, theme.font.body]}>
+                    {t(`food.cookMethod.${m}`)}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
-      </View>
+      ) : null}
 
       {/* Confirm grams → flips the item out of "approximate". The exact weight
           input is the whole control now (the S/M/L presets were redundant). */}
@@ -1002,7 +1046,11 @@ const styles = StyleSheet.create({
   itemName: { fontSize: 15, marginBottom: 6 },
   per100Label: { fontSize: 11, marginBottom: 2 },
   per100Value: { fontSize: 13, marginBottom: 2 },
-  minerals: { fontSize: 11, marginBottom: 8, lineHeight: 16 },
+  detailBox: { marginTop: 6, gap: 3 },
+  detailRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  detailLabel: { fontSize: 12 },
+  detailValue: { fontSize: 12 },
+  detailCaption: { fontSize: 10, fontStyle: 'italic', marginTop: 4, lineHeight: 14 },
   cookRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6, flexWrap: 'wrap' },
   cookChips: { flexDirection: 'row', gap: 6, flexWrap: 'wrap', flexShrink: 1 },
   cookChip: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 6 },

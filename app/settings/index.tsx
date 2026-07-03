@@ -41,10 +41,6 @@ export default function SettingsScreen() {
   const router = useRouter();
 
   const [loaded, setLoaded] = useState(false);
-  const [kcal, setKcal] = useState('2000');
-  const [protein, setProtein] = useState('120');
-  const [fat, setFat] = useState('70');
-  const [carb, setCarb] = useState('200');
   const [stepsGoal, setStepsGoal] = useState('7000');
   const [reminders, setReminders] = useState<string[]>([]);
   const [newTime, setNewTime] = useState('');
@@ -70,10 +66,6 @@ export default function SettingsScreen() {
         if (!db || loaded) return;
         const s = await ensureSettings(db);
         if (!active) return;
-        setKcal(String(s.targetKcal));
-        setProtein(String(s.targetProteinG));
-        setFat(String(s.targetFatG));
-        setCarb(String(s.targetCarbG));
         setStepsGoal(String(s.stepsGoal));
         setReminders(parseReminderTimes(s.reminderTimes));
         setHideCalories(s.hideCalories);
@@ -107,10 +99,6 @@ export default function SettingsScreen() {
     setSaving(true);
     try {
       await updateSettings(db, {
-        targetKcal: toNumber(kcal),
-        targetProteinG: toNumber(protein),
-        targetFatG: toNumber(fat),
-        targetCarbG: toNumber(carb),
         stepsGoal: Math.round(toNumber(stepsGoal)),
         reminderTimes: reminders,
         hideCalories,
@@ -210,11 +198,9 @@ export default function SettingsScreen() {
       <Note theme={theme}>{t('settings.pauseNote')}</Note>
 
       <SectionHeader>{t('settings.targets')}</SectionHeader>
-      <NumberField label={t('settings.targetKcal')} value={kcal} onChange={(v) => { setKcal(v); dirty(); }} theme={theme} />
-      <NumberField label={t('settings.targetProtein')} value={protein} onChange={(v) => { setProtein(v); dirty(); }} theme={theme} />
-      <NumberField label={t('settings.targetFat')} value={fat} onChange={(v) => { setFat(v); dirty(); }} theme={theme} />
-      <NumberField label={t('settings.targetCarb')} value={carb} onChange={(v) => { setCarb(v); dirty(); }} theme={theme} />
       <NumberField label={t('settings.stepsGoal')} value={stepsGoal} onChange={(v) => { setStepsGoal(v); dirty(); }} theme={theme} />
+      {/* КБЖУ targets live on the Weight screen now — next to BMI + the formula. */}
+      <Note theme={theme}>{t('settings.targetsMoved')}</Note>
 
       <SectionHeader>{t('settings.reminders')}</SectionHeader>
       {reminders.map((time) => (
