@@ -177,3 +177,31 @@ test('OFF search: network failure yields an empty list, never a throw', async ()
   const off = new OpenFoodFactsProvider();
   assert.deepEqual(await off.searchMany('кефир', 'RU'), []);
 });
+
+// ---- resolver: composition-aware demotion («без сахара» bug) ----------------
+
+test('a sugared row never outranks a true zero row on a «без сахара» query', async () => {
+  const off: NutritionProvider = {
+    name: 'off-like',
+    regions: ['RU'],
+    async search() {
+      return null;
+    },
+    async searchMany() {
+      return [
+        // Name-ranked first, but composition contradicts the query.
+        { per100: { ...per100(48), carb: 11.6, sugar: 11.2 }, confidence: 0.9, name: 'Напиток энергетический Arctic' },
+        { per100: { ...per100(2), carb: 0.4, sugar: 0 }, confidence: 0.75, name: 'Energy drink zero' },
+      ];
+    },
+  };
+  const resolver = new Resolver([off]);
+
+  const r = await resolver.resolveItem(
+    item({ name_ru: 'энергетический напиток без сахара', name_en: 'sugar-free energy drink' }),
+    'RU',
+  );
+  assert.equal(r.per100.kcal, 2); // the zero row wins despite the lower name score
+  const altNames = (r.alternatives ?? []).map((a) => a.name);
+  assert.ok(altNames.includes('Напиток энергетический Arctic')); // sugared row demoted, still reachable
+});
