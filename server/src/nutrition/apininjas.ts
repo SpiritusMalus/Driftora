@@ -9,7 +9,10 @@ interface NinjaItem {
   calories?: number;
   protein_g?: number;
   fat_total_g?: number;
+  fat_saturated_g?: number;
   carbohydrates_total_g?: number;
+  fiber_g?: number;
+  sugar_g?: number;
   sodium_mg?: number;
   potassium_mg?: number;
   serving_size_g?: number;
@@ -60,6 +63,11 @@ export class ApiNinjasProvider implements NutritionProvider {
     const out: ProviderResult[] = [];
     for (const c of ranked) {
       const item = c.value;
+      // Same invariant as USDA/OFF: an item with no macro fields at all must
+      // not be zero-filled into "N kcal · Б0/Ж0/У0".
+      if (item.protein_g === undefined && item.fat_total_g === undefined && item.carbohydrates_total_g === undefined) {
+        continue;
+      }
       const serving = typeof item.serving_size_g === 'number' && item.serving_size_g > 0 ? item.serving_size_g : 100;
       const factor = 100 / serving; // per-serving → per-100g
       const minerals: Minerals = {};
@@ -74,6 +82,9 @@ export class ApiNinjasProvider implements NutritionProvider {
         prot: (item.protein_g ?? 0) * factor,
         fat: (item.fat_total_g ?? 0) * factor,
         carb: (item.carbohydrates_total_g ?? 0) * factor,
+        ...(typeof item.fiber_g === 'number' ? { fiber: item.fiber_g * factor } : {}),
+        ...(typeof item.sugar_g === 'number' ? { sugar: item.sugar_g * factor } : {}),
+        ...(typeof item.fat_saturated_g === 'number' ? { satFat: item.fat_saturated_g * factor } : {}),
         minerals,
       };
       if (per100.kcal === 0 && per100.prot === 0) continue;

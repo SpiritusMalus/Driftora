@@ -36,6 +36,11 @@ export interface Minerals {
 /** Macros + minerals for a fixed quantity (per-100g or scaled). */
 export interface NutrientValues {
   kcal: number;
+  // Extended-label fields (grams). Present ONLY when the source provides the
+  // field — never zero-filled, so a 0 is always a real zero, not missing data.
+  fiber?: number;
+  sugar?: number;
+  satFat?: number;
   prot: number;
   fat: number;
   carb: number;
@@ -98,6 +103,7 @@ export interface MealDraft {
 }
 
 const MINERAL_KEYS: readonly (keyof Minerals)[] = ['na', 'k', 'ca', 'mg', 'fe', 'zn'];
+const EXTRA_KEYS = ['fiber', 'sugar', 'satFat'] as const;
 const LOW_CONFIDENCE_FLOOR = 0.5;
 
 export function round1(n: number): number {
@@ -119,13 +125,18 @@ export function scaleToGrams(per100: NutrientValues, grams: number): NutrientVal
       minerals[key] = Math.round(v * factor);
     }
   }
-  return {
+  const out: NutrientValues = {
     kcal: Math.round(per100.kcal * factor),
     prot: round1(per100.prot * factor),
     fat: round1(per100.fat * factor),
     carb: round1(per100.carb * factor),
     minerals,
   };
+  for (const key of EXTRA_KEYS) {
+    const v = per100[key];
+    if (typeof v === 'number' && Number.isFinite(v)) out[key] = round1(v * factor);
+  }
+  return out;
 }
 
 /** Sum scaled component values into a single totals block. */
@@ -135,6 +146,9 @@ export function sumNutrients(items: { scaled: NutrientValues }[]): NutrientValue
   let prot = 0;
   let fat = 0;
   let carb = 0;
+  // Extras sum like minerals do: over the items that HAVE the field (an
+  // "at least this much" partial sum — the UI says so).
+  const extras: Partial<Record<(typeof EXTRA_KEYS)[number], number>> = {};
   for (const it of items) {
     kcal += it.scaled.kcal;
     prot += it.scaled.prot;
@@ -146,8 +160,19 @@ export function sumNutrients(items: { scaled: NutrientValues }[]): NutrientValue
         minerals[key] = (minerals[key] ?? 0) + v;
       }
     }
+    for (const key of EXTRA_KEYS) {
+      const v = it.scaled[key];
+      if (typeof v === 'number' && Number.isFinite(v)) {
+        extras[key] = (extras[key] ?? 0) + v;
+      }
+    }
   }
-  return { kcal: Math.round(kcal), prot: round1(prot), fat: round1(fat), carb: round1(carb), minerals };
+  const out: NutrientValues = { kcal: Math.round(kcal), prot: round1(prot), fat: round1(fat), carb: round1(carb), minerals };
+  for (const key of EXTRA_KEYS) {
+    const v = extras[key];
+    if (v !== undefined) out[key] = round1(v);
+  }
+  return out;
 }
 
 /** Build the meal-level totals/flags from already-resolved items. */
@@ -197,7 +222,7 @@ export function coercePer100(raw: unknown): Per100 {
   const source: NutritionSource = SOURCES.includes(r.source as NutritionSource)
     ? (r.source as NutritionSource)
     : 'estimate';
-  return {
+  const out: Per100 = {
     source,
     kcal: Math.max(0, Math.round(num(r.kcal))),
     prot: round1(Math.max(0, num(r.prot))),
@@ -205,6 +230,11 @@ export function coercePer100(raw: unknown): Per100 {
     carb: round1(Math.max(0, num(r.carb))),
     minerals: coerceMinerals(r.minerals),
   };
+  // Extended-label fields survive coercion only when actually present.
+  for (const key of EXTRA_KEYS) {
+    if (r[key] !== undefined && r[key] !== null) out[key] = round1(Math.max(0, num(r[key])));
+  }
+  return out;
 }
 
 /**
