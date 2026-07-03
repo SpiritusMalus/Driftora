@@ -17,6 +17,7 @@ import type {
 /// totals live as the user confirms grams — without another round-trip.
 
 const MINERAL_KEYS: readonly (keyof Minerals)[] = ['na', 'k', 'ca', 'mg', 'fe', 'zn'];
+const EXTRA_KEYS = ['fiber', 'sugar', 'satFat'] as const;
 const LOW_CONFIDENCE_FLOOR = 0.5;
 
 function round1(n: number): number {
@@ -33,13 +34,18 @@ export function scaleToGrams(per100: NutrientValues, grams: number): NutrientVal
       minerals[key] = Math.round(v * factor);
     }
   }
-  return {
+  const out: NutrientValues = {
     kcal: Math.round(per100.kcal * factor),
     prot: round1(per100.prot * factor),
     fat: round1(per100.fat * factor),
     carb: round1(per100.carb * factor),
     minerals,
   };
+  for (const key of EXTRA_KEYS) {
+    const v = per100[key];
+    if (typeof v === 'number' && Number.isFinite(v)) out[key] = round1(v * factor);
+  }
+  return out;
 }
 
 /// Sum scaled component values into a single totals block.
@@ -49,6 +55,9 @@ export function sumNutrients(items: { scaled: NutrientValues }[]): NutrientValue
   let prot = 0;
   let fat = 0;
   let carb = 0;
+  // Extras sum like minerals do: over the items that HAVE the field (an
+  // "at least this much" partial sum — the UI says so).
+  const extras: Partial<Record<(typeof EXTRA_KEYS)[number], number>> = {};
   for (const it of items) {
     kcal += it.scaled.kcal;
     prot += it.scaled.prot;
@@ -60,8 +69,19 @@ export function sumNutrients(items: { scaled: NutrientValues }[]): NutrientValue
         minerals[key] = (minerals[key] ?? 0) + v;
       }
     }
+    for (const key of EXTRA_KEYS) {
+      const v = it.scaled[key];
+      if (typeof v === 'number' && Number.isFinite(v)) {
+        extras[key] = (extras[key] ?? 0) + v;
+      }
+    }
   }
-  return { kcal: Math.round(kcal), prot: round1(prot), fat: round1(fat), carb: round1(carb), minerals };
+  const out: NutrientValues = { kcal: Math.round(kcal), prot: round1(prot), fat: round1(fat), carb: round1(carb), minerals };
+  for (const key of EXTRA_KEYS) {
+    const v = extras[key];
+    if (v !== undefined) out[key] = round1(v);
+  }
+  return out;
 }
 
 /// Rebuild totals/flags/approximate from the current items.

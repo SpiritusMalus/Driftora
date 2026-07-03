@@ -61,12 +61,19 @@ function toPer100(nutriments: OffNutriments): Per100 {
     const grams = n(nutriments, MINERAL_FIELDS[key]);
     if (typeof grams === 'number') minerals[key] = grams * 1000; // g → mg
   }
+  // Extended label — kept only when the crowd row actually has the field.
+  const fiber = n(nutriments, 'fiber_100g');
+  const sugar = n(nutriments, 'sugars_100g');
+  const satFat = n(nutriments, 'saturated-fat_100g');
   return {
     source: 'openfoodfacts',
     kcal: Math.round(kcalOf(nutriments) ?? 0),
     prot: n(nutriments, 'proteins_100g') ?? 0,
     fat: n(nutriments, 'fat_100g') ?? 0,
     carb: n(nutriments, 'carbohydrates_100g') ?? 0,
+    ...(fiber !== undefined ? { fiber } : {}),
+    ...(sugar !== undefined ? { sugar } : {}),
+    ...(satFat !== undefined ? { satFat } : {}),
     minerals,
   };
 }
@@ -109,6 +116,14 @@ export class OpenFoodFactsProvider implements NutritionProvider {
       | null;
     const nutriments = data?.product?.nutriments;
     if (data?.status !== 1 || !nutriments) return null;
+
+    // A kcal-only crowd row would render as real calories over fabricated
+    // Б0/Ж0/У0 — a product with no macro fields at all is unusable.
+    const hasMacroFields =
+      n(nutriments, 'proteins_100g') !== undefined ||
+      n(nutriments, 'fat_100g') !== undefined ||
+      n(nutriments, 'carbohydrates_100g') !== undefined;
+    if (!hasMacroFields) return null;
 
     const per100 = toPer100(nutriments);
     if (per100.kcal === 0 && per100.prot === 0) return null;

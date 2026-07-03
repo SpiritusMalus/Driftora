@@ -82,6 +82,10 @@ CREATE TABLE IF NOT EXISTS app_settings (
   target_fat_g REAL NOT NULL DEFAULT 70,
   target_carb_g REAL NOT NULL DEFAULT 200,
   steps_goal INTEGER NOT NULL DEFAULT 7000,
+  height_cm REAL NOT NULL DEFAULT 0,
+  sex TEXT NOT NULL DEFAULT '',
+  birth_year INTEGER NOT NULL DEFAULT 0,
+  activity_level TEXT NOT NULL DEFAULT '',
   reminder_times TEXT NOT NULL DEFAULT '[]',
   hide_calories INTEGER NOT NULL DEFAULT 0,
   llm_diary_assist INTEGER NOT NULL DEFAULT 0,
@@ -137,6 +141,12 @@ export const MIGRATIONS: string[] = [
   // 2026-06-25: mood BEFORE the diary thought record (user feedback) — pairs with
   // the existing `mood` (after) to show the shift across one СМЭР record.
   `ALTER TABLE diary_entries ADD COLUMN mood_before INTEGER`,
+  // 2026-07-03: optional body profile for BMI + the Mifflin–St Jeor КБЖУ
+  // estimate on the weight screen. Local-only, zero/empty = not provided.
+  `ALTER TABLE app_settings ADD COLUMN height_cm REAL NOT NULL DEFAULT 0`,
+  `ALTER TABLE app_settings ADD COLUMN sex TEXT NOT NULL DEFAULT ''`,
+  `ALTER TABLE app_settings ADD COLUMN birth_year INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE app_settings ADD COLUMN activity_level TEXT NOT NULL DEFAULT ''`,
 ];
 
 /// Runs each CREATE statement through [run], then the idempotent [MIGRATIONS].

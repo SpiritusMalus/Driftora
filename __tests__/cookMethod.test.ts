@@ -3,6 +3,7 @@ import { describe, expect, it } from '@jest/globals';
 import {
   applyCookFactor,
   COOK_METHODS,
+  cookMethodApplies,
   isNeutralCookMethod,
 } from '@/lib/core/insights/cookMethod';
 import { withItemCookMethod } from '@/lib/core/services/mealDraft';
@@ -54,6 +55,32 @@ describe('cookMethod factors', () => {
     expect(fried.carb).toBe(5);
     expect(fried.source).toBe('usda'); // source passes through
     expect(applyCookFactor(base, 'fried')).toEqual(fried); // deterministic
+  });
+});
+
+describe('cookMethodApplies', () => {
+  it('rejects drinks by RU name, EN name, or both', () => {
+    // The prod case: «как энергетический напиток может быть на гриле?»
+    expect(cookMethodApplies('энергетический напиток адреналин раш', 'adrenaline rush energy drink')).toBe(false);
+    expect(cookMethodApplies('сок яблочный', 'apple juice')).toBe(false);
+    expect(cookMethodApplies('кофе с молоком', 'coffee with milk')).toBe(false);
+    expect(cookMethodApplies('кола', '')).toBe(false);
+    expect(cookMethodApplies('', 'green tea')).toBe(false);
+    expect(cookMethodApplies('кефир', 'kefir')).toBe(false);
+    expect(cookMethodApplies('компот из сухофруктов', 'dried fruit compote')).toBe(false);
+  });
+
+  it('keeps cookable foods cookable', () => {
+    expect(cookMethodApplies('борщ', 'borscht')).toBe(true);
+    expect(cookMethodApplies('пампушка', 'garlic bread roll')).toBe(true);
+    expect(cookMethodApplies('курица', 'chicken')).toBe(true);
+    expect(cookMethodApplies('сырок глазированный', 'glazed curd bar')).toBe(true);
+  });
+
+  it('matches whole words, not substrings («вино» is inside «свинина»)', () => {
+    expect(cookMethodApplies('свинина', 'pork')).toBe(true);
+    expect(cookMethodApplies('каша овсяная на молоке', 'oatmeal porridge with milk')).toBe(true);
+    expect(cookMethodApplies('сокол', '')).toBe(true); // not «сок»
   });
 });
 

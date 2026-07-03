@@ -36,6 +36,11 @@ export interface NutrientValues {
   prot: number;
   fat: number;
   carb: number;
+  // Extended-label fields (grams). Present ONLY when the source provides the
+  // field — never zero-filled, so a 0 is always a real zero, not missing data.
+  fiber?: number;
+  sugar?: number;
+  satFat?: number;
   minerals: Minerals;
 }
 
