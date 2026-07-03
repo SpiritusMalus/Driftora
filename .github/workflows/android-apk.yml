@@ -36,6 +36,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Visible build identity for the Settings footer («Сборка: дата · sha») —
+      # ends the "какая версия у меня стоит?" guessing game: every preview APK
+      # shares versionCode, so Android happily replaces newer with older.
+      - name: Stamp build info
+        run: echo "EXPO_PUBLIC_BUILD_INFO=$(date -u +%Y-%m-%d) · ${GITHUB_SHA:0:7}" >> "$GITHUB_ENV"
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20

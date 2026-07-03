@@ -546,6 +546,7 @@ export const ru = {
     targetFat: 'Жиры (г)',
     targetCarb: 'Углеводы (г)',
     targetsMoved: 'Цели по КБЖУ переехали на экран «Вес» — там же ИМТ и расчёт по формуле.',
+    buildInfo: 'Сборка: {{info}}',
     stepsGoal: 'Цель по шагам',
     reminders: 'Напоминания',
     reminderAdd: 'Время (ЧЧ:ММ)',

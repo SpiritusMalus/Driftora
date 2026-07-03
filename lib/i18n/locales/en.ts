@@ -548,6 +548,7 @@ export const en = {
     targetFat: 'Fat (g)',
     targetCarb: 'Carbs (g)',
     targetsMoved: 'Macro targets moved to the Weight screen — next to BMI and the formula estimate.',
+    buildInfo: 'Build: {{info}}',
     stepsGoal: 'Steps goal',
     reminders: 'Reminders',
     reminderAdd: 'Time (HH:mm)',
