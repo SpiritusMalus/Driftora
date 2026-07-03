@@ -82,7 +82,8 @@ test('demoteContradictions: a close-named clean row floats up, contradictions ca
 
 test('demoteContradictions: an unrelated clean row is NOT promoted over the head', () => {
   const sugared = { per100: { sugar: 11.2, carb: 11.6 }, confidence: 0.67, name: 'Напиток энергетический Arctic' };
-  const candy = { per100: { sugar: 0.4, carb: 9 }, confidence: 0.42, name: 'Конфеты без сахара с фундуком' };
+  // OFF floors weak name matches at exactly 0.4 — the real live value.
+  const candy = { per100: { sugar: 0.4, carb: 9 }, confidence: 0.4, name: 'Конфеты без сахара с фундуком' };
   const out = demoteContradictions('энергетический напиток без сахара', [sugared, candy]);
   // 391-kcal candy must not become the primary for an energy-drink query —
   // the sugared head stays on top, honestly flagged low-confidence.
