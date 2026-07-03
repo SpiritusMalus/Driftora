@@ -324,6 +324,11 @@ export default function SettingsScreen() {
         style={styles.save}
       />
 
+      {/* Which APK is actually installed — stamped by CI, 'dev' under Metro. */}
+      <Text style={[styles.buildInfo, { color: theme.subtle }, theme.font.body]}>
+        {t('settings.buildInfo', { info: process.env.EXPO_PUBLIC_BUILD_INFO || 'dev' })}
+      </Text>
+
       <ConsentModal
         visible={aiPromptVisible}
         title={t('consent.ai.title')}
@@ -432,4 +437,5 @@ const styles = StyleSheet.create({
   segmentBtn: { flex: 1, borderWidth: 1.5, borderRadius: 12, paddingVertical: 11, alignItems: 'center' },
   segmentText: { fontSize: 14 },
   save: { marginTop: 20 },
+  buildInfo: { fontSize: 11, textAlign: 'center', marginTop: 14, marginBottom: 4 },
 });
