@@ -8,6 +8,7 @@ import {
   type Region,
 } from '../types.js';
 import type { NutritionProvider, ProviderResult } from './provider.js';
+import { demoteContradictions } from './scoring.js';
 
 /** How many runner-up matches to carry as switchable alternatives. */
 const MAX_ALTERNATIVES = 4;
@@ -106,7 +107,10 @@ export class Resolver {
     for (const provider of chainFor(this.providers, region)) {
       const name = nameFor(provider);
       if (name.length === 0) continue;
-      const results = await this.candidatesFrom(provider, name, region);
+      // Name ranking alone can pick a product the query explicitly negated
+      // («без сахара» → sugared row); composition-aware demotion fixes the
+      // order and honestly drops confidence when only contradictions exist.
+      const results = demoteContradictions(name, await this.candidatesFrom(provider, name, region));
       const primary = results[0];
       if (primary) {
         return {

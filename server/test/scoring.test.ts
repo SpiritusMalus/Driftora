@@ -1,7 +1,16 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { genericBonus, normalizeName, rankByName, scoreName, scoreToConfidence } from '../src/nutrition/scoring.js';
+import {
+  contradictsSugarFree,
+  demoteContradictions,
+  genericBonus,
+  isSugarFreeQuery,
+  normalizeName,
+  rankByName,
+  scoreName,
+  scoreToConfidence,
+} from '../src/nutrition/scoring.js';
 
 test('normalizeName: lowercases, folds ё, strips punctuation', () => {
   assert.equal(normalizeName('Гречка, отварная!'), 'гречка отварная');
@@ -35,4 +44,49 @@ test('scoreToConfidence: floored so a real hit is never junk-low', () => {
   assert.equal(scoreToConfidence(0), 0.4);
   assert.equal(scoreToConfidence(1), 1);
   assert.ok(scoreToConfidence(0.7) > 0.4);
+});
+
+// ---- sugar-negation contradiction (the «энергетик без сахара» → Arctic bug) --
+
+test('isSugarFreeQuery: RU and EN markers, Cyrillic without \\b', () => {
+  assert.equal(isSugarFreeQuery('энергетический напиток без сахара'), true);
+  assert.equal(isSugarFreeQuery('sugar-free energy drink'), true);
+  assert.equal(isSugarFreeQuery('кола зеро'), true);
+  assert.equal(isSugarFreeQuery('диетическая кола'), true);
+  assert.equal(isSugarFreeQuery('энергетический напиток адреналин раш'), false);
+  assert.equal(isSugarFreeQuery('сахар'), false); // sugar itself is not a negation
+});
+
+test('contradictsSugarFree: explicit sugar wins over the carb fallback', () => {
+  assert.equal(contradictsSugarFree({ sugar: 11.2, carb: 11.6 }), true);
+  assert.equal(contradictsSugarFree({ sugar: 0, carb: 0.4 }), false);
+  // Sugar-free cookies: carbs are flour, explicit sugar is low → NOT a contradiction.
+  assert.equal(contradictsSugarFree({ sugar: 0.5, carb: 60 }), false);
+  // No sugar field at all: high-carb row reads as sugared for a drink-like query.
+  assert.equal(contradictsSugarFree({ carb: 11.6 }), true);
+  assert.equal(contradictsSugarFree({ carb: 0.3 }), false);
+});
+
+test('demoteContradictions: a close-named clean row floats up, contradictions capped below 0.5', () => {
+  const sugared = { per100: { sugar: 11.2, carb: 11.6 }, confidence: 0.9, name: 'Arctic' };
+  const zero = { per100: { sugar: 0, carb: 0.4 }, confidence: 0.75, name: 'Zero' };
+  const out = demoteContradictions('энергетик без сахара', [sugared, zero]);
+  assert.equal(out[0]!.name, 'Zero'); // composition beats name score
+  assert.equal(out[1]!.name, 'Arctic');
+  assert.ok(out[1]!.confidence <= 0.4); // flagged low → client opens «не то?»
+  // Without a negation in the query nothing moves.
+  const same = demoteContradictions('энергетик', [sugared, zero]);
+  assert.equal(same[0]!.name, 'Arctic');
+  assert.equal(same[0]!.confidence, 0.9);
+});
+
+test('demoteContradictions: an unrelated clean row is NOT promoted over the head', () => {
+  const sugared = { per100: { sugar: 11.2, carb: 11.6 }, confidence: 0.67, name: 'Напиток энергетический Arctic' };
+  const candy = { per100: { sugar: 0.4, carb: 9 }, confidence: 0.42, name: 'Конфеты без сахара с фундуком' };
+  const out = demoteContradictions('энергетический напиток без сахара', [sugared, candy]);
+  // 391-kcal candy must not become the primary for an energy-drink query —
+  // the sugared head stays on top, honestly flagged low-confidence.
+  assert.equal(out[0]!.name, 'Напиток энергетический Arctic');
+  assert.ok(out[0]!.confidence <= 0.4);
+  assert.equal(out[1]!.name, 'Конфеты без сахара с фундуком');
 });
