@@ -379,6 +379,7 @@ export const en = {
       busy: 'Recognition is busy. Wait a second and try again.',
       aborted: 'Recognition stopped. What you said is kept — carry on.',
       unknown: 'Couldn’t recognize it. What you said is kept — finish by typing.',
+      unavailable: 'Voice input isn’t available on this device. Typing works too.',
     },
     voiceNote: '🎙 Record a voice note',
     voiceRecording: '● Recording… tap to send',
