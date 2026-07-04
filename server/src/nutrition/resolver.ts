@@ -8,10 +8,14 @@ import {
   type Region,
 } from '../types.js';
 import type { NutritionProvider, ProviderResult } from './provider.js';
+import { hasCyrillic } from './ruSearch.js';
 import { demoteContradictions } from './scoring.js';
 
 /** How many runner-up matches to carry as switchable alternatives. */
 const MAX_ALTERNATIVES = 4;
+
+/** Manual search: total candidates across ALL merged providers. */
+const MAX_SEARCH_RESULTS = 8;
 
 /** The primary match plus its ranked runners-up and the match confidence. */
 interface LookupResult {
@@ -74,6 +78,7 @@ class Lru<V> {
  */
 export class Resolver {
   private readonly cache = new Lru<LookupResult>(500);
+  private readonly searchCache = new Lru<NutritionAlternative[]>(300);
 
   constructor(private readonly providers: NutritionProvider[]) {}
 
@@ -127,22 +132,6 @@ export class Resolver {
     return null;
   }
 
-  /** Single-string lookup (manual search): every provider gets the same text. */
-  private async lookup(name: string, region: Region): Promise<LookupResult> {
-    const key = cacheKey(name, region);
-    const cached = this.cache.get(key);
-    if (cached) return cached;
-
-    const found = await this.runChain(region, () => name);
-    if (found) {
-      this.cache.set(key, found);
-      return found;
-    }
-    // Full miss: coarse estimate, no alternatives. Not cached — a later DB
-    // import may resolve it. matchConfidence 0 marks it as not-a-fact.
-    return { per100: ESTIMATE_PER100, matchConfidence: 0, alternatives: [] };
-  }
-
   /** Item lookup: providers may be queried by name_ru or name_en (queryLang). */
   private async lookupItem(item: IdentifiedItem, region: Region): Promise<LookupResult> {
     const key = cacheKey(`${item.name_ru}|${item.name_en}`, region);
@@ -159,15 +148,35 @@ export class Resolver {
 
   /**
    * Free-text DB search for the manual "find it yourself" picker (disambiguation
-   * layer 4). Runs the region chain and returns ranked candidates (primary first),
-   * or an empty list on a miss. Each carries an EXACT per-100g with its source.
+   * layer 4). Unlike the parse path's first-hit-wins chain, this queries EVERY
+   * region provider in parallel and merges in chain order (curated table first,
+   * then the broad DBs, then crowd brands) — a loose curated hit no longer
+   * hides the branded products, and each row carries an EXACT per-100g with its
+   * source. Empty on a full miss.
    */
   async search(name: string, region: Region): Promise<NutritionAlternative[]> {
     const trimmed = name.trim();
     if (trimmed.length === 0) return [];
-    const found = await this.lookup(trimmed, region);
-    if (found.matchConfidence === 0) return []; // full miss → nothing to offer
-    return [{ name: found.name ?? trimmed, per100: found.per100 }, ...found.alternatives];
+    const key = cacheKey(trimmed, region);
+    const cached = this.searchCache.get(key);
+    if (cached) return cached;
+
+    // An English-only corpus (USDA) cannot match Cyrillic text — skip the
+    // round-trip instead of paying its latency for guaranteed zero results.
+    const cyrillic = hasCyrillic(trimmed);
+    const lists = await Promise.all(
+      chainFor(this.providers, region).map((p) =>
+        cyrillic && p.queryLang === 'en' ? Promise.resolve([]) : this.candidatesFrom(p, trimmed, region),
+      ),
+    );
+    const merged = demoteContradictions(trimmed, lists.flat());
+    const out = merged.slice(0, MAX_SEARCH_RESULTS).map((r) => ({
+      name: r.name ?? trimmed,
+      per100: coercePer100(r.per100),
+    }));
+    // Misses stay uncached — a later DB import may resolve them.
+    if (out.length > 0) this.searchCache.set(key, out);
+    return out;
   }
 
   async resolveItem(item: IdentifiedItem, region: Region): Promise<NutritionItem> {

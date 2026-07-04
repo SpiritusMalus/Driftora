@@ -91,6 +91,65 @@ test('POST /food/search with empty query → 400', async () => {
   }
 });
 
+test('POST /food/search RU merges curated + OFF brands; USDA skipped for Cyrillic', async () => {
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input.toString();
+    if (url.includes('127.0.0.1')) return realFetch(input as never, init);
+    if (url.includes('api.nal.usda.gov')) throw new Error('USDA must not be queried with Cyrillic text');
+    if (url.includes('search.openfoodfacts.org')) {
+      return json({
+        hits: [
+          {
+            product_name_ru: 'Борщ «Бабушкин» готовый',
+            nutriments: {
+              'energy-kcal_100g': 55,
+              proteins_100g: 1.8,
+              fat_100g: 2.5,
+              carbohydrates_100g: 6.1,
+            },
+          },
+        ],
+      });
+    }
+    throw new Error(`unexpected fetch in test: ${url}`);
+  }) as typeof fetch;
+
+  const { base, stop } = await startApp();
+  try {
+    const res = await post(base, '/food/search', { query: 'борщ', region: 'RU' });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { candidates: { name: string; per100: { kcal: number; source: string } }[] };
+    // Curated table leads (trusted per-100g), the crowd brand is still offered.
+    assert.equal(body.candidates[0]?.per100.source, 'skurikhin');
+    assert.equal(body.candidates[0]?.per100.kcal, 49);
+    assert.ok(
+      body.candidates.some((c) => c.per100.source === 'openfoodfacts'),
+      'brand results must not be hidden by a curated hit',
+    );
+  } finally {
+    await stop();
+  }
+});
+
+test('POST /food/search tolerates a typo («гретчка»)', async () => {
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input.toString();
+    if (url.includes('127.0.0.1')) return realFetch(input as never, init);
+    if (url.includes('search.openfoodfacts.org')) return json({ hits: [] });
+    throw new Error(`unexpected fetch in test: ${url}`);
+  }) as typeof fetch;
+
+  const { base, stop } = await startApp();
+  try {
+    const res = await post(base, '/food/search', { query: 'гретчка', region: 'RU' });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { candidates: { per100: { kcal: number } }[] };
+    assert.equal(body.candidates[0]?.per100.kcal, 92); // гречка варёная
+  } finally {
+    await stop();
+  }
+});
+
 test('POST /food/search miss → empty candidates, not an error', async () => {
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString();
