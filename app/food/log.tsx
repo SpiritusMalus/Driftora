@@ -97,6 +97,9 @@ export default function FoodLogScreen() {
     yesterday: [],
   });
   const [speechAvailable, setSpeechAvailable] = useState(false);
+  // True once the recognizer probe RESOLVED (either way) — lets the ?voice=1
+  // deep-link tell "still probing" apart from "voice truly unavailable".
+  const [speechProbed, setSpeechProbed] = useState(false);
   const [photoAvailable, setPhotoAvailable] = useState(false);
   const [listening, setListening] = useState(false);
   // Why on-device recognition last failed (localized) — shown under the mic so a
@@ -126,7 +129,10 @@ export default function FoodLogScreen() {
     let active = true;
     const speech = getSpeechService();
     void speech.initialize().then((ok) => {
-      if (active) setSpeechAvailable(ok);
+      if (active) {
+        setSpeechAvailable(ok);
+        setSpeechProbed(true);
+      }
     });
     void isPhotoCaptureAvailable().then((ok) => {
       if (active) setPhotoAvailable(ok);
@@ -165,14 +171,30 @@ export default function FoodLogScreen() {
     );
   }
 
-  // Honor a ?voice=1 deep-link once the recognizer is known to be available.
+  // Honor a ?voice=1 deep-link (the Home mic) by starting whichever voice mode
+  // this build actually offers as PRIMARY: the AI voice note first, on-device
+  // dictation as the fallback. The old effect only knew the dictation path, so
+  // on builds where the voice note is the primary (recognizer absent) the Home
+  // mic opened the screen and then did NOTHING — the top «не работает» report.
+  // If neither input exists once probes resolve, say so instead of silence.
   useEffect(() => {
-    if (voice === '1' && speechAvailable && !autoStarted.current) {
+    if (voice !== '1' || autoStarted.current) return;
+    if (AI_CONFIGURED && recordingAvailable) {
+      autoStarted.current = true;
+      void toggleRecording();
+      return;
+    }
+    if (speechAvailable) {
       autoStarted.current = true;
       void toggleListening();
+      return;
+    }
+    if (speechProbed) {
+      autoStarted.current = true;
+      setVoiceError(t('food.voiceError.unavailable'));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [voice, speechAvailable]);
+  }, [voice, recordingAvailable, speechAvailable, speechProbed]);
 
   useEffect(() => {
     let active = true;
@@ -235,6 +257,15 @@ export default function FoodLogScreen() {
   /// when online was actually expected (AI configured + consented).
   function acceptDraft(parsed: MealDraft, consentNow: boolean) {
     setFreshDraft(parsed);
+    // Voice/photo parses arrive with an EMPTY input field: echo what was
+    // understood («борщ, хлеб, сметана») as editable text — the recognition
+    // becomes visible up top, and the saved diary entry gets a real name
+    // instead of «Без названия». The functional updater never clobbers text
+    // the user typed (text parses, or edits made while the parse ran).
+    if (parsed.items.length > 0) {
+      const understood = parsed.items.map((it) => it.name_ru).join(', ');
+      setText((prev) => (prev.trim().length === 0 ? understood : prev));
+    }
     setParseIssue(AI_CONFIGURED && consentNow && parsed.flags.offline_fallback ? 'offline' : null);
   }
 
@@ -294,8 +325,14 @@ export default function FoodLogScreen() {
       return;
     }
     setFreshDraft(null);
+    setVoiceError(null);
     const rec = await startRecording();
-    if (!rec) return; // permission denied / module missing — stay on text/STT
+    if (!rec) {
+      // Permission denied / module missing. A mic tap that silently does
+      // nothing reads as "сломано" — say what happened and what to do.
+      setVoiceError(t('food.voiceError.not-allowed'));
+      return;
+    }
     recRef.current = rec;
     setMeterLevels([]);
     // Live amplitude → rolling buffer for the waveform. No-op when the build has
