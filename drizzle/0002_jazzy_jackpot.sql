@@ -1,0 +1,1 @@
+ALTER TABLE `app_settings` ADD `goal_mode` text DEFAULT 'maintain' NOT NULL;

@@ -63,6 +63,36 @@ test('miss returns null (chain moves on)', async () => {
   assert.equal(r, null);
 });
 
+test('падеж: «борща» still finds борщ', async () => {
+  const r = await provider.search('борща', 'RU');
+  assert.ok(r);
+  assert.equal(r!.per100.kcal, 49);
+  assert.ok(r!.confidence >= 0.7);
+});
+
+test('полуслова: «гречк» (search-as-you-type) finds гречку', async () => {
+  const r = await provider.search('гречк', 'RU');
+  assert.ok(r);
+  assert.equal(r!.per100.kcal, 92);
+});
+
+test('одна опечатка: «гретчка» finds гречку', async () => {
+  const r = await provider.search('гретчка', 'RU');
+  assert.ok(r);
+  assert.equal(r!.per100.kcal, 92);
+  assert.ok(r!.confidence < 0.9, 'a typo match must read less certain than exact');
+});
+
+test('searchMany: ranked candidates, exact first, composites behind', async () => {
+  const list = await provider.searchMany!('борщ', 'RU');
+  assert.ok(list.length >= 2, 'plain борщ and борщ с мясом both qualify');
+  assert.equal(list[0]!.name, 'борщ');
+  assert.equal(list[0]!.per100.kcal, 49);
+  assert.ok(list[0]!.confidence >= 0.9);
+  assert.ok(list.some((r) => r.name === 'борщ с мясом'));
+  assert.ok(list[1]!.confidence < list[0]!.confidence);
+});
+
 test('RU routing: resolver uses Skurikhin, never USDA', async () => {
   // USDA would throw if called (no fetch mock) — proves it is skipped for RU.
   const resolver = new Resolver([new SkurikhinProvider(), new UsdaProvider('KEY')]);

@@ -217,11 +217,41 @@ export const en = {
       up: 'Over {{days}} days your weight is up {{abs}} kg.',
     },
     savedNow: '{{kg}} kg — logged ✓',
+    savedDelta: '{{kg}} kg — logged ✓ · {{delta}} kg since last time',
+    lastEntry: 'Last entry: {{kg}} kg · {{date}}',
     height: 'Height',
     heightUnit: 'cm',
+    plan: {
+      title: 'Nutrition plan',
+      mode: { lose: 'Lose weight', maintain: 'Maintain', gain: 'Gain' },
+      intro: {
+        lose: 'You weigh {{kg}} kg. To lose weight calmly — about −{{pace}} kg a week, no crash dieting — you need:',
+        maintain: 'You weigh {{kg}} kg. To hold this weight you need about:',
+        gain: 'You weigh {{kg}} kg. For a gradual gain — about +{{pace}} kg a week — you need:',
+      },
+      kcalPerDay: '≈ {{kcal}} kcal a day',
+      floored:
+        'Going lower isn’t worth it: this is the minimum where weight loss stays healthy. Slower — but without crashes.',
+      apply: 'Make this the diary goal',
+      applied: 'Already your diary goal ✓',
+      appliedTick: 'Goal updated ✓',
+      recalc: 'The plan recalculates itself after every new weigh-in.',
+      needWeight: 'Log a weight above — the plan is computed from it.',
+      needProfile: 'Fill in “Body parameters” below — height, sex, birth year and activity — and the plan appears here.',
+      note:
+        'The Mifflin–St Jeor formula estimates the “average” person: real needs differ. Start from these numbers and adjust by your weight trend and how you feel. Protein 1.6–1.8 g/kg · fat 30% of calories · carbs the remainder.',
+    },
+    sections: {
+      body: { title: 'Body parameters', empty: 'Not filled in — needed for the plan and BMI' },
+      history: { title: 'History', count: 'Entries: {{count}}' },
+      manual: { title: 'Manual targets', summary: '{{kcal}} kcal · P {{prot}} · F {{fat}} · C {{carb}}' },
+    },
     bmi: {
       title: 'BMI',
       value: 'BMI {{value}} — {{category}}',
+      summary: '{{value}} — {{category}}',
+      needHeightShort: 'add height',
+      needWeightShort: 'log a weight',
       current: 'From your latest weight {{kg}} kg and height {{cm}} cm.',
       category: {
         underweight: 'below the normal range',
@@ -232,18 +262,16 @@ export const en = {
         obese3: 'obesity class III',
       },
       ranges: 'WHO bands: under 18.5 · 18.5–25 · 25–30 · 30+.',
-      needHeight: 'Add your height — BMI is computed from height and the latest logged weight.',
+      needHeight: 'Add your height under “Body parameters” — BMI is computed from height and the latest weight.',
       needWeight: 'Log a weight above — BMI is computed from height and the latest weight.',
       disclaimer:
         'BMI was invented by the statistician Quetelet in the 1800s to describe populations on average, not to assess an individual. The formula cannot tell muscle from fat — for athletic people it overstates “excess” weight. A reference point, not a verdict.',
     },
     targets: {
-      title: 'Macro targets',
       savedTick: 'Saved ✓',
       note: 'Changes save themselves. These targets show up on the Food screen — the daily total is compared against them.',
     },
     formula: {
-      title: 'Estimate with a formula',
       sex: 'Sex',
       male: 'Male',
       female: 'Female',
@@ -251,11 +279,6 @@ export const en = {
       activity: 'Activity',
       activityLevel: { sedentary: 'Sedentary', light: 'Light', moderate: 'Moderate', high: 'High' },
       activityNote: 'Sedentary — barely moving · light — 1–3 workouts a week · moderate — 3–5 · high — 6–7 or physical work.',
-      result: 'Maintenance: {{kcal}} kcal · protein {{prot}} g · fat {{fat}} g · carbs {{carb}} g',
-      apply: 'Make these the targets',
-      applied: 'Targets updated ✓',
-      incomplete: 'Fill in height, sex, birth year and activity — I’ll estimate maintenance with the Mifflin–St Jeor formula.',
-      note: 'The Mifflin–St Jeor formula estimates the “average” person: real needs differ. Start from these numbers and adjust by your weight trend and how you feel. Split: protein 1.6 g/kg, fat 30% of calories, carbs the remainder.',
     },
   },
   steps: {

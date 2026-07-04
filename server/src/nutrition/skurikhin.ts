@@ -1,6 +1,7 @@
 import type { Per100, Region } from '../types.js';
 import { CURATED_RU } from './curatedRu.js';
 import type { NutritionProvider, ProviderResult } from './provider.js';
+import { phraseScore } from './ruSearch.js';
 import { SKURIKHIN_TABLE } from './skurikhinData.js';
 import type { SkurikhinEntry } from './skurikhinTypes.js';
 
@@ -16,15 +17,23 @@ export function normalizeRu(name: string): string {
 
 interface IndexEntry {
   key: string; // normalized name or alias
+  keyWords: number;
   entry: SkurikhinEntry;
 }
+
+/** Below this phrase relevance a row is noise, not a candidate. */
+const MIN_SCORE = 0.5;
+
+/** Ranked candidates the manual picker gets from this table. */
+const MAX_CANDIDATES = 5;
 
 /**
  * RU nutrition from the Skurikhin composition table (BUILD SPEC §6) — the RU
  * launch's data source. Looks up an EXACT per-100g (incl. minerals); the model
- * never supplies numbers. Matching: exact normalized name/alias first, then a
- * word-overlap fallback so "куриная грудка отварная" still finds "куриная
- * грудка". A miss returns null and the resolver chain moves on.
+ * never supplies numbers. Matching runs through `ruSearch` (stems, prefixes,
+ * one-typo tolerance, relevance ranking), so «борща», «гречк» and «гретчка»
+ * all still land on the right row. A miss returns null / an empty list and
+ * the resolver chain moves on.
  */
 export class SkurikhinProvider implements NutritionProvider {
   readonly name = 'skurikhin';
@@ -37,9 +46,11 @@ export class SkurikhinProvider implements NutritionProvider {
   constructor(table: SkurikhinEntry[] = [...SKURIKHIN_TABLE, ...CURATED_RU]) {
     this.index = [];
     for (const entry of table) {
-      this.index.push({ key: normalizeRu(entry.name), entry });
-      for (const alias of entry.aliases) {
-        this.index.push({ key: normalizeRu(alias), entry });
+      for (const key of [entry.name, ...entry.aliases]) {
+        const normalized = normalizeRu(key);
+        if (normalized.length > 0) {
+          this.index.push({ key: normalized, keyWords: normalized.split(' ').length, entry });
+        }
       }
     }
   }
@@ -47,39 +58,44 @@ export class SkurikhinProvider implements NutritionProvider {
   private toResult(entry: SkurikhinEntry, confidence: number): ProviderResult {
     // Honest provenance: USDA-sourced rows say 'usda', curated rows 'skurikhin'.
     const per100: Per100 = { source: entry.source ?? 'skurikhin', ...entry.per100 };
-    return { per100, confidence };
+    return { per100, confidence, name: entry.name };
   }
 
-  private lookup(name: string): ProviderResult | null {
+  /**
+   * All entries relevant to the query, best-first. Each entry keeps its best
+   * score across name + aliases; ties prefer the shorter (more generic) key so
+   * plain «борщ» outranks «борщ с мясом» on a plain «борщ» query.
+   */
+  private rank(name: string): { entry: SkurikhinEntry; score: number }[] {
     const q = normalizeRu(name);
-    if (q.length === 0) return null;
+    if (q.length === 0) return [];
 
-    // 1) exact normalized match on a name or alias.
-    const exact = this.index.find((i) => i.key === q);
-    if (exact) return this.toResult(exact.entry, 0.95);
-
-    // 2) the query contains a known key as a whole word (e.g. "жареное яйцо").
-    const words = new Set(q.split(' '));
-    let best: { entry: SkurikhinEntry; overlap: number } | null = null;
-    for (const { key, entry } of this.index) {
-      const keyWords = key.split(' ');
-      const overlap = keyWords.filter((w) => words.has(w)).length;
-      if (overlap === keyWords.length && (!best || overlap > best.overlap)) {
-        best = { entry, overlap };
+    const best = new Map<SkurikhinEntry, { entry: SkurikhinEntry; score: number; keyWords: number }>();
+    for (const { key, keyWords, entry } of this.index) {
+      const score = phraseScore(q, key);
+      if (score < MIN_SCORE) continue;
+      const prev = best.get(entry);
+      if (!prev || score > prev.score || (score === prev.score && keyWords < prev.keyWords)) {
+        best.set(entry, { entry, score, keyWords });
       }
     }
-    if (best) return this.toResult(best.entry, 0.8);
+    return [...best.values()].sort((a, b) => b.score - a.score || a.keyWords - b.keyWords);
+  }
 
-    // 3) any single key word appears in the query (loosest).
-    for (const { key, entry } of this.index) {
-      if (key.split(' ').some((w) => w.length >= 4 && words.has(w))) {
-        return this.toResult(entry, 0.65);
-      }
-    }
-    return null;
+  /** Exact hits read as near-certain; everything fuzzier scales with its score. */
+  private confidenceOf(score: number): number {
+    return score >= 0.999 ? 0.95 : Math.min(0.9, 0.45 + 0.5 * score);
   }
 
   async search(name: string, _region: Region): Promise<ProviderResult | null> {
-    return this.lookup(name);
+    const top = this.rank(name)[0];
+    return top ? this.toResult(top.entry, this.confidenceOf(top.score)) : null;
+  }
+
+  /** Ranked candidates for the manual "find it yourself" picker. */
+  async searchMany(name: string, _region: Region): Promise<ProviderResult[]> {
+    return this.rank(name)
+      .slice(0, MAX_CANDIDATES)
+      .map((r) => this.toResult(r.entry, this.confidenceOf(r.score)));
   }
 }

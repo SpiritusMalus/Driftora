@@ -126,6 +126,9 @@ export const appSettings = sqliteTable('app_settings', {
   activityLevel: text('activity_level', { enum: ['', 'sedentary', 'light', 'moderate', 'high'] })
     .notNull()
     .default(''),
+  // Goal for the nutrition-plan card on the weight screen (похудение /
+  // поддержание / набор). Defaults to the no-pressure option: maintain.
+  goalMode: text('goal_mode', { enum: ['lose', 'maintain', 'gain'] }).notNull().default('maintain'),
   // Nutrition region for the food parser: 'auto' follows device locale, else
   // forces RU/US (resolveRegion: appSettings.region ?? deviceLocale.region).
   region: text('region', { enum: ['auto', 'RU', 'US'] }).notNull().default('auto'),
