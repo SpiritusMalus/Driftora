@@ -1,0 +1,1 @@
+ALTER TABLE `app_settings` ADD `targets_set_at` integer;

@@ -70,6 +70,11 @@ export default function FoodLogScreen() {
   const [proteinTarget, setProteinTarget] = useState(0);
   const [todayProteinG, setTodayProteinG] = useState(0);
   const [varietyCount, setVarietyCount] = useState(0);
+  // «Пауза» mutes ALL target pressure — including the protein line below.
+  const [paused, setPaused] = useState(false);
+  // Honest parse status: 'offline' = the server didn't answer and the offline
+  // stub filled in (degraded numbers, no AI); 'failed' = the parse itself threw.
+  const [parseIssue, setParseIssue] = useState<'offline' | 'failed' | null>(null);
   const [savedAck, setSavedAck] = useState<string | null>(null);
   const saveSeedRef = useRef(0);
   const [hideCalories, setHideCalories] = useState(false);
@@ -181,6 +186,7 @@ export default function FoodLogScreen() {
       ]);
       if (!active) return;
       setProteinTarget(settings.targetProteinG);
+      setPaused(settings.paused);
       setTodayProteinG(totals.proteinG);
       setVarietyCount(variety);
       setHideCalories(settings.hideCalories);
@@ -199,6 +205,7 @@ export default function FoodLogScreen() {
   function onQuickPick(meal: QuickMeal) {
     setText(meal.rawText);
     setSource('text');
+    setParseIssue(null);
     const item: NutritionItem = {
       name_ru: meal.rawText,
       name_en: meal.rawText,
@@ -222,10 +229,24 @@ export default function FoodLogScreen() {
     return applyRememberedChoices(draft, region, choices);
   }
 
+  /// After any parse: surface HOW the draft was produced. `offline_fallback`
+  /// means the user expected the online parser and silently got the stub — say
+  /// so instead of passing degraded numbers off as an AI parse. Only flagged
+  /// when online was actually expected (AI configured + consented).
+  function acceptDraft(parsed: MealDraft, consentNow: boolean) {
+    setFreshDraft(parsed);
+    setParseIssue(AI_CONFIGURED && consentNow && parsed.flags.offline_fallback ? 'offline' : null);
+  }
+
   async function runTextParse(consentNow: boolean) {
     setParsing(true);
+    setParseIssue(null);
     try {
-      setFreshDraft(await applyMemory(await getFoodParser(consentNow).parse(text, region)));
+      acceptDraft(await applyMemory(await getFoodParser(consentNow).parse(text, region)), consentNow);
+    } catch {
+      // A throw here is not the network (that falls back inside the parser) —
+      // it's something local (db read). Still: never fail into silence.
+      setParseIssue('failed');
     } finally {
       setParsing(false);
     }
@@ -233,8 +254,11 @@ export default function FoodLogScreen() {
 
   async function runPhotoParse(photo: PhotoInput, consentNow: boolean) {
     setParsing(true);
+    setParseIssue(null);
     try {
-      setFreshDraft(await applyMemory(await getFoodParser(consentNow).parsePhoto(photo, region)));
+      acceptDraft(await applyMemory(await getFoodParser(consentNow).parsePhoto(photo, region)), consentNow);
+    } catch {
+      setParseIssue('failed');
     } finally {
       setParsing(false);
     }
@@ -242,8 +266,11 @@ export default function FoodLogScreen() {
 
   async function runAudioParse(audio: AudioInput, consentNow: boolean) {
     setParsing(true);
+    setParseIssue(null);
     try {
-      setFreshDraft(await applyMemory(await getFoodParser(consentNow).parseAudio(audio, region)));
+      acceptDraft(await applyMemory(await getFoodParser(consentNow).parseAudio(audio, region)), consentNow);
+    } catch {
+      setParseIssue('failed');
     } finally {
       setParsing(false);
     }
@@ -401,6 +428,7 @@ export default function FoodLogScreen() {
     setText('');
     setSavedAck(null);
     setSource('text');
+    setParseIssue(null);
   }
 
   async function onSave() {
@@ -519,6 +547,13 @@ export default function FoodLogScreen() {
         onPress={onParse}
         disabled={parsing || listening || recording || text.trim().length === 0}
       />
+      {/* Never fail into silence: say the server didn't answer (offline stub
+          filled in) or that the parse broke — the button above IS the retry. */}
+      {parseIssue ? (
+        <Text style={[styles.parseIssue, { color: theme.subtle }, theme.font.body]}>
+          {t(parseIssue === 'offline' ? 'food.parseIssue.offline' : 'food.parseIssue.failed')}
+        </Text>
+      ) : null}
 
       {draft == null &&
       (quick.favorites.length > 0 || quick.recents.length > 0 || quick.yesterday.length > 0) ? (
@@ -606,7 +641,9 @@ export default function FoodLogScreen() {
             ) : null}
           </Card>
 
-          {proteinTarget > 0 ? (
+          {/* «Пауза» promises "цели выключены" — honour it here too, not only
+              on Home (the banner alone doesn't stop this line from nagging). */}
+          {proteinTarget > 0 && !paused ? (
             <Text style={[styles.proteinNote, { color: theme.subtle }, theme.font.body]}>
               {proteinInsight(todayProteinG + draft.totals.prot, proteinTarget, Math.round(todayProteinG))}
             </Text>
@@ -1078,6 +1115,7 @@ const styles = StyleSheet.create({
   badge: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
   badgeText: { fontSize: 11 },
   proteinNote: { fontSize: 12, marginTop: 4, marginBottom: 8, lineHeight: 17 },
+  parseIssue: { fontSize: 13, textAlign: 'center', marginTop: 10, lineHeight: 18 },
   savedAck: { fontSize: 13, marginTop: 4, marginBottom: 10, textAlign: 'center', lineHeight: 18 },
   quick: { marginTop: 16 },
   quickGroup: { marginBottom: 14 },

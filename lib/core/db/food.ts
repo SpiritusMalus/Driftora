@@ -136,6 +136,44 @@ export async function deleteFoodEntry(db: AnyDb, id: number): Promise<void> {
   await db.delete(foodEntries).where(eq(foodEntries.id, id));
 }
 
+/// Re-log a past meal as of `ts` (default: now) — copies the entry row AND its
+/// item breakdown into a new confirmed entry. Backs the one-tap «Повторить» in
+/// the diary: the numbers were confirmed once, no parse or review needed.
+/// Returns the new entry id, or null when the original is gone.
+export async function repeatFoodEntry(db: AnyDb, id: number, ts: Date = new Date()): Promise<number | null> {
+  const detail = await getFoodEntry(db, id);
+  if (!detail) return null;
+  const e = detail.entry;
+  const inserted = await db
+    .insert(foodEntries)
+    .values({
+      ts,
+      rawText: e.rawText,
+      source: e.source,
+      kcal: e.kcal,
+      proteinG: e.proteinG,
+      fatG: e.fatG,
+      carbG: e.carbG,
+      confirmed: true,
+    })
+    .returning({ id: foodEntries.id });
+  const newId = inserted[0].id as number;
+  if (detail.items.length > 0) {
+    await db.insert(foodItems).values(
+      detail.items.map((it) => ({
+        entryId: newId,
+        name: it.name,
+        qtyG: it.qtyG,
+        kcal: it.kcal,
+        proteinG: it.proteinG,
+        fatG: it.fatG,
+        carbG: it.carbG,
+      })),
+    );
+  }
+  return newId;
+}
+
 /// Rebuild an editable [MealDraft] from a stored entry + items. Storage keeps
 /// only the SCALED macros (provenance/minerals are lost), so each item's per-100g
 /// is *derived back* from `scaled / grams` purely to let grams edits rescale; the

@@ -6,6 +6,7 @@ import { applySchema } from '@/lib/core/db/init';
 import {
   getFoodEntry,
   listEntriesForDay,
+  repeatFoodEntry,
   saveParsedEntry,
   todayMacroTotals,
 } from '@/lib/core/db/food';
@@ -98,6 +99,49 @@ describe('food logging (parse → save → totals)', () => {
 
     const thatDay = await todayMacroTotals(db, new Date(2020, 0, 1));
     expect(thatDay.kcal).toBeCloseTo(draft.totals.kcal, 1);
+
+    sqlite.close();
+  });
+
+  it('repeatFoodEntry re-logs a past meal as of now: entry + items copied, totals doubled', async () => {
+    const { sqlite, db } = makeDb();
+    await applySchema((stmt) => sqlite.exec(stmt));
+
+    const draft = fillMacros(await new StubFoodParser().parse('банан', 'US'));
+    const originalId = await saveParsedEntry(db, {
+      rawText: 'банан',
+      source: 'text',
+      draft,
+      ts: new Date(Date.now() - 3 * 3600_000), // this morning
+    });
+
+    const newId = await repeatFoodEntry(db, originalId);
+    expect(newId).not.toBeNull();
+    expect(newId).not.toBe(originalId);
+
+    const entries = await listEntriesForDay(db);
+    expect(entries).toHaveLength(2);
+
+    const copy = await getFoodEntry(db, newId!);
+    const original = await getFoodEntry(db, originalId);
+    expect(copy!.entry.rawText).toBe(original!.entry.rawText);
+    expect(copy!.entry.kcal).toBeCloseTo(original!.entry.kcal, 5);
+    expect(copy!.entry.confirmed).toBe(true);
+    expect(copy!.items.map((i) => i.name)).toEqual(original!.items.map((i) => i.name));
+    expect(copy!.entry.ts.getTime()).toBeGreaterThan(original!.entry.ts.getTime());
+
+    const totals = await todayMacroTotals(db);
+    expect(totals.kcal).toBeCloseTo(draft.totals.kcal * 2, 1);
+
+    sqlite.close();
+  });
+
+  it('repeatFoodEntry of a deleted entry returns null, writes nothing', async () => {
+    const { sqlite, db } = makeDb();
+    await applySchema((stmt) => sqlite.exec(stmt));
+
+    expect(await repeatFoodEntry(db, 999)).toBeNull();
+    expect(await listEntriesForDay(db)).toHaveLength(0);
 
     sqlite.close();
   });

@@ -32,6 +32,8 @@ export interface SettingsPatch {
   birthYear?: number;
   activityLevel?: '' | 'sedentary' | 'light' | 'moderate' | 'high';
   goalMode?: 'lose' | 'maintain' | 'gain';
+  // Epoch ms of the last deliberate targets edit; null = defaults never touched.
+  targetsSetAt?: number | null;
   reminderTimes?: string[];
   hideCalories?: boolean;
   llmDiaryAssist?: boolean;
@@ -71,6 +73,8 @@ export async function updateSettings(
   if (patch.birthYear != null) set.birthYear = patch.birthYear;
   if (patch.activityLevel != null) set.activityLevel = patch.activityLevel;
   if (patch.goalMode != null) set.goalMode = patch.goalMode;
+  // Accepts an explicit null (reset to "never set") — probe for undefined.
+  if (patch.targetsSetAt !== undefined) set.targetsSetAt = patch.targetsSetAt;
   if (patch.reminderTimes != null) set.reminderTimes = JSON.stringify(patch.reminderTimes);
   if (patch.hideCalories != null) set.hideCalories = patch.hideCalories;
   if (patch.llmDiaryAssist != null) set.llmDiaryAssist = patch.llmDiaryAssist;
