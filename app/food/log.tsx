@@ -257,6 +257,15 @@ export default function FoodLogScreen() {
   /// when online was actually expected (AI configured + consented).
   function acceptDraft(parsed: MealDraft, consentNow: boolean) {
     setFreshDraft(parsed);
+    // Voice/photo parses arrive with an EMPTY input field: echo what was
+    // understood («борщ, хлеб, сметана») as editable text — the recognition
+    // becomes visible up top, and the saved diary entry gets a real name
+    // instead of «Без названия». The functional updater never clobbers text
+    // the user typed (text parses, or edits made while the parse ran).
+    if (parsed.items.length > 0) {
+      const understood = parsed.items.map((it) => it.name_ru).join(', ');
+      setText((prev) => (prev.trim().length === 0 ? understood : prev));
+    }
     setParseIssue(AI_CONFIGURED && consentNow && parsed.flags.offline_fallback ? 'offline' : null);
   }
 
