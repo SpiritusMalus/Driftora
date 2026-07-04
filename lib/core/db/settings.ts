@@ -31,6 +31,7 @@ export interface SettingsPatch {
   sex?: '' | 'male' | 'female';
   birthYear?: number;
   activityLevel?: '' | 'sedentary' | 'light' | 'moderate' | 'high';
+  goalMode?: 'lose' | 'maintain' | 'gain';
   reminderTimes?: string[];
   hideCalories?: boolean;
   llmDiaryAssist?: boolean;
@@ -69,6 +70,7 @@ export async function updateSettings(
   if (patch.sex != null) set.sex = patch.sex;
   if (patch.birthYear != null) set.birthYear = patch.birthYear;
   if (patch.activityLevel != null) set.activityLevel = patch.activityLevel;
+  if (patch.goalMode != null) set.goalMode = patch.goalMode;
   if (patch.reminderTimes != null) set.reminderTimes = JSON.stringify(patch.reminderTimes);
   if (patch.hideCalories != null) set.hideCalories = patch.hideCalories;
   if (patch.llmDiaryAssist != null) set.llmDiaryAssist = patch.llmDiaryAssist;

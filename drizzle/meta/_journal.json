@@ -15,6 +15,13 @@
       "when": 1783067000470,
       "tag": "0001_young_dragon_man",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1783152387256,
+      "tag": "0002_jazzy_jackpot",
+      "breakpoints": true
     }
   ]
 }
