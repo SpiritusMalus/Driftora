@@ -77,6 +77,15 @@ function isMealDraft(v: unknown): v is MealDraft {
  * match the contract — it silently falls back to the offline stub so the
  * food-log screen never breaks (BUILD SPEC §5.3: offline resilience stays).
  */
+/**
+ * Mark a stub draft as a DEGRADED answer: the user expected the online parser
+ * and got the offline fallback instead. The flag is client-only — the screen
+ * uses it to say so honestly instead of passing stub numbers off as an AI parse.
+ */
+function asOfflineFallback(draft: MealDraft): MealDraft {
+  return { ...draft, flags: { ...draft.flags, offline_fallback: true } };
+}
+
 /** Derive a sibling endpoint from the text one (/food/parse → /food/parse-<kind>). */
 function deriveEndpoint(endpoint: string, kind: 'photo' | 'audio'): string {
   return /\/food\/parse$/.test(endpoint)
@@ -155,13 +164,13 @@ export class HttpFoodParser implements FoodParser {
         body: JSON.stringify({ text, region }),
         signal: controller.signal,
       });
-      if (!res.ok) return this.fallback.parse(text, region);
+      if (!res.ok) return asOfflineFallback(await this.fallback.parse(text, region));
       const data: unknown = await res.json();
-      if (!isMealDraft(data)) return this.fallback.parse(text, region);
+      if (!isMealDraft(data)) return asOfflineFallback(await this.fallback.parse(text, region));
       return data;
     } catch {
       // Network error or timeout — stay usable offline.
-      return this.fallback.parse(text, region);
+      return asOfflineFallback(await this.fallback.parse(text, region));
     } finally {
       clearTimeout(timer);
     }
@@ -191,12 +200,12 @@ export class HttpFoodParser implements FoodParser {
         body: form,
         signal: controller.signal,
       });
-      if (!res.ok) return this.fallback.parsePhoto(photo, region);
+      if (!res.ok) return asOfflineFallback(await this.fallback.parsePhoto(photo, region));
       const data: unknown = await res.json();
-      if (!isMealDraft(data)) return this.fallback.parsePhoto(photo, region);
+      if (!isMealDraft(data)) return asOfflineFallback(await this.fallback.parsePhoto(photo, region));
       return data;
     } catch {
-      return this.fallback.parsePhoto(photo, region);
+      return asOfflineFallback(await this.fallback.parsePhoto(photo, region));
     } finally {
       clearTimeout(timer);
     }
@@ -226,12 +235,12 @@ export class HttpFoodParser implements FoodParser {
         body: form,
         signal: controller.signal,
       });
-      if (!res.ok) return this.fallback.parseAudio(audio, region);
+      if (!res.ok) return asOfflineFallback(await this.fallback.parseAudio(audio, region));
       const data: unknown = await res.json();
-      if (!isMealDraft(data)) return this.fallback.parseAudio(audio, region);
+      if (!isMealDraft(data)) return asOfflineFallback(await this.fallback.parseAudio(audio, region));
       return data;
     } catch {
-      return this.fallback.parseAudio(audio, region);
+      return asOfflineFallback(await this.fallback.parseAudio(audio, region));
     } finally {
       clearTimeout(timer);
     }

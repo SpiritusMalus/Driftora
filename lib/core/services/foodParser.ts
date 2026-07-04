@@ -88,6 +88,10 @@ export interface MealDraft {
   flags: {
     has_estimate: boolean; // a per100 came from the estimate fallback (DB miss)
     low_confidence: boolean; // an item is below the confidence floor
+    // Set CLIENT-side (never by the server): the online parser failed and the
+    // offline stub answered instead — the UI must say so, not pass degraded
+    // numbers off as an AI parse.
+    offline_fallback?: boolean;
   };
 }
 

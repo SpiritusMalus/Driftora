@@ -16,6 +16,13 @@ const SENTINEL: MealDraft = {
   flags: { has_estimate: false, low_confidence: false },
 };
 
+/// Every degraded path must MARK the stub answer as an offline fallback — the
+/// UI says so instead of passing stub numbers off as an AI parse.
+const OFFLINE_SENTINEL: MealDraft = {
+  ...SENTINEL,
+  flags: { ...SENTINEL.flags, offline_fallback: true },
+};
+
 class SpyFallback implements FoodParser {
   calls = 0;
   photoCalls = 0;
@@ -87,30 +94,36 @@ describe('HttpFoodParser', () => {
     expect(captured.body).toEqual({ text: 'банан', region: 'US' });
   });
 
-  it('falls back when the response is not ok', async () => {
+  it('falls back when the response is not ok — flagged as offline', async () => {
     mockFetch(async () => ({ ok: false, json: async () => ({}) }) as unknown);
     const fallback = new SpyFallback();
     const r = await new HttpFoodParser(ENDPOINT, fallback).parse('банан', 'US');
-    expect(r).toBe(SENTINEL);
+    expect(r).toEqual(OFFLINE_SENTINEL);
     expect(fallback.calls).toBe(1);
   });
 
-  it('falls back when fetch rejects (network error)', async () => {
+  it('falls back when fetch rejects (network error) — flagged as offline', async () => {
     mockFetch(async () => {
       throw new Error('network down');
     });
     const fallback = new SpyFallback();
     const r = await new HttpFoodParser(ENDPOINT, fallback).parse('банан', 'US');
-    expect(r).toBe(SENTINEL);
+    expect(r).toEqual(OFFLINE_SENTINEL);
     expect(fallback.calls).toBe(1);
   });
 
-  it('falls back when the response shape is invalid', async () => {
+  it('falls back when the response shape is invalid — flagged as offline', async () => {
     mockFetch(async () => ({ ok: true, json: async () => ({ items: 'nope' }) }) as unknown);
     const fallback = new SpyFallback();
     const r = await new HttpFoodParser(ENDPOINT, fallback).parse('банан', 'US');
-    expect(r).toBe(SENTINEL);
+    expect(r).toEqual(OFFLINE_SENTINEL);
     expect(fallback.calls).toBe(1);
+  });
+
+  it('a clean 200 carries NO offline flag', async () => {
+    mockFetch(async () => ({ ok: true, json: async () => VALID }) as unknown);
+    const r = await new HttpFoodParser(ENDPOINT, new SpyFallback()).parse('банан', 'US');
+    expect(r.flags.offline_fallback).toBeUndefined();
   });
 
   it('parsePhoto posts multipart to the derived photo endpoint and returns the draft', async () => {
@@ -133,7 +146,7 @@ describe('HttpFoodParser', () => {
     mockFetch(async () => ({ ok: false, json: async () => ({}) }) as unknown);
     const fallback = new SpyFallback();
     const r = await new HttpFoodParser(ENDPOINT, fallback).parsePhoto(PHOTO, 'US');
-    expect(r).toBe(SENTINEL);
+    expect(r).toEqual(OFFLINE_SENTINEL);
     expect(fallback.photoCalls).toBe(1);
   });
 
@@ -150,7 +163,7 @@ describe('HttpFoodParser', () => {
     const promise = new HttpFoodParser(ENDPOINT, fallback, 50).parse('банан', 'US');
     await jest.advanceTimersByTimeAsync(60);
     const r = await promise;
-    expect(r).toBe(SENTINEL);
+    expect(r).toEqual(OFFLINE_SENTINEL);
     expect(fallback.calls).toBe(1);
   });
 

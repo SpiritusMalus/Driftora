@@ -324,12 +324,15 @@ export default function WeightScreen() {
                     setFat(String(plan.fat));
                     setCarb(String(plan.carb));
                     // One tap = the numbers land in the targets AND are saved.
+                    // `targetsSetAt` marks this as a DELIBERATE goal — the food
+                    // screen shows day progress only after that.
                     void persist(
                       {
                         targetKcal: plan.kcal,
                         targetProteinG: plan.prot,
                         targetFatG: plan.fat,
                         targetCarbG: plan.carb,
+                        targetsSetAt: Date.now(),
                       },
                       t('weight.plan.appliedTick'),
                       'plan',
@@ -481,28 +484,40 @@ export default function WeightScreen() {
               label={t('settings.targetKcal')}
               value={kcal}
               onChange={setKcal}
-              onDone={() => void persist({ targetKcal: toNumber(kcal) }, t('weight.targets.savedTick'), 'manual')}
+              onDone={() =>
+                void persist({ targetKcal: toNumber(kcal), targetsSetAt: Date.now() }, t('weight.targets.savedTick'), 'manual')
+              }
               theme={theme}
             />
             <Field
               label={t('settings.targetProtein')}
               value={protein}
               onChange={setProtein}
-              onDone={() => void persist({ targetProteinG: toNumber(protein) }, t('weight.targets.savedTick'), 'manual')}
+              onDone={() =>
+                void persist(
+                  { targetProteinG: toNumber(protein), targetsSetAt: Date.now() },
+                  t('weight.targets.savedTick'),
+                  'manual',
+                )
+              }
               theme={theme}
             />
             <Field
               label={t('settings.targetFat')}
               value={fat}
               onChange={setFat}
-              onDone={() => void persist({ targetFatG: toNumber(fat) }, t('weight.targets.savedTick'), 'manual')}
+              onDone={() =>
+                void persist({ targetFatG: toNumber(fat), targetsSetAt: Date.now() }, t('weight.targets.savedTick'), 'manual')
+              }
               theme={theme}
             />
             <Field
               label={t('settings.targetCarb')}
               value={carb}
               onChange={setCarb}
-              onDone={() => void persist({ targetCarbG: toNumber(carb) }, t('weight.targets.savedTick'), 'manual')}
+              onDone={() =>
+                void persist({ targetCarbG: toNumber(carb), targetsSetAt: Date.now() }, t('weight.targets.savedTick'), 'manual')
+              }
               theme={theme}
             />
             <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>{t('weight.targets.note')}</Text>

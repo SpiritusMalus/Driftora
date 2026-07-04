@@ -22,6 +22,7 @@ import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
 import { syncDaySleep } from '@/lib/core/db/sleep';
 import { dayKey, listStepsDays, syncDaySteps } from '@/lib/core/db/steps';
 import { weekReview } from '@/lib/core/db/weekReview';
+import { latestWeight } from '@/lib/core/db/weight';
 import { personalBaseline, type PersonalBaseline } from '@/lib/core/insights/baseline';
 import {
   MIN_PAIRED_DAYS,
@@ -63,18 +64,20 @@ export default function HomeScreen() {
   const [moodValue, setMoodValue] = useState<number | null>(null);
   const [streakWeeks, setStreakWeeks] = useState(0);
   const [paused, setPaused] = useState(false);
+  const [weightRow, setWeightRow] = useState<{ weightKg: number; date: string } | null>(null);
 
   useFocusEffect(
     useCallback(() => {
       let active = true;
       void (async () => {
         if (!db) return;
-        const [tot, settings, diaryN, moodRow, review] = await Promise.all([
+        const [tot, settings, diaryN, moodRow, review, weightLatest] = await Promise.all([
           todayMacroTotals(db),
           ensureSettings(db),
           countDiaryEntries(db),
           latestMood(db),
           weekReview(db),
+          latestWeight(db),
         ]);
         const svc = getHealthService();
         // Sync today's passive signals first so the read reflects today too.
@@ -151,6 +154,7 @@ export default function HomeScreen() {
         setMoodValue(moodRow ? moodRow.value : null);
         setStreakWeeks(review.streakWeeks);
         setPaused(settings.paused);
+        setWeightRow(weightLatest ? { weightKg: weightLatest.weightKg, date: weightLatest.date } : null);
         setSummary(
           daySummary(
             {
@@ -255,6 +259,16 @@ export default function HomeScreen() {
       ? t('home.comingSoon')
       : `${sleepHours(sleepMin)} ${t('units.h')} — ${t(`home.sleep.meaning.${sleepBand(sleepMin)}`)}`;
 
+  // «92.4 кг — 3 дн. назад» or a gentle weekly-cadence CTA before the first log.
+  const weightSubtitle = (() => {
+    if (weightRow == null) return t('home.feeders.weightCta');
+    const kg = weightRow.weightKg.toFixed(1);
+    const days = daysAgo(weightRow.date);
+    if (days <= 0) return t('home.feeders.weightToday', { kg });
+    if (days === 1) return t('home.feeders.weightYesterday', { kg });
+    return t('home.feeders.weightDaysAgo', { kg, days });
+  })();
+
   const feeders: RowSpec[] = [
     {
       key: 'steps',
@@ -272,6 +286,15 @@ export default function HomeScreen() {
       iconBg: theme.scheme === 'light' ? '#E9E2FA' : '#272138',
       title: t('home.feeders.sleep'),
       subtitle: sleepSubtitle,
+    },
+    {
+      key: 'weight',
+      icon: 'scale-outline',
+      tint: theme.accent,
+      iconBg: theme.scheme === 'light' ? '#EFE6E0' : '#2C2622',
+      title: t('home.feeders.weight'),
+      subtitle: weightSubtitle,
+      onPress: () => router.push('/weight'),
     },
     {
       key: 'diary',
@@ -431,6 +454,15 @@ function buildingKey(n: number): string {
 /// Thin-space thousands so "6 240" reads like the mockup.
 function formatSteps(n: number): string {
   return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+}
+
+/// Whole local days between a 'YYYY-MM-DD' day key and today (0 = today).
+function daysAgo(dayString: string): number {
+  const [y, m, d] = dayString.split('-').map(Number);
+  const then = new Date(y, m - 1, d);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((today.getTime() - then.getTime()) / 86_400_000);
 }
 
 /// The body-column glyph for each hero signal.

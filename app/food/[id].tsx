@@ -12,6 +12,7 @@ import {
   deleteFoodEntry,
   draftFromStoredEntry,
   getFoodEntry,
+  repeatFoodEntry,
   updateFoodEntry,
 } from '@/lib/core/db/food';
 import type { FoodEntry } from '@/lib/core/db/schema';
@@ -75,6 +76,19 @@ export default function FoodEntryScreen() {
     setBusy(true);
     try {
       await updateFoodEntry(db, entryId, { rawText: rawText.trim(), source: entry.source, draft });
+      router.back();
+    } catch {
+      setBusy(false);
+    }
+  }
+
+  /// One tap: log this meal again as of NOW and return to the day list, where
+  /// the fresh copy is visibly at the top — the numbers were confirmed once.
+  async function onRepeat() {
+    if (!db) return;
+    setBusy(true);
+    try {
+      await repeatFoodEntry(db, entryId);
       router.back();
     } catch {
       setBusy(false);
@@ -179,6 +193,17 @@ export default function FoodEntryScreen() {
 
       <PrimaryButton label={t('food.update')} onPress={onUpdate} disabled={busy} style={styles.update} />
       <Pressable
+        onPress={() => void onRepeat()}
+        disabled={busy}
+        accessibilityRole="button"
+        accessibilityLabel={t('food.repeatNow')}
+        style={({ pressed }) => [styles.repeatBtn, { borderColor: theme.primary, opacity: pressed ? 0.6 : 1 }]}
+      >
+        <Text style={[styles.deleteText, { color: theme.primary }, theme.font.bodySemiBold]}>
+          {t('food.repeatNow')}
+        </Text>
+      </Pressable>
+      <Pressable
         onPress={onDelete}
         disabled={busy}
         style={({ pressed }) => [styles.deleteBtn, { borderColor: theme.separator, opacity: pressed ? 0.6 : 1 }]}
@@ -207,6 +232,7 @@ const styles = StyleSheet.create({
   gramsUnit: { fontSize: 12 },
   total: { fontSize: 15, marginTop: 16 },
   update: { marginTop: 16 },
+  repeatBtn: { borderWidth: 1.5, borderRadius: 999, paddingVertical: 12, alignItems: 'center', marginTop: 10 },
   deleteBtn: { borderWidth: 1.5, borderRadius: 999, paddingVertical: 12, alignItems: 'center', marginTop: 10 },
   deleteText: { fontSize: 15 },
   hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
