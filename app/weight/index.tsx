@@ -55,6 +55,7 @@ export default function WeightScreen() {
   const [birthYearText, setBirthYearText] = useState('');
   const [activity, setActivity] = useState<'' | ActivityLevel>('');
   const [goalMode, setGoalMode] = useState<GoalMode>('maintain');
+  const [goalWeightText, setGoalWeightText] = useState('');
   const [kcal, setKcal] = useState('2000');
   const [protein, setProtein] = useState('120');
   const [fat, setFat] = useState('70');
@@ -92,6 +93,7 @@ export default function WeightScreen() {
           setBirthYearText(s.birthYear > 0 ? String(s.birthYear) : '');
           setActivity(s.activityLevel);
           setGoalMode(s.goalMode);
+          setGoalWeightText(s.goalWeightKg > 0 ? String(s.goalWeightKg) : '');
           setKcal(String(s.targetKcal));
           setProtein(String(s.targetProteinG));
           setFat(String(s.targetFatG));
@@ -166,7 +168,14 @@ export default function WeightScreen() {
   // Probe with a plausible dummy weight: tells "profile incomplete" apart from
   // "no weight logged yet", so the plan card can say exactly what's missing.
   const profileComplete = suggestPlan(profile, 70, 'maintain') != null;
-  const plan = suggestPlan(profile, latestKg, goalMode);
+  const goalWeightKg = toNumber(goalWeightText);
+  const plan = suggestPlan(profile, latestKg, goalMode, new Date(), goalWeightKg);
+  // ETA copy: short horizons read best in weeks, long ones in months.
+  const eta = (() => {
+    if (plan?.etaWeeks == null) return null;
+    if (plan.etaWeeks < 10) return { key: 'weight.plan.etaWeeks', n: Math.max(1, plan.etaWeeks) };
+    return { key: 'weight.plan.etaMonths', n: Math.max(1, Math.round(plan.etaWeeks / 4.345)) };
+  })();
   const planApplied =
     plan != null &&
     toNumber(kcal) === plan.kcal &&
@@ -280,6 +289,27 @@ export default function WeightScreen() {
             ))}
           </View>
 
+          {/* Goal weight — the deficit's protein basis (жировой массе белок не
+              нужен) and the honest "до цели ≈ …" line. Only for lose/gain:
+              maintain has no destination. Autosaved on end-editing. */}
+          {goalMode !== 'maintain' ? (
+            <View style={styles.heightRow}>
+              <Text style={[styles.fieldLabel, { color: theme.subtle }, theme.font.body]}>
+                {t('weight.plan.goalWeight')}
+              </Text>
+              <TextField
+                value={goalWeightText}
+                onChangeText={setGoalWeightText}
+                onEndEditing={() =>
+                  void persist({ goalWeightKg: toNumber(goalWeightText) }, t('weight.targets.savedTick'), 'plan')
+                }
+                keyboardType="numeric"
+                style={styles.heightInput}
+              />
+              <Text style={[styles.unit, { color: theme.subtle }, theme.font.body]}>{t('weight.unit')}</Text>
+            </View>
+          ) : null}
+
           {plan != null ? (
             <>
               <Text style={[styles.planIntro, { color: theme.text }, theme.font.body]}>
@@ -307,6 +337,23 @@ export default function WeightScreen() {
                   </View>
                 ))}
               </View>
+              {/* Transparency: which kilograms the protein came from — without
+                  this line a "smaller" protein number would look like a bug. */}
+              {plan.proteinBasis !== 'current' ? (
+                <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
+                  {t(`weight.plan.protBasis.${plan.proteinBasis}`, { kg: plan.proteinBasisKg })}
+                </Text>
+              ) : null}
+              {/* Fiber: the honest anti-hunger lever in a deficit. Guidance
+                  only — meals don't persist fiber, so it isn't a tracked goal. */}
+              <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
+                {t('weight.plan.fiber', { g: plan.fiber })}
+              </Text>
+              {eta != null ? (
+                <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
+                  {t(eta.key, { goal: toNumber(goalWeightText), n: eta.n })}
+                </Text>
+              ) : null}
               {plan.floored ? (
                 <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
                   {t('weight.plan.floored')}

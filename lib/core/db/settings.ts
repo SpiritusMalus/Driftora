@@ -32,6 +32,8 @@ export interface SettingsPatch {
   birthYear?: number;
   activityLevel?: '' | 'sedentary' | 'light' | 'moderate' | 'high';
   goalMode?: 'lose' | 'maintain' | 'gain';
+  // Goal weight in kg for the plan card; 0 clears back to "not set".
+  goalWeightKg?: number;
   // Epoch ms of the last deliberate targets edit; null = defaults never touched.
   targetsSetAt?: number | null;
   reminderTimes?: string[];
@@ -73,6 +75,7 @@ export async function updateSettings(
   if (patch.birthYear != null) set.birthYear = patch.birthYear;
   if (patch.activityLevel != null) set.activityLevel = patch.activityLevel;
   if (patch.goalMode != null) set.goalMode = patch.goalMode;
+  if (patch.goalWeightKg != null) set.goalWeightKg = patch.goalWeightKg;
   // Accepts an explicit null (reset to "never set") — probe for undefined.
   if (patch.targetsSetAt !== undefined) set.targetsSetAt = patch.targetsSetAt;
   if (patch.reminderTimes != null) set.reminderTimes = JSON.stringify(patch.reminderTimes);

@@ -235,6 +235,17 @@ export const en = {
         gain: 'You weigh {{kg}} kg. For a gradual gain — about +{{pace}} kg a week — you need:',
       },
       kcalPerDay: '≈ {{kcal}} kcal a day',
+      goalWeight: 'Goal weight',
+      // Transparency: which kilograms the protein was computed from. Adipose
+      // tissue needs almost no protein — at high BMI total weight over-prescribes.
+      protBasis: {
+        goal: 'Protein is computed from your goal weight of {{kg}} kg: enough for muscle — fat mass needs none.',
+        adjusted:
+          'Protein is computed from an adjusted weight of {{kg}} kg: at a high BMI, total weight over-prescribes. Set a goal weight for a more precise number.',
+      },
+      fiber: 'Fiber: ~{{g}} g a day (vegetables, legumes, whole grains) — the main weapon against deficit hunger.',
+      etaWeeks: 'To your goal of {{goal}} kg ≈ {{n}} wk at this pace.',
+      etaMonths: 'To your goal of {{goal}} kg ≈ {{n}} mo at this pace.',
       floored:
         'Going lower isn’t worth it: this is the minimum where weight loss stays healthy. Slower — but without crashes.',
       apply: 'Make this the diary goal',
@@ -244,7 +255,7 @@ export const en = {
       needWeight: 'Log a weight above — the plan is computed from it.',
       needProfile: 'Fill in “Body parameters” below — height, sex, birth year and activity — and the plan appears here.',
       note:
-        'The Mifflin–St Jeor formula estimates the “average” person: real needs differ. Start from these numbers and adjust by your weight trend and how you feel. Protein 1.6–1.8 g/kg · fat 30% of calories · carbs the remainder.',
+        'The Mifflin–St Jeor formula estimates the “average” person: real needs differ. Start from these numbers and adjust by your weight trend and how you feel. Deficit −15% (−20% at BMI ≥ 30) · protein 1.6–1.8 g/kg · fat 30% of calories · carbs the remainder.',
     },
     sections: {
       body: { title: 'Body parameters', empty: 'Not filled in — needed for the plan and BMI' },

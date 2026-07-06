@@ -1,0 +1,1 @@
+ALTER TABLE `app_settings` ADD `goal_weight_kg` real DEFAULT 0 NOT NULL;

@@ -129,6 +129,10 @@ export const appSettings = sqliteTable('app_settings', {
   // Goal for the nutrition-plan card on the weight screen (похудение /
   // поддержание / набор). Defaults to the no-pressure option: maintain.
   goalMode: text('goal_mode', { enum: ['lose', 'maintain', 'gain'] }).notNull().default('maintain'),
+  // Goal weight (kg) for the plan card: protein basis in a deficit + the
+  // honest "до цели ≈ N мес." ETA. 0 = not set (the plan falls back to the
+  // adjusted/current-weight protein basis).
+  goalWeightKg: real('goal_weight_kg').notNull().default(0),
   // Epoch ms of the last DELIBERATE targets change (plan applied / manual edit).
   // Null = the 2000/120/70/200 defaults were never touched — progress UI must
   // stay hidden then, or it would pressure the user with an arbitrary number.

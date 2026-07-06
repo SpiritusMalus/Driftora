@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
   birth_year INTEGER NOT NULL DEFAULT 0,
   activity_level TEXT NOT NULL DEFAULT '',
   goal_mode TEXT NOT NULL DEFAULT 'maintain',
+  goal_weight_kg REAL NOT NULL DEFAULT 0,
   targets_set_at INTEGER,
   reminder_times TEXT NOT NULL DEFAULT '[]',
   hide_calories INTEGER NOT NULL DEFAULT 0,
@@ -155,6 +156,10 @@ export const MIGRATIONS: string[] = [
   // 2026-07-04: when the user last DELIBERATELY set КБЖУ targets. Null keeps
   // the day-progress UI hidden — untouched defaults are not a goal.
   `ALTER TABLE app_settings ADD COLUMN targets_set_at INTEGER`,
+  // 2026-07-06: goal weight for the plan card — the protein basis in a deficit
+  // (жировой массе белок почти не нужен) + the honest "до цели ≈ N" ETA line.
+  // 0 = not set (plan falls back to adjusted/current-weight protein basis).
+  `ALTER TABLE app_settings ADD COLUMN goal_weight_kg REAL NOT NULL DEFAULT 0`,
 ];
 
 /// Runs each CREATE statement through [run], then the idempotent [MIGRATIONS].
