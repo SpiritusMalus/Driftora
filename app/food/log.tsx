@@ -21,7 +21,7 @@ import {
   type QuickMeal,
 } from '@/lib/core/db/food';
 import { loadRememberedChoices, rememberFoodChoice } from '@/lib/core/db/foodChoices';
-import { applyRememberedChoices, lookupNameForItem } from '@/lib/core/services/foodChoice';
+import { applyRememberedChoices, lookupNameForItem, normalizeChoiceName } from '@/lib/core/services/foodChoice';
 import { deleteTempFile } from '@/lib/core/services/tempFiles';
 import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
 import { mealPromptKeyForHour } from '@/lib/core/insights/mealPrompt';
@@ -831,6 +831,16 @@ function ItemCard({
   // (`prepared` — the per-100g already describes the finished dish, so an
   // adjustment would double-count).
   const cookable = item.prepared !== true && cookMethodApplies(item.name_ru, item.name_en);
+  // TRANSPARENCY: which DB row the numbers describe. Shown when the matched
+  // row's own name differs from what the user logged («картошка» → «картофель
+  // варёный») — the row name usually carries the preparation state, so the
+  // user can judge the baseline instead of guessing.
+  const matchedLabel =
+    item.matched_name &&
+    normalizeChoiceName(item.matched_name) !== normalizeChoiceName(item.name_ru) &&
+    normalizeChoiceName(item.matched_name) !== normalizeChoiceName(item.name_en)
+      ? item.matched_name
+      : null;
   // The "per 100 g · <source>" line always shows the DB row itself (that's the
   // promise in the footnote); a cook-method adjustment only moves the totals.
   const dbPer100 = item.basePer100 ?? item.per100;
@@ -868,9 +878,11 @@ function ItemCard({
         <Text style={[styles.notInDb, { color: theme.subtle }, theme.font.body]}>{t('food.notInDb')}</Text>
       ) : (
         <>
-          {/* Per-100g composition — EXACT (DB) or user-entered (manual). */}
+          {/* Per-100g composition — EXACT (DB) or user-entered (manual), with
+              the matched row's own name when it differs from the logged one. */}
           <Text style={[styles.per100Label, { color: theme.subtle }, theme.font.body]}>
-            {t('food.per100')} · {t(`food.source.${item.per100.source}`)}
+            {t('food.per100')}
+            {matchedLabel ? ` · «${matchedLabel}»` : ''} · {t(`food.source.${item.per100.source}`)}
           </Text>
           <Text style={[styles.per100Value, { color: theme.text }, theme.font.body]}>
             {hideCalories

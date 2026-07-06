@@ -118,6 +118,7 @@ test('resolver: prepared comes from the curated row OR the LLM signal', async ()
     'RU',
   );
   assert.equal(soup.prepared, true);
+  assert.equal(soup.matched_name, 'суп харчо'); // transparency: the row's own name travels
   // LLM signal alone (a product row sets no flag). Runs BEFORE the unflagged
   // case so the shared name-keyed lookup cache is proven per-item-independent.
   const dish = await resolver.resolveItem(item({ name_ru: 'гречка', name_en: 'buckwheat', prepared: true }), 'RU');
@@ -125,6 +126,8 @@ test('resolver: prepared comes from the curated row OR the LLM signal', async ()
   // Neither → the field is absent from the wire item entirely.
   const plain = await resolver.resolveItem(item({ name_ru: 'гречка', name_en: 'buckwheat' }), 'RU');
   assert.ok(!('prepared' in plain));
+  // The user logged «гречка»; the numbers are for the BOILED row — say so.
+  assert.equal(plain.matched_name, 'гречка варёная');
 });
 
 test('RU routing: resolver uses Skurikhin, never USDA', async () => {

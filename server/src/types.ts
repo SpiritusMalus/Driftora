@@ -88,6 +88,11 @@ export interface NutritionItem {
   per100: Per100; // EXACT (or estimate on a DB miss)
   scaled: NutrientValues; // per100 * grams / 100
   approximate: boolean; // true while grams_source === 'estimated'
+  // TRANSPARENCY: the display name of the DB row the numbers actually came
+  // from («картошка» resolves to «картофель варёный» — the user must SEE
+  // that, incl. the preparation state the row name carries). Absent on a full
+  // miss (estimate has no row).
+  matched_name?: string;
   // The component is an already-prepared dish consumed as-is (soup, salad,
   // ready meal) — from the curated-table flag or the LLM signal. Its per-100g
   // baseline already describes the FINISHED dish, so the client hides the

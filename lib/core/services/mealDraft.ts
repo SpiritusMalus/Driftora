@@ -123,7 +123,9 @@ export function withItemManualMacros(
       minerals: {},
       source: 'manual',
     };
-    return { ...it, per100, scaled: scaleToGrams(per100, it.grams) };
+    // User-typed numbers are no DB row — a stale matched-row name would
+    // misattribute them.
+    return { ...it, per100, matched_name: undefined, scaled: scaleToGrams(per100, it.grams) };
   });
   return recomputeDraft(draft.region, items);
 }
@@ -167,10 +169,17 @@ export function withItemReplacement(
 ): MealDraft {
   const items = draft.items.map((it, i) => {
     if (i !== index) return it;
-    const previous: NutritionAlternative = { name: it.name_ru || it.name_en, per100: it.per100 };
+    // The swapped-out row goes back under its OWN name (the DB row's, when we
+    // know it) — labeling it with the component name would misattribute the
+    // numbers the user is comparing against.
+    const previous: NutritionAlternative = {
+      name: it.matched_name ?? (it.name_ru || it.name_en),
+      per100: it.basePer100 ?? it.per100,
+    };
     return {
       ...it,
       per100: replacement.per100,
+      matched_name: replacement.name, // transparency: the new row's own name
       confidence: 1, // the user confirmed the match by hand
       userChosen: true, // → "remember my choice" on save
       cook_method: undefined,

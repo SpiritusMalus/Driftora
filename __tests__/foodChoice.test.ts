@@ -65,6 +65,12 @@ describe('applyRememberedChoices', () => {
     expect(next.items[0]!.per100.kcal).toBe(150);
   });
 
+  it('stamps the remembered row name (transparency: whose numbers these are)', () => {
+    const choices = new Map([[choiceKey('RU', 'творог'), { name: 'Творог 5%', per100: per100(121) }]]);
+    const next = applyRememberedChoices(draft([item()]), 'RU', choices);
+    expect(next.items[0]!.matched_name).toBe('Творог 5%');
+  });
+
   it('is a no-op with an empty choice map', () => {
     const d = draft([item()]);
     expect(applyRememberedChoices(d, 'RU', new Map())).toBe(d);

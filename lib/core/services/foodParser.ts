@@ -70,6 +70,12 @@ export interface NutritionItem {
   // switching methods is reversible. Both absent until the user picks a method.
   cook_method?: import('../insights/cookMethod').CookMethod;
   basePer100?: Per100;
+  // TRANSPARENCY: the display name of the DB row per100 actually came from
+  // («картошка» → «картофель варёный»). The card shows it when it differs
+  // from what the user logged — the row name usually carries the preparation
+  // state, so the user can SEE what the numbers describe. Kept in sync on
+  // alternative/manual swaps; cleared when the user types manual macros.
+  matched_name?: string;
   // The component is an already-prepared dish consumed as-is (soup, salad,
   // ready meal) — set server-side from the curated-table flag or the LLM
   // signal. Its per-100g baseline already describes the FINISHED dish, so the

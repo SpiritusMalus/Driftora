@@ -200,6 +200,9 @@ export class Resolver {
       per100: found.per100,
       scaled: scaleToGrams(found.per100, grams),
       approximate: true, // estimated grams → approximate until the user confirms
+      // Transparency: tell the client WHICH row was matched, not just its
+      // numbers — the row's own name usually carries the preparation state.
+      ...(found.name ? { matched_name: found.name } : {}),
       ...(prepared ? { prepared: true } : {}),
       ...(found.alternatives.length > 0 ? { alternatives: found.alternatives } : {}),
     };

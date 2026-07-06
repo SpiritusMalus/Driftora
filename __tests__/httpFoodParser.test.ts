@@ -126,16 +126,25 @@ describe('HttpFoodParser', () => {
     expect(r.flags.offline_fallback).toBeUndefined();
   });
 
-  it('a server `prepared` flag on an item survives validation (ready dish → no cook chips)', async () => {
+  it('server `prepared` + `matched_name` on an item survive validation', async () => {
     const prepared: MealDraft = {
       ...VALID,
-      items: [{ ...VALID.items[0]!, name_ru: 'суп харчо', name_en: 'kharcho soup', prepared: true }],
+      items: [
+        {
+          ...VALID.items[0]!,
+          name_ru: 'суп харчо',
+          name_en: 'kharcho soup',
+          prepared: true,
+          matched_name: 'суп харчо',
+        },
+      ],
     };
     mockFetch(async () => ({ ok: true, json: async () => prepared }) as unknown);
     const fallback = new SpyFallback();
     const r = await new HttpFoodParser(ENDPOINT, fallback).parse('суп харчо', 'RU');
     expect(fallback.calls).toBe(0);
     expect(r.items[0]?.prepared).toBe(true);
+    expect(r.items[0]?.matched_name).toBe('суп харчо');
   });
 
   it('parsePhoto posts multipart to the derived photo endpoint and returns the draft', async () => {

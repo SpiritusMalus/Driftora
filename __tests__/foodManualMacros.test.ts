@@ -44,6 +44,13 @@ function draftOf(items: NutritionItem[]): MealDraft {
 }
 
 describe('withItemManualMacros', () => {
+  it('clears matched_name — user-typed numbers are no DB row', () => {
+    const seeded = missItem();
+    seeded.matched_name = 'что-то из базы';
+    const d = withItemManualMacros(draftOf([seeded]), 0, { kcal: 250, prot: 8, fat: 12, carb: 30 });
+    expect(d.items[0]!.matched_name).toBeUndefined();
+  });
+
   it('replaces a DB-miss per100 with user numbers tagged source "manual"', () => {
     const d = withItemManualMacros(draftOf([missItem()]), 0, { kcal: 250, prot: 8, fat: 12, carb: 30 });
     const it = d.items[0];

@@ -43,6 +43,7 @@ function isItem(v: unknown): v is NutritionItem {
     isPer100(i.per100) &&
     isNutrientValues(i.scaled) &&
     typeof i.approximate === 'boolean' &&
+    (i.matched_name === undefined || typeof i.matched_name === 'string') &&
     (i.prepared === undefined || typeof i.prepared === 'boolean') &&
     (i.alternatives === undefined || (Array.isArray(i.alternatives) && i.alternatives.every(isAlternative)))
   );

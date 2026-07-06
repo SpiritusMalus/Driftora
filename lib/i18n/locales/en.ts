@@ -429,9 +429,12 @@ export const en = {
     // Cooking method — neutral, never "healthier/worse".
     cookMethod: {
       label: 'How it was cooked',
-      raw: 'Raw',
+      // "As in database", not "Raw": the DB row may already be a finished
+      // dish (its name is shown above the numbers) — chips only add on top.
+      raw: 'As in database',
       boiled: 'Boiled',
-      fried: 'Fried',
+      // The multiplier models absorbed oil; dry-frying = "as in database".
+      fried: 'Fried in oil',
       baked: 'Baked',
       grilled: 'Grilled',
       stewed: 'Stewed',
