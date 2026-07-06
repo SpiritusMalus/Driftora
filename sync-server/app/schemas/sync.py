@@ -60,13 +60,15 @@ class SnapshotUploadRequest(BaseModel):
     # Base64 of the encrypted backup-file bytes (client `buildBackupFile` output).
     # OPAQUE — the server never base64-decodes it to inspect contents; it only
     # stores the bytes. min_length guards an empty upload; max_length bounds the
-    # request body (a health diary is tiny — 64 MiB of base64 ≈ 48 MiB raw is far
-    # above any realistic snapshot, while still rejecting memory-exhausting uploads).
-    blob: str = Field(min_length=1, max_length=64 * 1024 * 1024)
+    # request body. A full health-diary snapshot is small — 8 MiB of base64 (~6 MiB
+    # raw) is generous even for heavy use, while sharply limiting how much memory a
+    # single (or concurrent) upload can force the server to buffer (was 64 MiB).
+    blob: str = Field(min_length=1, max_length=8 * 1024 * 1024)
     # When the client snapshot was taken (drives last-writer-wins).
     updated_at: datetime
-    # Plaintext size in bytes (client-asserted, sanity only).
-    size: int = Field(ge=0)
+    # Plaintext size in bytes. Client-asserted and NO LONGER TRUSTED — the service
+    # stores len(decoded blob) instead. Bounded here only to reject absurd values.
+    size: int = Field(ge=0, le=64 * 1024 * 1024)
     # Opaque device identifier (which device pushed this).
     device_id: str = Field(min_length=1, max_length=128)
 

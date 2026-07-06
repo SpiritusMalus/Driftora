@@ -29,8 +29,14 @@ export default function DiaryEntryScreen() {
         onPress: () => {
           if (!db) return;
           void (async () => {
-            await deleteDiaryEntry(db, Number(id));
-            router.back();
+            try {
+              await deleteDiaryEntry(db, Number(id));
+              router.back();
+            } catch {
+              // Never swallow the failure — if we don't navigate back the screen
+              // just sits there and the user has no idea the delete didn't take.
+              Alert.alert(t('diary.deleteError'));
+            }
           })();
         },
       },

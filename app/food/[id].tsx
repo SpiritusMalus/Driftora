@@ -23,7 +23,11 @@ import { ensureSettings } from '@/lib/core/db/settings';
 import { useTheme } from '@/lib/theme/theme';
 
 function toNumber(v: string): number {
-  const n = parseInt(v.replace(/[^0-9]/g, ''), 10);
+  // Accept a decimal comma (ru keyboard) and keep the fractional part. The old
+  // `parseInt` after stripping every non-digit turned "70,5" into 705 — a 10×
+  // portion. Normalize comma→dot, drop stray unit text, then parse as a float
+  // (matches the log screen's toNumber).
+  const n = parseFloat(v.replace(',', '.').replace(/[^0-9.]/g, ''));
   return Number.isFinite(n) ? n : 0;
 }
 
@@ -134,7 +138,11 @@ export default function FoodEntryScreen() {
       <TextField value={rawText} onChangeText={setRawText} placeholder={t('food.untitled')} style={styles.titleInput} />
 
       <View style={styles.results}>
-        {draft.items.map((item, i) => {
+        {draft.items.length === 0 ? (
+          <Text style={[styles.itemMacros, { color: theme.subtle }, theme.font.body]}>
+            {t('food.entryNoItems')}
+          </Text>
+        ) : draft.items.map((item, i) => {
           const base = baseGrams[i] ?? item.grams;
           const presets = [
             { label: t('food.presetLess'), grams: Math.max(5, Math.round(base * 0.6)) },

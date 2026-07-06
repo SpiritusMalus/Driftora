@@ -261,7 +261,12 @@ function EmotionsEditor({
           <Text style={[styles.emotionText, { color: theme.text }, theme.font.bodyMedium]}>
             {e.name} · {e.intensity}
           </Text>
-          <Pressable onPress={() => onChange(emotions.filter((_, idx) => idx !== i))} hitSlop={8}>
+          <Pressable
+            onPress={() => onChange(emotions.filter((_, idx) => idx !== i))}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={t('diary.emotion.remove', { name: e.name })}
+          >
             <Text style={[styles.emotionRemove, { color: theme.subtle }]}>✕</Text>
           </Pressable>
         </View>

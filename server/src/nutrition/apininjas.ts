@@ -1,3 +1,4 @@
+import { TIMEOUT_MS } from '../httpTimeout.js';
 import type { Minerals, Per100, Region } from '../types.js';
 import type { NutritionProvider, ProviderResult } from './provider.js';
 import { rankByName, scoreToConfidence } from './scoring.js';
@@ -46,7 +47,11 @@ export class ApiNinjasProvider implements NutritionProvider {
 
     let res: Response;
     try {
-      res = await fetch(url, { method: 'GET', headers: { 'X-Api-Key': this.apiKey } });
+      res = await fetch(url, {
+        method: 'GET',
+        headers: { 'X-Api-Key': this.apiKey },
+        signal: AbortSignal.timeout(TIMEOUT_MS.apininjas),
+      });
     } catch {
       return [];
     }

@@ -66,6 +66,30 @@ export class SyncDisabledError extends Error {
   }
 }
 
+/// Thrown when a pull would import a snapshot OLDER than the local sync watermark
+/// — i.e. the replace-all import would silently destroy newer local changes.
+/// Callers catch this to surface a conflict ("keep this device / take cloud")
+/// rather than losing data. Only raised when the caller supplies `localUpdatedAt`.
+export class SyncConflictError extends Error {
+  constructor(
+    readonly remoteUpdatedAt: string,
+    readonly localUpdatedAt: string,
+  ) {
+    super('sync: refusing to import a snapshot older than local data (would lose changes)');
+    this.name = 'SyncConflictError';
+  }
+}
+
+/// Options for a pull. `localUpdatedAt` is this device's sync watermark — the
+/// `updatedAt` of the last snapshot it successfully pushed or pulled. When given,
+/// a strictly-older remote snapshot is refused (see [SyncConflictError]) instead
+/// of silently overwriting newer local data via the replace-all import. `force`
+/// bypasses the check for a deliberate "discard local, take cloud" restore.
+export interface PullOptions {
+  localUpdatedAt?: string;
+  force?: boolean;
+}
+
 /// Result of a push: the metadata the transport echoed back.
 export type PushResult = SnapshotMeta;
 
@@ -150,11 +174,19 @@ export async function pullVia(
   db: AnyDb,
   master: MasterKeyPair,
   provider: DataSyncProvider,
+  opts: PullOptions = {},
 ): Promise<PullResult> {
   await assertSyncEnabled(db);
   const payload = await provider.pullSnapshot();
   if (!payload) {
     return { kind: 'empty' };
+  }
+  // `applySnapshot` is replace-all (importAllTables wipes every table first). If
+  // the caller passed a local watermark and the remote snapshot predates it,
+  // importing would silently destroy newer un-pushed local changes — refuse
+  // instead (unless explicitly forced). ISO-8601 UTC strings compare chronologically.
+  if (!opts.force && opts.localUpdatedAt && payload.meta.updatedAt < opts.localUpdatedAt) {
+    throw new SyncConflictError(payload.meta.updatedAt, opts.localUpdatedAt);
   }
   await applySnapshot(db, master, payload);
   return {
@@ -213,6 +245,10 @@ export async function pushSnapshot(db: AnyDb, cfg: SyncConfig): Promise<PushResu
  * @throws [SyncDisabledError] if sync is off, [SyncError] on transport/auth failure,
  *   or the decrypt/parse error if the blob can't be opened.
  */
-export async function pullSnapshot(db: AnyDb, cfg: SyncConfig): Promise<PullResult> {
-  return pullVia(db, cfg.master, createServerDataSyncProvider(cfg));
+export async function pullSnapshot(
+  db: AnyDb,
+  cfg: SyncConfig,
+  opts?: PullOptions,
+): Promise<PullResult> {
+  return pullVia(db, cfg.master, createServerDataSyncProvider(cfg), opts);
 }

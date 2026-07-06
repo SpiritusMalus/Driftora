@@ -431,7 +431,10 @@ export default function HomeScreen() {
         <FoodBar
           placeholder={t('home.foodBar.placeholder')}
           onPressText={() => router.push('/food/log')}
-          onPressMic={() => router.push('/food/log?voice=1')}
+          // Unique token per tap so every mic press re-triggers voice on the log
+          // screen — a constant `?voice=1` can't re-fire if the screen is reused or
+          // the same route is re-navigated, which read as "mic does nothing".
+          onPressMic={() => router.push(`/food/log?voice=${Date.now()}`)}
         />
       </View>
     </View>

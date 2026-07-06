@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useTheme } from '@/lib/theme/theme';
@@ -18,6 +19,7 @@ export function FoodBar({
   onPressMic: () => void;
 }) {
   const theme = useTheme();
+  const { t } = useTranslation();
   const mic = (
     <Ionicons name="mic-outline" size={22} color="#FFFFFF" />
   );
@@ -40,7 +42,13 @@ export function FoodBar({
       <Text numberOfLines={1} style={[styles.placeholder, { color: theme.subtle }, theme.font.body]}>
         {placeholder}
       </Text>
-      <Pressable onPress={onPressMic} hitSlop={8} style={({ pressed }) => [{ opacity: pressed ? 0.85 : 1 }]}>
+      <Pressable
+        onPress={onPressMic}
+        hitSlop={8}
+        accessibilityRole="button"
+        accessibilityLabel={t('food.voice')}
+        style={({ pressed }) => [{ opacity: pressed ? 0.85 : 1 }]}
+      >
         {theme.isIOS ? (
           <View style={[styles.micIOS, { backgroundColor: theme.primary }]}>{mic}</View>
         ) : (

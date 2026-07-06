@@ -1,3 +1,4 @@
+import { TIMEOUT_MS } from '../httpTimeout.js';
 import type { Minerals, Per100, Region } from '../types.js';
 import type { NutritionProvider, ProviderResult } from './provider.js';
 import { rankByName, scoreToConfidence } from './scoring.js';
@@ -141,14 +142,19 @@ export class UsdaProvider implements NutritionProvider {
   async searchMany(name: string, _region: Region): Promise<ProviderResult[]> {
     if (!this.apiKey || name.trim().length === 0) return [];
     const url = new URL(SEARCH_URL);
-    url.searchParams.set('api_key', this.apiKey);
     url.searchParams.set('query', name);
     url.searchParams.set('dataType', DATA_TYPES.join(','));
     url.searchParams.set('pageSize', '10');
 
     let res: Response;
     try {
-      res = await fetch(url, { method: 'GET' });
+      // FDC accepts the key via `X-Api-Key` (same as api-ninjas) — keeps it
+      // out of the query string (URL, access logs, referrers).
+      res = await fetch(url, {
+        method: 'GET',
+        headers: { 'X-Api-Key': this.apiKey },
+        signal: AbortSignal.timeout(TIMEOUT_MS.usda),
+      });
     } catch {
       return [];
     }

@@ -1,7 +1,7 @@
 import { Paths, File } from 'expo-file-system';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, Modal, StyleSheet, Switch, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Modal, StyleSheet, Switch, Text, View } from 'react-native';
 import { decodeBase64, encodeBase64 } from 'tweetnacl-util';
 
 import { RecoverySaveGate } from '@/components/backup/RecoverySaveGate';
@@ -143,6 +143,13 @@ export default function BackupScreen() {
   async function onGateConfirmed() {
     if (!db || gatePhrase == null) return;
     setGateBusy(true);
+    // The encrypted backup file lives in the app cache only long enough to hand
+    // it to the OS share-sheet. Track it so we can delete it once shared (or on
+    // error) — no reason to leave a copy of the whole DB sitting in cache.
+    let file: File | null = null;
+    // Keep the cache file ONLY in the no-share-sheet fallback, where it is the
+    // user's sole copy. Shared or errored → delete it below.
+    let keepFile = false;
     try {
       const doc = await exportAllTables(db);
       // Biometric-gated read of the master key before it is used to build the file.
@@ -150,7 +157,7 @@ export default function BackupScreen() {
       const fileBytes = await buildBackupFile(doc, master, gatePhrase);
 
       const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
-      const file = new File(Paths.cache, `driftora-backup-${stamp}.${BACKUP_EXTENSION}`);
+      file = new File(Paths.cache, `driftora-backup-${stamp}.${BACKUP_EXTENSION}`);
       file.create({ overwrite: true });
       file.write(fileBytes);
 
@@ -165,6 +172,7 @@ export default function BackupScreen() {
         });
         setStatus({ kind: 'done', message: t('backup.backupDone') });
       } else {
+        keepFile = true; // no share-sheet: the cache file is the only copy
         setStatus({ kind: 'done', message: t('backup.savedLocally', { path: file.uri }) });
       }
     } catch (e) {
@@ -175,17 +183,24 @@ export default function BackupScreen() {
           ? t('keysync.gateFailed')
           : messageFrom(e, t('backup.backupError'));
       setStatus({ kind: 'error', message });
+    } finally {
+      if (file != null && !keepFile) safeDelete(file);
     }
   }
 
   /// Export the raw master key as a JSON key-file (power-user fallback). Available
   /// both from the save-gate and as its own button.
   async function onExportKeyFile() {
+    // This file is the RAW private key in plaintext JSON — it must not linger in
+    // the app cache after it has been handed off. Delete it once shared (or on
+    // error); keep it only in the no-share-sheet fallback where it's the sole copy.
+    let file: File | null = null;
+    let keepFile = false;
     try {
       // The key-file reveals the raw private key → gate it behind biometrics too.
       const master = await unlockMasterKeyPair(t('keysync.biometricReason'));
       const json = serializeKeyFile(master);
-      const file = new File(Paths.cache, KEYFILE_NAME);
+      file = new File(Paths.cache, KEYFILE_NAME);
       file.create({ overwrite: true });
       file.write(new TextEncoder().encode(json));
 
@@ -196,6 +211,7 @@ export default function BackupScreen() {
           dialogTitle: t('recovery.keyFile.shareTitle'),
         });
       } else {
+        keepFile = true;
         setStatus({ kind: 'done', message: t('backup.savedLocally', { path: file.uri }) });
       }
     } catch (e) {
@@ -204,6 +220,8 @@ export default function BackupScreen() {
           ? t('keysync.gateFailed')
           : messageFrom(e, t('recovery.keyFile.exportError'));
       setStatus({ kind: 'error', message });
+    } finally {
+      if (file != null && !keepFile) safeDelete(file);
     }
   }
 
@@ -241,6 +259,17 @@ export default function BackupScreen() {
   }
 
   // ── Restore ───────────────────────────────────────────────────────────────
+  /// Restore REPLACES all local data (importAllTables wipes every table first),
+  /// so gate it behind an explicit destructive confirmation — the same bar the
+  /// app already applies to deleting a single food/diary entry.
+  function confirmRestore() {
+    if (!db || working) return;
+    Alert.alert(t('backup.restoreTitle'), t('backup.restoreReplaceWarning'), [
+      { text: t('backup.restoreCancel'), style: 'cancel' },
+      { text: t('backup.restoreConfirm'), style: 'destructive', onPress: () => void onRestore() },
+    ]);
+  }
+
   async function onRestore() {
     if (!db || working) return;
     setStatus({ kind: 'working', op: 'restore' });
@@ -373,7 +402,7 @@ export default function BackupScreen() {
       <Note theme={theme}>{t('backup.restoreReplaceWarning')}</Note>
       <PrimaryButton
         label={status.kind === 'working' && status.op === 'restore' ? t('backup.working') : t('backup.restoreCta')}
-        onPress={onRestore}
+        onPress={confirmRestore}
         disabled={db == null || working}
         style={styles.btn}
       />
@@ -503,8 +532,22 @@ function Note({ children, theme }: { children: string; theme: Theme }) {
 }
 
 function messageFrom(e: unknown, fallback: string): string {
-  if (e instanceof Error && e.message) return `${fallback} (${e.message})`;
+  // Never surface raw technical error text (file paths, native error codes) in
+  // the UI — especially in this backup/restore/key flow, where a scary string
+  // only deepens the user's worry about their data. Log it for diagnostics and
+  // show the user the actionable fallback message only.
+  if (e instanceof Error && e.message) console.warn('[backup]', e.message);
   return fallback;
+}
+
+/// Best-effort delete of a cache file we created for share/export. Never throws —
+/// the file may already be gone, and a cleanup failure must not reach the user.
+function safeDelete(file: File): void {
+  try {
+    file.delete();
+  } catch {
+    /* best-effort */
+  }
 }
 
 const styles = StyleSheet.create({

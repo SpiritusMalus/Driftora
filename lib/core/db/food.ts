@@ -368,9 +368,26 @@ export async function quickMeals(
     .limit(opts.scan ?? 200)) as QuickSourceEntry[];
   const yesterdayDate = new Date(now);
   yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+  // Yesterday's meals get their OWN day-bounded query. Deriving them from the
+  // `scan`-limited `rows` above dropped "same as yesterday" for heavy loggers:
+  // once today's confirmed entries fill the scan window, yesterday never appears
+  // in `rows` at all. Query yesterday's local day directly instead.
+  const { start, end } = dayBounds(yesterdayDate);
+  const yesterdayRows = (await db
+    .select({
+      rawText: foodEntries.rawText,
+      ts: foodEntries.ts,
+      kcal: foodEntries.kcal,
+      proteinG: foodEntries.proteinG,
+      fatG: foodEntries.fatG,
+      carbG: foodEntries.carbG,
+    })
+    .from(foodEntries)
+    .where(and(eq(foodEntries.confirmed, true), gte(foodEntries.ts, start), lt(foodEntries.ts, end)))
+    .orderBy(desc(foodEntries.ts))) as QuickSourceEntry[];
   return {
     ...deriveQuickMeals(rows, opts),
-    yesterday: deriveDayMeals(rows, yesterdayDate, opts.recentLimit ?? 6),
+    yesterday: deriveDayMeals(yesterdayRows, yesterdayDate, opts.recentLimit ?? 6),
   };
 }
 

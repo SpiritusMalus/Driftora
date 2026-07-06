@@ -21,6 +21,7 @@ from datetime import timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.snapshot import Snapshot
@@ -59,33 +60,38 @@ async def upsert_snapshot(
 
     new_updated = _as_utc(body.updated_at)
 
-    result = await db.execute(select(Snapshot).where(Snapshot.account_id == account_id))
-    existing = result.scalar_one_or_none()
-
-    if existing is None:
-        snapshot = Snapshot(
-            account_id=account_id,
-            blob=raw,
-            updated_at=new_updated,
-            size=body.size,
-            device_id=body.device_id,
-        )
-        db.add(snapshot)
-        stored = snapshot
-    elif new_updated >= _as_utc(existing.updated_at):
-        # Newer (or same-moment) upload wins — replace verbatim.
-        existing.blob = raw
-        existing.updated_at = new_updated
-        existing.size = body.size
-        existing.device_id = body.device_id
-        stored = existing
-    else:
-        # Stored snapshot is newer — keep it, ignore this stale push (still 200 so
-        # the client can treat the push as accepted/converged).
-        stored = existing
-
+    # Atomic last-writer-wins. A single INSERT ... ON CONFLICT DO UPDATE replaces
+    # the previous SELECT-then-write, which had a read-modify-write race: two
+    # devices pushing at once could let a strictly-older snapshot overwrite a newer
+    # one, or both take the INSERT branch and collide on the unique account_id
+    # (IntegrityError → 500). The conditional WHERE keeps the invariant "a strictly
+    # older snapshot never wins"; a stale push becomes a no-op (the stored, newer
+    # row is kept). `size` is taken from the actual decoded bytes, never the
+    # client-asserted value.
+    stmt = sqlite_insert(Snapshot).values(
+        account_id=account_id,
+        blob=raw,
+        updated_at=new_updated,
+        size=len(raw),
+        device_id=body.device_id,
+    )
+    stmt = stmt.on_conflict_do_update(
+        index_elements=[Snapshot.account_id],
+        set_={
+            "blob": stmt.excluded.blob,
+            "updated_at": stmt.excluded.updated_at,
+            "size": stmt.excluded.size,
+            "device_id": stmt.excluded.device_id,
+        },
+        where=stmt.excluded.updated_at >= Snapshot.updated_at,
+    )
+    await db.execute(stmt)
     await db.commit()
-    await db.refresh(stored)
+
+    # Read back the authoritative row (this push, or a newer one that legitimately
+    # won the conditional update).
+    result = await db.execute(select(Snapshot).where(Snapshot.account_id == account_id))
+    stored = result.scalar_one()
 
     logger.info(
         "snapshot_upserted",

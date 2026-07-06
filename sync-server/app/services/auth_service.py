@@ -26,7 +26,7 @@ import os
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import delete, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.e2ee_box import encrypt_for_public_key
@@ -51,8 +51,12 @@ _CHALLENGE_NONCE_LEN = 32
 async def register_account(body: AccountCreateRequest, db: AsyncSession) -> AccountCreateResponse:
     """Registers (or idempotently re-affirms) an account by its public key.
 
-    Re-registering the same public key updates the OPAQUE wrapped key / label
-    rather than erroring, so a client that re-runs setup isn't blocked. The public
+    Re-registering the same public key is idempotent and only FILLS IN fields that
+    are still empty — it never overwrites an already-stored wrapped key or label.
+    SECURITY: the public key is a non-secret identifier (it travels in challenge
+    query params), so an unauthenticated overwrite here would let anyone who knows
+    it clobber the victim's recovery blob. Rotating a stored wrapped key must go
+    through an authenticated path, not this open registration endpoint. The public
     key must be valid base64 of a 32-byte X25519 key (checked by encrypting a probe
     to it) — a malformed key is a 400 before anything is stored.
     """
@@ -76,10 +80,12 @@ async def register_account(body: AccountCreateRequest, db: AsyncSession) -> Acco
         )
         db.add(account)
     else:
-        # Idempotent re-register: refresh the opaque wrapped key / label if given.
-        if body.wrapped_private_key is not None:
+        # Idempotent re-register: only COMPLETE still-empty fields (first-time
+        # setup that arrives in two steps). Never overwrite an existing value — see
+        # the SECURITY note in the docstring.
+        if body.wrapped_private_key is not None and account.wrapped_private_key is None:
             account.wrapped_private_key = body.wrapped_private_key
-        if body.label is not None:
+        if body.label is not None and account.label is None:
             account.label = body.label
 
     await db.commit()
@@ -106,6 +112,19 @@ async def issue_key_challenge(public_key: str, db: AsyncSession) -> KeyChallenge
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid public key",
         ) from exc
+
+    # Opportunistic cleanup so expired/spent challenges don't accumulate unbounded.
+    # This endpoint is unauthenticated and un-rate-limited at the app layer, so
+    # without this a caller could grow the table indefinitely by polling. One
+    # indexed delete per issued challenge keeps it bounded.
+    await db.execute(
+        delete(AuthChallenge).where(
+            or_(
+                AuthChallenge.expires_at < datetime.now(timezone.utc),
+                AuthChallenge.used_at.is_not(None),
+            )
+        )
+    )
 
     challenge = AuthChallenge(
         public_key=public_key,
@@ -149,8 +168,17 @@ async def key_login(challenge_id: str, nonce_b64: str, db: AsyncSession) -> KeyL
     if hash_challenge_nonce(presented) != challenge.nonce_hash:
         raise invalid
 
-    # Correct solve — burn the challenge (even if the account doesn't exist).
-    challenge.used_at = datetime.now(timezone.utc)
+    # Correct solve — atomically burn the challenge so two concurrent solves of the
+    # same challenge can't both succeed: only the request that flips used_at from
+    # NULL wins. Burn even if the account turns out not to exist.
+    burn = await db.execute(
+        update(AuthChallenge)
+        .where(AuthChallenge.id == challenge_id, AuthChallenge.used_at.is_(None))
+        .values(used_at=datetime.now(timezone.utc))
+    )
+    if burn.rowcount == 0:
+        # Someone already spent this challenge between our read and here.
+        raise invalid
 
     account_result = await db.execute(
         select(Account).where(Account.public_key == challenge.public_key)

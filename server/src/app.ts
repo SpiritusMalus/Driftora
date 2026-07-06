@@ -1,3 +1,5 @@
+import crypto from 'node:crypto';
+
 import express, { type NextFunction, type Request, type Response } from 'express';
 import multer from 'multer';
 
@@ -39,12 +41,22 @@ function fail(res: Response, status: number, code: string, message: string): voi
   res.status(status).json({ error: { code, message } });
 }
 
+// Constant-time comparison of the presented token against the app secret, so
+// response timing can't be used to recover it byte-by-byte. Both sides are
+// hashed to a fixed 32 bytes first: `timingSafeEqual` throws on length-mismatched
+// buffers, and the raw length would itself be a (small) leak.
+function tokensMatch(presented: string, secret: string): boolean {
+  const a = crypto.createHash('sha256').update(presented).digest();
+  const b = crypto.createHash('sha256').update(secret).digest();
+  return crypto.timingSafeEqual(a, b);
+}
+
 // Static-token gate (skips /health). No user identity, just an app secret.
 function requireToken(req: Request, res: Response, next: NextFunction): void {
   if (!APP_TOKEN) return next();
   const header = req.get('authorization') || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : '';
-  if (token !== APP_TOKEN) {
+  if (!tokensMatch(token, APP_TOKEN)) {
     fail(res, 401, 'unauthorized', 'Missing or invalid access token.');
     return;
   }
@@ -76,6 +88,13 @@ export function createApp(
   // so trust exactly 1 proxy and read the real client IP from X-Forwarded-For.
   // Use the integer hop count, never `true` (spoofable, rejected by the limiter).
   // Bump only if a CDN/LB is ever added in front.
+  //
+  // ⚠️ SECURITY INVARIANT: the fronting proxy (Caddy) MUST overwrite the inbound
+  // X-Forwarded-For with the real remote address — it must not append to a
+  // client-supplied one. Otherwise a client can spoof its IP and each request
+  // looks like a fresh IP to the rate limiter, defeating the per-IP caps entirely
+  // (burst + daily) and letting one attacker fan out unbounded paid LLM/USDA
+  // calls. Verify the Caddyfile sets `X-Forwarded-For {http.request.remote.host}`.
   app.set('trust proxy', 1);
 
   const limiters = buildLimiters(resolveLimits(opts.limits), fail);
@@ -105,7 +124,10 @@ export function createApp(
     res.json({ status: 'ok' });
   });
 
-  // Aggregate, content-free ops counters (privacy §2).
+  // Aggregate, content-free ops counters (privacy §2). NOTE: `requireToken` is a
+  // no-op when APP_TOKEN is unset, so on a tokenless deployment /metrics (like
+  // every route) is public — operational counts become visible to anyone. That's
+  // acceptable only if running behind a network boundary; set APP_TOKEN otherwise.
   app.get('/metrics', requireToken, (_req: Request, res: Response) => {
     res.json(metrics.snapshot());
   });
@@ -210,6 +232,14 @@ export function createApp(
       return;
     }
     if (err) {
+      // express.json() rejects an oversized body with a PayloadTooLargeError
+      // (type 'entity.too.large', status 413). Report it honestly so clients
+      // treat it as "don't resend" rather than a transient 500 to retry.
+      const e = err as { type?: string; status?: number; statusCode?: number };
+      if (e.type === 'entity.too.large' || e.status === 413 || e.statusCode === 413) {
+        fail(res, 413, 'input_too_large', 'Request body is too large.');
+        return;
+      }
       fail(res, 500, 'internal_error', 'Internal server error.');
       return;
     }

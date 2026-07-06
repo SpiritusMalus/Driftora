@@ -16,7 +16,7 @@ account they read/write is derived from the token, never from the request body.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_account
@@ -55,7 +55,7 @@ async def register_account(
 
 @router.get("/v1/auth/challenge", response_model=KeyChallengeResponse)
 async def auth_challenge(
-    public_key: str,
+    public_key: str = Query(max_length=128),
     db: AsyncSession = Depends(get_db),
 ) -> KeyChallengeResponse:
     """Issues a key-challenge for `public_key` (query param). Always succeeds for a

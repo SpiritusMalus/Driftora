@@ -13,6 +13,25 @@ function fdcFetchStub(foods: unknown[]): typeof fetch {
     new Response(JSON.stringify({ foods }), { headers: { 'Content-Type': 'application/json' } })) as typeof fetch;
 }
 
+test('usda: sends the API key via X-Api-Key header, never in the query string, and bounds the call with a signal', async () => {
+  let seenUrl: string | undefined;
+  let seenHeaders: HeadersInit | undefined;
+  let seenSignal: AbortSignal | undefined;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    seenUrl = String(input);
+    seenHeaders = init?.headers;
+    seenSignal = init?.signal ?? undefined;
+    return new Response(JSON.stringify({ foods: [] }), { headers: { 'Content-Type': 'application/json' } });
+  }) as typeof fetch;
+
+  await new UsdaProvider('super-secret-key').searchMany('rice', 'US');
+
+  assert.ok(seenUrl && !seenUrl.includes('super-secret-key'), 'api key must not leak into the URL/query string');
+  assert.ok(seenUrl && !seenUrl.includes('api_key='), 'api_key query param must be gone');
+  assert.equal((seenHeaders as Record<string, string> | undefined)?.['X-Api-Key'], 'super-secret-key');
+  assert.ok(seenSignal instanceof AbortSignal, 'request must carry a timeout signal');
+});
+
 /**
  * The REAL `/foods/search` nutrient shape: modern id in `nutrientId` (number),
  * LEGACY SR number in `nutrientNumber`. Verbatim from the live response for

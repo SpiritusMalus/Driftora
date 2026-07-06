@@ -206,7 +206,12 @@ export default function SettingsScreen() {
       {reminders.map((time) => (
         <Card key={time} style={styles.timeRow} padded={false}>
           <Text style={[styles.timeText, { color: theme.text }, theme.font.bodyMedium]}>{time}</Text>
-          <Pressable onPress={() => { setReminders(reminders.filter((x) => x !== time)); dirty(); }} hitSlop={8}>
+          <Pressable
+            onPress={() => { setReminders(reminders.filter((x) => x !== time)); dirty(); }}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={t('settings.reminderRemove', { time })}
+          >
             <Text style={{ color: theme.subtle }}>✕</Text>
           </Pressable>
         </Card>

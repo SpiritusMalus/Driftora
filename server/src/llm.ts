@@ -1,3 +1,4 @@
+import { TIMEOUT_MS } from './httpTimeout.js';
 import { metrics } from './metrics.js';
 import { IDENTIFY_SCHEMA, IDENTIFY_SYSTEM_PROMPT, userAudioInstruction, userInstruction } from './prompt.js';
 import { normalizeIdentified, type IdentifiedItem, type Region } from './types.js';
@@ -93,8 +94,13 @@ async function callModel(messages: ChatMessage[], model: string): Promise<Identi
         'X-Title': 'Driftora', // OpenRouter dashboard attribution (optional, harmless)
       },
       body: JSON.stringify(buildPayload(messages, model)),
+      // A hung OpenRouter call must not hold a /food/parse* request (or an
+      // escalation retry) open indefinitely — same treatment as a network error.
+      signal: AbortSignal.timeout(TIMEOUT_MS.openrouter),
     });
   } catch (err) {
+    // AbortSignal.timeout() rejects with a DOMException named 'AbortError' —
+    // treated the same as any other unreachable-upstream failure.
     throw new VisionUnavailableError(err instanceof Error ? err.message : 'OpenRouter request failed');
   }
   if (!res.ok) {

@@ -1,3 +1,4 @@
+import { TIMEOUT_MS } from '../httpTimeout.js';
 import type { Minerals, Per100, Region } from '../types.js';
 import type { NutritionProvider, ProviderResult } from './provider.js';
 import { rankByName, scoreToConfidence } from './scoring.js';
@@ -105,6 +106,7 @@ export class OpenFoodFactsProvider implements NutritionProvider {
       res = await fetch(`${PRODUCT_URL}/${barcode}.json`, {
         method: 'GET',
         headers: { 'User-Agent': USER_AGENT },
+        signal: AbortSignal.timeout(TIMEOUT_MS.openfoodfacts),
       });
     } catch {
       return null;

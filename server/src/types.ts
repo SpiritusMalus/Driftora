@@ -105,6 +105,16 @@ export interface MealDraft {
 const MINERAL_KEYS: readonly (keyof Minerals)[] = ['na', 'k', 'ca', 'mg', 'fe', 'zn'];
 const EXTRA_KEYS = ['fiber', 'sugar', 'satFat'] as const;
 const LOW_CONFIDENCE_FLOOR = 0.5;
+/**
+ * Upper bound on identified items per request (bug fix — 2026-07-05). The
+ * orchestrator resolves every item concurrently (`Promise.all` over
+ * `resolver.resolveItem`), so an LLM response (or a crafted/misbehaving one)
+ * carrying an unbounded `items` array would fan out into an unbounded burst of
+ * downstream nutrition-provider calls per single `/food/parse*` request. No
+ * real meal has anywhere near this many components — this is amplification
+ * protection, not a product limit.
+ */
+const MAX_ITEMS = 20;
 
 export function round1(n: number): number {
   return Math.round(n * 10) / 10;
@@ -243,7 +253,8 @@ export function coercePer100(raw: unknown): Per100 {
  */
 export function normalizeIdentified(payload: unknown): IdentifiedItem[] {
   const p = (payload && typeof payload === 'object' ? payload : {}) as Record<string, unknown>;
-  const rawItems = Array.isArray(p.items) ? p.items : [];
+  // Cap BEFORE processing — an oversized array must not even be walked in full.
+  const rawItems = (Array.isArray(p.items) ? p.items : []).slice(0, MAX_ITEMS);
   const items: IdentifiedItem[] = [];
   for (const raw of rawItems) {
     if (raw === null || typeof raw !== 'object') continue;

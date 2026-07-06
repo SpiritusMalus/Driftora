@@ -22,6 +22,7 @@ import {
 } from '@/lib/core/db/food';
 import { loadRememberedChoices, rememberFoodChoice } from '@/lib/core/db/foodChoices';
 import { applyRememberedChoices, lookupNameForItem } from '@/lib/core/services/foodChoice';
+import { deleteTempFile } from '@/lib/core/services/tempFiles';
 import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
 import { mealPromptKeyForHour } from '@/lib/core/insights/mealPrompt';
 import { proteinInsight } from '@/lib/core/insights/proteinInsight';
@@ -117,7 +118,11 @@ export default function FoodLogScreen() {
   const meterUnsubRef = useRef<(() => void) | null>(null);
   // Origin of the current draft, so the saved entry's `source` is honest.
   const [source, setSource] = useState<'text' | 'voice' | 'photo'>('text');
-  const autoStarted = useRef(false);
+  // The `?voice=<token>` value we've already acted on. A fresh token (each Home
+  // mic tap sends a unique one) re-triggers voice; probes resolving mid-flight
+  // don't re-fire the same token. Replaces a plain boolean that couldn't tell a
+  // new deep-link from a re-render.
+  const consumedVoiceToken = useRef<string | null>(null);
 
   function setFreshDraft(d: MealDraft | null) {
     setDraft(d);
@@ -178,19 +183,25 @@ export default function FoodLogScreen() {
   // mic opened the screen and then did NOTHING — the top «не работает» report.
   // If neither input exists once probes resolve, say so instead of silence.
   useEffect(() => {
-    if (voice !== '1' || autoStarted.current) return;
+    if (!voice || consumedVoiceToken.current === voice) return;
     if (AI_CONFIGURED && recordingAvailable) {
-      autoStarted.current = true;
-      void toggleRecording();
+      consumedVoiceToken.current = voice;
+      // Voice-note recorder is primary. If it can't actually start (permission
+      // denied, mic busy), fall back to on-device dictation rather than leaving the
+      // user on a screen where the mic came on but nothing is recording.
+      void (async () => {
+        const started = await toggleRecording();
+        if (!started && speechAvailable) void toggleListening();
+      })();
       return;
     }
     if (speechAvailable) {
-      autoStarted.current = true;
+      consumedVoiceToken.current = voice;
       void toggleListening();
       return;
     }
     if (speechProbed) {
-      autoStarted.current = true;
+      consumedVoiceToken.current = voice;
       setVoiceError(t('food.voiceError.unavailable'));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -292,6 +303,10 @@ export default function FoodLogScreen() {
       setParseIssue('failed');
     } finally {
       setParsing(false);
+      // The downscaled JPEG in `prepare()` (photoProvider.ts) was only ever
+      // needed to reach the backend — clean it up on every path (success,
+      // failure, offline stub) so cache doesn't accumulate one file per photo.
+      deleteTempFile(photo.uri);
     }
   }
 
@@ -304,6 +319,8 @@ export default function FoodLogScreen() {
       setParseIssue('failed');
     } finally {
       setParsing(false);
+      // Same cleanup as the photo path, for the recorded m4a clip.
+      deleteTempFile(audio.uri);
     }
   }
 
@@ -311,8 +328,11 @@ export default function FoodLogScreen() {
   /// On stop the clip goes to the AI parser (the model transcribes + identifies;
   /// numbers still come from the DB). The cross-border AI consent is the same
   /// one-time gate as text/photo.
-  async function toggleRecording() {
-    if (parsing || listening) return;
+  /// Returns whether a NEW recording was started (false when it stopped an
+  /// existing one, was blocked, or failed to start) — the deep-link auto-start
+  /// uses this to fall back to dictation if the recorder couldn't come up.
+  async function toggleRecording(): Promise<boolean> {
+    if (parsing || listening) return false;
     if (recording) {
       const rec = recRef.current;
       recRef.current = null;
@@ -322,7 +342,7 @@ export default function FoodLogScreen() {
       setMeterLevels([]);
       const audio = rec ? await rec.stop() : null;
       if (audio) await onAudio(audio);
-      return;
+      return false;
     }
     setFreshDraft(null);
     setVoiceError(null);
@@ -331,7 +351,7 @@ export default function FoodLogScreen() {
       // Permission denied / module missing. A mic tap that silently does
       // nothing reads as "сломано" — say what happened and what to do.
       setVoiceError(t('food.voiceError.not-allowed'));
-      return;
+      return false;
     }
     recRef.current = rec;
     setMeterLevels([]);
@@ -342,6 +362,7 @@ export default function FoodLogScreen() {
     });
     setSource('voice');
     setRecording(true);
+    return true;
   }
 
   async function onAudio(audio: AudioInput) {

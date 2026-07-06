@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { type DimensionValue, StyleSheet, View } from 'react-native';
 
 import { useTheme } from '@/lib/theme/theme';
@@ -14,6 +15,7 @@ const MIN_BAR = 0.08; // never fully collapse a bar — keeps a calm idle baseli
 /// hears you. Renders flat bars when the buffer is empty (Expo Go / no metering).
 export function Waveform({ levels }: { levels: readonly number[] }) {
   const theme = useTheme();
+  const { t } = useTranslation();
   // Right-align the buffer into a fixed BAR_COUNT window so bars scroll in from
   // the right as samples arrive, and the layout never reflows.
   const bars = useMemo(() => {
@@ -26,7 +28,7 @@ export function Waveform({ levels }: { levels: readonly number[] }) {
   }, [levels]);
 
   return (
-    <View style={styles.row} accessible accessibilityLabel="audio level">
+    <View style={styles.row} accessible accessibilityLabel={t('food.audioLevel')}>
       {bars.map((level, i) => (
         <View
           key={i}

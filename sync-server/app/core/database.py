@@ -8,6 +8,7 @@ an isolated SQLite file before the app imports anything domain-specific.
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -16,10 +17,13 @@ from sqlalchemy.orm import DeclarativeBase
 from app.core.config import settings
 
 # `pool_pre_ping` is a no-op for SQLite but harmless and correct for a future
-# server-grade DB. `echo` follows the dev flag for query logging.
+# server-grade DB. `echo` is OFF unless explicitly opted in via SQL_ECHO — it was
+# previously tied to APP_ENV, whose default is "development", so a default run
+# logged every SQL statement WITH bound parameters (public keys, wrapped private
+# keys, snapshot blob bytes) to stdout. Never key it on the environment name.
 engine = create_async_engine(
     settings.DATABASE_URL,
-    echo=settings.APP_ENV == "development",
+    echo=os.getenv("SQL_ECHO", "").lower() in ("1", "true", "yes"),
     pool_pre_ping=True,
 )
 
