@@ -95,7 +95,8 @@ test('searchMany: ranked candidates, exact first, composites behind', async () =
 
 test('stateless plain names resolve to state-explicit row names (transparency)', async () => {
   // SR rows for meat/fish are COOKED — the row name must say so, because the
-  // card shows it («куриная грудка» = 147 kcal/30 prot is the ROASTED breast).
+  // card shows it («куриная грудка» = 165 kcal/31 prot is the ROASTED breast;
+  // raw is ~120/22).
   const chicken = await provider.search('куриная грудка', 'RU');
   assert.equal(chicken!.name, 'куриная грудка запечённая');
   assert.ok(chicken!.confidence >= 0.9); // plain name stays an exact alias
