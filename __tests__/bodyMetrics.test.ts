@@ -128,4 +128,77 @@ describe('suggestPlan (goal modes)', () => {
     expect(plan.carb).toBeGreaterThanOrEqual(0);
     expect(plan.prot).toBe(Math.round(1.8 * 45));
   });
+
+  it('states a fiber guideline scaled to the kcal budget (14 g / 1000 kcal)', () => {
+    const plan = suggestPlan(profile, 70, 'maintain', NOW)!;
+    expect(plan.fiber).toBe(Math.round((plan.kcal * 14) / 1000)); // 1980 → 28 g
+    expect(plan.fiber).toBe(28);
+  });
+});
+
+describe('suggestPlan (goal weight + high-BMI precision)', () => {
+  // The prod question that drove this: 130 kg wanting 90 — «белков может быть
+  // меньше нужно потреблять?». Male, 180 cm, 35 y.o., light activity.
+  const heavy = { sex: 'male', birthYear: 1991, heightCm: 180, activityLevel: 'light' };
+
+  it('130 kg → goal 90: protein from the GOAL weight, deficit −20% at BMI ≥ 30', () => {
+    const plan = suggestPlan(heavy, 130, 'lose', NOW, 90)!;
+    // BMR 2255 × 1.375 = 3100.6; BMI 40 ≥ 30 → −20%: 2480.5 → 2480 (floors don't bind).
+    expect(plan.maintenanceKcal).toBe(3100);
+    expect(plan.kcal).toBe(2480);
+    expect(plan.floored).toBe(false);
+    // Protein from 90 kg, NOT 130: 1.8 × 90 = 162 g (234 g would be неподъёмно).
+    expect(plan.prot).toBe(162);
+    expect(plan.proteinBasis).toBe('goal');
+    expect(plan.proteinBasisKg).toBe(90);
+    // Fiber against deficit hunger: 14 g/1000 kcal of the actual budget.
+    expect(plan.fiber).toBe(35);
+    // Honest ETA: 620 kcal/day gap → 0.6 kg/week → 40 kg ≈ 67 weeks.
+    expect(plan.paceKgPerWeek).toBe(0.6);
+    expect(plan.etaWeeks).toBe(67);
+  });
+
+  it('no goal set at BMI ≥ 30: falls back to the clinical adjusted body weight', () => {
+    const plan = suggestPlan(heavy, 130, 'lose', NOW)!;
+    // IBW@BMI25 = 25 × 1.8² = 81; adjusted = 81 + 0.4 × (130 − 81) = 100.6 kg.
+    expect(plan.proteinBasis).toBe('adjusted');
+    expect(plan.proteinBasisKg).toBe(101);
+    expect(plan.prot).toBe(181); // 1.8 × 100.6
+    expect(plan.etaWeeks).toBeNull(); // no goal → no ETA
+  });
+
+  it('below BMI 30 the current weight stays the basis and the deficit stays −15%', () => {
+    const plan = suggestPlan(heavy, 90, 'lose', NOW)!; // BMI 27.8
+    expect(plan.proteinBasis).toBe('current');
+    expect(plan.prot).toBe(Math.round(1.8 * 90));
+    // BMR 1855 × 1.375 = 2550.6 → −15% = 2168 → 2170.
+    expect(plan.kcal).toBe(2170);
+  });
+
+  it('a goal below the healthy band is clamped to weight@BMI 18.5', () => {
+    const plan = suggestPlan(heavy, 90, 'lose', NOW, 40)!;
+    // 18.5 × 1.8² = 59.94 — never plan a body below the healthy floor.
+    expect(plan.proteinBasis).toBe('goal');
+    expect(plan.proteinBasisKg).toBe(60);
+    expect(plan.prot).toBe(Math.round(1.8 * 59.94));
+  });
+
+  it('a goal pointing the wrong way for the mode is ignored', () => {
+    const up = suggestPlan(heavy, 130, 'lose', NOW, 140)!; // "lose to 140" — nonsense
+    expect(up.proteinBasis).toBe('adjusted'); // falls back as if unset
+    expect(up.etaWeeks).toBeNull();
+    const maintain = suggestPlan(heavy, 130, 'maintain', NOW, 90)!;
+    expect(maintain.proteinBasis).toBe('current');
+    expect(maintain.etaWeeks).toBeNull();
+  });
+
+  it('gain with a higher goal keeps protein from the current weight but gets an ETA', () => {
+    const slim = { sex: 'male', birthYear: 1996, heightCm: 175, activityLevel: 'sedentary' };
+    const plan = suggestPlan(slim, 70, 'gain', NOW, 75)!;
+    expect(plan.proteinBasis).toBe('current');
+    expect(plan.prot).toBe(Math.round(1.6 * 70));
+    // +200 kcal/day → 0.2 kg/week → 5 kg ≈ 25 weeks.
+    expect(plan.paceKgPerWeek).toBe(0.2);
+    expect(plan.etaWeeks).toBe(25);
+  });
 });
