@@ -1049,6 +1049,14 @@ function ItemCard({
         />
         <Text style={[styles.gramsUnit, { color: theme.subtle }, theme.font.body]}>{t('units.g')}</Text>
       </View>
+      {/* TRANSPARENCY: the user never named a weight — this number is OUR guess
+          of a typical portion. Say so at the field itself; editing the weight
+          confirms it and the caption disappears (grams_source flips). */}
+      {item.grams_source === 'estimated' ? (
+        <Text style={[styles.gramsEstimate, { color: theme.subtle }, theme.font.body]}>
+          {t('food.gramsEstimated')}
+        </Text>
+      ) : null}
 
       {/* Scaled component total — hidden on a DB miss (the placeholder total is
           fabricated too); it appears once the user enters real macros. */}
@@ -1177,6 +1185,7 @@ const styles = StyleSheet.create({
   gramsLabel: { fontSize: 12 },
   gramsInput: { width: 64, paddingVertical: 8, fontSize: 14, textAlign: 'center' },
   gramsUnit: { fontSize: 12 },
+  gramsEstimate: { fontSize: 10, fontStyle: 'italic', marginTop: 2, lineHeight: 14 },
   itemTotalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 },
   itemTotal: { fontSize: 14 },
   totalCard: { marginTop: 4, marginBottom: 8 },
