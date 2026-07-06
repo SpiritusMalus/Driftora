@@ -70,6 +70,11 @@ export interface NutritionItem {
   // switching methods is reversible. Both absent until the user picks a method.
   cook_method?: import('../insights/cookMethod').CookMethod;
   basePer100?: Per100;
+  // The component is an already-prepared dish consumed as-is (soup, salad,
+  // ready meal) — set server-side from the curated-table flag or the LLM
+  // signal. Its per-100g baseline already describes the FINISHED dish, so the
+  // cooking-method chips are hidden for it (an adjustment would double-count).
+  prepared?: boolean;
   // Other ranked DB matches for the same item (best-first), surfaced behind
   // "не то?" so the user can correct a wrong pick without retyping.
   alternatives?: NutritionAlternative[];

@@ -126,6 +126,18 @@ describe('HttpFoodParser', () => {
     expect(r.flags.offline_fallback).toBeUndefined();
   });
 
+  it('a server `prepared` flag on an item survives validation (ready dish → no cook chips)', async () => {
+    const prepared: MealDraft = {
+      ...VALID,
+      items: [{ ...VALID.items[0]!, name_ru: 'суп харчо', name_en: 'kharcho soup', prepared: true }],
+    };
+    mockFetch(async () => ({ ok: true, json: async () => prepared }) as unknown);
+    const fallback = new SpyFallback();
+    const r = await new HttpFoodParser(ENDPOINT, fallback).parse('суп харчо', 'RU');
+    expect(fallback.calls).toBe(0);
+    expect(r.items[0]?.prepared).toBe(true);
+  });
+
   it('parsePhoto posts multipart to the derived photo endpoint and returns the draft', async () => {
     let captured: { url: unknown; isForm: boolean } = { url: null, isForm: false };
     mockFetch(async (...args: unknown[]) => {

@@ -58,7 +58,7 @@ export class SkurikhinProvider implements NutritionProvider {
   private toResult(entry: SkurikhinEntry, confidence: number): ProviderResult {
     // Honest provenance: USDA-sourced rows say 'usda', curated rows 'skurikhin'.
     const per100: Per100 = { source: entry.source ?? 'skurikhin', ...entry.per100 };
-    return { per100, confidence, name: entry.name };
+    return { per100, confidence, name: entry.name, ...(entry.prepared ? { prepared: true } : {}) };
   }
 
   /**

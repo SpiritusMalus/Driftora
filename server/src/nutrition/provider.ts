@@ -6,6 +6,12 @@ export interface ProviderResult {
   confidence: number;
   /** The matched candidate's display name (for the "не то?" alternatives UI). */
   name?: string;
+  /**
+   * The matched row describes a finished, ready-to-eat dish (curated-table
+   * flag) — its per-100g is the dish as served, so cooking-method adjustments
+   * on top would double-count. Only the curated RU table sets this.
+   */
+  prepared?: boolean;
 }
 
 /**

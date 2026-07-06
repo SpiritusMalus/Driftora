@@ -58,6 +58,10 @@ export interface IdentifiedItem {
   name_en: string;
   est_grams: number;
   confidence: number; // 0..1
+  // The model's signal that the named item is an already-prepared dish eaten
+  // as-is (soup, stew, salad, ready meal). Only `true` is carried — absence
+  // means "no signal", and the curated-table flag can still set it downstream.
+  prepared?: boolean;
   raw_text?: string;
 }
 
@@ -84,6 +88,11 @@ export interface NutritionItem {
   per100: Per100; // EXACT (or estimate on a DB miss)
   scaled: NutrientValues; // per100 * grams / 100
   approximate: boolean; // true while grams_source === 'estimated'
+  // The component is an already-prepared dish consumed as-is (soup, salad,
+  // ready meal) — from the curated-table flag or the LLM signal. Its per-100g
+  // baseline already describes the FINISHED dish, so the client hides the
+  // cooking-method adjustment (it would double-count). Only `true` is sent.
+  prepared?: boolean;
   // Other ranked DB matches for the same item (best-first), present when the
   // source returned >1 candidate. The client offers them behind "не то?" and
   // shows the picker proactively when confidence is low.
@@ -270,6 +279,8 @@ export function normalizeIdentified(payload: unknown): IdentifiedItem[] {
       est_grams: grams > 0 ? grams : 100, // a sane default portion when omitted
       confidence,
     };
+    // Strictly boolean true — "false"/1/garbage from a loose model stays off.
+    if (r.prepared === true) item.prepared = true;
     if (typeof r.raw_text === 'string' && r.raw_text.trim().length > 0) {
       item.raw_text = r.raw_text.trim();
     }

@@ -70,17 +70,33 @@ describe('cookMethodApplies', () => {
     expect(cookMethodApplies('компот из сухофруктов', 'dried fruit compote')).toBe(false);
   });
 
+  it('rejects soups — the DB row is already the finished dish', () => {
+    // The prod case: «как суп харчо может быть приготовлен по-другому?»
+    expect(cookMethodApplies('суп харчо', 'kharcho soup')).toBe(false);
+    expect(cookMethodApplies('харчо', '')).toBe(false);
+    expect(cookMethodApplies('борщ', 'borscht')).toBe(false);
+    expect(cookMethodApplies('щи', 'cabbage soup')).toBe(false);
+    expect(cookMethodApplies('уха', 'fish soup')).toBe(false);
+    expect(cookMethodApplies('окрошка на кефире', 'okroshka')).toBe(false);
+    expect(cookMethodApplies('крем-суп из тыквы', 'pumpkin cream soup')).toBe(false);
+    expect(cookMethodApplies('куриный бульон', 'chicken broth')).toBe(false);
+    expect(cookMethodApplies('похлёбка гороховая', 'pea soup')).toBe(false); // ё-fold
+    expect(cookMethodApplies('', 'chicken noodle soup')).toBe(false);
+  });
+
   it('keeps cookable foods cookable', () => {
-    expect(cookMethodApplies('борщ', 'borscht')).toBe(true);
     expect(cookMethodApplies('пампушка', 'garlic bread roll')).toBe(true);
     expect(cookMethodApplies('курица', 'chicken')).toBe(true);
     expect(cookMethodApplies('сырок глазированный', 'glazed curd bar')).toBe(true);
+    expect(cookMethodApplies('пельмени', 'pelmeni dumplings')).toBe(true);
   });
 
   it('matches whole words, not substrings («вино» is inside «свинина»)', () => {
     expect(cookMethodApplies('свинина', 'pork')).toBe(true);
     expect(cookMethodApplies('каша овсяная на молоке', 'oatmeal porridge with milk')).toBe(true);
     expect(cookMethodApplies('сокол', '')).toBe(true); // not «сок»
+    expect(cookMethodApplies('суперфуд боул', 'superfood bowl')).toBe(true); // not «суп»
+    expect(cookMethodApplies('ушки макаронные', '')).toBe(true); // not «уха»
   });
 });
 

@@ -93,6 +93,40 @@ test('searchMany: ranked candidates, exact first, composites behind', async () =
   assert.ok(list[1]!.confidence < list[0]!.confidence);
 });
 
+test('curated finished dishes carry prepared: true; products do not', async () => {
+  const soup = await provider.search('суп харчо', 'RU');
+  assert.ok(soup);
+  assert.equal(soup!.prepared, true);
+  assert.equal(soup!.per100.kcal, 75);
+
+  // A raw-product row (USDA SR import) has no flag.
+  const chicken = await provider.search('куриная грудка', 'RU');
+  assert.ok(chicken);
+  assert.equal(chicken!.prepared, undefined);
+
+  // Пельмени: варят или жарят дома — the chips stay useful, deliberately unflagged.
+  const pelmeni = await provider.search('пельмени', 'RU');
+  assert.ok(pelmeni);
+  assert.equal(pelmeni!.prepared, undefined);
+});
+
+test('resolver: prepared comes from the curated row OR the LLM signal', async () => {
+  const resolver = new Resolver([new SkurikhinProvider(), new UsdaProvider('KEY')]);
+  // Curated flag alone (identification said nothing).
+  const soup = await resolver.resolveItem(
+    item({ name_ru: 'суп харчо', name_en: 'kharcho soup', est_grams: 250 }),
+    'RU',
+  );
+  assert.equal(soup.prepared, true);
+  // LLM signal alone (a product row sets no flag). Runs BEFORE the unflagged
+  // case so the shared name-keyed lookup cache is proven per-item-independent.
+  const dish = await resolver.resolveItem(item({ name_ru: 'гречка', name_en: 'buckwheat', prepared: true }), 'RU');
+  assert.equal(dish.prepared, true);
+  // Neither → the field is absent from the wire item entirely.
+  const plain = await resolver.resolveItem(item({ name_ru: 'гречка', name_en: 'buckwheat' }), 'RU');
+  assert.ok(!('prepared' in plain));
+});
+
 test('RU routing: resolver uses Skurikhin, never USDA', async () => {
   // USDA would throw if called (no fetch mock) — proves it is skipped for RU.
   const resolver = new Resolver([new SkurikhinProvider(), new UsdaProvider('KEY')]);

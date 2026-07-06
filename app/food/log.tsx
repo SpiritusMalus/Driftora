@@ -826,8 +826,11 @@ function ItemCard({
 }) {
   const { t } = useTranslation();
   const activeMethod: CookMethod = item.cook_method ?? 'raw';
-  // Drinks are consumed as-is — no "how it was cooked" row for them.
-  const cookable = cookMethodApplies(item.name_ru, item.name_en);
+  // No "how it was cooked" row for foods where it makes no sense: drinks and
+  // soups (name heuristic — consumed as-is) and server-flagged ready dishes
+  // (`prepared` — the per-100g already describes the finished dish, so an
+  // adjustment would double-count).
+  const cookable = item.prepared !== true && cookMethodApplies(item.name_ru, item.name_en);
   // The "per 100 g · <source>" line always shows the DB row itself (that's the
   // promise in the footnote); a cook-method adjustment only moves the totals.
   const dbPer100 = item.basePer100 ?? item.per100;
@@ -989,7 +992,8 @@ function ItemCard({
 
       {/* Cooking method — neutral chips ("how it was cooked"), never framed as
           healthier/worse. A non-baseline method coarsely adjusts kcal/fat and is
-          shown as approximate. Offline, deterministic. Hidden for drinks. */}
+          shown as approximate. Offline, deterministic. Hidden for drinks, soups
+          and ready dishes (see `cookable` above). */}
       {cookable ? (
         <View style={styles.cookRow}>
           <Text style={[styles.gramsLabel, { color: theme.subtle }, theme.font.body]}>
