@@ -72,6 +72,25 @@ describe('withItemAlternative', () => {
     const next = withItemAlternative(draftWithAlternatives(), 0, 9);
     expect(next.items[0]!.per100.kcal).toBe(150);
   });
+
+  it('keeps matched_name honest through a swap (transparency)', () => {
+    const seeded = draftWithAlternatives();
+    seeded.items[0]!.matched_name = 'Творог зернёный (бренд)';
+    const next = withItemAlternative(seeded, 0, 0); // pick «Творог 5%»
+    const it = next.items[0]!;
+    expect(it.matched_name).toBe('Творог 5%');
+    // The swapped-out row went back under its OWN name, not the component's.
+    expect(it.alternatives?.[0]?.name).toBe('Творог зернёный (бренд)');
+  });
+
+  it('previous match returns with its DB baseline, never cook-adjusted numbers', () => {
+    const seeded = draftWithAlternatives();
+    seeded.items[0]!.cook_method = 'fried';
+    seeded.items[0]!.basePer100 = per100(150);
+    seeded.items[0]!.per100 = per100(210); // the ×1.4 adjusted view
+    const next = withItemAlternative(seeded, 0, 0);
+    expect(next.items[0]!.alternatives?.[0]?.per100.kcal).toBe(150); // base row, not 210
+  });
 });
 
 describe('withItemReplacement (manual search pick)', () => {

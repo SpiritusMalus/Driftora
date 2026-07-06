@@ -13,6 +13,7 @@ For each distinct food or drink in the input, output:
 - name_en: the same food as a short, normalized English name suitable for a USDA database search (e.g. "chicken breast", "white bread toast").
 - est_grams: your best estimate of the eaten weight in grams, from explicit quantities or typical portions.
 - confidence: 0..1, how sure you are about the food identity and portion.
+- prepared: true when the named item is an already-prepared dish eaten as-is — soups, stews, salads, casseroles, ready composite meals (суп харчо, жаркое, плов, оливье). false for ingredients and simple products that may still be cooked or re-cooked at home (raw meat or fish, vegetables, eggs, pasta, rice, dumplings, bread).
 
 Rules:
 - Split a dish into its meaningful components (e.g. "омлет из трёх яиц" → eggs ~165 g; "кофе с молоком" → milk ~30 g; ignore water/black coffee with ~0 nutrition unless asked).
@@ -37,8 +38,9 @@ export const IDENTIFY_SCHEMA = {
           name_en: { type: 'string' },
           est_grams: { type: 'number' },
           confidence: { type: 'number' },
+          prepared: { type: 'boolean' },
         },
-        required: ['name_ru', 'name_en', 'est_grams', 'confidence'],
+        required: ['name_ru', 'name_en', 'est_grams', 'confidence', 'prepared'],
       },
     },
   },

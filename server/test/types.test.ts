@@ -111,6 +111,20 @@ test('normalizeIdentified: keeps named items, clamps confidence, defaults grams'
   assert.equal(items[1]!.confidence, 1); // clamped to 1
 });
 
+test('normalizeIdentified: carries prepared only when strictly true', () => {
+  const items = normalizeIdentified({
+    items: [
+      { name_ru: 'суп харчо', name_en: 'kharcho soup', est_grams: 250, confidence: 0.9, prepared: true },
+      { name_ru: 'гречка', name_en: 'buckwheat', est_grams: 100, confidence: 0.9, prepared: false },
+      { name_ru: 'тост', name_en: 'toast', est_grams: 30, confidence: 0.8, prepared: 'yes' },
+    ],
+  });
+  assert.equal(items.length, 3);
+  assert.equal(items[0]!.prepared, true);
+  assert.ok(!('prepared' in items[1]!)); // false → no signal on the wire
+  assert.ok(!('prepared' in items[2]!)); // loose-model garbage stays off
+});
+
 test('normalizeIdentified: garbage → empty, never throws', () => {
   for (const junk of [null, undefined, 42, 'x', { items: 'no' }]) {
     assert.deepEqual(normalizeIdentified(junk), []);

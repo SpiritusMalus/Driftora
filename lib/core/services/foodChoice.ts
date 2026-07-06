@@ -43,6 +43,7 @@ export function applyRememberedChoices(
     return {
       ...it,
       per100: remembered.per100,
+      matched_name: remembered.name, // transparency: whose numbers these are
       confidence: 1, // the user chose this match before — honor it confidently
       cook_method: undefined,
       basePer100: undefined,

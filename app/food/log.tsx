@@ -21,7 +21,7 @@ import {
   type QuickMeal,
 } from '@/lib/core/db/food';
 import { loadRememberedChoices, rememberFoodChoice } from '@/lib/core/db/foodChoices';
-import { applyRememberedChoices, lookupNameForItem } from '@/lib/core/services/foodChoice';
+import { applyRememberedChoices, lookupNameForItem, normalizeChoiceName } from '@/lib/core/services/foodChoice';
 import { deleteTempFile } from '@/lib/core/services/tempFiles';
 import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
 import { mealPromptKeyForHour } from '@/lib/core/insights/mealPrompt';
@@ -826,8 +826,21 @@ function ItemCard({
 }) {
   const { t } = useTranslation();
   const activeMethod: CookMethod = item.cook_method ?? 'raw';
-  // Drinks are consumed as-is — no "how it was cooked" row for them.
-  const cookable = cookMethodApplies(item.name_ru, item.name_en);
+  // No "how it was cooked" row for foods where it makes no sense: drinks and
+  // soups (name heuristic — consumed as-is) and server-flagged ready dishes
+  // (`prepared` — the per-100g already describes the finished dish, so an
+  // adjustment would double-count).
+  const cookable = item.prepared !== true && cookMethodApplies(item.name_ru, item.name_en);
+  // TRANSPARENCY: which DB row the numbers describe. Shown when the matched
+  // row's own name differs from what the user logged («картошка» → «картофель
+  // варёный») — the row name usually carries the preparation state, so the
+  // user can judge the baseline instead of guessing.
+  const matchedLabel =
+    item.matched_name &&
+    normalizeChoiceName(item.matched_name) !== normalizeChoiceName(item.name_ru) &&
+    normalizeChoiceName(item.matched_name) !== normalizeChoiceName(item.name_en)
+      ? item.matched_name
+      : null;
   // The "per 100 g · <source>" line always shows the DB row itself (that's the
   // promise in the footnote); a cook-method adjustment only moves the totals.
   const dbPer100 = item.basePer100 ?? item.per100;
@@ -865,9 +878,11 @@ function ItemCard({
         <Text style={[styles.notInDb, { color: theme.subtle }, theme.font.body]}>{t('food.notInDb')}</Text>
       ) : (
         <>
-          {/* Per-100g composition — EXACT (DB) or user-entered (manual). */}
+          {/* Per-100g composition — EXACT (DB) or user-entered (manual), with
+              the matched row's own name when it differs from the logged one. */}
           <Text style={[styles.per100Label, { color: theme.subtle }, theme.font.body]}>
-            {t('food.per100')} · {t(`food.source.${item.per100.source}`)}
+            {t('food.per100')}
+            {matchedLabel ? ` · «${matchedLabel}»` : ''} · {t(`food.source.${item.per100.source}`)}
           </Text>
           <Text style={[styles.per100Value, { color: theme.text }, theme.font.body]}>
             {hideCalories
@@ -989,7 +1004,8 @@ function ItemCard({
 
       {/* Cooking method — neutral chips ("how it was cooked"), never framed as
           healthier/worse. A non-baseline method coarsely adjusts kcal/fat and is
-          shown as approximate. Offline, deterministic. Hidden for drinks. */}
+          shown as approximate. Offline, deterministic. Hidden for drinks, soups
+          and ready dishes (see `cookable` above). */}
       {cookable ? (
         <View style={styles.cookRow}>
           <Text style={[styles.gramsLabel, { color: theme.subtle }, theme.font.body]}>
@@ -1033,6 +1049,14 @@ function ItemCard({
         />
         <Text style={[styles.gramsUnit, { color: theme.subtle }, theme.font.body]}>{t('units.g')}</Text>
       </View>
+      {/* TRANSPARENCY: the user never named a weight — this number is OUR guess
+          of a typical portion. Say so at the field itself; editing the weight
+          confirms it and the caption disappears (grams_source flips). */}
+      {item.grams_source === 'estimated' ? (
+        <Text style={[styles.gramsEstimate, { color: theme.subtle }, theme.font.body]}>
+          {t('food.gramsEstimated')}
+        </Text>
+      ) : null}
 
       {/* Scaled component total — hidden on a DB miss (the placeholder total is
           fabricated too); it appears once the user enters real macros. */}
@@ -1161,6 +1185,7 @@ const styles = StyleSheet.create({
   gramsLabel: { fontSize: 12 },
   gramsInput: { width: 64, paddingVertical: 8, fontSize: 14, textAlign: 'center' },
   gramsUnit: { fontSize: 12 },
+  gramsEstimate: { fontSize: 10, fontStyle: 'italic', marginTop: 2, lineHeight: 14 },
   itemTotalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 },
   itemTotal: { fontSize: 14 },
   totalCard: { marginTop: 4, marginBottom: 8 },

@@ -22,6 +22,7 @@ interface LookupResult {
   per100: Per100;
   matchConfidence: number; // 0..1; 0 on a full miss (estimate)
   name?: string; // primary candidate's display name (for manual search results)
+  prepared?: boolean; // primary match is a finished dish (curated-table flag)
   alternatives: NutritionAlternative[];
 }
 
@@ -122,6 +123,7 @@ export class Resolver {
           per100: coercePer100(primary.per100),
           matchConfidence: clamp01(primary.confidence),
           name: primary.name,
+          ...(primary.prepared === true ? { prepared: true } : {}),
           alternatives: results.slice(1, 1 + MAX_ALTERNATIVES).map((r) => ({
             name: r.name ?? name,
             per100: coercePer100(r.per100),
@@ -185,6 +187,10 @@ export class Resolver {
     // A weak DB match should drag the item's confidence down (so the client
     // flags it + shows the picker), but never inflate it past identification.
     const confidence = found.matchConfidence > 0 ? Math.min(item.confidence, found.matchConfidence) : item.confidence;
+    // Finished dish = the curated row says so OR identification did. Either
+    // signal alone suffices (a false positive just hides the coarse cook
+    // adjustment); absence of both sends nothing.
+    const prepared = found.prepared === true || item.prepared === true;
     return {
       name_ru: item.name_ru,
       name_en: item.name_en,
@@ -194,6 +200,10 @@ export class Resolver {
       per100: found.per100,
       scaled: scaleToGrams(found.per100, grams),
       approximate: true, // estimated grams → approximate until the user confirms
+      // Transparency: tell the client WHICH row was matched, not just its
+      // numbers — the row's own name usually carries the preparation state.
+      ...(found.name ? { matched_name: found.name } : {}),
+      ...(prepared ? { prepared: true } : {}),
       ...(found.alternatives.length > 0 ? { alternatives: found.alternatives } : {}),
     };
   }

@@ -92,17 +92,64 @@ const DRINK_WORDS = new Set([
   ...['kefir', 'ryazhenka', 'ayran', 'milkshake'],
 ]);
 
+/// Soup markers safe to match ANYWHERE in a name (unambiguous stems, ё folded
+/// to е). Bare «суп»/'pho' are NOT here — they'd false-positive inside «суперфуд»
+/// / 'phone', so they live in [SOUP_WORDS] as exact tokens instead.
+const SOUP_STEMS = [
+  'харчо',
+  'борщ', // борща/борщи…
+  'солянк',
+  'окрошк',
+  'рассольник',
+  'свекольник',
+  'похлебк', // похлёбка — hay is ё-folded
+  'бульон',
+  'шурп',
+  'лагман',
+  'минестроне',
+  'гаспачо',
+  'soup',
+  'broth',
+  'bouillon',
+  'chowder',
+  'bisque',
+  'ramen',
+  'borscht',
+  'solyanka',
+  'okroshka',
+  'kharcho',
+  'shchi',
+  'ukha',
+];
+
+/// Soup markers matched as EXACT word tokens (substrings would false-positive:
+/// «суп» is in «суперфуд»). Common RU case forms enumerated, as in [DRINK_WORDS].
+const SOUP_WORDS = new Set([
+  ...['суп', 'супа', 'супу', 'супом', 'супе', 'супы', 'супов', 'супам', 'супами', 'супах'],
+  ...['супчик', 'супчика', 'супчику', 'супчиком', 'супчике', 'супчики'],
+  ...['уха', 'ухи', 'ухе', 'уху', 'ухой'],
+  ...['щи', 'щей', 'щам', 'щами', 'щах'],
+  ...['pho'],
+]);
+
 /// Whether the "how it was cooked" adjustment makes sense for this food at all.
 /// Drinks (энергетики, соки, кофе…) are consumed as-is — offering «жареное» for
 /// a can of energy drink is nonsense, and a stray chip tap would silently
-/// inflate its kcal. The wire contract carries no category, so this is a
-/// client-side name heuristic over BOTH names (the LLM always returns name_en).
+/// inflate its kcal. Soups are out for a stronger reason: their DB row already
+/// describes the FINISHED dish (you can't fry a soup), so a cook adjustment
+/// would double-count — and the default «сырое» chip reads absurd on «харчо».
+/// The wire contract carries no category, so this is a client-side name
+/// heuristic over BOTH names (the LLM always returns name_en); server-flagged
+/// ready dishes (`prepared`) are handled by the caller on top of this.
 /// False positives are benign: the item just keeps its DB baseline.
 export function cookMethodApplies(nameRu: string, nameEn: string): boolean {
-  const hay = `${nameRu} ${nameEn}`.toLowerCase();
+  // ё→е so «похлёбка»/«похлебка» hit the same stem (mirrors the server-side
+  // normalizeRu fold). The drink lists predate the fold and keep both forms.
+  const hay = `${nameRu} ${nameEn}`.toLowerCase().replace(/ё/g, 'е');
   if (DRINK_STEMS.some((s) => hay.includes(s))) return false;
+  if (SOUP_STEMS.some((s) => hay.includes(s))) return false;
   const tokens = hay.split(/[^a-zа-яё]+/u);
-  return !tokens.some((tok) => DRINK_WORDS.has(tok));
+  return !tokens.some((tok) => DRINK_WORDS.has(tok) || SOUP_WORDS.has(tok));
 }
 
 /// Apply a cooking method's coarse factors to a DB baseline per-100g block.
