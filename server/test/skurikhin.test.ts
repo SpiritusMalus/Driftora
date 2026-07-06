@@ -93,6 +93,18 @@ test('searchMany: ranked candidates, exact first, composites behind', async () =
   assert.ok(list[1]!.confidence < list[0]!.confidence);
 });
 
+test('stateless plain names resolve to state-explicit row names (transparency)', async () => {
+  // SR rows for meat/fish are COOKED — the row name must say so, because the
+  // card shows it («куриная грудка» = 147 kcal/30 prot is the ROASTED breast).
+  const chicken = await provider.search('куриная грудка', 'RU');
+  assert.equal(chicken!.name, 'куриная грудка запечённая');
+  assert.ok(chicken!.confidence >= 0.9); // plain name stays an exact alias
+  const tuna = await provider.search('тунец', 'RU');
+  assert.equal(tuna!.name, 'тунец консервированный');
+  const squid = await provider.search('кальмар', 'RU');
+  assert.equal(squid!.name, 'кальмар жареный');
+});
+
 test('curated finished dishes carry prepared: true; products do not', async () => {
   const soup = await provider.search('суп харчо', 'RU');
   assert.ok(soup);
