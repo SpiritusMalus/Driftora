@@ -21,6 +21,30 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX
 // Separate instance so an audio upload is bounded by its own cap (same size).
 const uploadAudio = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_AUDIO_BYTES } });
 
+/**
+ * Detect the actual image type from magic bytes. The multipart mime is
+ * client-supplied and the client always CLAIMS jpeg — but a gallery upload from
+ * an older/foreign client can be any format under that label, and a data URL
+ * whose declared type contradicts the bytes makes the vision call flaky. Only
+ * types the vision models actually accept are named; anything unrecognized
+ * returns undefined and the caller keeps the declared mime (today's behavior).
+ */
+export function sniffImageMime(buf: Buffer): string | undefined {
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+  if (buf.length >= 4 && buf[0] === 0x89 && buf.toString('ascii', 1, 4) === 'PNG') return 'image/png';
+  if (buf.length >= 12 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP')
+    return 'image/webp';
+  if (buf.length >= 6 && /^GIF8[79]a/.test(buf.toString('ascii', 0, 6))) return 'image/gif';
+  // ISO-BMFF `ftyp` box — HEIC/HEIF/AVIF (what iPhones shoot) live here.
+  if (buf.length >= 12 && buf.toString('ascii', 4, 8) === 'ftyp') {
+    const brand = buf.toString('ascii', 8, 12);
+    if (brand.startsWith('avi')) return 'image/avif';
+    if (brand.startsWith('he')) return 'image/heic';
+    if (brand === 'mif1' || brand === 'msf1') return 'image/heif';
+  }
+  return undefined;
+}
+
 /** Map an upload's mime/filename to an OpenRouter `input_audio` format token. */
 function audioFormat(mime: string | undefined, name: string | undefined): string {
   const s = `${mime ?? ''} ${name ?? ''}`.toLowerCase();
@@ -204,7 +228,8 @@ export function createApp(
       fail(res, 400, 'empty_input', 'Field "image" is required.');
       return;
     }
-    const mimeType = file.mimetype || 'image/jpeg';
+    // Trust the bytes over the client's label — see `sniffImageMime`.
+    const mimeType = sniffImageMime(file.buffer) ?? (file.mimetype || 'image/jpeg');
     const base64 = file.buffer.toString('base64');
     await respondWithDraft(res, 'photo', region, () => identifyFromPhoto(base64, mimeType, region));
   });

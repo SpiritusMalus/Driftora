@@ -38,7 +38,7 @@ import { nutrientDetailRows } from '@/lib/core/insights/nutrientDetail';
 import { getFoodParser, resolveRegion } from '@/lib/core/services/foodParserProvider';
 import { recomputeDraft, withItemAlternative, withItemCookMethod, withItemGrams, withItemManualMacros, withItemReplacement } from '@/lib/core/services/mealDraft';
 import { COOK_METHODS, cookMethodApplies, type CookMethod } from '@/lib/core/insights/cookMethod';
-import { capturePhoto, isPhotoCaptureAvailable } from '@/lib/core/services/photoProvider';
+import { capturePhoto, isPhotoCaptureAvailable, type PhotoSource } from '@/lib/core/services/photoProvider';
 import { getSpeechService } from '@/lib/core/services/speechProvider';
 import { type Theme, useTheme } from '@/lib/theme/theme';
 
@@ -102,6 +102,9 @@ export default function FoodLogScreen() {
   // deep-link tell "still probing" apart from "voice truly unavailable".
   const [speechProbed, setSpeechProbed] = useState(false);
   const [photoAvailable, setPhotoAvailable] = useState(false);
+  // Why the last camera/gallery attempt produced nothing (localized) — an
+  // undecodable file must explain itself instead of a silently dead button.
+  const [photoError, setPhotoError] = useState<string | null>(null);
   const [listening, setListening] = useState(false);
   // Why on-device recognition last failed (localized) — shown under the mic so a
   // dropped session explains itself instead of silently resetting. Cleared on a
@@ -386,11 +389,18 @@ export default function FoodLogScreen() {
     await runTextParse(aiConsent);
   }
 
-  // Photo → downscale + EXIF strip → (consent) → backend vision → two-tier draft.
-  async function onPhoto() {
+  // Photo (camera or an earlier shot from the gallery) → downscale + EXIF
+  // strip → (consent) → backend vision → two-tier draft.
+  async function onPhoto(src: PhotoSource) {
     if (parsing || listening) return;
-    const photo = await capturePhoto('camera');
-    if (!photo) return;
+    setPhotoError(null);
+    const result = await capturePhoto(src);
+    if (result.status === 'cancelled') return;
+    if (result.status === 'failed') {
+      setPhotoError(t('food.photoError'));
+      return;
+    }
+    const photo = result.photo;
     setSource('photo');
     if (AI_CONFIGURED && needsAiConsent({ aiFoodParseConsent: aiConsent, aiFoodParseConsentVersion: aiConsentVersion })) {
       // Stronger, SEPARATE photo warning before the first photo→AI send (§C).
@@ -531,6 +541,7 @@ export default function FoodLogScreen() {
         onChangeText={(v) => {
           setText(v);
           if (voiceError) setVoiceError(null);
+          if (photoError) setPhotoError(null);
           if (!listening) setSource('text');
         }}
         placeholder={t(`food.prompt.${mealPromptKeyForHour(new Date().getHours())}`)}
@@ -589,16 +600,37 @@ export default function FoodLogScreen() {
         <Text style={[styles.voiceError, { color: theme.subtle }, theme.font.body]}>{voiceError}</Text>
       ) : null}
       {photoAvailable ? (
-        <Pressable
-          onPress={onPhoto}
-          disabled={parsing || listening || recording}
-          style={({ pressed }) => [
-            styles.micButton,
-            { borderColor: theme.separator, backgroundColor: theme.card, opacity: pressed || parsing || listening || recording ? 0.6 : 1 },
-          ]}
-        >
-          <Text style={[styles.micText, { color: theme.primary }, theme.font.bodySemiBold]}>{t('food.photo')}</Text>
-        </Pressable>
+        // Camera and gallery side by side: a fresh shot of the plate, or a
+        // photo taken earlier — both go through the same downscale/EXIF-strip.
+        <View style={styles.photoRow}>
+          {(
+            [
+              { src: 'camera', label: t('food.photo') },
+              { src: 'library', label: t('food.photoLibrary') },
+            ] as const
+          ).map(({ src, label }) => (
+            <Pressable
+              key={src}
+              onPress={() => void onPhoto(src)}
+              disabled={parsing || listening || recording}
+              style={({ pressed }) => [
+                styles.micButton,
+                styles.photoButton,
+                { borderColor: theme.separator, backgroundColor: theme.card, opacity: pressed || parsing || listening || recording ? 0.6 : 1 },
+              ]}
+            >
+              <Text
+                numberOfLines={1}
+                style={[styles.micText, { color: theme.primary }, theme.font.bodySemiBold]}
+              >
+                {label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      ) : null}
+      {photoError ? (
+        <Text style={[styles.voiceError, { color: theme.subtle }, theme.font.body]}>{photoError}</Text>
       ) : null}
       <PrimaryButton
         label={parsing ? t('food.parsing') : t('food.parse')}
@@ -1145,6 +1177,8 @@ function toNumber(v: string): number {
 const styles = StyleSheet.create({
   input: { marginBottom: 12 },
   micButton: { borderRadius: 999, borderWidth: 1.5, paddingVertical: 12, alignItems: 'center', marginBottom: 8 },
+  photoRow: { flexDirection: 'row', gap: 8 },
+  photoButton: { flex: 1, paddingHorizontal: 12 },
   micText: { fontSize: 15 },
   voiceError: { fontSize: 13, textAlign: 'center', marginTop: -2, marginBottom: 8, lineHeight: 18 },
   altWrap: { marginTop: 8 },

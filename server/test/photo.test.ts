@@ -7,7 +7,7 @@ const realFetch = globalThis.fetch;
 process.env.OPENROUTER_API_KEY = 'test-openrouter-key';
 process.env.USDA_API_KEY = 'test-usda-key';
 
-const { createApp } = await import('../src/app.js');
+const { createApp, sniffImageMime } = await import('../src/app.js');
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -92,6 +92,41 @@ test('POST /food/parse-photo → MealDraft; image sent to OpenRouter as a data U
   } finally {
     await stop();
   }
+});
+
+// A gallery upload can be ANY format under the client's blanket 'image/jpeg'
+// label (the app re-encodes, but older/foreign clients may not) — the data URL
+// must carry the type the bytes actually are, or the vision call gets flaky.
+test('POST /food/parse-photo relabels a mislabeled upload from its magic bytes', async () => {
+  const { base, stop } = await startApp();
+  try {
+    // Real PNG signature, declared as image/jpeg by the form (photoForm does).
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3, 4]);
+    const res = await realFetch(`${base}/food/parse-photo`, { method: 'POST', body: photoForm(png, 'US') });
+    assert.equal(res.status, 200);
+
+    const userMsg = lastLlmBody.messages.find((m: any) => m.role === 'user');
+    const imgPart = userMsg.content.find((p: any) => p.type === 'image_url');
+    assert.ok(imgPart.image_url.url.startsWith('data:image/png;base64,'), 'expected the sniffed png type');
+  } finally {
+    await stop();
+  }
+});
+
+test('sniffImageMime: known signatures detected, unknown left undefined', () => {
+  const ftyp = (brand: string): Buffer =>
+    Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from(`ftyp${brand}`, 'ascii'), Buffer.alloc(8)]);
+
+  assert.equal(sniffImageMime(Buffer.from([0xff, 0xd8, 0xff, 0xe0])), 'image/jpeg');
+  assert.equal(sniffImageMime(Buffer.from('GIF89a....', 'ascii')), 'image/gif');
+  const webp = Buffer.concat([Buffer.from('RIFF', 'ascii'), Buffer.alloc(4), Buffer.from('WEBP', 'ascii')]);
+  assert.equal(sniffImageMime(webp), 'image/webp');
+  assert.equal(sniffImageMime(ftyp('heic')), 'image/heic'); // iPhone default
+  assert.equal(sniffImageMime(ftyp('mif1')), 'image/heif');
+  assert.equal(sniffImageMime(ftyp('avif')), 'image/avif');
+  // Unknown bytes: no relabel — the route keeps the declared mime as before.
+  assert.equal(sniffImageMime(Buffer.from([1, 2, 3, 4, 5])), undefined);
+  assert.equal(sniffImageMime(Buffer.alloc(0)), undefined);
 });
 
 test('POST /food/parse-photo with no file → 400 empty_input', async () => {
