@@ -57,6 +57,19 @@ export const stepsDays = sqliteTable('steps_days', {
   syncedAt: integer('synced_at', { mode: 'timestamp' }).notNull(),
 });
 
+/// One logged workout for a day — type + minutes → kcal (MET × weight × hours,
+/// computed at log time from the then-current weight). Feeds the daily active-
+/// energy add-on (eat-back, 75%) and the plan's with/without-workouts scenarios.
+export const workouts = sqliteTable('workouts', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  ts: integer('ts', { mode: 'timestamp' }).notNull(),
+  date: text('date').notNull(), // 'YYYY-MM-DD' for per-day grouping
+  type: text('type').notNull(), // WorkoutType key — MET table lives in bodyMetrics
+  minutes: integer('minutes').notNull(),
+  kcal: real('kcal').notNull().default(0),
+});
+export type WorkoutRow = typeof workouts.$inferSelect;
+
 /// Nightly sleep duration (minutes) pulled from the OS health store, one row per
 /// day. A second zero-effort passive signal alongside steps; it feeds the
 /// Body↔Mind insight (sleep↔mood). Real HealthKit / Health Connect data is

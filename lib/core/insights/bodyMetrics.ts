@@ -47,8 +47,98 @@ export const ACTIVITY_FACTORS: Record<ActivityLevel, number> = {
 export const ACTIVITY_LEVELS: readonly ActivityLevel[] = ['sedentary', 'light', 'moderate', 'high'];
 
 /// Mifflin–St Jeor resting energy: 10·kg + 6.25·cm − 5·age, +5 male / −161 female.
+/// Chosen deliberately: systematic reviews find Mifflin–St Jeor the most accurate
+/// / least-biased predictive equation for both normal-weight AND obese adults
+/// (Harris–Benedict overestimates). No predictive formula is exact at high BMI
+/// (±10-20%) — only indirect calorimetry is — so the plan says «начните с этих
+/// цифр и корректируйте по тренду».
 export function mifflinBmr(sex: Sex, weightKg: number, heightCm: number, ageYears: number): number {
   return 10 * weightKg + 6.25 * heightCm - 5 * ageYears + (sex === 'male' ? 5 : -161);
+}
+
+// ---- workouts / active energy (MET-based, fully on-device — no external API) -
+
+/// Structured-exercise types the user can log. Kept short (the common ones).
+export type WorkoutType =
+  | 'walk'
+  | 'run'
+  | 'cycle'
+  | 'swim'
+  | 'strength'
+  | 'hiit'
+  | 'elliptical'
+  | 'row'
+  | 'sport'
+  | 'dance'
+  | 'martial'
+  | 'yoga';
+
+export const WORKOUT_TYPES: readonly WorkoutType[] = [
+  'walk',
+  'run',
+  'cycle',
+  'swim',
+  'strength',
+  'hiit',
+  'elliptical',
+  'row',
+  'sport',
+  'dance',
+  'martial',
+  'yoga',
+];
+
+/// MET (metabolic equivalent) per type — moderate intensity, rounded from the
+/// Compendium of Physical Activities. kcal = MET × weightKg × hours.
+const WORKOUT_MET: Record<WorkoutType, number> = {
+  walk: 4.3, // brisk walk
+  run: 9.8, // ~8–9 km/h
+  cycle: 7.5,
+  swim: 7.0,
+  strength: 5.0, // vigorous weights
+  hiit: 8.0, // circuit / HIIT
+  elliptical: 5.0,
+  row: 7.0,
+  sport: 7.0, // football / basketball / etc.
+  dance: 5.0,
+  martial: 7.5,
+  yoga: 2.8, // hatha / stretching
+};
+
+/// Calories burned by one workout: MET × kg × hours, whole kcal. Clamps garbage
+/// input (minutes ≤ 10 h, weight to a sane band) so it never returns NaN.
+export function workoutKcal(type: WorkoutType, minutes: number, weightKg: number): number {
+  const met = WORKOUT_MET[type];
+  if (met == null) return 0;
+  const min = Math.min(Math.max(0, minutes), 600);
+  const kg = Math.min(Math.max(20, weightKg || 0), 400);
+  return Math.round(met * kg * (min / 60));
+}
+
+/// Share of burned exercise calories added back to the day's budget. Predictive
+/// formulas overestimate expenditure ~20–30%, so only part is counted — this
+/// guards against overeating on training days.
+export const EATBACK_FRACTION = 0.75;
+
+/// Layer a day's raw workout burn onto a base kcal figure (maintenance or a
+/// target), counting EATBACK_FRACTION of it. Rounded to 10 kcal like the plan.
+export function withWorkoutEnergy(
+  baseKcal: number,
+  workoutKcalRaw: number,
+  fraction: number = EATBACK_FRACTION,
+): number {
+  return Math.round((baseKcal + Math.max(0, workoutKcalRaw) * fraction) / 10) * 10;
+}
+
+/// Suggest the lifestyle activity level from an average daily step count, so the
+/// user picks the right multiplier instead of guessing. Steps stand in for NEAT
+/// (everyday movement); structured workouts are logged separately ON TOP, so
+/// this must never itself add exercise energy (that would double-count).
+export function suggestActivityLevel(avgStepsPerDay: number): ActivityLevel {
+  if (avgStepsPerDay >= 12000) return 'high';
+  if (avgStepsPerDay >= 8000) return 'moderate';
+  if (avgStepsPerDay >= 5000) return 'light';
+  return 'sedentary';
 }
 
 export interface MacroTargets {

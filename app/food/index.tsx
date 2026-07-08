@@ -8,6 +8,8 @@ import { Card } from '@/components/ui/Card';
 import { FillBar } from '@/components/ui/FillBar';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
+import { WorkoutSection } from '@/components/WorkoutSection';
+import { EATBACK_FRACTION } from '@/lib/core/insights/bodyMetrics';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { listEntriesForDay, repeatFoodEntry, todayMacroTotals, todayMicroTotals, type MicroTotals } from '@/lib/core/db/food';
 import { ensureSettings } from '@/lib/core/db/settings';
@@ -42,6 +44,9 @@ export default function FoodDayScreen() {
   const [micros, setMicros] = useState<MicroTotals | null>(null);
   const [sex, setSex] = useState<'' | Sex>('');
   const [openMicros, setOpenMicros] = useState(false);
+  // RAW calories burned in today's logged workouts (before the eat-back share) —
+  // fed up from WorkoutSection so the day card can show the hybrid target.
+  const [workoutRawKcal, setWorkoutRawKcal] = useState(0);
   // «Добавлено ещё раз ✓» after a one-tap repeat; cleared after a moment.
   const [repeatAck, setRepeatAck] = useState<string | null>(null);
   const ackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -110,7 +115,11 @@ export default function FoodDayScreen() {
         <Text style={[styles.repeatAck, { color: theme.accent }, theme.font.bodyMedium]}>{repeatAck}</Text>
       ) : null}
 
-      {goal != null && totals != null ? <DayProgress goal={goal} totals={totals} theme={theme} /> : null}
+      {goal != null && totals != null ? (
+        <DayProgress goal={goal} totals={totals} workoutKcalRaw={workoutRawKcal} theme={theme} />
+      ) : null}
+
+      {db != null ? <WorkoutSection db={db} onChange={setWorkoutRawKcal} /> : null}
 
       {db != null && entries != null && entries.length > 0 && micros != null ? (
         <MicroDay
@@ -171,15 +180,21 @@ export default function FoodDayScreen() {
 function DayProgress({
   goal,
   totals,
+  workoutKcalRaw,
   theme,
 }: {
   goal: DayGoal;
   totals: { kcal: number; proteinG: number; fatG: number; carbG: number };
+  workoutKcalRaw: number;
   theme: Theme;
 }) {
   const { t } = useTranslation();
   const kcalEaten = Math.round(totals.kcal);
-  const onPlan = kcalEaten <= goal.kcal;
+  // HYBRID: workouts don't change the planned target — we show BOTH the base
+  // target and an «с тренировками» number (+eat-back share), so the user decides.
+  const counted = Math.round(Math.max(0, workoutKcalRaw) * EATBACK_FRACTION);
+  const targetWithWorkouts = goal.kcal + counted;
+  const onPlan = kcalEaten <= (counted > 0 ? targetWithWorkouts : goal.kcal);
   const macros = [
     { label: t('macros.protein'), eaten: Math.round(totals.proteinG), target: goal.prot },
     { label: t('macros.fat'), eaten: Math.round(totals.fatG), target: goal.fat },
@@ -200,7 +215,18 @@ function DayProgress({
           <Text style={[styles.dayKcal, { color: theme.text }, theme.font.bodyMedium]}>
             {t('food.day.kcal', { eaten: kcalEaten, target: goal.kcal })}
           </Text>
-          <Bar value={kcalEaten} max={goal.kcal} color={theme.primary} track={theme.fill} height={8} />
+          <Bar
+            value={kcalEaten}
+            max={counted > 0 ? targetWithWorkouts : goal.kcal}
+            color={theme.primary}
+            track={theme.fill}
+            height={8}
+          />
+          {counted > 0 ? (
+            <Text style={[styles.dayWorkout, { color: theme.subtle }, theme.font.body]}>
+              {t('food.day.withWorkouts', { counted, target: targetWithWorkouts })}
+            </Text>
+          ) : null}
         </>
       )}
       <View style={styles.macroRow}>
@@ -355,6 +381,7 @@ const styles = StyleSheet.create({
   dayTitle: { fontSize: 15 },
   dayChip: { fontSize: 12 },
   dayKcal: { fontSize: 14, marginBottom: 6 },
+  dayWorkout: { fontSize: 12, marginTop: 6, lineHeight: 17 },
   macroRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
   macroCol: { flex: 1 },
   macroLabel: { fontSize: 11, marginBottom: 4 },
