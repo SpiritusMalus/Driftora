@@ -59,15 +59,6 @@ describe('withItemAlternative', () => {
     expect(back.items[0]!.per100.kcal).toBe(150);
   });
 
-  it('resets the cook-method baseline when the underlying food changes', () => {
-    const seeded = draftWithAlternatives();
-    seeded.items[0]!.cook_method = 'fried';
-    seeded.items[0]!.basePer100 = per100(150);
-    const next = withItemAlternative(seeded, 0, 1);
-    expect(next.items[0]!.cook_method).toBeUndefined();
-    expect(next.items[0]!.basePer100).toBeUndefined();
-  });
-
   it('is a no-op for an out-of-range alternative index', () => {
     const next = withItemAlternative(draftWithAlternatives(), 0, 9);
     expect(next.items[0]!.per100.kcal).toBe(150);
@@ -83,13 +74,11 @@ describe('withItemAlternative', () => {
     expect(it.alternatives?.[0]?.name).toBe('Творог зернёный (бренд)');
   });
 
-  it('previous match returns with its DB baseline, never cook-adjusted numbers', () => {
+  it('previous match returns under its own DB row for a reversible swap', () => {
     const seeded = draftWithAlternatives();
-    seeded.items[0]!.cook_method = 'fried';
-    seeded.items[0]!.basePer100 = per100(150);
-    seeded.items[0]!.per100 = per100(210); // the ×1.4 adjusted view
+    seeded.items[0]!.per100 = per100(150);
     const next = withItemAlternative(seeded, 0, 0);
-    expect(next.items[0]!.alternatives?.[0]?.per100.kcal).toBe(150); // base row, not 210
+    expect(next.items[0]!.alternatives?.[0]?.per100.kcal).toBe(150);
   });
 });
 

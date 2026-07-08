@@ -476,20 +476,19 @@ export const en = {
     // The user never named a weight — say honestly this is our guess.
     gramsEstimated: '≈ you didn’t name a weight — a typical portion was assumed. Confirm it for accuracy.',
     // Cooking method — neutral, never "healthier/worse".
-    cookMethod: {
-      label: 'How it was cooked',
-      // "As in database", not "Raw": the DB row may already be a finished
-      // dish (its name is shown above the numbers) — chips only add on top.
-      raw: 'As in database',
-      boiled: 'Boiled',
-      // The multiplier models absorbed oil; dry-frying = "as in database".
-      fried: 'Fried in oil',
-      baked: 'Baked',
-      grilled: 'Grilled',
-      stewed: 'Stewed',
-    },
     estimateNote: 'Items not in our database aren’t counted in the total. Enter their macros to include them.',
     notInDb: "Not in our database. Enter the per-100 g macros and calories yourself — we won't make numbers up for you.",
+    // Honest note: label numbers are for the DRY product vs. a cooked-dish weight.
+    dryBasis:
+      'These numbers are for the DRY product (the label). If you weighed the cooked dish with its water, the calories and macros are overstated — by roughly 3×. Enter the dry weight, or use "search manually" to find a "cooked/ready" match. We never quietly rewrite the numbers.',
+    // Vitamins & minerals for the whole dish, as a share of the daily norm (bars).
+    microsDish: {
+      show: 'Vitamins & minerals for this dish',
+      hide: 'Hide vitamins & minerals',
+      note: 'Shown as % of the daily norm. Black tick — the norm, amber — the upper limit. Only what the source actually gives; we don’t invent zeros.',
+      needSex: 'Set your sex on the Weight screen — the norms for iron and some vitamins differ by sex.',
+      estimated: 'Some vitamins/minerals are a proxy from the USDA database matched by name, not this exact product’s values.',
+    },
     enterMacros: 'Enter per 100 g:',
     source: {
       usda: 'from USDA',

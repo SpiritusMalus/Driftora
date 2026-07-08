@@ -3,11 +3,14 @@ import {
   scaleToGrams,
   type IdentifiedItem,
   type LabelReading,
+  type Minerals,
   type NutritionAlternative,
   type NutritionItem,
   type Per100,
   type Region,
+  type Vitamins,
 } from '../types.js';
+import { looksDryBasis } from './dryBasis.js';
 import type { NutritionProvider, ProviderResult } from './provider.js';
 import { hasCyrillic } from './ruSearch.js';
 import { demoteContradictions } from './scoring.js';
@@ -24,6 +27,7 @@ interface LookupResult {
   matchConfidence: number; // 0..1; 0 on a full miss (estimate)
   name?: string; // primary candidate's display name (for manual search results)
   prepared?: boolean; // primary match is a finished dish (curated-table flag)
+  microsEstimated?: boolean; // vitamins/minerals were back-filled from a USDA proxy
   alternatives: NutritionAlternative[];
 }
 
@@ -54,6 +58,9 @@ function labelPer100(label: LabelReading): Per100 | null {
     carb: carb_100g,
   });
 }
+
+/** USDA search score below which its micros are too weak a match to graft. */
+const MICRO_BACKFILL_MIN_CONFIDENCE = 0.4;
 
 /** Coarse per-100g used on a full DB miss — shown as an estimate, never fact. */
 const ESTIMATE_PER100: Per100 = {
@@ -109,8 +116,13 @@ class Lru<V> {
 export class Resolver {
   private readonly cache = new Lru<LookupResult>(500);
   private readonly searchCache = new Lru<NutritionAlternative[]>(300);
+  /** USDA provider, if present — the only source that carries vitamins, so it's
+   *  also the donor for micronutrient back-fill onto curated-RU / OFF matches. */
+  private readonly usda?: NutritionProvider;
 
-  constructor(private readonly providers: NutritionProvider[]) {}
+  constructor(private readonly providers: NutritionProvider[]) {
+    this.usda = providers.find((p) => p.name === 'usda');
+  }
 
   /** US uses the English name; RU uses the Russian name (BUILD SPEC §6). */
   private nativeName(item: IdentifiedItem, region: Region): string {
@@ -171,10 +183,50 @@ export class Resolver {
 
     const found = await this.runChain(region, (p) => this.nameFor(p, item, region));
     if (found) {
-      this.cache.set(key, found);
-      return found;
+      const enriched = await this.backfillMicros(found, item.name_en);
+      this.cache.set(key, enriched);
+      return enriched;
     }
     return { per100: ESTIMATE_PER100, matchConfidence: 0, alternatives: [] };
+  }
+
+  /**
+   * Graft vitamins (and any missing minerals) from a generic USDA record onto a
+   * match whose source carries none — curated RU dishes (борщ, каша: `skurikhin`
+   * wins the chain before USDA is ever queried) and crowd OFF products (vitamins
+   * absent by construction). The primary's OWN minerals stay authoritative; USDA
+   * only fills the gaps. Result is flagged `microsEstimated` so the client can
+   * say the micros are an approximate proxy, not the exact product's values.
+   *
+   * No-op when the match already has vitamins, is a bare estimate, or is itself
+   * from USDA — and cached inside the LookupResult, so a hit pays no extra call.
+   */
+  private async backfillMicros(found: LookupResult, nameEn: string): Promise<LookupResult> {
+    const per100 = found.per100;
+    if (!this.usda || per100.source === 'usda' || per100.source === 'estimate') return found;
+    if (per100.vitamins) return found; // already carries the richer micro set
+    if (nameEn.trim().length === 0) return found;
+
+    const donor = await this.usdaMicros(nameEn);
+    if (!donor) return found;
+
+    const minerals: Minerals = { ...donor.minerals, ...per100.minerals }; // primary wins on overlap
+    const merged: Per100 = { ...per100, minerals };
+    if (donor.vitamins) merged.vitamins = donor.vitamins;
+    return { ...found, per100: merged, microsEstimated: true };
+  }
+
+  /** Top USDA candidate's micro block for `nameEn`, or null if none is a good
+   *  enough match / it carries no micronutrients worth grafting. */
+  private async usdaMicros(nameEn: string): Promise<{ minerals: Minerals; vitamins?: Vitamins } | null> {
+    if (!this.usda) return null;
+    // USDA is English-only; the resolver queries it with name_en in every region.
+    const [top] = await this.candidatesFrom(this.usda, nameEn, 'US');
+    if (!top || clamp01(top.confidence) < MICRO_BACKFILL_MIN_CONFIDENCE) return null;
+    const p = coercePer100(top.per100);
+    const hasMinerals = Object.keys(p.minerals).length > 0;
+    if (!p.vitamins && !hasMinerals) return null;
+    return { minerals: p.minerals, ...(p.vitamins ? { vitamins: p.vitamins } : {}) };
   }
 
   /**
@@ -245,6 +297,10 @@ export class Resolver {
     // signal alone suffices (a false positive just hides the coarse cook
     // adjustment); absence of both sends nothing.
     const prepared = found.prepared === true || item.prepared === true;
+    // A dry-product label matched against a likely-cooked weight overcounts ~3× —
+    // flag it (never silently "correct" it). Suppressed for prepared dishes: the
+    // curated finished-dish row already describes the cooked state.
+    const dryBasis = !prepared && looksDryBasis([item.name_ru, item.name_en, found.name], found.per100);
     return {
       name_ru: item.name_ru,
       name_en: item.name_en,
@@ -258,6 +314,8 @@ export class Resolver {
       // numbers — the row's own name usually carries the preparation state.
       ...(found.name ? { matched_name: found.name } : {}),
       ...(prepared ? { prepared: true } : {}),
+      ...(dryBasis ? { dry_basis: true } : {}),
+      ...(found.microsEstimated ? { micros_estimated: true } : {}),
       ...(found.alternatives.length > 0 ? { alternatives: found.alternatives } : {}),
     };
   }

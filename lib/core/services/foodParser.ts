@@ -82,14 +82,9 @@ export interface NutritionItem {
   grams: number;
   grams_source: 'estimated' | 'confirmed';
   confidence: number; // 0..1
-  per100: Per100; // EXACT (or estimate on a DB miss); may be cook-method-adjusted
+  per100: Per100; // EXACT (or estimate on a DB miss)
   scaled: NutrientValues; // per100 * grams / 100
-  approximate: boolean; // true while grams_source === 'estimated' OR cook-adjusted
-  // Cooking-method branch (client-side, offline). `cook_method` is the chosen
-  // method ('raw' = DB baseline); `basePer100` preserves the unadjusted DB row so
-  // switching methods is reversible. Both absent until the user picks a method.
-  cook_method?: import('../insights/cookMethod').CookMethod;
-  basePer100?: Per100;
+  approximate: boolean; // true while grams_source === 'estimated'
   // TRANSPARENCY: the display name of the DB row per100 actually came from
   // («картошка» → «картофель варёный»). The card shows it when it differs
   // from what the user logged — the row name usually carries the preparation
@@ -104,6 +99,15 @@ export interface NutritionItem {
   // Other ranked DB matches for the same item (best-first), surfaced behind
   // "не то?" so the user can correct a wrong pick without retyping.
   alternatives?: NutritionAlternative[];
+  // Server hint (HONESTY): the matched per-100g looks like a DRY-product label
+  // (instant noodles / pasta / rice) while the weight is most likely the cooked
+  // dish, so the total overcounts ~3× (absorbed water). The card shows a "check
+  // the weight" note — we never rewrite the numbers. Cleared on manual/replace.
+  dry_basis?: boolean;
+  // Server hint: some vitamins/minerals were back-filled from a generic USDA
+  // record because the primary source (curated RU / OFF) carries none. They're
+  // an approximate proxy — the card says so. Cleared on manual/replace.
+  micros_estimated?: boolean;
   // Client-only: the user explicitly picked this match (an alternative, a manual
   // search result, or a remembered choice). Drives "remember my choice" on save.
   userChosen?: boolean;
