@@ -241,7 +241,7 @@ export const en = {
       protBasis: {
         goal: 'Protein is computed from your goal weight of {{kg}} kg: enough for muscle — fat mass needs none.',
         adjusted:
-          'Protein is computed from an adjusted weight of {{kg}} kg: at a high BMI, total weight over-prescribes. Set a goal weight for a more precise number.',
+          'Protein is based on a "working" weight of {{kg}} kg, not your full weight — this is NOT your weight but a calculation basis: fat mass barely uses protein, so the full weight would over-prescribe. Set a goal weight to base it on that instead.',
       },
       fiber: 'Fiber: ~{{g}} g a day (vegetables, legumes, whole grains) — the main weapon against deficit hunger.',
       etaWeeks: 'To your goal of {{goal}} kg ≈ {{n}} wk at this pace.',
@@ -482,6 +482,8 @@ export const en = {
     // Honest note: label numbers are for the DRY product vs. a cooked-dish weight.
     dryBasis:
       'These numbers are for the DRY product (the label). If you weighed the cooked dish with its water, the calories and macros are overstated — by roughly 3×. Enter the dry weight, or use "search manually" to find a "cooked/ready" match. We never quietly rewrite the numbers.',
+    refereeMismatch:
+      'This may be the wrong product: the database figures are far from what’s expected for this dish. Check the options below — an AI estimate is included. We never rewrite the numbers ourselves.',
     // Vitamins & minerals for the whole dish, as a share of the daily norm (bars).
     microsDish: {
       show: 'Vitamins & minerals for this dish',
