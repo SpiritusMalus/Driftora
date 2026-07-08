@@ -81,6 +81,12 @@ const MODE_FACTOR: Record<GoalMode, number> = { lose: 0.85, maintain: 1, gain: 1
 const LOSE_FACTOR_OBESE = 0.8;
 const OBESE_BMI = 30;
 
+/// Neutral adult age used when the birth year isn't set yet, so the plan still
+/// shows a usable estimate instead of vanishing (age shifts Mifflin BMR by only
+/// ~5 kcal per year — small next to the total). The card flags this as a
+/// «прикидка» and asks for the year to firm the number up.
+const ASSUMED_ADULT_AGE = 35;
+
 /// Protein: 1.8 g/kg in a deficit (muscle preservation), 1.6 g/kg otherwise.
 /// In a deficit the KILOGRAMS are the basis picked by [proteinBasis] below —
 /// never blindly the total weight at high BMI.
@@ -126,6 +132,10 @@ export interface MacroPlan extends MacroTargets {
   /// Honest ETA to the goal weight at this pace, in whole weeks. Null when no
   /// applicable goal is set or the pace is zero (floored deficit).
   etaWeeks: number | null;
+  /// True when the birth year wasn't set and a neutral adult age was assumed —
+  /// the card shows the plan anyway but labels it a «прикидка» and asks for the
+  /// year. False once a real birth year drives the estimate.
+  assumedAge: boolean;
 }
 
 /// Goal-aware КБЖУ plan from the profile + the LATEST logged weight — the card
@@ -143,9 +153,16 @@ export function suggestPlan(
 ): MacroPlan | null {
   const sex = profile.sex === 'male' || profile.sex === 'female' ? (profile.sex as Sex) : null;
   const factor = (ACTIVITY_FACTORS as Record<string, number | undefined>)[profile.activityLevel];
-  const age = now.getFullYear() - profile.birthYear;
+  // Birth year is the ONE input we can safely default: age moves BMR by ~5 kcal
+  // a year, so an unset year falls back to a neutral adult age (flagged) rather
+  // than hiding the whole plan. Sex/activity/height/weight are NOT defaulted —
+  // guessing those would fabricate the number, so they still gate the plan.
+  const hasBirthYear = profile.birthYear > 0;
+  const age = hasBirthYear ? now.getFullYear() - profile.birthYear : ASSUMED_ADULT_AGE;
   if (!sex || factor == null) return null;
-  if (!(age >= 14 && age <= 100)) return null;
+  // A year that's SET but implausible (typo, future) is still rejected; only an
+  // absent year gets the assumed-age fallback.
+  if (hasBirthYear && !(age >= 14 && age <= 100)) return null;
   if (!(profile.heightCm >= 100 && profile.heightCm <= 250)) return null;
   if (!(weightKg >= 20 && weightKg <= 400)) return null;
 
@@ -207,6 +224,7 @@ export function suggestPlan(
     proteinBasis,
     proteinBasisKg: Math.round(basisKg),
     etaWeeks,
+    assumedAge: !hasBirthYear,
   };
 }
 

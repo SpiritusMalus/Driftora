@@ -358,6 +358,15 @@ export default function WeightScreen() {
                   </View>
                 ))}
               </View>
+              {/* Birth year missing → the plan is shown as an estimate on a
+                  neutral adult age; say so plainly and point to the fix. Stays
+                  VISIBLE (not folded) so the number never looks more certain
+                  than it is. */}
+              {plan.assumedAge ? (
+                <Text style={[styles.assumedAge, { color: theme.accent }, theme.font.bodyMedium]}>
+                  {t('weight.plan.assumedAge')}
+                </Text>
+              ) : null}
               {/* Kept visible: the motivating countdown and the safety floor. */}
               {eta != null ? (
                 <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
@@ -782,6 +791,7 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 16 },
   ackTick: { fontSize: 13 },
   planIntro: { fontSize: 14, lineHeight: 20, marginTop: 4 },
+  assumedAge: { fontSize: 12, lineHeight: 17, marginTop: 8 },
   planKcal: { fontSize: 22, marginTop: 8, marginBottom: 10 },
   macroRow: { flexDirection: 'row', gap: 8 },
   macroTile: { flex: 1, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 4, alignItems: 'center' },
