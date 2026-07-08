@@ -20,13 +20,13 @@ For each distinct food or drink in the input, output:
 - est_grams: your best estimate of the eaten weight in grams, from explicit quantities or typical portions.
 - confidence: 0..1, how sure you are about the food identity and portion.
 - prepared: true when the named item is an already-prepared dish eaten as-is — soups, stews, salads, casseroles, ready composite meals (суп харчо, жаркое, плов, оливье). false for ingredients and simple products that may still be cooked or re-cooked at home (raw meat or fish, vegetables, eggs, pasta, rice, dumplings, bread).
-- estimate: your best ROUGH per-100g figures for the food as typically prepared — kcal_100g, prot_100g, fat_100g, carb_100g. See the estimate rule below.
+- estimate: your best ROUGH per-100g figures for the food as typically prepared — ALL FOUR of kcal_100g, prot_100g, fat_100g, carb_100g together. See the estimate rule below.
 
 Rules:
 - Split a dish into its meaningful components (e.g. "омлет из трёх яиц" → eggs ~165 g; "кофе с молоком" → milk ~30 g; ignore water/black coffee with ~0 nutrition unless asked).
 - Multiple foods in one phrase → multiple items.
 - Strip filler words; never invent foods that were not mentioned.
-- The estimate is a SANITY-CHECK and last-resort fallback only — the nutrition DB is authoritative and will override your numbers whenever it has a good match. Fill estimate from what you genuinely know about the food (плескавица ≈ grilled minced-meat patty ~215 kcal, ~17 g protein per 100 g). If you truly cannot estimate a field, omit it — never pad with a generic guess.
+- The estimate is a SANITY-CHECK and last-resort fallback only — the nutrition DB is authoritative and overrides your numbers whenever it has a good match. When you give an estimate, provide ALL FOUR fields together and roughly self-consistent (kcal ≈ 4×protein + 9×fat + 4×carbs) — a partial estimate (e.g. protein only) is useless, so it is all four or none. Base them on what the food actually is (плескавица ≈ grilled minced-meat patty ≈ 230 kcal, 17 g protein, 16 g fat, 3 g carbs per 100 g). Omit the whole estimate object only for something you genuinely cannot identify — never a partial estimate, never generic padding.
 - If nothing food-like is present, return an empty items array.`;
 
 /**
@@ -48,7 +48,7 @@ export const IDENTIFY_SCHEMA = {
           prepared: { type: 'boolean' },
           estimate: {
             type: 'object',
-            description: 'Rough per-100g figures from the model — a sanity-check / last-resort fallback, never authoritative. Omit any field you cannot estimate.',
+            description: 'Rough per-100g figures from the model — a sanity-check / last-resort fallback, never authoritative. Provide ALL FOUR fields together (kcal_100g, prot_100g, fat_100g, carb_100g) or omit the whole object — never a partial estimate.',
             properties: {
               kcal_100g: { type: ['number', 'null'] },
               prot_100g: { type: ['number', 'null'] },
@@ -122,7 +122,7 @@ export const IDENTIFY_PHOTO_SCHEMA = {
           prepared: { type: 'boolean' },
           estimate: {
             type: 'object',
-            description: 'Rough per-100g figures from the model — a sanity-check / last-resort fallback, never authoritative. Omit any field you cannot estimate.',
+            description: 'Rough per-100g figures from the model — a sanity-check / last-resort fallback, never authoritative. Provide ALL FOUR fields together (kcal_100g, prot_100g, fat_100g, carb_100g) or omit the whole object — never a partial estimate.',
             properties: {
               kcal_100g: { type: ['number', 'null'] },
               prot_100g: { type: ['number', 'null'] },
