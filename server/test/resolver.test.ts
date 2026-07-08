@@ -165,3 +165,75 @@ test('partial label (no full panel) → DB lookup, but net weight still sets gra
   assert.equal(r.grams, 200, 'net weight still wins for grams');
   assert.equal(r.scaled.prot, 62, '31 * 200 / 100');
 });
+
+test('DB miss + complete AI estimate → source ai_estimate, counted', async () => {
+  mockFetch(() => json({ foods: [] })); // USDA miss
+  const resolver = new Resolver([new UsdaProvider('KEY')]);
+  const r = await resolver.resolveItem(
+    item({
+      name_ru: 'плескавица',
+      name_en: 'pljeskavica',
+      est_grams: 200,
+      estimate: { kcal_100g: 215, prot_100g: 17, fat_100g: 15, carb_100g: 3 },
+    }),
+    'US',
+  );
+  assert.equal(r.per100.source, 'ai_estimate');
+  assert.equal(r.per100.kcal, 215);
+  assert.equal(r.per100.prot, 17);
+  assert.equal(r.scaled.prot, 34, '17 * 200 / 100 — counted, not zeroed like the coarse estimate');
+  assert.equal(r.matched_name, undefined, 'AI numbers are not a DB row');
+});
+
+test('DB miss + no AI estimate → coarse estimate placeholder', async () => {
+  mockFetch(() => json({ foods: [] }));
+  const resolver = new Resolver([new UsdaProvider('KEY')]);
+  const r = await resolver.resolveItem(item({ name_en: 'unobtanium souffle' }), 'US');
+  assert.equal(r.per100.source, 'estimate');
+  assert.equal(r.per100.kcal, 150);
+});
+
+test('DB hit consistent with the AI estimate → DB wins, not demoted, no AI alternative', async () => {
+  mockFetch(() => json(usdaChicken)); // 165 kcal / 31 g protein
+  const resolver = new Resolver([new UsdaProvider('KEY')]);
+  const r = await resolver.resolveItem(
+    item({ estimate: { kcal_100g: 175, prot_100g: 28, fat_100g: 4, carb_100g: 0 } }),
+    'US',
+  );
+  assert.equal(r.per100.source, 'usda');
+  assert.ok(r.confidence > 0.3, 'a consistent estimate never demotes the DB');
+  assert.ok(!(r.alternatives ?? []).some((a) => a.per100.source === 'ai_estimate'));
+});
+
+test('referee: DB hit grossly contradicts the AI estimate → demoted + AI estimate offered', async () => {
+  // USDA answers with an apple-like row (protein 0.3) for a high-protein product.
+  const apple = {
+    foods: [
+      {
+        description: 'Apple, raw',
+        score: 100,
+        foodNutrients: [
+          { nutrientNumber: '1008', value: 57 },
+          { nutrientNumber: '1003', value: 0.3 },
+          { nutrientNumber: '1004', value: 0.2 },
+          { nutrientNumber: '1005', value: 14 },
+        ],
+      },
+    ],
+  };
+  mockFetch(() => json(apple));
+  const resolver = new Resolver([new UsdaProvider('KEY')]);
+  const r = await resolver.resolveItem(
+    item({
+      name_ru: 'исландский скир',
+      name_en: 'skyr',
+      estimate: { kcal_100g: 66, prot_100g: 11, fat_100g: 0.2, carb_100g: 4 },
+    }),
+    'US',
+  );
+  assert.equal(r.per100.source, 'usda', 'DB stays primary — the model never overwrites it');
+  assert.equal(r.per100.prot, 0.3);
+  assert.equal(r.confidence, 0.3, 'referee demotes so the client surfaces the picker');
+  assert.equal(r.alternatives?.[0]?.per100.source, 'ai_estimate', 'AI estimate offered as the top switch');
+  assert.equal(r.alternatives?.[0]?.per100.prot, 11);
+});

@@ -9,8 +9,9 @@ export type Region = 'RU' | 'US';
 /// Where a per-100g block came from. `estimate` = a full DB miss (the client
 /// shows NO fabricated numbers for it); `label` = read off the product's own
 /// nutrition panel in a photo (ground truth, shown as «по упаковке»);
-/// `manual` = the user typed the macros in; `history` = re-logged from the
-/// user's own earlier entry (real, their data).
+/// `ai_estimate` = the model's own rough figures when no DB has the food (shown
+/// as «≈ оценка ИИ», counted but flagged); `manual` = the user typed the macros
+/// in; `history` = re-logged from the user's own earlier entry (real, their data).
 export type NutritionSource =
   | 'usda'
   | 'skurikhin'
@@ -18,6 +19,7 @@ export type NutritionSource =
   | 'apininjas'
   | 'fatsecret'
   | 'label'
+  | 'ai_estimate'
   | 'estimate'
   | 'manual'
   | 'history';
@@ -122,6 +124,10 @@ export interface MealDraft {
   approximate: boolean; // true if any item is still estimated
   flags: {
     has_estimate: boolean; // a per100 came from the estimate fallback (DB miss)
+    // A per100 is the model's own estimate (no DB had the food). Optional so an
+    // older server (or a pre-existing draft/fixture) without it still validates —
+    // absent is treated as false. `recomputeDraft` always sets a real boolean.
+    has_ai_estimate?: boolean;
     low_confidence: boolean; // an item is below the confidence floor
     // Set CLIENT-side (never by the server): the online parser failed and the
     // offline stub answered instead — the UI must say so, not pass degraded

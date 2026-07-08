@@ -1,12 +1,18 @@
 import type { Region } from './types.js';
 
 /**
- * System prompt for IDENTIFICATION ONLY (BUILD SPEC §1/§4). The model lists the
- * component foods and ESTIMATES grams + a confidence — it must NEVER output
- * nutrition numbers (kcal/macros/minerals). Those come from the nutrition DB,
- * server-side; anything the model emits about them would be ignored anyway.
+ * System prompt for IDENTIFICATION (BUILD SPEC §1/§4). The model's PRIMARY job
+ * is still identification — WHICH foods and HOW MANY GRAMS. The authoritative
+ * per-100g composition comes from the nutrition DB, server-side, and OVERRIDES
+ * anything the model says whenever there is a good match.
+ *
+ * One deliberate addition (2026-07-08): the model may also give a rough per-100g
+ * `estimate`. It is used ONLY (a) as a sanity-check band to catch a wrong DB
+ * match (a confident lookup for the wrong food), and (b) as a last-resort
+ * fallback for foods absent from every DB (e.g. regional dishes like плескавица).
+ * It is always attributed as an AI estimate, never laundered as DB data.
  */
-export const IDENTIFY_SYSTEM_PROMPT = `You identify the component foods in a meal description for a nutrition app. You DO NOT estimate calories, macros, or minerals — only WHICH foods and HOW MANY GRAMS.
+export const IDENTIFY_SYSTEM_PROMPT = `You identify the component foods in a meal description for a nutrition app. Your PRIMARY job is WHICH foods and HOW MANY GRAMS — identification, not nutrition scoring.
 
 For each distinct food or drink in the input, output:
 - name_ru: a short, normalized Russian food name (e.g. "куриная грудка", "тост").
@@ -14,12 +20,13 @@ For each distinct food or drink in the input, output:
 - est_grams: your best estimate of the eaten weight in grams, from explicit quantities or typical portions.
 - confidence: 0..1, how sure you are about the food identity and portion.
 - prepared: true when the named item is an already-prepared dish eaten as-is — soups, stews, salads, casseroles, ready composite meals (суп харчо, жаркое, плов, оливье). false for ingredients and simple products that may still be cooked or re-cooked at home (raw meat or fish, vegetables, eggs, pasta, rice, dumplings, bread).
+- estimate: your best ROUGH per-100g figures for the food as typically prepared — kcal_100g, prot_100g, fat_100g, carb_100g. See the estimate rule below.
 
 Rules:
 - Split a dish into its meaningful components (e.g. "омлет из трёх яиц" → eggs ~165 g; "кофе с молоком" → milk ~30 g; ignore water/black coffee with ~0 nutrition unless asked).
 - Multiple foods in one phrase → multiple items.
 - Strip filler words; never invent foods that were not mentioned.
-- NEVER output calories, protein, fat, carbs, or minerals. Identification and grams only.
+- The estimate is a SANITY-CHECK and last-resort fallback only — the nutrition DB is authoritative and will override your numbers whenever it has a good match. Fill estimate from what you genuinely know about the food (плескавица ≈ grilled minced-meat patty ~215 kcal, ~17 g protein per 100 g). If you truly cannot estimate a field, omit it — never pad with a generic guess.
 - If nothing food-like is present, return an empty items array.`;
 
 /**
@@ -39,6 +46,16 @@ export const IDENTIFY_SCHEMA = {
           est_grams: { type: 'number' },
           confidence: { type: 'number' },
           prepared: { type: 'boolean' },
+          estimate: {
+            type: 'object',
+            description: 'Rough per-100g figures from the model — a sanity-check / last-resort fallback, never authoritative. Omit any field you cannot estimate.',
+            properties: {
+              kcal_100g: { type: ['number', 'null'] },
+              prot_100g: { type: ['number', 'null'] },
+              fat_100g: { type: ['number', 'null'] },
+              carb_100g: { type: ['number', 'null'] },
+            },
+          },
         },
         required: ['name_ru', 'name_en', 'est_grams', 'confidence', 'prepared'],
       },
@@ -103,6 +120,16 @@ export const IDENTIFY_PHOTO_SCHEMA = {
           est_grams: { type: 'number' },
           confidence: { type: 'number' },
           prepared: { type: 'boolean' },
+          estimate: {
+            type: 'object',
+            description: 'Rough per-100g figures from the model — a sanity-check / last-resort fallback, never authoritative. Omit any field you cannot estimate.',
+            properties: {
+              kcal_100g: { type: ['number', 'null'] },
+              prot_100g: { type: ['number', 'null'] },
+              fat_100g: { type: ['number', 'null'] },
+              carb_100g: { type: ['number', 'null'] },
+            },
+          },
           label: {
             type: 'object',
             description: 'Numbers transcribed off a printed package label, when visible. Omit entirely for non-packaged food.',
@@ -124,9 +151,9 @@ export const IDENTIFY_PHOTO_SCHEMA = {
 
 /**
  * Instruction for AUDIO input: a person describing, in Russian, what they ate.
- * The model transcribes internally, then identifies foods + grams — still NO
- * nutrition numbers (those come from the DB). Same JSON schema as text/photo.
+ * The model transcribes internally, then identifies foods + grams (+ the rough
+ * `estimate` from the system prompt). Uses the base IDENTIFY_SCHEMA.
  */
 export function userAudioInstruction(region: Region): string {
-  return `Region: ${region}. The audio is a person describing, in Russian, a meal they ate. Understand what they said, then identify the foods and estimate grams. Identification and grams only — never calories, macros, or minerals.`;
+  return `Region: ${region}. The audio is a person describing, in Russian, a meal they ate. Understand what they said, then identify the foods and estimate grams. Identification and grams are your primary job; the nutrition DB is authoritative for numbers.`;
 }

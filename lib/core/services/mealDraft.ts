@@ -133,6 +133,7 @@ export function recomputeDraft(region: Region, items: NutritionItem[]): MealDraf
     approximate,
     flags: {
       has_estimate: items.some((it) => it.per100.source === 'estimate'),
+      has_ai_estimate: items.some((it) => it.per100.source === 'ai_estimate'),
       low_confidence: items.some((it) => it.confidence < LOW_CONFIDENCE_FLOOR),
     },
   };

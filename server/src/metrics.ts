@@ -17,6 +17,7 @@ class MetricsRegistry {
     apininjas: 0,
     fatsecret: 0,
     label: 0,
+    ai_estimate: 0,
     estimate: 0,
   };
   private empty = 0;
