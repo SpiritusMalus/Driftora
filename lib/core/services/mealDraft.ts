@@ -1,8 +1,3 @@
-import {
-  applyCookFactor,
-  isNeutralCookMethod,
-  type CookMethod,
-} from '../insights/cookMethod';
 import type {
   MealDraft,
   Minerals,
@@ -162,9 +157,16 @@ export function withItemManualMacros(
       minerals: {},
       source: 'manual',
     };
-    // User-typed numbers are no DB row — a stale matched-row name would
-    // misattribute them.
-    return { ...it, per100, matched_name: undefined, scaled: scaleToGrams(per100, it.grams) };
+    // User-typed numbers are no DB row — a stale matched-row name (and the
+    // dry-basis / estimated-micros hints tied to that row) would misattribute them.
+    return {
+      ...it,
+      per100,
+      matched_name: undefined,
+      dry_basis: undefined,
+      micros_estimated: undefined,
+      scaled: scaleToGrams(per100, it.grams),
+    };
   });
   return recomputeDraft(draft.region, items);
 }
@@ -197,9 +199,9 @@ export function withItemAlternative(draft: MealDraft, index: number, altIndex: n
 
 /// Replace one item's match with an explicit candidate the user found via the
 /// manual DB search ("найти вручную") — same swap semantics as picking an
-/// alternative: the chosen per-100g goes live, the user's choice clears the
-/// low-confidence state, and the cook-method baseline resets. The previously
-/// shown match drops back into the alternatives so the swap stays reversible.
+/// alternative: the chosen per-100g goes live and the user's choice clears the
+/// low-confidence state. The previously shown match drops back into the
+/// alternatives so the swap stays reversible.
 export function withItemReplacement(
   draft: MealDraft,
   index: number,
@@ -213,7 +215,7 @@ export function withItemReplacement(
     // numbers the user is comparing against.
     const previous: NutritionAlternative = {
       name: it.matched_name ?? (it.name_ru || it.name_en),
-      per100: it.basePer100 ?? it.per100,
+      per100: it.per100,
     };
     return {
       ...it,
@@ -221,36 +223,12 @@ export function withItemReplacement(
       matched_name: replacement.name, // transparency: the new row's own name
       confidence: 1, // the user confirmed the match by hand
       userChosen: true, // → "remember my choice" on save
-      cook_method: undefined,
-      basePer100: undefined,
+      // The old row's hints don't describe the new pick; the user is now in
+      // control of the match, so drop them rather than mislabel the swap.
+      dry_basis: undefined,
+      micros_estimated: undefined,
       alternatives: [previous, ...keepAlternatives],
       scaled: scaleToGrams(replacement.per100, it.grams),
-    };
-  });
-  return recomputeDraft(draft.region, items);
-}
-
-/// Switch one item's cooking method and recompute everything, OFFLINE. The DB
-/// row is the `raw` baseline (captured once in `basePer100`); a non-neutral
-/// method applies coarse factors and honestly raises `approximate`, while
-/// switching back to a neutral method (raw/boiled) restores the grams-based
-/// state. Reversible because we always recompute from `basePer100`, never from
-/// the already-adjusted per100.
-export function withItemCookMethod(draft: MealDraft, index: number, method: CookMethod): MealDraft {
-  const items = draft.items.map((it, i) => {
-    if (i !== index) return it;
-    const base = it.basePer100 ?? it.per100;
-    const per100 = applyCookFactor(base, method);
-    const neutral = isNeutralCookMethod(method);
-    return {
-      ...it,
-      basePer100: base,
-      cook_method: method,
-      per100,
-      // Coarse method factors → estimate; neutral methods fall back to the
-      // item's grams-confirmation state.
-      approximate: neutral ? it.grams_source === 'estimated' : true,
-      scaled: scaleToGrams(per100, it.grams),
     };
   });
   return recomputeDraft(draft.region, items);

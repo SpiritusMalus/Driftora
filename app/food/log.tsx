@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 
 import { ConsentModal } from '@/components/consent/ConsentModal';
 import { Card } from '@/components/ui/Card';
+import { FillBar } from '@/components/ui/FillBar';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
 import { TextField } from '@/components/ui/TextField';
@@ -35,9 +36,10 @@ import {
 } from '@/lib/core/services/audioRecorder';
 import type { AudioInput, MealDraft, NutrientValues, NutritionAlternative, NutritionItem, PhotoInput, Region } from '@/lib/core/services/foodParser';
 import { nutrientDetailRows } from '@/lib/core/insights/nutrientDetail';
+import { dailyMicroNorms, type MicroRow } from '@/lib/core/insights/microNutrients';
+import type { Sex } from '@/lib/core/insights/bodyMetrics';
 import { getFoodParser, resolveRegion } from '@/lib/core/services/foodParserProvider';
-import { recomputeDraft, withItemAlternative, withItemCookMethod, withItemGrams, withItemManualMacros, withItemReplacement } from '@/lib/core/services/mealDraft';
-import { COOK_METHODS, cookMethodApplies, type CookMethod } from '@/lib/core/insights/cookMethod';
+import { recomputeDraft, withItemAlternative, withItemGrams, withItemManualMacros, withItemReplacement } from '@/lib/core/services/mealDraft';
 import { capturePhoto, isPhotoCaptureAvailable, type PhotoSource } from '@/lib/core/services/photoProvider';
 import { getSpeechService } from '@/lib/core/services/speechProvider';
 import { type Theme, useTheme } from '@/lib/theme/theme';
@@ -70,6 +72,9 @@ export default function FoodLogScreen() {
   // line shown once a meal is parsed (the meaning-rules library).
   const [proteinTarget, setProteinTarget] = useState(0);
   const [todayProteinG, setTodayProteinG] = useState(0);
+  // Profile sex, for the per-dish micro "% of daily norm" scales (iron and some
+  // vitamins differ by sex). '' → the bars show both figures instead of guessing.
+  const [sex, setSex] = useState<'' | Sex>('');
   const [varietyCount, setVarietyCount] = useState(0);
   // «Пауза» mutes ALL target pressure — including the protein line below.
   const [paused, setPaused] = useState(false);
@@ -222,6 +227,7 @@ export default function FoodLogScreen() {
       ]);
       if (!active) return;
       setProteinTarget(settings.targetProteinG);
+      setSex(settings.sex ?? '');
       setPaused(settings.paused);
       setTodayProteinG(totals.proteinG);
       setVarietyCount(variety);
@@ -463,10 +469,6 @@ export default function FoodLogScreen() {
     setDraft((prev) => (prev ? withItemGrams(prev, index, grams) : prev));
   }
 
-  function onItemCookMethod(index: number, method: CookMethod) {
-    setDraft((prev) => (prev ? withItemCookMethod(prev, index, method) : prev));
-  }
-
   function onItemSelectAlternative(index: number, altIndex: number) {
     setDraft((prev) => (prev ? withItemAlternative(prev, index, altIndex) : prev));
   }
@@ -698,7 +700,6 @@ export default function FoodLogScreen() {
               hideCalories={hideCalories}
               theme={theme}
               onGrams={(g) => onItemGrams(i, g)}
-              onCookMethod={(m) => onItemCookMethod(i, m)}
               onManualMacros={(m) => onItemManualMacros(i, m)}
               onSelectAlternative={(altIndex) => onItemSelectAlternative(i, altIndex)}
               onSearch={onItemSearch}
@@ -718,6 +719,14 @@ export default function FoodLogScreen() {
             </Text>
             {/* Meal-level extended composition — an honest partial sum. */}
             <NutrientDetail values={draft.totals} caption={t('food.detail.totalsNote')} theme={theme} />
+            {/* Vitamins & minerals for the WHOLE dish, as % of the daily norm —
+                the "сколько выходит за блюдо" the day-level panel can't answer. */}
+            <MicroScales
+              values={draft.totals}
+              sex={sex}
+              estimated={draft.items.some((it) => it.micros_estimated === true)}
+              theme={theme}
+            />
             <Pressable onPress={onToggleHideCalories} hitSlop={8} style={styles.hideCaloriesToggle}>
               <Text style={[styles.hideCaloriesText, { color: theme.subtle }, theme.font.body]}>
                 {hideCalories ? t('food.showCalories') : t('food.hideCalories')}
@@ -835,12 +844,102 @@ function NutrientDetail({
   );
 }
 
+/// Vitamins & minerals for a whole dish as a share of the daily norm — the same
+/// honest FillBar the day view uses, scoped to what the user is logging now. A
+/// bar appears ONLY for a micronutrient the dish actually carries (never an
+/// implied zero); collapsed by default so it doesn't crowd the total card.
+function MicroScales({
+  values,
+  sex,
+  estimated,
+  theme,
+}: {
+  values: NutrientValues;
+  sex: '' | Sex;
+  estimated: boolean;
+  theme: Theme;
+}) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const measured = dailyMicroNorms(sex)
+    .map((row) => ({ row, intake: microIntakeOf(values, row) }))
+    .filter((x): x is { row: MicroRow; intake: number } => x.intake != null);
+  if (measured.length === 0) return null;
+  return (
+    <View style={styles.altWrap}>
+      <Pressable onPress={() => setOpen((s) => !s)} hitSlop={6}>
+        <Text style={[styles.altToggle, { color: theme.primary }, theme.font.body]}>
+          {open ? t('food.microsDish.hide') : t('food.microsDish.show')}
+        </Text>
+      </Pressable>
+      {open ? (
+        <View style={styles.detailBox}>
+          {(['vitamin', 'mineral'] as const).map((group) => {
+            const rows = measured.filter((x) => x.row.group === group);
+            if (rows.length === 0) return null;
+            return (
+              <View key={group} style={styles.microGroup}>
+                <Text style={[styles.microGroupHeading, { color: theme.subtle }, theme.font.bodySemiBold]}>
+                  {t(`weight.micros.groups.${group}`)}
+                </Text>
+                {rows.map(({ row, intake }) => {
+                  const pct = row.value > 0 ? Math.round((intake / row.value) * 100) : 0;
+                  return (
+                    <View key={row.key} style={styles.microRow}>
+                      <View style={styles.microRowHead}>
+                        <Text style={[styles.microName, { color: theme.text }, theme.font.body]}>
+                          {t(`weight.micros.name.${row.key}`)}
+                        </Text>
+                        <Text style={[styles.microVal, { color: theme.subtle }, theme.font.body]}>
+                          {fmtMicro(row, intake)} {t(`weight.micros.unit.${row.unit}`)} ·{' '}
+                          {t('food.micros.ofNorm', { pct })}
+                        </Text>
+                      </View>
+                      <FillBar value={intake} min={row.value} max={row.limit} thickness={8} />
+                    </View>
+                  );
+                })}
+              </View>
+            );
+          })}
+          {sex !== 'male' && sex !== 'female' ? (
+            <Text style={[styles.microNote, { color: theme.subtle }, theme.font.body]}>
+              {t('food.microsDish.needSex')}
+            </Text>
+          ) : null}
+          {estimated ? (
+            <Text style={[styles.microNote, { color: theme.subtle }, theme.font.body]}>
+              {t('food.microsDish.estimated')}
+            </Text>
+          ) : null}
+          <Text style={[styles.microNote, { color: theme.subtle }, theme.font.body]}>{t('food.microsDish.note')}</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+/// The dish's amount of one norm row, or null when the dish carries none of it
+/// (so the caller shows no bar rather than an implied zero). Mirrors the day
+/// view's `microIntake`, reading a scaled NutrientValues block.
+function microIntakeOf(values: NutrientValues, row: MicroRow): number | null {
+  const src = (row.group === 'mineral' ? values.minerals : values.vitamins) as
+    | Record<string, number | undefined>
+    | undefined;
+  const v = src?.[row.key];
+  return typeof v === 'number' && v > 0 ? v : null;
+}
+
+/// Whole numbers for µg + minerals; sub-mg vitamins keep 1 dp (matches day view).
+function fmtMicro(row: MicroRow, v: number): string {
+  return row.group === 'vitamin' && row.unit === 'mg' ? (Math.round(v * 10) / 10).toString() : Math.round(v).toString();
+}
+
 function ItemCard({
   item,
   hideCalories,
   theme,
   onGrams,
-  onCookMethod,
   onManualMacros,
   onSelectAlternative,
   onSearch,
@@ -850,32 +949,26 @@ function ItemCard({
   hideCalories: boolean;
   theme: Theme;
   onGrams: (grams: number) => void;
-  onCookMethod: (method: CookMethod) => void;
   onManualMacros: (macros: { kcal: number; prot: number; fat: number; carb: number }) => void;
   onSelectAlternative: (altIndex: number) => void;
   onSearch: (query: string) => Promise<NutritionAlternative[]>;
   onReplace: (replacement: NutritionAlternative) => void;
 }) {
   const { t } = useTranslation();
-  const activeMethod: CookMethod = item.cook_method ?? 'raw';
-  // No "how it was cooked" row for foods where it makes no sense: drinks and
-  // soups (name heuristic — consumed as-is) and server-flagged ready dishes
-  // (`prepared` — the per-100g already describes the finished dish, so an
-  // adjustment would double-count).
-  const cookable = item.prepared !== true && cookMethodApplies(item.name_ru, item.name_en);
   // TRANSPARENCY: which DB row the numbers describe. Shown when the matched
   // row's own name differs from what the user logged («картошка» → «картофель
   // варёный») — the row name usually carries the preparation state, so the
-  // user can judge the baseline instead of guessing.
+  // user can judge the baseline instead of guessing. To change the state the
+  // user picks another match ("не то?"/"найти вручную") or re-parses a clearer
+  // query — we no longer apply a coarse cooking-method multiplier ourselves.
   const matchedLabel =
     item.matched_name &&
     normalizeChoiceName(item.matched_name) !== normalizeChoiceName(item.name_ru) &&
     normalizeChoiceName(item.matched_name) !== normalizeChoiceName(item.name_en)
       ? item.matched_name
       : null;
-  // The "per 100 g · <source>" line always shows the DB row itself (that's the
-  // promise in the footnote); a cook-method adjustment only moves the totals.
-  const dbPer100 = item.basePer100 ?? item.per100;
+  // The "per 100 g · <source>" line shows the DB row itself (the footnote's promise).
+  const dbPer100 = item.per100;
   // A full DB miss: the resolver's coarse placeholder. We show NO fabricated
   // numbers for it — only an honest "not in our database" + manual entry.
   const isMiss = item.per100.source === 'estimate';
@@ -927,6 +1020,16 @@ function ItemCard({
             caption={t('food.detail.basis', { grams: Math.round(item.grams) })}
             theme={theme}
           />
+          {/* HONESTY: dry-product label matched against a likely-cooked weight —
+              the total overcounts ~3× (absorbed water). We say so; the user fixes
+              the weight or picks a "готовая" match. Numbers stay untouched. */}
+          {item.dry_basis ? (
+            <View style={[styles.dryBasisNote, { borderColor: theme.primary, backgroundColor: theme.card }]}>
+              <Text style={[styles.dryBasisText, { color: theme.text }, theme.font.body]}>
+                {t('food.dryBasis')}
+              </Text>
+            </View>
+          ) : null}
         </>
       )}
 
@@ -1032,41 +1135,6 @@ function ItemCard({
       {/* Manual per-100g entry for a DB miss (and editing once entered). */}
       {isMiss || item.per100.source === 'manual' ? (
         <ManualMacros item={item} isMiss={isMiss} theme={theme} onManualMacros={onManualMacros} />
-      ) : null}
-
-      {/* Cooking method — neutral chips ("how it was cooked"), never framed as
-          healthier/worse. A non-baseline method coarsely adjusts kcal/fat and is
-          shown as approximate. Offline, deterministic. Hidden for drinks, soups
-          and ready dishes (see `cookable` above). */}
-      {cookable ? (
-        <View style={styles.cookRow}>
-          <Text style={[styles.gramsLabel, { color: theme.subtle }, theme.font.body]}>
-            {t('food.cookMethod.label')}
-          </Text>
-          <View style={styles.cookChips}>
-            {COOK_METHODS.map((m) => {
-              const active = activeMethod === m;
-              return (
-                <Pressable
-                  key={m}
-                  onPress={() => onCookMethod(m)}
-                  style={({ pressed }) => [
-                    styles.cookChip,
-                    {
-                      backgroundColor: active ? theme.primary : theme.card,
-                      borderColor: active ? theme.primary : theme.separator,
-                      opacity: pressed ? 0.7 : 1,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.cookChipText, { color: active ? theme.onPrimary : theme.text }, theme.font.body]}>
-                    {t(`food.cookMethod.${m}`)}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
       ) : null}
 
       {/* Confirm grams → flips the item out of "approximate". The exact weight
@@ -1204,9 +1272,15 @@ const styles = StyleSheet.create({
   detailLabel: { fontSize: 12 },
   detailValue: { fontSize: 12 },
   detailCaption: { fontSize: 10, fontStyle: 'italic', marginTop: 4, lineHeight: 14 },
-  cookRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6, flexWrap: 'wrap' },
-  cookChips: { flexDirection: 'row', gap: 6, flexWrap: 'wrap', flexShrink: 1 },
-  cookChip: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 10, paddingVertical: 6 },
+  dryBasisNote: { marginTop: 8, borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },
+  dryBasisText: { fontSize: 12, lineHeight: 17 },
+  microGroup: { marginTop: 8, gap: 6 },
+  microGroupHeading: { fontSize: 11, letterSpacing: 0.6, textTransform: 'uppercase' },
+  microRow: { gap: 3 },
+  microRowHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  microName: { fontSize: 12 },
+  microVal: { fontSize: 11 },
+  microNote: { fontSize: 10, fontStyle: 'italic', marginTop: 6, lineHeight: 14 },
   cookChipText: { fontSize: 12 },
   notInDb: { fontSize: 13, marginBottom: 6, lineHeight: 18 },
   manualWrap: { marginTop: 4, marginBottom: 4 },

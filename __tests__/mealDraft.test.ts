@@ -1,7 +1,13 @@
 import { describe, expect, it } from '@jest/globals';
 
 import type { MealDraft, NutritionItem, Per100 } from '@/lib/core/services/foodParser';
-import { recomputeDraft, scaleToGrams, withItemGrams } from '@/lib/core/services/mealDraft';
+import {
+  recomputeDraft,
+  scaleToGrams,
+  withItemGrams,
+  withItemManualMacros,
+  withItemReplacement,
+} from '@/lib/core/services/mealDraft';
 
 const chicken: Per100 = { source: 'usda', kcal: 165, prot: 31, fat: 3.6, carb: 0, minerals: { na: 74, k: 256 } };
 
@@ -65,5 +71,30 @@ describe('mealDraft', () => {
     // The miss is present (flag set) but its 300 kcal placeholder is NOT in the total.
     expect(d.flags.has_estimate).toBe(true);
     expect(d.totals.kcal).toBe(165); // chicken only — donut excluded
+  });
+
+  it('confirming grams preserves the server dry_basis / micros_estimated hints', () => {
+    const d = recomputeDraft('RU', [item({ dry_basis: true, micros_estimated: true })]);
+    const after = withItemGrams(d, 0, 200);
+    // The food didn't change — only its weight — so the hints still describe it.
+    expect(after.items[0].dry_basis).toBe(true);
+    expect(after.items[0].micros_estimated).toBe(true);
+  });
+
+  it('typing manual macros drops the dry_basis / micros_estimated hints (new numbers)', () => {
+    const d = recomputeDraft('RU', [item({ dry_basis: true, micros_estimated: true })]);
+    const after = withItemManualMacros(d, 0, { kcal: 120, prot: 4, fat: 2, carb: 20 });
+    expect(after.items[0].per100.source).toBe('manual');
+    expect(after.items[0].dry_basis).toBeUndefined();
+    expect(after.items[0].micros_estimated).toBeUndefined();
+  });
+
+  it('replacing the match drops the old row hints (user took control)', () => {
+    const cooked: Per100 = { source: 'skurikhin', kcal: 120, prot: 4, fat: 2, carb: 20, minerals: {} };
+    const d = recomputeDraft('RU', [item({ dry_basis: true, micros_estimated: true })]);
+    const after = withItemReplacement(d, 0, { name: 'лапша готовая', per100: cooked });
+    expect(after.items[0].matched_name).toBe('лапша готовая');
+    expect(after.items[0].dry_basis).toBeUndefined();
+    expect(after.items[0].micros_estimated).toBeUndefined();
   });
 });

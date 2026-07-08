@@ -148,6 +148,17 @@ export interface NutritionItem {
   // source returned >1 candidate. The client offers them behind "не то?" and
   // shows the picker proactively when confidence is low.
   alternatives?: NutritionAlternative[];
+  // HONESTY hint: the matched row's per-100g looks like a DRY-product label
+  // (instant noodles / pasta / rice) while the weight is most likely the COOKED
+  // dish — so `grams × per100` overcounts ~3× (absorbed water). We don't rewrite
+  // the numbers; the client shows a "check the weight" note. Only `true` is sent.
+  dry_basis?: boolean;
+  // TRANSPARENCY: some of the vitamins/minerals here were BACK-FILLED from a
+  // generic USDA record (by name_en) because the primary source (curated RU / a
+  // crowd OFF product) carries no micronutrients. They're an approximate proxy,
+  // not the exact product's lab values — the client labels them as such. Only
+  // `true` is sent.
+  micros_estimated?: boolean;
 }
 
 export interface MealDraft {
