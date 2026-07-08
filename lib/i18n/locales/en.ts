@@ -254,6 +254,7 @@ export const en = {
       recalc: 'The plan recalculates itself after every new weigh-in.',
       needWeight: 'Log a weight above — the plan is computed from it.',
       needProfile: 'Fill in “Body parameters” below — height, sex, birth year and activity — and the plan appears here.',
+      assumedAge: 'Age isn’t set — this plan is an estimate. Add your birth year in “Body parameters” below to firm up the numbers.',
       note:
         'The Mifflin–St Jeor formula estimates the “average” person: real needs differ. Start from these numbers and adjust by your weight trend and how you feel. Deficit −15% (−20% at BMI ≥ 30) · protein 1.6–1.8 g/kg · fat 30% of calories · carbs the remainder.',
       why: 'Why these numbers',

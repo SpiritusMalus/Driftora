@@ -68,10 +68,23 @@ describe('suggestTargets', () => {
   it('stays null until the profile is complete and plausible', () => {
     expect(suggestTargets({ ...profile, sex: '' }, 70, NOW)).toBeNull();
     expect(suggestTargets({ ...profile, activityLevel: '' }, 70, NOW)).toBeNull();
-    expect(suggestTargets({ ...profile, birthYear: 0 }, 70, NOW)).toBeNull();
+    // birthYear 0 (unset) no longer blocks the plan — it falls back to a neutral
+    // adult age (see the assumed-age test below). But an implausible SET year still does.
     expect(suggestTargets({ ...profile, birthYear: 2020 }, 70, NOW)).toBeNull(); // age 6
     expect(suggestTargets({ ...profile, heightCm: 0 }, 70, NOW)).toBeNull();
     expect(suggestTargets(profile, 0, NOW)).toBeNull(); // no weight logged yet
+  });
+
+  it('an unset birth year gives a flagged estimate instead of hiding the plan', () => {
+    const noYear = { ...profile, birthYear: 0 };
+    const plan = suggestPlan(noYear, 70, 'maintain', NOW);
+    expect(plan).not.toBeNull();
+    expect(plan!.assumedAge).toBe(true);
+    // A real year drives an un-flagged plan; the assumed-age one is close (age
+    // moves BMR only a little), not wildly off.
+    const real = suggestPlan(profile, 70, 'maintain', NOW)!;
+    expect(real.assumedAge).toBe(false);
+    expect(Math.abs(plan!.kcal - real.kcal)).toBeLessThan(200);
   });
 });
 
