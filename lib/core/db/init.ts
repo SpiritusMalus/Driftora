@@ -15,7 +15,8 @@ CREATE TABLE IF NOT EXISTS food_entries (
   protein_g REAL NOT NULL DEFAULT 0,
   fat_g REAL NOT NULL DEFAULT 0,
   carb_g REAL NOT NULL DEFAULT 0,
-  confirmed INTEGER NOT NULL DEFAULT 0
+  confirmed INTEGER NOT NULL DEFAULT 0,
+  micros TEXT
 );
 CREATE TABLE IF NOT EXISTS food_items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -160,6 +161,9 @@ export const MIGRATIONS: string[] = [
   // (жировой массе белок почти не нужен) + the honest "до цели ≈ N" ETA line.
   // 0 = not set (plan falls back to adjusted/current-weight protein basis).
   `ALTER TABLE app_settings ADD COLUMN goal_weight_kg REAL NOT NULL DEFAULT 0`,
+  // 2026-07-07: per-entry micronutrient totals (JSON {minerals, vitamins}) for
+  // the daily micro roll-up. Nullable — old entries and micro-less foods have none.
+  `ALTER TABLE food_entries ADD COLUMN micros TEXT`,
 ];
 
 /// Runs each CREATE statement through [run], then the idempotent [MIGRATIONS].

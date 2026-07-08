@@ -11,12 +11,14 @@ import type {
   NutritionItem,
   Per100,
   Region,
+  Vitamins,
 } from './foodParser';
 
 /// Mirrors the server's math (server/src/types.ts) so the client can recompute
 /// totals live as the user confirms grams — without another round-trip.
 
 const MINERAL_KEYS: readonly (keyof Minerals)[] = ['na', 'k', 'ca', 'mg', 'fe', 'zn'];
+const VITAMIN_KEYS: readonly (keyof Vitamins)[] = ['a', 'd', 'e', 'c', 'b1', 'b2', 'b6', 'b9', 'b12'];
 const EXTRA_KEYS = ['fiber', 'sugar', 'satFat'] as const;
 const LOW_CONFIDENCE_FLOOR = 0.5;
 
@@ -24,7 +26,27 @@ function round1(n: number): number {
   return Math.round(n * 10) / 10;
 }
 
-/// Scale a per-100g block to `grams` (minerals to whole mg).
+/// Vitamins are often sub-milligram — keep 2 decimals so a real trace amount
+/// doesn't round to a fake zero (mirrors server round2).
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+function scaleVitamins(vitamins: Vitamins | undefined, factor: number): Vitamins | undefined {
+  if (!vitamins) return undefined;
+  const out: Vitamins = {};
+  let any = false;
+  for (const key of VITAMIN_KEYS) {
+    const v = vitamins[key];
+    if (typeof v === 'number' && Number.isFinite(v)) {
+      out[key] = round2(v * factor);
+      any = true;
+    }
+  }
+  return any ? out : undefined;
+}
+
+/// Scale a per-100g block to `grams` (minerals to whole mg, vitamins to 2 dp).
 export function scaleToGrams(per100: NutrientValues, grams: number): NutrientValues {
   const factor = Math.max(0, grams) / 100;
   const minerals: Minerals = {};
@@ -45,12 +67,16 @@ export function scaleToGrams(per100: NutrientValues, grams: number): NutrientVal
     const v = per100[key];
     if (typeof v === 'number' && Number.isFinite(v)) out[key] = round1(v * factor);
   }
+  const vitamins = scaleVitamins(per100.vitamins, factor);
+  if (vitamins) out.vitamins = vitamins;
   return out;
 }
 
 /// Sum scaled component values into a single totals block.
 export function sumNutrients(items: { scaled: NutrientValues }[]): NutrientValues {
   const minerals: Minerals = {};
+  const vitamins: Vitamins = {};
+  let anyVitamin = false;
   let kcal = 0;
   let prot = 0;
   let fat = 0;
@@ -69,6 +95,13 @@ export function sumNutrients(items: { scaled: NutrientValues }[]): NutrientValue
         minerals[key] = (minerals[key] ?? 0) + v;
       }
     }
+    for (const key of VITAMIN_KEYS) {
+      const v = it.scaled.vitamins?.[key];
+      if (typeof v === 'number' && Number.isFinite(v)) {
+        vitamins[key] = (vitamins[key] ?? 0) + v;
+        anyVitamin = true;
+      }
+    }
     for (const key of EXTRA_KEYS) {
       const v = it.scaled[key];
       if (typeof v === 'number' && Number.isFinite(v)) {
@@ -80,6 +113,12 @@ export function sumNutrients(items: { scaled: NutrientValues }[]): NutrientValue
   for (const key of EXTRA_KEYS) {
     const v = extras[key];
     if (v !== undefined) out[key] = round1(v);
+  }
+  if (anyVitamin) {
+    for (const key of VITAMIN_KEYS) {
+      if (vitamins[key] !== undefined) vitamins[key] = round2(vitamins[key]!);
+    }
+    out.vitamins = vitamins;
   }
   return out;
 }

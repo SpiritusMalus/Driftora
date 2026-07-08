@@ -1,7 +1,15 @@
 import { and, desc, eq, gte, lt } from 'drizzle-orm';
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
-import type { MealDraft, NutritionItem, Per100, Region } from '../services/foodParser';
+import type {
+  MealDraft,
+  Minerals,
+  NutrientValues,
+  NutritionItem,
+  Per100,
+  Region,
+  Vitamins,
+} from '../services/foodParser';
 import { recomputeDraft } from '../services/mealDraft';
 import { foodEntries, foodItems, type FoodEntry, type FoodItem } from './schema';
 
@@ -16,6 +24,54 @@ export interface MacroTotals {
 }
 
 export const zeroTotals: MacroTotals = { kcal: 0, proteinG: 0, fatG: 0, carbG: 0 };
+
+const MINERAL_KEYS: readonly (keyof Minerals)[] = ['na', 'k', 'ca', 'mg', 'fe', 'zn'];
+const VITAMIN_KEYS: readonly (keyof Vitamins)[] = ['a', 'd', 'e', 'c', 'b1', 'b2', 'b6', 'b9', 'b12'];
+
+/// The day's summed micronutrients + honest coverage: `entriesWithData` of
+/// `entriesTotal` meals actually carried micro data (most RU dishes carry none),
+/// so the UI can say what the numbers are — and aren't — measured from.
+export interface MicroTotals {
+  minerals: Minerals;
+  vitamins: Vitamins;
+  entriesWithData: number;
+  entriesTotal: number;
+}
+
+/// Serialize an entry's scaled micro totals to the stored JSON, or null when the
+/// entry has no micro data at all (keeps the column empty rather than "{}").
+export function encodeMicros(totals: NutrientValues): string | null {
+  const minerals = totals.minerals && Object.keys(totals.minerals).length > 0 ? totals.minerals : undefined;
+  const vitamins = totals.vitamins && Object.keys(totals.vitamins).length > 0 ? totals.vitamins : undefined;
+  if (!minerals && !vitamins) return null;
+  return JSON.stringify({ ...(minerals ? { minerals } : {}), ...(vitamins ? { vitamins } : {}) });
+}
+
+/// Parse a stored `micros` JSON back into a bounded {minerals, vitamins}. Only
+/// known keys with finite numbers survive — never trusts arbitrary JSON shape.
+function decodeMicros(raw: string | null | undefined): { minerals: Minerals; vitamins: Vitamins } | null {
+  if (!raw) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== 'object') return null;
+  const p = parsed as { minerals?: unknown; vitamins?: unknown };
+  const minerals: Minerals = {};
+  const vitamins: Vitamins = {};
+  const m = (p.minerals && typeof p.minerals === 'object' ? p.minerals : {}) as Record<string, unknown>;
+  const v = (p.vitamins && typeof p.vitamins === 'object' ? p.vitamins : {}) as Record<string, unknown>;
+  for (const key of MINERAL_KEYS) {
+    if (typeof m[key] === 'number' && Number.isFinite(m[key])) minerals[key] = m[key] as number;
+  }
+  for (const key of VITAMIN_KEYS) {
+    if (typeof v[key] === 'number' && Number.isFinite(v[key])) vitamins[key] = v[key] as number;
+  }
+  const hasAny = Object.keys(minerals).length > 0 || Object.keys(vitamins).length > 0;
+  return hasAny ? { minerals, vitamins } : null;
+}
 
 /// Local-day [start, end) bounds for a given date.
 export function dayBounds(date: Date): { start: Date; end: Date } {
@@ -52,6 +108,7 @@ export async function saveParsedEntry(
       fatG: d.totals.fat,
       carbG: d.totals.carb,
       confirmed: true,
+      micros: encodeMicros(d.totals),
     })
     .returning({ id: foodEntries.id });
 
@@ -120,6 +177,7 @@ export async function updateFoodEntry(
       fatG: d.totals.fat,
       carbG: d.totals.carb,
       confirmed: true,
+      micros: encodeMicros(d.totals),
       ...(opts.ts ? { ts: opts.ts } : {}),
     })
     .where(eq(foodEntries.id, id));
@@ -155,6 +213,9 @@ export async function repeatFoodEntry(db: AnyDb, id: number, ts: Date = new Date
       fatG: e.fatG,
       carbG: e.carbG,
       confirmed: true,
+      // The re-logged meal is the same food — carry its micro totals forward so
+      // «Повторить» counts toward the day's micronutrients like the original.
+      micros: e.micros,
     })
     .returning({ id: foodEntries.id });
   const newId = inserted[0].id as number;
@@ -227,6 +288,45 @@ export async function todayMacroTotals(
     }),
     { ...zeroTotals },
   );
+}
+
+/// Sums the day's micronutrients across every entry that stored a `micros`
+/// blob, and reports coverage (how many of the day's meals actually carried
+/// data). Pure aggregation over stored facts — no norms, no judgement; the UI
+/// compares against the reference norms and says what's still unmeasured.
+export function sumMicroRows(rows: { micros?: string | null }[]): MicroTotals {
+  const minerals: Minerals = {};
+  const vitamins: Vitamins = {};
+  let entriesWithData = 0;
+  for (const r of rows) {
+    const decoded = decodeMicros(r.micros);
+    if (!decoded) continue;
+    entriesWithData += 1;
+    for (const key of MINERAL_KEYS) {
+      const v = decoded.minerals[key];
+      if (typeof v === 'number') minerals[key] = round2((minerals[key] ?? 0) + v);
+    }
+    for (const key of VITAMIN_KEYS) {
+      const v = decoded.vitamins[key];
+      if (typeof v === 'number') vitamins[key] = round2((vitamins[key] ?? 0) + v);
+    }
+  }
+  return { minerals, vitamins, entriesWithData, entriesTotal: rows.length };
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+/// The day's micronutrient roll-up (minerals + vitamins) across all entries
+/// logged on [date]'s local day. Reads the stored per-entry `micros` blobs.
+export async function todayMicroTotals(db: AnyDb, date: Date = new Date()): Promise<MicroTotals> {
+  const { start, end } = dayBounds(date);
+  const rows = (await db
+    .select({ micros: foodEntries.micros })
+    .from(foodEntries)
+    .where(and(gte(foodEntries.ts, start), lt(foodEntries.ts, end)))) as { micros: string | null }[];
+  return sumMicroRows(rows);
 }
 
 /// How many DISTINCT food items were logged today (case-insensitive on the
