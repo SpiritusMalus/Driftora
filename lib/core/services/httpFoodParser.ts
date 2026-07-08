@@ -11,7 +11,7 @@ import type {
   Region,
 } from './foodParser';
 
-const SOURCES: readonly NutritionSource[] = ['usda', 'skurikhin', 'openfoodfacts', 'apininjas', 'fatsecret', 'estimate'];
+const SOURCES: readonly NutritionSource[] = ['usda', 'skurikhin', 'openfoodfacts', 'apininjas', 'fatsecret', 'label', 'estimate'];
 const DEFAULT_TIMEOUT_MS = 12_000;
 
 function isNutrientValues(v: unknown): v is NutrientValues {

@@ -14,13 +14,19 @@ export type Region = 'RU' | 'US';
 
 export type ParseConfidence = 'high' | 'medium' | 'low';
 
-/** Where a per-100g number came from. `estimate` = DB miss (coarse, not fact). */
+/**
+ * Where a per-100g number came from. `estimate` = DB miss (coarse, not fact).
+ * `label` = read verbatim off the product's own nutrition panel in a photo —
+ * ground truth transcribed, not the model guessing (THE HONESTY RULE holds:
+ * the numbers are printed on the package, the model only transcribes them).
+ */
 export type NutritionSource =
   | 'usda'
   | 'skurikhin'
   | 'openfoodfacts'
   | 'apininjas'
   | 'fatsecret'
+  | 'label'
   | 'estimate';
 
 /** Mineral set v1 (BUILD SPEC §10). mg per 100 g. Extend as data allows. */
@@ -74,6 +80,21 @@ export interface Per100 extends NutrientValues {
   source: NutritionSource;
 }
 
+/**
+ * Numbers transcribed off a packaged product's nutrition panel in a PHOTO
+ * (Phase: label-reading). This is the ONE place the model may carry nutrition
+ * numbers — because it is reading printed ground truth, not estimating. Every
+ * field is optional: present only when clearly legible on the package, never
+ * guessed to fill a gap. Per-100g macros + net weight (масса нетто).
+ */
+export interface LabelReading {
+  kcal_100g?: number;
+  prot_100g?: number;
+  fat_100g?: number;
+  carb_100g?: number;
+  net_weight_g?: number;
+}
+
 /** Layer 1/2 output — identification only, NO nutrition numbers (§4). */
 export interface IdentifiedItem {
   name_ru: string;
@@ -84,6 +105,9 @@ export interface IdentifiedItem {
   // as-is (soup, stew, salad, ready meal). Only `true` is carried — absence
   // means "no signal", and the curated-table flag can still set it downstream.
   prepared?: boolean;
+  // Photo path only: numbers read off the product's own label, when visible.
+  // The resolver prefers these over a name-based DB lookup (source: 'label').
+  label?: LabelReading;
   raw_text?: string;
 }
 
@@ -311,12 +335,48 @@ function coerceVitamins(raw: unknown): Vitamins | undefined {
   return any ? out : undefined;
 }
 
+/** A finite, strictly-positive number, else undefined (drops 0/NaN/garbage). */
+function posNum(value: unknown): number | undefined {
+  const n = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
+/**
+ * Coerce a raw label block off the photo model. Keeps only clearly-positive
+ * numbers; returns undefined when nothing usable is present (so `label` stays
+ * absent rather than an empty object). Per-100g macros are clamped to a sane
+ * ceiling — no food exceeds 900 kcal or 100 g of any macro per 100 g, so an
+ * OCR misread like "1050" is dropped rather than trusted.
+ */
+function coerceLabel(raw: unknown): LabelReading | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const r = raw as Record<string, unknown>;
+  const macro = (v: unknown): number | undefined => {
+    const n = posNum(v);
+    return n !== undefined && n <= 100 ? round1(n) : undefined;
+  };
+  const kcalRaw = posNum(r.kcal_100g);
+  const out: LabelReading = {};
+  if (kcalRaw !== undefined && kcalRaw <= 900) out.kcal_100g = Math.round(kcalRaw);
+  const prot = macro(r.prot_100g);
+  const fat = macro(r.fat_100g);
+  const carb = macro(r.carb_100g);
+  if (prot !== undefined) out.prot_100g = prot;
+  if (fat !== undefined) out.fat_100g = fat;
+  if (carb !== undefined) out.carb_100g = carb;
+  // Net weight: a real package is at most a few kg — reject implausible reads.
+  const weight = posNum(r.net_weight_g);
+  if (weight !== undefined && weight <= 5000) out.net_weight_g = round1(weight);
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 const SOURCES: readonly NutritionSource[] = [
   'usda',
   'skurikhin',
   'openfoodfacts',
   'apininjas',
   'fatsecret',
+  'label',
   'estimate',
 ];
 
@@ -368,6 +428,9 @@ export function normalizeIdentified(payload: unknown): IdentifiedItem[] {
     };
     // Strictly boolean true — "false"/1/garbage from a loose model stays off.
     if (r.prepared === true) item.prepared = true;
+    // Photo label read-out, when the model transcribed a legible panel.
+    const label = coerceLabel(r.label);
+    if (label) item.label = label;
     if (typeof r.raw_text === 'string' && r.raw_text.trim().length > 0) {
       item.raw_text = r.raw_text.trim();
     }

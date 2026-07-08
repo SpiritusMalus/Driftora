@@ -125,3 +125,43 @@ test('OpenFoodFacts resolves a barcode and converts mineral grams → mg', async
   assert.equal(r.per100.kcal, 539);
   assert.equal(r.per100.minerals.na, 107);
 });
+
+test('complete photo label → source "label", bypasses the DB, net weight sets grams', async () => {
+  // A complete panel is ground truth — the resolver must NOT touch a provider.
+  mockFetch(() => {
+    throw new Error('no provider should be queried when the label is complete');
+  });
+  const resolver = new Resolver([new UsdaProvider('KEY')]);
+
+  const r = await resolver.resolveItem(
+    item({
+      name_ru: 'исландский скир',
+      name_en: 'skyr',
+      // est_grams 150 must lose to the printed net weight 120.
+      label: { kcal_100g: 66, prot_100g: 14, fat_100g: 1.2, carb_100g: 1.5, net_weight_g: 120 },
+    }),
+    'RU',
+  );
+
+  assert.equal(r.per100.source, 'label');
+  assert.equal(r.per100.prot, 14);
+  assert.equal(r.per100.kcal, 66);
+  assert.equal(calls.length, 0, 'no DB lookup for a complete label');
+  assert.equal(r.matched_name, undefined, 'label numbers are not a DB row');
+  assert.equal(r.grams, 120, 'net weight wins over the portion estimate');
+  assert.equal(r.scaled.prot, 16.8, '14 * 120 / 100'); // was 0.5 g against the "apple" mismatch
+});
+
+test('partial label (no full panel) → DB lookup, but net weight still sets grams', async () => {
+  mockFetch(() => json(usdaChicken));
+  const resolver = new Resolver([new UsdaProvider('KEY')]);
+
+  // Only protein + weight legible (a front-of-pack callout): must NOT splice a
+  // half-label into a DB row, but the net weight is still a real signal.
+  const r = await resolver.resolveItem(item({ label: { prot_100g: 14, net_weight_g: 200 } }), 'US');
+
+  assert.equal(r.per100.source, 'usda', 'an incomplete label never overrides the DB composition');
+  assert.equal(calls.length, 1);
+  assert.equal(r.grams, 200, 'net weight still wins for grams');
+  assert.equal(r.scaled.prot, 62, '31 * 200 / 100');
+});

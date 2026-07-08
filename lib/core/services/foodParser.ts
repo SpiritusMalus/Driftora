@@ -6,16 +6,18 @@
 
 export type Region = 'RU' | 'US';
 
-/// Where a per-100g number came from. `estimate` = DB miss (coarse, not fact).
 /// Where a per-100g block came from. `estimate` = a full DB miss (the client
-/// shows NO fabricated numbers for it); `manual` = the user typed the macros in;
-/// `history` = re-logged from the user's own earlier entry (real, their data).
+/// shows NO fabricated numbers for it); `label` = read off the product's own
+/// nutrition panel in a photo (ground truth, shown as «по упаковке»);
+/// `manual` = the user typed the macros in; `history` = re-logged from the
+/// user's own earlier entry (real, their data).
 export type NutritionSource =
   | 'usda'
   | 'skurikhin'
   | 'openfoodfacts'
   | 'apininjas'
   | 'fatsecret'
+  | 'label'
   | 'estimate'
   | 'manual'
   | 'history';

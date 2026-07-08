@@ -2,6 +2,7 @@ import {
   coercePer100,
   scaleToGrams,
   type IdentifiedItem,
+  type LabelReading,
   type NutritionAlternative,
   type NutritionItem,
   type Per100,
@@ -24,6 +25,34 @@ interface LookupResult {
   name?: string; // primary candidate's display name (for manual search results)
   prepared?: boolean; // primary match is a finished dish (curated-table flag)
   alternatives: NutritionAlternative[];
+}
+
+/**
+ * Build an EXACT per-100g straight from a photographed nutrition panel — but
+ * ONLY when the panel is complete (kcal + all three macros legible). A partial
+ * front-of-pack callout (e.g. protein + fat only) would splice into a DB row
+ * and produce a Frankenstein composition, so we don't: incomplete labels fall
+ * through to the normal name-based lookup, and `net_weight_g` still helps grams.
+ * Returns null when the label can't stand on its own.
+ */
+function labelPer100(label: LabelReading): Per100 | null {
+  const { kcal_100g, prot_100g, fat_100g, carb_100g } = label;
+  if (
+    kcal_100g === undefined ||
+    prot_100g === undefined ||
+    fat_100g === undefined ||
+    carb_100g === undefined
+  ) {
+    return null;
+  }
+  // coercePer100 clamps/normalizes and stamps the 'label' source.
+  return coercePer100({
+    source: 'label',
+    kcal: kcal_100g,
+    prot: prot_100g,
+    fat: fat_100g,
+    carb: carb_100g,
+  });
 }
 
 /** Coarse per-100g used on a full DB miss — shown as an estimate, never fact. */
@@ -182,7 +211,32 @@ export class Resolver {
   }
 
   async resolveItem(item: IdentifiedItem, region: Region): Promise<NutritionItem> {
-    const grams = item.est_grams > 0 ? item.est_grams : 100;
+    // Net weight read off the package (масса нетто) beats a portion guess for
+    // the eaten grams — used whether or not the panel itself was complete.
+    const labelWeight = item.label?.net_weight_g;
+    const estGrams = item.est_grams > 0 ? item.est_grams : 100;
+
+    // A complete panel photographed off the package IS the exact composition —
+    // skip the name-based DB lookup entirely and trust the printed numbers.
+    const panel = item.label ? labelPer100(item.label) : null;
+    if (panel) {
+      const grams = labelWeight ?? estGrams;
+      return {
+        name_ru: item.name_ru,
+        name_en: item.name_en,
+        grams,
+        grams_source: 'estimated', // user still confirms/edits the eaten amount
+        confidence: item.confidence, // label is ground truth; keep identity's confidence
+        per100: panel,
+        scaled: scaleToGrams(panel, grams),
+        approximate: true,
+        // No matched_name / alternatives: the numbers came from the package,
+        // not a DB row. The 'label' source tells the client to show «по упаковке».
+        ...(item.prepared === true ? { prepared: true } : {}),
+      };
+    }
+
+    const grams = labelWeight ?? estGrams;
     const found = await this.lookupItem(item, region);
     // A weak DB match should drag the item's confidence down (so the client
     // flags it + shows the picker), but never inflate it past identification.

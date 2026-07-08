@@ -52,6 +52,77 @@ export function userInstruction(region: Region): string {
 }
 
 /**
+ * PHOTO system prompt. Identification works exactly as above, PLUS one addition
+ * that only makes sense for an image: reading a printed nutrition panel.
+ *
+ * This does NOT break THE HONESTY RULE. The rule forbids the model from
+ * *estimating* nutrition numbers. Transcribing numbers that are printed on the
+ * package in the photo is not estimation — it is reading ground truth, and it
+ * is strictly better than looking up a generic database average. The rule still
+ * holds for everything the model cannot read off a label.
+ */
+export const IDENTIFY_PHOTO_SYSTEM_PROMPT = `${IDENTIFY_SYSTEM_PROMPT}
+
+PACKAGED PRODUCTS — READING THE LABEL (photos only):
+Some photos show a packaged product (a tub, cup, bottle, wrapper) with a printed
+nutrition panel ("Пищевая ценность на 100 г", "Nutrition Facts") and/or a net
+weight ("масса нетто", "нетто", printed grams). When such a product is present:
+- Add a "label" object to that food item with the values PRINTED ON THE PACKAGE,
+  per 100 g: kcal_100g, prot_100g, fat_100g, carb_100g, and net_weight_g from the
+  net weight. Front-of-pack callouts count too (e.g. "14 г белки" per 100 g,
+  "34 г белка в упаковке" — but only put PER-100g numbers in the *_100g fields).
+- TRANSCRIBE ONLY. Copy the exact printed digits. If a number is not clearly
+  legible, OMIT that field — never guess, never round to a "typical" value, never
+  fill it from what you think the product usually contains. A partial label (only
+  protein legible) is fine: include what you can read, omit the rest.
+- Do this ONLY for a genuine printed panel/weight. A plate of food, a menu, or a
+  product with no visible numbers gets NO label object — those go through the
+  normal database path.
+Non-packaged foods and every field you cannot read stay identification-only, per
+the rules above.`;
+
+export function userPhotoInstruction(region: Region): string {
+  return `Region: ${region}. Identify the foods and estimate grams. If the photo shows a packaged product with a legible nutrition panel or net weight, also transcribe those printed numbers into the item's "label".`;
+}
+
+/**
+ * Photo JSON schema: identification + an OPTIONAL per-item `label` block for
+ * numbers read off the package. Every label field is optional (nullable): the
+ * model fills only what it can actually read.
+ */
+export const IDENTIFY_PHOTO_SCHEMA = {
+  type: 'object',
+  properties: {
+    items: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          name_ru: { type: 'string' },
+          name_en: { type: 'string' },
+          est_grams: { type: 'number' },
+          confidence: { type: 'number' },
+          prepared: { type: 'boolean' },
+          label: {
+            type: 'object',
+            description: 'Numbers transcribed off a printed package label, when visible. Omit entirely for non-packaged food.',
+            properties: {
+              kcal_100g: { type: ['number', 'null'] },
+              prot_100g: { type: ['number', 'null'] },
+              fat_100g: { type: ['number', 'null'] },
+              carb_100g: { type: ['number', 'null'] },
+              net_weight_g: { type: ['number', 'null'] },
+            },
+          },
+        },
+        required: ['name_ru', 'name_en', 'est_grams', 'confidence', 'prepared'],
+      },
+    },
+  },
+  required: ['items'],
+} as const;
+
+/**
  * Instruction for AUDIO input: a person describing, in Russian, what they ate.
  * The model transcribes internally, then identifies foods + grams — still NO
  * nutrition numbers (those come from the DB). Same JSON schema as text/photo.

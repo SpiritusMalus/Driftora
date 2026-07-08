@@ -131,6 +131,42 @@ test('normalizeIdentified: garbage → empty, never throws', () => {
   }
 });
 
+test('normalizeIdentified: carries a legible label, drops implausible/garbage fields', () => {
+  const [ok] = normalizeIdentified({
+    items: [
+      {
+        name_ru: 'скир',
+        name_en: 'skyr',
+        est_grams: 120,
+        confidence: 0.8,
+        label: { kcal_100g: 66, prot_100g: 14, fat_100g: 1.2, carb_100g: 1.5, net_weight_g: 120 },
+      },
+    ],
+  });
+  assert.deepEqual(ok!.label, { kcal_100g: 66, prot_100g: 14, fat_100g: 1.2, carb_100g: 1.5, net_weight_g: 120 });
+
+  // kcal over the ceiling, negative protein, non-numeric fat, a real 0 carb —
+  // every field is rejected, so `label` stays absent rather than an empty husk.
+  const [bad] = normalizeIdentified({
+    items: [
+      {
+        name_ru: 'x',
+        name_en: 'x',
+        est_grams: 100,
+        confidence: 0.5,
+        label: { kcal_100g: 5000, prot_100g: -3, fat_100g: 'abc', carb_100g: 0 },
+      },
+    ],
+  });
+  assert.equal(bad!.label, undefined);
+
+  // A partial-but-legible label survives with only the fields it could read.
+  const [partial] = normalizeIdentified({
+    items: [{ name_ru: 'творог', name_en: 'quark', est_grams: 200, confidence: 0.7, label: { prot_100g: 17, net_weight_g: 200 } }],
+  });
+  assert.deepEqual(partial!.label, { prot_100g: 17, net_weight_g: 200 });
+});
+
 test('coercePer100: unknown source falls back to estimate, clamps negatives', () => {
   const p = coercePer100({ source: 'bogus', kcal: -5, prot: '12.34', fat: 1, carb: 2, minerals: { na: 10 } });
   assert.equal(p.source, 'estimate');

@@ -1,6 +1,14 @@
 import { TIMEOUT_MS } from './httpTimeout.js';
 import { metrics } from './metrics.js';
-import { IDENTIFY_SCHEMA, IDENTIFY_SYSTEM_PROMPT, userAudioInstruction, userInstruction } from './prompt.js';
+import {
+  IDENTIFY_PHOTO_SCHEMA,
+  IDENTIFY_PHOTO_SYSTEM_PROMPT,
+  IDENTIFY_SCHEMA,
+  IDENTIFY_SYSTEM_PROMPT,
+  userAudioInstruction,
+  userInstruction,
+  userPhotoInstruction,
+} from './prompt.js';
 import { normalizeIdentified, type IdentifiedItem, type Region } from './types.js';
 
 /**
@@ -44,7 +52,11 @@ function topConfidence(items: IdentifiedItem[]): number {
  * only). `strict: false` — the schema carries no `additionalProperties: false`,
  * so loose json_schema adherence is enough; `normalizeIdentified` is defensive.
  */
-export function buildPayload(messages: ChatMessage[], model: string): Record<string, unknown> {
+export function buildPayload(
+  messages: ChatMessage[],
+  model: string,
+  schema: object = IDENTIFY_SCHEMA,
+): Record<string, unknown> {
   return {
     model,
     messages,
@@ -52,7 +64,7 @@ export function buildPayload(messages: ChatMessage[], model: string): Record<str
     max_tokens: MAX_TOKENS,
     response_format: {
       type: 'json_schema',
-      json_schema: { name: 'identification', strict: false, schema: IDENTIFY_SCHEMA },
+      json_schema: { name: 'identification', strict: false, schema },
     },
   };
 }
@@ -79,7 +91,7 @@ export function parseResponse(data: unknown): IdentifiedItem[] {
   return normalizeIdentified(payload);
 }
 
-async function callModel(messages: ChatMessage[], model: string): Promise<IdentifiedItem[]> {
+async function callModel(messages: ChatMessage[], model: string, schema: object = IDENTIFY_SCHEMA): Promise<IdentifiedItem[]> {
   const key = process.env.OPENROUTER_API_KEY || '';
   if (!key) {
     throw new VisionUnavailableError('OPENROUTER_API_KEY is not configured');
@@ -93,7 +105,7 @@ async function callModel(messages: ChatMessage[], model: string): Promise<Identi
         Authorization: `Bearer ${key}`,
         'X-Title': 'Driftora', // OpenRouter dashboard attribution (optional, harmless)
       },
-      body: JSON.stringify(buildPayload(messages, model)),
+      body: JSON.stringify(buildPayload(messages, model, schema)),
       // A hung OpenRouter call must not hold a /food/parse* request (or an
       // escalation retry) open indefinitely — same treatment as a network error.
       signal: AbortSignal.timeout(TIMEOUT_MS.openrouter),
@@ -117,8 +129,8 @@ async function callModel(messages: ChatMessage[], model: string): Promise<Identi
  * only if `OPENROUTER_PRO_MODEL` is configured (§8.4). The stronger result is
  * kept only when it actually improves (more items or higher top confidence).
  */
-async function identifyWithEscalation(messages: ChatMessage[]): Promise<IdentifiedItem[]> {
-  const base = await callModel(messages, MODEL);
+async function identifyWithEscalation(messages: ChatMessage[], schema: object = IDENTIFY_SCHEMA): Promise<IdentifiedItem[]> {
+  const base = await callModel(messages, MODEL, schema);
   if (!PRO_MODEL) return base;
 
   const weak = base.length === 0 || topConfidence(base) < CONFIDENCE_FLOOR;
@@ -126,7 +138,7 @@ async function identifyWithEscalation(messages: ChatMessage[]): Promise<Identifi
 
   let escalated: IdentifiedItem[];
   try {
-    escalated = await callModel(messages, PRO_MODEL);
+    escalated = await callModel(messages, PRO_MODEL, schema);
   } catch {
     return base; // escalation is best-effort; keep the fast result on failure
   }
@@ -151,16 +163,19 @@ export async function identifyFromPhoto(
   mimeType: string,
   region: Region,
 ): Promise<IdentifiedItem[]> {
-  return identifyWithEscalation([
-    { role: 'system', content: IDENTIFY_SYSTEM_PROMPT },
-    {
-      role: 'user',
-      content: [
-        { type: 'text', text: userInstruction(region) },
-        { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } },
-      ],
-    },
-  ]);
+  return identifyWithEscalation(
+    [
+      { role: 'system', content: IDENTIFY_PHOTO_SYSTEM_PROMPT },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: userPhotoInstruction(region) },
+          { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } },
+        ],
+      },
+    ],
+    IDENTIFY_PHOTO_SCHEMA,
+  );
 }
 
 /**
