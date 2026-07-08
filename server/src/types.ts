@@ -15,10 +15,14 @@ export type Region = 'RU' | 'US';
 export type ParseConfidence = 'high' | 'medium' | 'low';
 
 /**
- * Where a per-100g number came from. `estimate` = DB miss (coarse, not fact).
- * `label` = read verbatim off the product's own nutrition panel in a photo —
- * ground truth transcribed, not the model guessing (THE HONESTY RULE holds:
- * the numbers are printed on the package, the model only transcribes them).
+ * Where a per-100g number came from.
+ * - `label` = transcribed off the product's own nutrition panel in a photo
+ *   (ground truth; the model only reads printed digits).
+ * - `ai_estimate` = the model's own rough per-100g, used ONLY when no DB has the
+ *   food (long tail: regional dishes). Honestly attributed, counted in totals
+ *   but flagged; never laundered as DB data.
+ * - `estimate` = a coarse fixed placeholder on a total miss (last resort, not
+ *   shown as fact, excluded from totals).
  */
 export type NutritionSource =
   | 'usda'
@@ -27,6 +31,7 @@ export type NutritionSource =
   | 'apininjas'
   | 'fatsecret'
   | 'label'
+  | 'ai_estimate'
   | 'estimate';
 
 /** Mineral set v1 (BUILD SPEC §10). mg per 100 g. Extend as data allows. */
@@ -95,6 +100,18 @@ export interface LabelReading {
   net_weight_g?: number;
 }
 
+/**
+ * The model's own ROUGH per-100g figures (all optional). Two uses only:
+ * a referee band to catch a wrong DB match, and a fallback for foods absent
+ * from every DB. Never authoritative — a good DB hit always overrides it.
+ */
+export interface AiEstimate {
+  kcal_100g?: number;
+  prot_100g?: number;
+  fat_100g?: number;
+  carb_100g?: number;
+}
+
 /** Layer 1/2 output — identification only, NO nutrition numbers (§4). */
 export interface IdentifiedItem {
   name_ru: string;
@@ -108,6 +125,8 @@ export interface IdentifiedItem {
   // Photo path only: numbers read off the product's own label, when visible.
   // The resolver prefers these over a name-based DB lookup (source: 'label').
   label?: LabelReading;
+  // The model's rough per-100g guess — referee band + DB-miss fallback.
+  estimate?: AiEstimate;
   raw_text?: string;
 }
 
@@ -169,6 +188,7 @@ export interface MealDraft {
   approximate: boolean; // true if any item is still estimated
   flags: {
     has_estimate: boolean; // at least one per100.source === 'estimate' (DB miss)
+    has_ai_estimate: boolean; // at least one per100.source === 'ai_estimate' (model fallback)
     low_confidence: boolean; // at least one item below the confidence floor
   };
 }
@@ -310,6 +330,7 @@ export function assembleMealDraft(region: Region, items: NutritionItem[]): MealD
     approximate,
     flags: {
       has_estimate: items.some((it) => it.per100.source === 'estimate'),
+      has_ai_estimate: items.some((it) => it.per100.source === 'ai_estimate'),
       low_confidence: items.some((it) => it.confidence < LOW_CONFIDENCE_FLOOR),
     },
   };
@@ -381,6 +402,30 @@ function coerceLabel(raw: unknown): LabelReading | undefined {
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
+/**
+ * Coerce the model's rough per-100g `estimate`. Same clamping as a label's
+ * macros (kcal ≤900, macros ≤100 g), keeping only positive finite fields.
+ * Returns undefined when nothing usable is present.
+ */
+function coerceEstimate(raw: unknown): AiEstimate | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const r = raw as Record<string, unknown>;
+  const macro = (v: unknown): number | undefined => {
+    const n = posNum(v);
+    return n !== undefined && n <= 100 ? round1(n) : undefined;
+  };
+  const out: AiEstimate = {};
+  const kcal = posNum(r.kcal_100g);
+  if (kcal !== undefined && kcal <= 900) out.kcal_100g = Math.round(kcal);
+  const prot = macro(r.prot_100g);
+  const fat = macro(r.fat_100g);
+  const carb = macro(r.carb_100g);
+  if (prot !== undefined) out.prot_100g = prot;
+  if (fat !== undefined) out.fat_100g = fat;
+  if (carb !== undefined) out.carb_100g = carb;
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 const SOURCES: readonly NutritionSource[] = [
   'usda',
   'skurikhin',
@@ -388,6 +433,7 @@ const SOURCES: readonly NutritionSource[] = [
   'apininjas',
   'fatsecret',
   'label',
+  'ai_estimate',
   'estimate',
 ];
 
@@ -442,6 +488,9 @@ export function normalizeIdentified(payload: unknown): IdentifiedItem[] {
     // Photo label read-out, when the model transcribed a legible panel.
     const label = coerceLabel(r.label);
     if (label) item.label = label;
+    // The model's rough per-100g guess (referee band + DB-miss fallback).
+    const estimate = coerceEstimate(r.estimate);
+    if (estimate) item.estimate = estimate;
     if (typeof r.raw_text === 'string' && r.raw_text.trim().length > 0) {
       item.raw_text = r.raw_text.trim();
     }
@@ -458,6 +507,6 @@ export function emptyMealDraft(region: Region): MealDraft {
     totals: { kcal: 0, prot: 0, fat: 0, carb: 0, minerals: {} },
     portion_state: 'estimated',
     approximate: false,
-    flags: { has_estimate: false, low_confidence: false },
+    flags: { has_estimate: false, has_ai_estimate: false, low_confidence: false },
   };
 }

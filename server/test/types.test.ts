@@ -167,6 +167,36 @@ test('normalizeIdentified: carries a legible label, drops implausible/garbage fi
   assert.deepEqual(partial!.label, { prot_100g: 17, net_weight_g: 200 });
 });
 
+test('normalizeIdentified: carries a legible AI estimate, drops implausible fields', () => {
+  const [ok] = normalizeIdentified({
+    items: [
+      {
+        name_ru: 'плескавица',
+        name_en: 'pljeskavica',
+        est_grams: 200,
+        confidence: 0.7,
+        estimate: { kcal_100g: 215, prot_100g: 17, fat_100g: 15, carb_100g: 3 },
+      },
+    ],
+  });
+  assert.deepEqual(ok!.estimate, { kcal_100g: 215, prot_100g: 17, fat_100g: 15, carb_100g: 3 });
+
+  // kcal over ceiling, negative protein, non-numeric fat, a real 0 carb → all
+  // rejected, so `estimate` stays absent rather than an empty object.
+  const [bad] = normalizeIdentified({
+    items: [
+      {
+        name_ru: 'y',
+        name_en: 'y',
+        est_grams: 100,
+        confidence: 0.5,
+        estimate: { kcal_100g: 5000, prot_100g: -1, fat_100g: 'x', carb_100g: 0 },
+      },
+    ],
+  });
+  assert.equal(bad!.estimate, undefined);
+});
+
 test('coercePer100: unknown source falls back to estimate, clamps negatives', () => {
   const p = coercePer100({ source: 'bogus', kcal: -5, prot: '12.34', fat: 1, carb: 2, minerals: { na: 10 } });
   assert.equal(p.source, 'estimate');

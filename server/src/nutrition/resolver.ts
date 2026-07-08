@@ -1,6 +1,7 @@
 import {
   coercePer100,
   scaleToGrams,
+  type AiEstimate,
   type IdentifiedItem,
   type LabelReading,
   type Minerals,
@@ -61,6 +62,42 @@ function labelPer100(label: LabelReading): Per100 | null {
 
 /** USDA search score below which its micros are too weak a match to graft. */
 const MICRO_BACKFILL_MIN_CONFIDENCE = 0.4;
+
+/**
+ * Build a per-100g from the model's OWN estimate — only when it is complete
+ * (kcal + all three macros). Used as the fallback for foods absent from every
+ * DB, and as a switchable alternative when the referee flags a bad DB match.
+ * Source `ai_estimate`: honestly attributed, counted, but flagged.
+ */
+function aiEstimatePer100(est: AiEstimate): Per100 | null {
+  const { kcal_100g, prot_100g, fat_100g, carb_100g } = est;
+  if (kcal_100g === undefined || prot_100g === undefined || fat_100g === undefined || carb_100g === undefined) {
+    return null;
+  }
+  return coercePer100({ source: 'ai_estimate', kcal: kcal_100g, prot: prot_100g, fat: fat_100g, carb: carb_100g });
+}
+
+/**
+ * REFEREE: does a DB match's composition contradict the model's expectation for
+ * the SAME food badly enough to suspect a wrong-food match (skyr → «яблоко»)?
+ * Conservative on purpose — flags only a gross divergence (both a large ratio
+ * AND a large absolute gap), so normal recipe variation never trips it. Works
+ * on whichever estimate fields are present (a protein-only estimate still helps).
+ */
+function estimateMismatch(db: Per100, est: AiEstimate): boolean {
+  const grossly = (a: number, b: number, ratio: number, absGap: number): boolean => {
+    const hi = Math.max(a, b);
+    const lo = Math.min(a, b);
+    return hi >= ratio * Math.max(lo, 0.5) && hi - lo > absGap;
+  };
+  if (est.kcal_100g !== undefined && est.kcal_100g > 0 && grossly(db.kcal, est.kcal_100g, 2, 40)) return true;
+  // Protein is the most diagnostic macro for a swapped food (skyr 11 vs apple 0.3).
+  if (est.prot_100g !== undefined && est.prot_100g > 0 && grossly(db.prot, est.prot_100g, 2.5, 8)) return true;
+  return false;
+}
+
+/** Confidence a DB match is knocked down to once the referee flags it. */
+const REFEREE_DEMOTED_CONFIDENCE = 0.3;
 
 /** Coarse per-100g used on a full DB miss — shown as an estimate, never fact. */
 const ESTIMATE_PER100: Per100 = {
@@ -290,17 +327,54 @@ export class Resolver {
 
     const grams = labelWeight ?? estGrams;
     const found = await this.lookupItem(item, region);
-    // A weak DB match should drag the item's confidence down (so the client
-    // flags it + shows the picker), but never inflate it past identification.
-    const confidence = found.matchConfidence > 0 ? Math.min(item.confidence, found.matchConfidence) : item.confidence;
-    // Finished dish = the curated row says so OR identification did. Either
-    // signal alone suffices (a false positive just hides the coarse cook
-    // adjustment); absence of both sends nothing.
+    const aiFull = item.estimate ? aiEstimatePer100(item.estimate) : null;
     const prepared = found.prepared === true || item.prepared === true;
+    // DB MISS → fall back to the model's own estimate (source 'ai_estimate',
+    // counted but flagged) if it's complete; else the coarse placeholder.
+    if (found.matchConfidence === 0) {
+      if (aiFull) {
+        return {
+          name_ru: item.name_ru,
+          name_en: item.name_en,
+          grams,
+          grams_source: 'estimated',
+          confidence: item.confidence,
+          per100: aiFull,
+          scaled: scaleToGrams(aiFull, grams),
+          approximate: true,
+          ...(prepared ? { prepared: true } : {}),
+        };
+      }
+      return {
+        name_ru: item.name_ru,
+        name_en: item.name_en,
+        grams,
+        grams_source: 'estimated',
+        confidence: item.confidence,
+        per100: found.per100, // ESTIMATE_PER100 placeholder
+        scaled: scaleToGrams(found.per100, grams),
+        approximate: true,
+        ...(prepared ? { prepared: true } : {}),
+      };
+    }
+
     // A dry-product label matched against a likely-cooked weight overcounts ~3× —
     // flag it (never silently "correct" it). Suppressed for prepared dishes: the
     // curated finished-dish row already describes the cooked state.
     const dryBasis = !prepared && looksDryBasis([item.name_ru, item.name_en, found.name], found.per100);
+
+    // DB HIT → the DB is authoritative, but the REFEREE cross-checks it against
+    // the model's expectation. A gross divergence (skyr's protein 0.3 vs ~11)
+    // means the match is probably the wrong food: keep the DB number primary but
+    // drop confidence (client surfaces the picker) and offer the AI estimate as
+    // a one-tap alternative. We never let the model silently overwrite the DB.
+    const suspect = aiFull ? estimateMismatch(found.per100, item.estimate!) : false;
+    const confidence = suspect
+      ? REFEREE_DEMOTED_CONFIDENCE
+      : Math.min(item.confidence, found.matchConfidence);
+    const alternatives: NutritionAlternative[] =
+      suspect && aiFull ? [{ name: item.name_ru, per100: aiFull }, ...found.alternatives] : found.alternatives;
+
     return {
       name_ru: item.name_ru,
       name_en: item.name_en,
@@ -316,7 +390,7 @@ export class Resolver {
       ...(prepared ? { prepared: true } : {}),
       ...(dryBasis ? { dry_basis: true } : {}),
       ...(found.microsEstimated ? { micros_estimated: true } : {}),
-      ...(found.alternatives.length > 0 ? { alternatives: found.alternatives } : {}),
+      ...(alternatives.length > 0 ? { alternatives: alternatives.slice(0, MAX_ALTERNATIVES) } : {}),
     };
   }
 }

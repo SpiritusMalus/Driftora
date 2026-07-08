@@ -477,6 +477,7 @@ export const en = {
     gramsEstimated: '≈ you didn’t name a weight — a typical portion was assumed. Confirm it for accuracy.',
     // Cooking method — neutral, never "healthier/worse".
     estimateNote: 'Items not in our database aren’t counted in the total. Enter their macros to include them.',
+    aiEstimateNote: 'Some numbers are a rough AI estimate (not in our database). They’re counted in the total — adjust the weight or enter macros for accuracy.',
     notInDb: "Not in our database. Enter the per-100 g macros and calories yourself — we won't make numbers up for you.",
     // Honest note: label numbers are for the DRY product vs. a cooked-dish weight.
     dryBasis:
@@ -496,6 +497,7 @@ export const en = {
       openfoodfacts: 'from Open Food Facts',
       apininjas: 'from API Ninjas',
       label: 'from package label',
+      ai_estimate: '≈ AI estimate',
       estimate: 'estimate (not in DB)',
       manual: 'entered manually',
       history: 'from your log',

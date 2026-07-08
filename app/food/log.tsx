@@ -506,11 +506,20 @@ export default function FoodLogScreen() {
     setSaving(true);
     try {
       await saveParsedEntry(db, { rawText: text, source, draft });
-      // Remember every match the user explicitly corrected (swap / manual search),
-      // so the same food resolves to their choice next time (layer 2). Skip DB
-      // misses — their placeholder per-100g isn't a real, re-appliable fact.
+      // Personal food journal (layer 2): remember this food → per-100g so the
+      // same name resolves to it next time, on-device only. We remember:
+      //   • anything the user explicitly chose/edited (userChosen), OR
+      //   • a confident real-source auto-match (a solid DB/label hit).
+      // We do NOT cement: DB-miss placeholders, RAW AI estimates (a guess must
+      // not become "my truth" until the user touches it — editing flips it to
+      // 'manual'), or shaky low-confidence matches (incl. referee-demoted ones
+      // like the skyr→«яблоко» mismatch), which would otherwise stick.
+      const REMEMBER_CONFIDENCE_FLOOR = 0.5;
       for (const it of draft.items) {
-        if (it.userChosen && it.per100.source !== 'estimate') {
+        const src = it.per100.source;
+        const realSource = src !== 'estimate' && src !== 'ai_estimate';
+        const trustworthy = it.userChosen || it.confidence >= REMEMBER_CONFIDENCE_FLOOR;
+        if (realSource && trustworthy) {
           await rememberFoodChoice(db, region, lookupNameForItem(it, region), { name: it.name_ru, per100: it.per100 });
         }
       }
@@ -737,6 +746,9 @@ export default function FoodLogScreen() {
             ) : null}
             {draft.flags.has_estimate ? (
               <Text style={[styles.disclaimer, { color: theme.subtle }, theme.font.body]}>{t('food.estimateNote')}</Text>
+            ) : null}
+            {draft.flags.has_ai_estimate ? (
+              <Text style={[styles.disclaimer, { color: theme.subtle }, theme.font.body]}>{t('food.aiEstimateNote')}</Text>
             ) : null}
           </Card>
 
@@ -1132,8 +1144,10 @@ function ItemCard({
         ) : null}
       </View>
 
-      {/* Manual per-100g entry for a DB miss (and editing once entered). */}
-      {isMiss || item.per100.source === 'manual' ? (
+      {/* Manual per-100g entry for a DB miss (and editing once entered). Also
+          offered over an AI estimate — the numbers are a guess, so let the user
+          correct them (which flips the source to the honest 'manual'). */}
+      {isMiss || item.per100.source === 'manual' || item.per100.source === 'ai_estimate' ? (
         <ManualMacros item={item} isMiss={isMiss} theme={theme} onManualMacros={onManualMacros} />
       ) : null}
 
