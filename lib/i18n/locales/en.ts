@@ -496,6 +496,7 @@ export const en = {
       skurikhin: 'from Skurikhin tables',
       openfoodfacts: 'from Open Food Facts',
       apininjas: 'from API Ninjas',
+      label: 'from package label',
       estimate: 'estimate (not in DB)',
       manual: 'entered manually',
       history: 'from your log',

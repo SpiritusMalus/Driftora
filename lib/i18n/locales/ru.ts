@@ -497,6 +497,7 @@ export const ru = {
       skurikhin: 'по таблицам Скурихина',
       openfoodfacts: 'по Open Food Facts',
       apininjas: 'по API Ninjas',
+      label: 'по упаковке',
       estimate: 'оценка (нет в базе)',
       manual: 'введено вручную',
       history: 'из вашего журнала',

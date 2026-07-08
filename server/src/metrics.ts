@@ -16,6 +16,7 @@ class MetricsRegistry {
     openfoodfacts: 0,
     apininjas: 0,
     fatsecret: 0,
+    label: 0,
     estimate: 0,
   };
   private empty = 0;
