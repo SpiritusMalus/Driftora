@@ -482,6 +482,8 @@ export const en = {
     // Honest note: label numbers are for the DRY product vs. a cooked-dish weight.
     dryBasis:
       'These numbers are for the DRY product (the label). If you weighed the cooked dish with its water, the calories and macros are overstated — by roughly 3×. Enter the dry weight, or use "search manually" to find a "cooked/ready" match. We never quietly rewrite the numbers.',
+    refereeMismatch:
+      'This may be the wrong product: the database figures are far from what’s expected for this dish. Check the options below — an AI estimate is included. We never rewrite the numbers ourselves.',
     // Vitamins & minerals for the whole dish, as a share of the daily norm (bars).
     microsDish: {
       show: 'Vitamins & minerals for this dish',

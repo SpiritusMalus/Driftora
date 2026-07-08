@@ -987,7 +987,12 @@ function ItemCard({
   // Other DB matches the user can switch to. Low confidence in the auto-pick
   // opens the list proactively; otherwise it hides behind a "не то?" toggle.
   const alternatives = item.alternatives ?? [];
-  const [showAlts, setShowAlts] = useState(item.confidence < 0.5);
+  // REFEREE signal: the server only injects an `ai_estimate` alternative when a
+  // DB match grossly contradicted the model's expectation for this food (a
+  // likely wrong-product match, e.g. «мясное рагу» → pure «Beef, stew meat»).
+  // We warn and open the picker so the inflated numbers aren't taken at face value.
+  const refereeFlagged = alternatives.some((a) => a.per100.source === 'ai_estimate');
+  const [showAlts, setShowAlts] = useState(item.confidence < 0.5 || refereeFlagged);
   // Manual DB search ("найти вручную"): query field + ranked results.
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchText, setSearchText] = useState('');
@@ -1042,6 +1047,15 @@ function ItemCard({
               </Text>
             </View>
           ) : null}
+          {/* REFEREE mismatch: the DB numbers look like a wrong-product match —
+              warn plainly (the picker below is already open, AI estimate first). */}
+          {refereeFlagged ? (
+            <View style={[styles.dryBasisNote, { borderColor: theme.primary, backgroundColor: theme.card }]}>
+              <Text style={[styles.dryBasisText, { color: theme.text }, theme.font.body]}>
+                {t('food.refereeMismatch')}
+              </Text>
+            </View>
+          ) : null}
         </>
       )}
 
@@ -1070,8 +1084,8 @@ function ItemCard({
                   </Text>
                   <Text style={[styles.altMacros, { color: theme.subtle }, theme.font.body]}>
                     {hideCalories
-                      ? `${t('macros.protein')} ${alt.per100.prot}`
-                      : `${alt.per100.kcal} ${t('units.kcal')} · ${t('macros.protein')} ${alt.per100.prot}`}
+                      ? `${t('macros.protein')} ${alt.per100.prot} · ${t(`food.source.${alt.per100.source}`)}`
+                      : `${alt.per100.kcal} ${t('units.kcal')} · ${t('macros.protein')} ${alt.per100.prot} · ${t(`food.source.${alt.per100.source}`)}`}
                   </Text>
                 </Pressable>
               ))}
