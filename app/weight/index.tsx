@@ -23,6 +23,7 @@ import {
   type GoalMode,
   type Sex,
 } from '@/lib/core/insights/bodyMetrics';
+import { dailyMicroNorms, type MicroRow } from '@/lib/core/insights/microNutrients';
 import { summarizeWeightTrend, type WeightPoint } from '@/lib/core/insights/weightTrend';
 import { type Theme, useTheme } from '@/lib/theme/theme';
 
@@ -70,6 +71,10 @@ export default function WeightScreen() {
   const [openBody, setOpenBody] = useState(false);
   const [openHistory, setOpenHistory] = useState(false);
   const [openManual, setOpenManual] = useState(false);
+  const [openMicros, setOpenMicros] = useState(false);
+  // The plan card's explanatory grey text folds away by default (user feedback
+  // 2026-07-07: «текста очень много серым»); numbers + one action stay visible.
+  const [openPlanWhy, setOpenPlanWhy] = useState(false);
 
   useEffect(
     () => () => {
@@ -218,6 +223,22 @@ export default function WeightScreen() {
     carb: Math.round(toNumber(carb)),
   });
 
+  // Reference daily norms for the basic vitamins/minerals, personalized by the
+  // profile sex (both columns shown while sex is unset). A reference table, not
+  // a tracker — the food DB carries no vitamins (see microNutrients.ts).
+  const microRows = dailyMicroNorms(sex);
+  const microHasAdequate = microRows.some((r) => r.adequate);
+  const fmtNorm = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+  const microValueText = (row: MicroRow): string => {
+    const u = t(`weight.micros.unit.${row.unit}`);
+    let s = row.sexSplit
+      ? `♂ ${fmtNorm(row.sexSplit.male)} · ♀ ${fmtNorm(row.sexSplit.female)} ${u}`
+      : `${fmtNorm(row.value)} ${u}`;
+    if (row.limit != null) s += ` · ${t('weight.micros.limit', { limit: row.limit })}`;
+    if (row.adequate) s += ' *';
+    return s;
+  };
+
   return (
     <Screen>
       {/* ── 1. The ritual: type today's weight, see it acknowledged ── */}
@@ -337,18 +358,7 @@ export default function WeightScreen() {
                   </View>
                 ))}
               </View>
-              {/* Transparency: which kilograms the protein came from — without
-                  this line a "smaller" protein number would look like a bug. */}
-              {plan.proteinBasis !== 'current' ? (
-                <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
-                  {t(`weight.plan.protBasis.${plan.proteinBasis}`, { kg: plan.proteinBasisKg })}
-                </Text>
-              ) : null}
-              {/* Fiber: the honest anti-hunger lever in a deficit. Guidance
-                  only — meals don't persist fiber, so it isn't a tracked goal. */}
-              <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
-                {t('weight.plan.fiber', { g: plan.fiber })}
-              </Text>
+              {/* Kept visible: the motivating countdown and the safety floor. */}
               {eta != null ? (
                 <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
                   {t(eta.key, { goal: toNumber(goalWeightText), n: eta.n })}
@@ -392,10 +402,34 @@ export default function WeightScreen() {
                   </Text>
                 </Pressable>
               )}
-              <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
-                {t('weight.plan.recalc')} {t('weight.targets.note')}
-              </Text>
-              <Text style={[styles.disclaimer, { color: theme.subtle }, theme.font.body]}>{t('weight.plan.note')}</Text>
+              {/* All the explanatory prose folds under one toggle — the card
+                  stays "numbers + one action" until the reader wants the why.
+                  protBasis lives here on purpose: it IS the answer to «почему
+                  белка меньше», which is exactly what this toggle promises. */}
+              <Pressable onPress={() => setOpenPlanWhy((v) => !v)} style={styles.whyToggle} hitSlop={6}>
+                <Text style={[styles.whyToggleText, { color: theme.primary }, theme.font.body]}>
+                  {openPlanWhy ? t('weight.plan.whyHide') : t('weight.plan.why')}
+                </Text>
+                <Ionicons name={openPlanWhy ? 'chevron-up' : 'chevron-down'} size={14} color={theme.primary} />
+              </Pressable>
+              {openPlanWhy ? (
+                <View style={styles.whyBody}>
+                  {plan.proteinBasis !== 'current' ? (
+                    <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
+                      {t(`weight.plan.protBasis.${plan.proteinBasis}`, { kg: plan.proteinBasisKg })}
+                    </Text>
+                  ) : null}
+                  <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
+                    {t('weight.plan.fiber', { g: plan.fiber })}
+                  </Text>
+                  <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
+                    {t('weight.plan.recalc')} {t('weight.targets.note')}
+                  </Text>
+                  <Text style={[styles.disclaimer, { color: theme.subtle }, theme.font.body]}>
+                    {t('weight.plan.note')}
+                  </Text>
+                </View>
+              ) : null}
             </>
           ) : (
             <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
@@ -408,6 +442,57 @@ export default function WeightScreen() {
       {/* ── 4. Everything secondary, one quiet line each ── */}
       {db != null ? (
         <>
+          {/* Reference table: daily norms for the basic vitamins & minerals.
+              Collapsed like the rest; a norm ("how much you need"), NOT a count
+              of intake — vitamins aren't in the food DB, so tracking here would
+              be dishonest. */}
+          <Section
+            title={t('weight.micros.title')}
+            summary={t('weight.micros.summary')}
+            open={openMicros}
+            onToggle={() => setOpenMicros((v) => !v)}
+            theme={theme}
+          >
+            <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
+              {t('weight.micros.lead')}
+            </Text>
+            {sex !== 'male' && sex !== 'female' ? (
+              <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
+                {t('weight.micros.needSex')}
+              </Text>
+            ) : null}
+            {(['vitamin', 'mineral'] as const).map((group) => (
+              <View key={group} style={styles.microGroup}>
+                <Text style={[styles.microGroupHeading, { color: theme.subtle }, theme.font.bodySemiBold]}>
+                  {t(`weight.micros.groups.${group}`)}
+                </Text>
+                {microRows
+                  .filter((r) => r.group === group)
+                  .map((row) => (
+                    <View key={row.key} style={[styles.microRow, { borderBottomColor: theme.separator }]}>
+                      <Text style={[styles.microName, { color: theme.text }, theme.font.body]}>
+                        {t(`weight.micros.name.${row.key}`)}
+                      </Text>
+                      <Text style={[styles.microValue, { color: theme.text }, theme.font.bodySemiBold]}>
+                        {microValueText(row)}
+                      </Text>
+                    </View>
+                  ))}
+              </View>
+            ))}
+            {microHasAdequate ? (
+              <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
+                {t('weight.micros.adequateNote')}
+              </Text>
+            ) : null}
+            <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
+              {t('weight.micros.source')}
+            </Text>
+            <Text style={[styles.disclaimer, { color: theme.subtle }, theme.font.body]}>
+              {t('weight.micros.disclaimer')}
+            </Text>
+          </Section>
+
           <Section
             title={t('weight.bmi.title')}
             summary={bmiSummary}
@@ -716,6 +801,14 @@ const styles = StyleSheet.create({
   applyText: { fontSize: 14 },
   hint: { fontSize: 13, textAlign: 'center', marginTop: 8, marginBottom: 16 },
   rowKg: { fontSize: 16 },
+  whyToggle: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 12, alignSelf: 'flex-start' },
+  whyToggleText: { fontSize: 13 },
+  whyBody: { marginTop: 2 },
+  microGroup: { marginTop: 10 },
+  microGroupHeading: { fontSize: 12, marginBottom: 2 },
+  microRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth },
+  microName: { fontSize: 13, flexShrink: 1, paddingRight: 12 },
+  microValue: { fontSize: 13, textAlign: 'right' },
   sectionCard: { marginBottom: 12 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   sectionTitle: { fontSize: 15 },
