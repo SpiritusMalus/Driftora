@@ -241,7 +241,7 @@ export const en = {
       protBasis: {
         goal: 'Protein is computed from your goal weight of {{kg}} kg: enough for muscle — fat mass needs none.',
         adjusted:
-          'Protein is computed from an adjusted weight of {{kg}} kg: at a high BMI, total weight over-prescribes. Set a goal weight for a more precise number.',
+          'Protein is based on a "working" weight of {{kg}} kg, not your full weight — this is NOT your weight but a calculation basis: fat mass barely uses protein, so the full weight would over-prescribe. Set a goal weight to base it on that instead.',
       },
       fiber: 'Fiber: ~{{g}} g a day (vegetables, legumes, whole grains) — the main weapon against deficit hunger.',
       etaWeeks: 'To your goal of {{goal}} kg ≈ {{n}} wk at this pace.',
