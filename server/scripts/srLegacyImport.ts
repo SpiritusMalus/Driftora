@@ -29,6 +29,22 @@ const NUT = { kcal: 1008, prot: 1003, fat: 1004, carb: 1005, na: 1093, k: 1092, 
 const KCAL_FALLBACK = [2048, 2047]; // Atwater energy if 1008 is absent
 const MINERAL_KEYS = ['na', 'k', 'ca', 'mg', 'fe', 'zn'] as const;
 
+// Vitamin nutrient ids (units as SR Legacy reports them: µg A/D/B9/B12, mg
+// E/C/B1/B2/B6) — same ids the live USDA client reads, so the two stay aligned.
+const VIT = {
+  a: 1106, // Vitamin A, RAE (µg)
+  d: 1114, // Vitamin D (D2 + D3) (µg)
+  e: 1109, // Vitamin E (alpha-tocopherol) (mg)
+  c: 1162, // Vitamin C, total ascorbic acid (mg)
+  b1: 1165, // Thiamin (mg)
+  b2: 1166, // Riboflavin (mg)
+  b6: 1175, // Vitamin B-6 (mg)
+  b9: 1190, // Folate, DFE (µg)
+  b12: 1178, // Vitamin B-12 (µg)
+} as const;
+const VITAMIN_KEYS = ['a', 'd', 'e', 'c', 'b1', 'b2', 'b6', 'b9', 'b12'] as const;
+const round2 = (n: number): number => Math.round(n * 100) / 100;
+
 function fail(msg: string): never {
   console.error(`\n✗ ${msg}`);
   process.exit(1);
@@ -102,7 +118,7 @@ for (const food of RU_FOODS) {
 }
 
 // 2) Nutrient amounts for the matched fdc ids (stream the big file).
-const wanted = new Set<number>([...Object.values(NUT), ...KCAL_FALLBACK]);
+const wanted = new Set<number>([...Object.values(NUT), ...Object.values(VIT), ...KCAL_FALLBACK]);
 const amounts = new Map<string, Map<number, number>>(); // fdc_id → nutrient_id → amount
 {
   const data = readFileSync(join(SR_DIR!, 'food_nutrient.csv'), 'utf8');
@@ -143,10 +159,23 @@ for (const [fdc, food] of targets) {
     // Keep 1 decimal so small minerals (Fe/Zn, often <10 mg) aren't lost to 0.
     if (typeof v === 'number' && round1(v) > 0) minerals[k] = round1(v);
   }
+  const vitamins: Record<string, number> = {};
+  for (const k of VITAMIN_KEYS) {
+    const v = a.get(VIT[k]);
+    // 2 decimals so sub-mg vitamins (thiamin, B12 in µg) aren't lost to 0.
+    if (typeof v === 'number' && round2(v) > 0) vitamins[k] = round2(v);
+  }
   entries.push({
     name: food.name,
     aliases: food.aliases,
-    per100: { kcal: Math.round(kcal), prot: round1(prot), fat: round1(a.get(NUT.fat) ?? 0), carb: round1(a.get(NUT.carb) ?? 0), minerals },
+    per100: {
+      kcal: Math.round(kcal),
+      prot: round1(prot),
+      fat: round1(a.get(NUT.fat) ?? 0),
+      carb: round1(a.get(NUT.carb) ?? 0),
+      minerals,
+      ...(Object.keys(vitamins).length > 0 ? { vitamins } : {}),
+    },
   });
   log.push(`  ${food.name.padEnd(28)} ← [${fdc}] ${byId.get(fdc)!.desc}  (${Math.round(kcal)} kcal)`);
 }
@@ -155,11 +184,21 @@ entries.sort((x, y) => x.name.localeCompare(y.name, 'ru'));
 // 4) Emit the generated module.
 const mineralStr = (m: Record<string, unknown>): string =>
   `{ ${MINERAL_KEYS.filter((k) => k in m).map((k) => `${k}: ${m[k]}`).join(', ')} }`;
+const vitaminStr = (v: Record<string, unknown>): string =>
+  `{ ${VITAMIN_KEYS.filter((k) => k in v).map((k) => `${k}: ${v[k]}`).join(', ')} }`;
 const body = entries
   .map((e) => {
-    const p = e.per100 as { kcal: number; prot: number; fat: number; carb: number; minerals: Record<string, unknown> };
+    const p = e.per100 as {
+      kcal: number;
+      prot: number;
+      fat: number;
+      carb: number;
+      minerals: Record<string, unknown>;
+      vitamins?: Record<string, unknown>;
+    };
     const aliases = e.aliases.map((x) => `'${x.replace(/'/g, "\\'")}'`).join(', ');
-    return `  { name: '${e.name.replace(/'/g, "\\'")}', aliases: [${aliases}], source: 'usda',\n    per100: { kcal: ${p.kcal}, prot: ${p.prot}, fat: ${p.fat}, carb: ${p.carb}, minerals: ${mineralStr(p.minerals)} } },`;
+    const vit = p.vitamins && Object.keys(p.vitamins).length > 0 ? `, vitamins: ${vitaminStr(p.vitamins)}` : '';
+    return `  { name: '${e.name.replace(/'/g, "\\'")}', aliases: [${aliases}], source: 'usda',\n    per100: { kcal: ${p.kcal}, prot: ${p.prot}, fat: ${p.fat}, carb: ${p.carb}, minerals: ${mineralStr(p.minerals)}${vit} } },`;
   })
   .join('\n');
 

@@ -1,4 +1,4 @@
-import type { Minerals, NutritionSource } from '../types.js';
+import type { Minerals, NutritionSource, Vitamins } from '../types.js';
 
 /**
  * One RU composition-table entry. `aliases` widen matching; `source` records the
@@ -22,5 +22,9 @@ export interface SkurikhinEntry {
     fat: number;
     carb: number;
     minerals: Minerals;
+    // Optional vitamin sub-block (same units as elsewhere: µg A/D/B9/B12, mg
+    // E/C/B1/B2/B6). Present on SR-Legacy-generated rows that carried the data;
+    // hand-curated composite dishes may omit it.
+    vitamins?: Vitamins;
   };
 }
