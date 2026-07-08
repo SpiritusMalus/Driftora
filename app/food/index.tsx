@@ -5,13 +5,16 @@ import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card } from '@/components/ui/Card';
+import { FillBar } from '@/components/ui/FillBar';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
-import { listEntriesForDay, repeatFoodEntry, todayMacroTotals } from '@/lib/core/db/food';
+import { listEntriesForDay, repeatFoodEntry, todayMacroTotals, todayMicroTotals, type MicroTotals } from '@/lib/core/db/food';
 import { ensureSettings } from '@/lib/core/db/settings';
+import { dailyMicroNorms, type MicroRow } from '@/lib/core/insights/microNutrients';
 import { groupEntriesByMeal } from '@/lib/core/insights/mealType';
 import type { FoodEntry } from '@/lib/core/db/schema';
+import type { Sex } from '@/lib/core/insights/bodyMetrics';
 import { type Theme, useTheme } from '@/lib/theme/theme';
 
 /// The user's daily КБЖУ goal, shown only when it was DELIBERATELY set (the
@@ -36,6 +39,9 @@ export default function FoodDayScreen() {
   const [entries, setEntries] = useState<FoodEntry[] | null>(null);
   const [totals, setTotals] = useState<{ kcal: number; proteinG: number; fatG: number; carbG: number } | null>(null);
   const [goal, setGoal] = useState<DayGoal | null>(null);
+  const [micros, setMicros] = useState<MicroTotals | null>(null);
+  const [sex, setSex] = useState<'' | Sex>('');
+  const [openMicros, setOpenMicros] = useState(false);
   // «Добавлено ещё раз ✓» after a one-tap repeat; cleared after a moment.
   const [repeatAck, setRepeatAck] = useState<string | null>(null);
   const ackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -49,9 +55,16 @@ export default function FoodDayScreen() {
 
   const reload = useCallback(async () => {
     if (!db) return;
-    const [list, tot, settings] = await Promise.all([listEntriesForDay(db), todayMacroTotals(db), ensureSettings(db)]);
+    const [list, tot, mic, settings] = await Promise.all([
+      listEntriesForDay(db),
+      todayMacroTotals(db),
+      todayMicroTotals(db),
+      ensureSettings(db),
+    ]);
     setEntries(list);
     setTotals(tot);
+    setMicros(mic);
+    setSex(settings.sex);
     // The progress card needs a deliberate goal AND an unpaused app — otherwise
     // it would pressure with an arbitrary default, which this app never does.
     setGoal(
@@ -98,6 +111,16 @@ export default function FoodDayScreen() {
       ) : null}
 
       {goal != null && totals != null ? <DayProgress goal={goal} totals={totals} theme={theme} /> : null}
+
+      {db != null && entries != null && entries.length > 0 && micros != null ? (
+        <MicroDay
+          micros={micros}
+          sex={sex}
+          open={openMicros}
+          onToggle={() => setOpenMicros((v) => !v)}
+          theme={theme}
+        />
+      ) : null}
 
       {db == null ? (
         <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('food.dbUnavailable')}</Text>
@@ -194,6 +217,100 @@ function DayProgress({
   );
 }
 
+/// The day's micronutrient intake against the reference norms, with a fill bar
+/// per nutrient (norm tick + upper-limit tick). Honest by construction: a bar
+/// appears ONLY for nutrients the day's foods actually measured — nothing is
+/// shown as zero-when-unknown, and the coverage line says how many meals had
+/// data at all. Collapsed by default so it never crowds the day view.
+function MicroDay({
+  micros,
+  sex,
+  open,
+  onToggle,
+  theme,
+}: {
+  micros: MicroTotals;
+  sex: '' | Sex;
+  open: boolean;
+  onToggle: () => void;
+  theme: Theme;
+}) {
+  const { t } = useTranslation();
+  const measured = dailyMicroNorms(sex)
+    .map((row) => ({ row, intake: microIntake(micros, row) }))
+    .filter((x): x is { row: MicroRow; intake: number } => x.intake != null);
+  const summary = measured.length > 0 ? t('food.micros.count', { n: measured.length }) : t('food.micros.none');
+
+  return (
+    <Card style={styles.dayCard}>
+      <Pressable onPress={onToggle} style={styles.microHead} hitSlop={6}>
+        <Text style={[styles.dayTitle, { color: theme.text }, theme.font.bodySemiBold]}>{t('food.micros.title')}</Text>
+        <Text style={[styles.microSummary, { color: theme.subtle }, theme.font.body]}>{summary}</Text>
+        <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={16} color={theme.tertiary} />
+      </Pressable>
+      {open ? (
+        measured.length === 0 ? (
+          <Text style={[styles.microNote, { color: theme.subtle }, theme.font.body]}>{t('food.micros.empty')}</Text>
+        ) : (
+          <View style={styles.microBody}>
+            <Text style={[styles.microNote, { color: theme.subtle }, theme.font.body]}>
+              {t('food.micros.coverage', { withData: micros.entriesWithData, total: micros.entriesTotal })}
+            </Text>
+            {sex !== 'male' && sex !== 'female' ? (
+              <Text style={[styles.microNote, { color: theme.subtle }, theme.font.body]}>{t('food.micros.needSex')}</Text>
+            ) : null}
+            {(['vitamin', 'mineral'] as const).map((group) => {
+              const rows = measured.filter((x) => x.row.group === group);
+              if (rows.length === 0) return null;
+              return (
+                <View key={group} style={styles.microGroup}>
+                  <Text style={[styles.microGroupHeading, { color: theme.subtle }, theme.font.bodySemiBold]}>
+                    {t(`weight.micros.groups.${group}`)}
+                  </Text>
+                  {rows.map(({ row, intake }) => {
+                    const pct = row.value > 0 ? Math.round((intake / row.value) * 100) : 0;
+                    return (
+                      <View key={row.key} style={styles.microRow}>
+                        <View style={styles.microRowHead}>
+                          <Text style={[styles.microName, { color: theme.text }, theme.font.body]}>
+                            {t(`weight.micros.name.${row.key}`)}
+                          </Text>
+                          <Text style={[styles.microVal, { color: theme.subtle }, theme.font.body]}>
+                            {fmtIntake(row, intake)} {t(`weight.micros.unit.${row.unit}`)} ·{' '}
+                            {t('food.micros.ofNorm', { pct })}
+                          </Text>
+                        </View>
+                        <FillBar value={intake} min={row.value} max={row.limit} thickness={8} />
+                      </View>
+                    );
+                  })}
+                </View>
+              );
+            })}
+            <Text style={[styles.microNote, { color: theme.subtle }, theme.font.body]}>
+              {t('food.micros.coverageNote')}
+            </Text>
+            <Text style={[styles.microNote, { color: theme.subtle }, theme.font.body]}>{t('food.micros.normsHint')}</Text>
+          </View>
+        )
+      ) : null}
+    </Card>
+  );
+}
+
+/// The day's intake for one norm row, or null when today's foods measured none
+/// of it (so the caller shows no bar rather than an implied zero).
+function microIntake(micros: MicroTotals, row: MicroRow): number | null {
+  const src = (row.group === 'mineral' ? micros.minerals : micros.vitamins) as Record<string, number | undefined>;
+  const v = src[row.key];
+  return typeof v === 'number' && v > 0 ? v : null;
+}
+
+/// Whole numbers read cleanly for µg and minerals; sub-mg vitamins keep 1 dp.
+function fmtIntake(row: MicroRow, v: number): string {
+  return row.group === 'vitamin' && row.unit === 'mg' ? (Math.round(v * 10) / 10).toString() : Math.round(v).toString();
+}
+
 function Bar({
   value,
   max,
@@ -242,4 +359,14 @@ const styles = StyleSheet.create({
   macroCol: { flex: 1 },
   macroLabel: { fontSize: 11, marginBottom: 4 },
   barTrack: { overflow: 'hidden', width: '100%' },
+  microHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  microSummary: { fontSize: 13, flex: 1, textAlign: 'right' },
+  microBody: { marginTop: 12 },
+  microGroup: { marginTop: 10 },
+  microGroupHeading: { fontSize: 12, marginBottom: 4 },
+  microRow: { marginBottom: 12 },
+  microRowHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 5, gap: 8 },
+  microName: { fontSize: 13, flexShrink: 1 },
+  microVal: { fontSize: 12, textAlign: 'right' },
+  microNote: { fontSize: 12, marginTop: 8, lineHeight: 17 },
 });

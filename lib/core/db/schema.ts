@@ -11,6 +11,11 @@ export const foodEntries = sqliteTable('food_entries', {
   fatG: real('fat_g').notNull().default(0),
   carbG: real('carb_g').notNull().default(0),
   confirmed: integer('confirmed', { mode: 'boolean' }).notNull().default(false),
+  // JSON-encoded scaled micronutrient totals for this entry — `{minerals,
+  // vitamins}` (each an optional subset). Nullable: pre-migration entries and
+  // entries whose foods carried no micro data have none. Powers the daily
+  // micro roll-up (todayMicroTotals) without touching per-item rows.
+  micros: text('micros'),
 });
 
 /// The LLM breakdown of a food entry into individual items.

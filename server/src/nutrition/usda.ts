@@ -1,5 +1,5 @@
 import { TIMEOUT_MS } from '../httpTimeout.js';
-import type { Minerals, Per100, Region } from '../types.js';
+import type { Minerals, Per100, Region, Vitamins } from '../types.js';
 import type { NutritionProvider, ProviderResult } from './provider.js';
 import { rankByName, scoreToConfidence } from './scoring.js';
 
@@ -45,6 +45,23 @@ const MINERAL_KEYS: Record<keyof Minerals, NutrientKey> = {
 };
 
 /**
+ * FDC vitamin identifiers. Units match the client norm table (microNutrients.ts)
+ * as USDA reports them: µg for A(RAE)/D/B9(DFE)/B12, mg for E/C/B1/B2/B6 — so no
+ * unit conversion is needed downstream.
+ */
+const VITAMIN_KEYS: Record<keyof Vitamins, NutrientKey> = {
+  a: { id: 1106, legacy: '320' }, // Vitamin A, RAE (µg)
+  d: { id: 1114, legacy: '328' }, // Vitamin D (D2 + D3) (µg)
+  e: { id: 1109, legacy: '323' }, // Vitamin E (alpha-tocopherol) (mg)
+  c: { id: 1162, legacy: '401' }, // Vitamin C, total ascorbic acid (mg)
+  b1: { id: 1165, legacy: '404' }, // Thiamin (mg)
+  b2: { id: 1166, legacy: '405' }, // Riboflavin (mg)
+  b6: { id: 1175, legacy: '415' }, // Vitamin B-6 (mg)
+  b9: { id: 1190, legacy: '435' }, // Folate, DFE (µg)
+  b12: { id: 1178, legacy: '418' }, // Vitamin B-12 (µg)
+};
+
+/**
  * Prefer curated, per-100g data types over branded (which uses serving sizes).
  * Survey (FNDDS) is included for its composite/cooked dishes (soups, stews,
  * stroganoff…) — also per-100g — which the ingredient-only sets lack.
@@ -87,6 +104,7 @@ interface RawPer100 {
   sugar?: number;
   satFat?: number;
   minerals: Minerals;
+  vitamins?: Vitamins;
 }
 
 function extract(food: UsdaFood): RawPer100 {
@@ -95,6 +113,15 @@ function extract(food: UsdaFood): RawPer100 {
   for (const key of Object.keys(MINERAL_KEYS) as (keyof Minerals)[]) {
     const v = nutrientValue(nutrients, MINERAL_KEYS[key]);
     if (typeof v === 'number') minerals[key] = v;
+  }
+  const vitamins: Vitamins = {};
+  let anyVitamin = false;
+  for (const key of Object.keys(VITAMIN_KEYS) as (keyof Vitamins)[]) {
+    const v = nutrientValue(nutrients, VITAMIN_KEYS[key]);
+    if (typeof v === 'number') {
+      vitamins[key] = v;
+      anyVitamin = true;
+    }
   }
   return {
     kcal: nutrientValue(nutrients, NUTRIENT_KEYS.kcal),
@@ -105,6 +132,7 @@ function extract(food: UsdaFood): RawPer100 {
     sugar: nutrientValue(nutrients, EXTRA_KEYS.sugar) ?? nutrientValue(nutrients, EXTRA_KEYS.sugarNlea),
     satFat: nutrientValue(nutrients, EXTRA_KEYS.satFat),
     minerals,
+    ...(anyVitamin ? { vitamins } : {}),
   };
 }
 
@@ -189,6 +217,7 @@ export class UsdaProvider implements NutritionProvider {
         ...(raw.sugar !== undefined ? { sugar: raw.sugar } : {}),
         ...(raw.satFat !== undefined ? { satFat: raw.satFat } : {}),
         minerals: raw.minerals,
+        ...(raw.vitamins ? { vitamins: raw.vitamins } : {}),
       };
       out.push({ per100, name: c.value.description ?? name, confidence: scoreToConfidence(c.score) });
     }

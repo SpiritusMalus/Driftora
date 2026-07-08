@@ -72,6 +72,47 @@ test('usda: parses macros + minerals from the real search shape (legacy nutrient
   assert.equal(p.satFat, 1.55);
 });
 
+test('usda: extracts vitamins (legacy SR numbers + modern ids) into per100.vitamins', async () => {
+  globalThis.fetch = fdcFetchStub([
+    {
+      description: 'Orange, raw',
+      foodNutrients: [
+        { nutrientId: 1008, nutrientNumber: '208', value: 47 },
+        { nutrientId: 1003, nutrientNumber: '203', value: 0.9 },
+        { nutrientId: 1004, nutrientNumber: '204', value: 0.1 },
+        { nutrientId: 1005, nutrientNumber: '205', value: 12 },
+        // Vitamin C by legacy SR number, folate by modern id in nutrientNumber.
+        { nutrientId: 1162, nutrientNumber: '401', value: 53.2 }, // Vitamin C (mg)
+        { nutrientNumber: '1190', value: 30 }, // Folate DFE (µg), modern id in the legacy slot
+        { nutrientId: 1106, nutrientNumber: '320', value: 11 }, // Vitamin A RAE (µg)
+      ],
+    },
+  ]);
+
+  const p = (await new UsdaProvider('test-key').searchMany('orange', 'US'))[0]!.per100;
+  assert.equal(p.vitamins?.c, 53.2);
+  assert.equal(p.vitamins?.b9, 30);
+  assert.equal(p.vitamins?.a, 11);
+  // Vitamins the record didn't carry stay absent — never zero-filled.
+  assert.equal(p.vitamins?.d, undefined);
+});
+
+test('usda: a record with no vitamin fields carries no vitamins block at all', async () => {
+  globalThis.fetch = fdcFetchStub([
+    {
+      description: 'Sugar, white',
+      foodNutrients: [
+        { nutrientId: 1008, value: 387 },
+        { nutrientId: 1003, value: 0 },
+        { nutrientId: 1004, value: 0 },
+        { nutrientId: 1005, value: 100 },
+      ],
+    },
+  ]);
+  const p = (await new UsdaProvider('test-key').searchMany('white sugar', 'US'))[0]!.per100;
+  assert.equal(p.vitamins, undefined);
+});
+
 test('usda: still accepts records carrying modern ids in nutrientNumber', async () => {
   globalThis.fetch = fdcFetchStub([
     {

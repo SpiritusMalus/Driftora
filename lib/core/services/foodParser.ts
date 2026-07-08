@@ -30,7 +30,22 @@ export interface Minerals {
   zn?: number;
 }
 
-/// Macros + minerals for a fixed quantity (per-100g or scaled).
+/// Vitamin set (per 100 g or scaled) — mirrors the backend `Vitamins`. Units
+/// match the reference norms in insights/microNutrients.ts (µg for a/d/b9/b12,
+/// mg for e/c/b1/b2/b6). Any subset may be present; absent = unmeasured, never 0.
+export interface Vitamins {
+  a?: number;
+  d?: number;
+  e?: number;
+  c?: number;
+  b1?: number;
+  b2?: number;
+  b6?: number;
+  b9?: number;
+  b12?: number;
+}
+
+/// Macros + minerals + vitamins for a fixed quantity (per-100g or scaled).
 export interface NutrientValues {
   kcal: number;
   prot: number;
@@ -42,6 +57,9 @@ export interface NutrientValues {
   sugar?: number;
   satFat?: number;
   minerals: Minerals;
+  // Optional (backward-compatible): present only when the source measured them
+  // (USDA today). Same "absent = unknown, not zero" rule as minerals.
+  vitamins?: Vitamins;
 }
 
 /// EXACT per-100g composition from the nutrition DB (or a coarse `estimate`).

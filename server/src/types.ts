@@ -33,7 +33,25 @@ export interface Minerals {
   zn?: number;
 }
 
-/** Macros + minerals for a fixed quantity (per-100g or scaled). */
+/**
+ * Vitamin set (per 100 g or scaled). Units match the client's reference norms
+ * (microNutrients.ts): µg for a/d/b9/b12, mg for e/c/b1/b2/b6. Like `Minerals`,
+ * ANY subset may be present — a field exists only when the source measured it,
+ * never zero-filled. Only USDA carries these today; RU curated / OFF omit them.
+ */
+export interface Vitamins {
+  a?: number;
+  d?: number;
+  e?: number;
+  c?: number;
+  b1?: number;
+  b2?: number;
+  b6?: number;
+  b9?: number;
+  b12?: number;
+}
+
+/** Macros + minerals + vitamins for a fixed quantity (per-100g or scaled). */
 export interface NutrientValues {
   kcal: number;
   // Extended-label fields (grams). Present ONLY when the source provides the
@@ -45,6 +63,10 @@ export interface NutrientValues {
   fat: number;
   carb: number;
   minerals: Minerals;
+  // Optional so the contract stays backward-compatible across a staged rollout
+  // (an old server/client without vitamins still validates). Same "present only
+  // when measured" rule as minerals — an absent vitamin is unknown, not zero.
+  vitamins?: Vitamins;
 }
 
 /** EXACT per-100g composition from the nutrition DB (or a coarse `estimate`). */
@@ -117,6 +139,7 @@ export interface MealDraft {
 }
 
 const MINERAL_KEYS: readonly (keyof Minerals)[] = ['na', 'k', 'ca', 'mg', 'fe', 'zn'];
+const VITAMIN_KEYS: readonly (keyof Vitamins)[] = ['a', 'd', 'e', 'c', 'b1', 'b2', 'b6', 'b9', 'b12'];
 const EXTRA_KEYS = ['fiber', 'sugar', 'satFat'] as const;
 const LOW_CONFIDENCE_FLOOR = 0.5;
 /**
@@ -132,6 +155,27 @@ const MAX_ITEMS = 20;
 
 export function round1(n: number): number {
   return Math.round(n * 10) / 10;
+}
+
+/// Vitamins are often sub-milligram (thiamin, B12) — 2 decimals so a small but
+/// real amount doesn't round away to a fake zero.
+export function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+/// Scale the vitamin sub-block to a factor, keeping only present keys (2 dp).
+function scaleVitamins(vitamins: Vitamins | undefined, factor: number): Vitamins | undefined {
+  if (!vitamins) return undefined;
+  const out: Vitamins = {};
+  let any = false;
+  for (const key of VITAMIN_KEYS) {
+    const v = vitamins[key];
+    if (typeof v === 'number' && Number.isFinite(v)) {
+      out[key] = round2(v * factor);
+      any = true;
+    }
+  }
+  return any ? out : undefined;
 }
 
 function num(value: unknown): number {
@@ -160,12 +204,16 @@ export function scaleToGrams(per100: NutrientValues, grams: number): NutrientVal
     const v = per100[key];
     if (typeof v === 'number' && Number.isFinite(v)) out[key] = round1(v * factor);
   }
+  const vitamins = scaleVitamins(per100.vitamins, factor);
+  if (vitamins) out.vitamins = vitamins;
   return out;
 }
 
 /** Sum scaled component values into a single totals block. */
 export function sumNutrients(items: { scaled: NutrientValues }[]): NutrientValues {
   const minerals: Minerals = {};
+  const vitamins: Vitamins = {};
+  let anyVitamin = false;
   let kcal = 0;
   let prot = 0;
   let fat = 0;
@@ -184,6 +232,13 @@ export function sumNutrients(items: { scaled: NutrientValues }[]): NutrientValue
         minerals[key] = (minerals[key] ?? 0) + v;
       }
     }
+    for (const key of VITAMIN_KEYS) {
+      const v = it.scaled.vitamins?.[key];
+      if (typeof v === 'number' && Number.isFinite(v)) {
+        vitamins[key] = (vitamins[key] ?? 0) + v;
+        anyVitamin = true;
+      }
+    }
     for (const key of EXTRA_KEYS) {
       const v = it.scaled[key];
       if (typeof v === 'number' && Number.isFinite(v)) {
@@ -195,6 +250,12 @@ export function sumNutrients(items: { scaled: NutrientValues }[]): NutrientValue
   for (const key of EXTRA_KEYS) {
     const v = extras[key];
     if (v !== undefined) out[key] = round1(v);
+  }
+  if (anyVitamin) {
+    for (const key of VITAMIN_KEYS) {
+      if (vitamins[key] !== undefined) vitamins[key] = round2(vitamins[key]!);
+    }
+    out.vitamins = vitamins;
   }
   return out;
 }
@@ -231,6 +292,25 @@ function coerceMinerals(raw: unknown): Minerals {
   return out;
 }
 
+/// Coerce a raw vitamins block; returns undefined when nothing usable is present
+/// (keeps the "absent = unmeasured" invariant instead of an empty object).
+function coerceVitamins(raw: unknown): Vitamins | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const r = raw as Record<string, unknown>;
+  const out: Vitamins = {};
+  let any = false;
+  for (const key of VITAMIN_KEYS) {
+    if (r[key] !== undefined && r[key] !== null) {
+      const v = num(r[key]);
+      if (v !== 0 || r[key] === 0) {
+        out[key] = v;
+        any = true;
+      }
+    }
+  }
+  return any ? out : undefined;
+}
+
 const SOURCES: readonly NutritionSource[] = [
   'usda',
   'skurikhin',
@@ -258,6 +338,8 @@ export function coercePer100(raw: unknown): Per100 {
   for (const key of EXTRA_KEYS) {
     if (r[key] !== undefined && r[key] !== null) out[key] = round1(Math.max(0, num(r[key])));
   }
+  const vitamins = coerceVitamins(r.vitamins);
+  if (vitamins) out.vitamins = vitamins;
   return out;
 }
 
