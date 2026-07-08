@@ -4,9 +4,14 @@ import {
   ACTIVITY_FACTORS,
   bmiCategory,
   bmiValue,
+  EATBACK_FRACTION,
   mifflinBmr,
+  suggestActivityLevel,
   suggestPlan,
   suggestTargets,
+  withWorkoutEnergy,
+  workoutKcal,
+  WORKOUT_TYPES,
 } from '@/lib/core/insights/bodyMetrics';
 
 const NOW = new Date('2026-07-03T12:00:00Z');
@@ -213,5 +218,47 @@ describe('suggestPlan (goal weight + high-BMI precision)', () => {
     // +200 kcal/day → 0.2 kg/week → 5 kg ≈ 25 weeks.
     expect(plan.paceKgPerWeek).toBe(0.2);
     expect(plan.etaWeeks).toBe(25);
+  });
+});
+
+describe('workoutKcal (MET × kg × hours)', () => {
+  it('computes a running session for a heavy person', () => {
+    // run 9.8 MET × 130 kg × 0.5 h = 637
+    expect(workoutKcal('run', 30, 130)).toBe(637);
+  });
+
+  it('scales with duration and clamps garbage input', () => {
+    expect(workoutKcal('walk', 0, 130)).toBe(0);
+    expect(workoutKcal('walk', 60, 130)).toBe(559); // 4.3 × 130 × 1
+    expect(workoutKcal('run', -5, 130)).toBe(0); // negative minutes floored
+    expect(Number.isFinite(workoutKcal('run', 30, 0))).toBe(true); // weight clamps, no NaN
+  });
+
+  it('every listed type has a MET value (no zeros from a missing map entry)', () => {
+    for (const t of WORKOUT_TYPES) {
+      expect(workoutKcal(t, 30, 80)).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('withWorkoutEnergy (eat-back layered onto a base)', () => {
+  it('adds only EATBACK_FRACTION of the burn, rounded to 10', () => {
+    expect(EATBACK_FRACTION).toBe(0.75);
+    // 2540 + 0.75 × 600 = 2990
+    expect(withWorkoutEnergy(2540, 600)).toBe(2990);
+  });
+
+  it('a zero/negative burn leaves the base untouched (rounded to 10)', () => {
+    expect(withWorkoutEnergy(2540, 0)).toBe(2540);
+    expect(withWorkoutEnergy(2540, -100)).toBe(2540);
+  });
+});
+
+describe('suggestActivityLevel (steps → lifestyle multiplier)', () => {
+  it('maps step bands to levels', () => {
+    expect(suggestActivityLevel(3000)).toBe('sedentary');
+    expect(suggestActivityLevel(6000)).toBe('light');
+    expect(suggestActivityLevel(9000)).toBe('moderate');
+    expect(suggestActivityLevel(13000)).toBe('high');
   });
 });

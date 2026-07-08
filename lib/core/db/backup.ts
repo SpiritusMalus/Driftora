@@ -22,6 +22,7 @@ const EXPORT_TABLES = [
   'food_choices',
   'steps_days',
   'sleep_days',
+  'workouts',
   'weights',
   'moods',
   'diary_entries',

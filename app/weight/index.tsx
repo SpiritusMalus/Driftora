@@ -423,6 +423,19 @@ export default function WeightScreen() {
               </Pressable>
               {openPlanWhy ? (
                 <View style={styles.whyBody}>
+                  {/* Energy breakdown — the answer to «2540 кажется мало»: the
+                      target is maintenance MINUS a deficit, not «сколько нужно». */}
+                  <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
+                    {t('weight.plan.maintenanceLine', { maintenance: plan.maintenanceKcal })}
+                  </Text>
+                  {plan.mode !== 'maintain' && plan.maintenanceKcal > 0 ? (
+                    <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
+                      {t(`weight.plan.deltaLine.${plan.mode}`, {
+                        kcal: plan.kcal,
+                        pct: Math.abs(Math.round((plan.kcal / plan.maintenanceKcal - 1) * 100)),
+                      })}
+                    </Text>
+                  ) : null}
                   {plan.proteinBasis !== 'current' ? (
                     <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
                       {t(`weight.plan.protBasis.${plan.proteinBasis}`, { kg: plan.proteinBasisKg })}

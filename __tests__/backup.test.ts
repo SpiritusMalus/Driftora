@@ -18,6 +18,7 @@ import { addWin, updateSettings } from '@/lib/core/db/settings';
 import { upsertSleep } from '@/lib/core/db/sleep';
 import { upsertSteps } from '@/lib/core/db/steps';
 import { upsertWeight } from '@/lib/core/db/weight';
+import { addWorkout } from '@/lib/core/db/workouts';
 
 function makeDb() {
   const sqlite = new BetterSqlite3(':memory:');
@@ -60,6 +61,7 @@ async function seed(db: ReturnType<typeof makeDb>['db']) {
   });
   await upsertSteps(db, '2026-06-18', 8123);
   await upsertSleep(db, '2026-06-18', 450);
+  await addWorkout(db, 'run', 30, 71.4, new Date(2026, 5, 18, 18));
   await upsertWeight(db, '2026-06-18', 71.4);
   await logMood(db, 7);
   await saveDiaryEntry(db, {

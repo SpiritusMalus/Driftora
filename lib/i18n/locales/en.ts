@@ -168,6 +168,30 @@ export const en = {
     },
   },
   units: { kcal: 'kcal', g: 'g', h: 'h' },
+  workouts: {
+    title: 'Workouts today',
+    summaryEmpty: 'none — add one',
+    summary: '−{{kcal}} kcal · {{counted}} counted',
+    minutes: 'min',
+    min: 'min',
+    add: 'Add',
+    remove: 'Remove',
+    note: 'Burn is estimated from type and duration (MET × weight). Formulas overstate by ~25%, so only 75% is added to the day’s target. Adjust by how you feel and your weight trend.',
+    type: {
+      walk: 'Walking',
+      run: 'Running',
+      cycle: 'Cycling',
+      swim: 'Swimming',
+      strength: 'Strength',
+      hiit: 'HIIT/circuit',
+      elliptical: 'Elliptical',
+      row: 'Rowing',
+      sport: 'Team sport',
+      dance: 'Dance',
+      martial: 'Martial arts',
+      yoga: 'Yoga/stretch',
+    },
+  },
   macros: { protein: 'Protein', fat: 'Fat', carbs: 'Carbs' },
   bodyMind: {
     link: {
@@ -242,6 +266,11 @@ export const en = {
         goal: 'Protein is computed from your goal weight of {{kg}} kg: enough for muscle — fat mass needs none.',
         adjusted:
           'Protein is based on a "working" weight of {{kg}} kg, not your full weight — this is NOT your weight but a calculation basis: fat mass barely uses protein, so the full weight would over-prescribe. Set a goal weight to base it on that instead.',
+      },
+      maintenanceLine: 'Maintenance ≈ {{maintenance}} kcal — what it takes to HOLD your current weight (this is NOT your target).',
+      deltaLine: {
+        lose: 'Your target {{kcal}} kcal is {{pct}}% below maintenance: a calm deficit to lose without stress.',
+        gain: 'Your target {{kcal}} kcal is {{pct}}% above maintenance: a small surplus to gain.',
       },
       fiber: 'Fiber: ~{{g}} g a day (vegetables, legumes, whole grains) — the main weapon against deficit hunger.',
       etaWeeks: 'To your goal of {{goal}} kg ≈ {{n}} wk at this pace.',
@@ -328,7 +357,7 @@ export const en = {
       birthYear: 'Birth year',
       activity: 'Activity',
       activityLevel: { sedentary: 'Sedentary', light: 'Light', moderate: 'Moderate', high: 'High' },
-      activityNote: 'Sedentary — barely moving · light — 1–3 workouts a week · moderate — 3–5 · high — 6–7 or physical work.',
+      activityNote: 'This is about everyday walking, NOT workouts — log those separately under «Workouts» on the Food screen. By steps: sedentary — under 5k · light — 5–8k · moderate — 8–12k · high — 12k+ or a job on your feet.',
     },
   },
   steps: {
@@ -388,6 +417,7 @@ export const en = {
       kcal: '{{eaten}} of {{target}} kcal',
       onPlan: 'on plan ✓',
       over: 'over plan today',
+      withWorkouts: '+{{counted}} kcal from workouts → target with training {{target}} kcal',
     },
     parseIssue: {
       offline: 'The server didn’t answer — parsed offline, without AI, so the numbers are rougher. You can try again.',
