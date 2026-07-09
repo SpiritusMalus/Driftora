@@ -609,7 +609,39 @@ export default function WeightScreen() {
                   active={activity === a}
                   onPress={() => {
                     setActivity(a);
-                    void persist({ activityLevel: a }, t('weight.targets.savedTick'), 'body');
+                    // Keep the applied plan in sync with the activity it's derived
+                    // from: if the current targets ARE the plan (planApplied), the
+                    // budget silently embeds the OLD activity's NEAT — leaving it
+                    // stale would double-count once steps drive the day. Re-apply
+                    // at the new activity. A hand-typed target (planApplied=false)
+                    // is a deliberate override — never overwritten.
+                    const nextPlan = suggestPlan(
+                      { ...profile, activityLevel: a },
+                      latestKg,
+                      goalMode,
+                      new Date(),
+                      goalWeightKg,
+                    );
+                    if (planApplied && nextPlan != null) {
+                      setKcal(String(nextPlan.kcal));
+                      setProtein(String(nextPlan.prot));
+                      setFat(String(nextPlan.fat));
+                      setCarb(String(nextPlan.carb));
+                      void persist(
+                        {
+                          activityLevel: a,
+                          targetKcal: nextPlan.kcal,
+                          targetProteinG: nextPlan.prot,
+                          targetFatG: nextPlan.fat,
+                          targetCarbG: nextPlan.carb,
+                          targetsSetAt: Date.now(),
+                        },
+                        t('weight.plan.appliedTick'),
+                        'body',
+                      );
+                    } else {
+                      void persist({ activityLevel: a }, t('weight.targets.savedTick'), 'body');
+                    }
                   }}
                   theme={theme}
                 />
