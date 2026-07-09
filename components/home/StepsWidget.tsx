@@ -24,10 +24,14 @@ function toSteps(v: string): number {
 export function StepsWidget({
   db,
   subtitle,
+  estimateLine,
   onSaved,
 }: {
   db: Db;
   subtitle: string;
+  /// Optional «сегодня N шагов ≈ M ккал» line — shown only on the value-ladder
+  /// rung where a weight is logged but no goal is set yet (see Home). Null hides it.
+  estimateLine?: string | null;
   onSaved: () => void | Promise<void>;
 }) {
   const { t } = useTranslation();
@@ -88,6 +92,10 @@ export function StepsWidget({
           </Text>
         </Pressable>
       </View>
+
+      {estimateLine ? (
+        <Text style={[styles.estimate, { color: theme.subtle }, theme.font.body]}>{estimateLine}</Text>
+      ) : null}
     </Card>
   );
 }
@@ -99,6 +107,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 15 },
   subtitle: { fontSize: 13, marginTop: 1 },
   inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 },
+  estimate: { fontSize: 13, marginTop: 10, lineHeight: 18 },
   input: { flex: 1 },
   unit: { fontSize: 14 },
   saveBtn: { paddingVertical: 9, paddingHorizontal: 16, borderRadius: 12 },

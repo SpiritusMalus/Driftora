@@ -73,6 +73,7 @@ export function WeightWidget({
           (settings.goalMode as GoalMode) ?? 'maintain',
           new Date(),
           settings.goalWeightKg,
+          settings.deficitTempo,
         )
       : null;
 

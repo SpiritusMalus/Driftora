@@ -1,7 +1,7 @@
-import { inArray } from 'drizzle-orm';
+import { desc, inArray, like } from 'drizzle-orm';
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
-import { choiceKey, lookupNameForItem } from '../services/foodChoice';
+import { choiceKey, lookupNameForItem, normalizeChoiceName } from '../services/foodChoice';
 import type { MealDraft, NutritionAlternative, Per100, Region } from '../services/foodParser';
 import { foodChoices } from './schema';
 
@@ -23,6 +23,44 @@ export async function rememberFoodChoice(
     .insert(foodChoices)
     .values({ key, name: choice.name, per100, ts })
     .onConflictDoUpdate({ target: foodChoices.key, set: { name: choice.name, per100, ts } });
+}
+
+/// One remembered food, ready to re-log: its display name + exact per-100g.
+export interface RememberedFood {
+  name: string;
+  per100: Per100;
+}
+
+/// The user's «рацион» — the foods they've confirmed before, for the current
+/// region, most-recently-used first. Powers the quick "pick what I already eat +
+/// type grams" flow. Deduped by normalized NAME (a food re-picked under a slightly
+/// different key must not appear twice) and capped at [limit]. Rows with corrupt
+/// JSON are skipped defensively. Region is matched on the `${region}::` key prefix.
+export async function listFoodChoices(
+  db: AnyDb,
+  region: Region,
+  limit = 24,
+): Promise<RememberedFood[]> {
+  const rows = (await db
+    .select()
+    .from(foodChoices)
+    .where(like(foodChoices.key, `${region}::%`))
+    .orderBy(desc(foodChoices.ts))) as { name: string; per100: string }[];
+  const out: RememberedFood[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const norm = normalizeChoiceName(row.name);
+    if (seen.has(norm)) continue;
+    try {
+      const per100 = JSON.parse(row.per100) as Per100;
+      seen.add(norm);
+      out.push({ name: row.name, per100 });
+    } catch {
+      // corrupt row — ignore
+    }
+    if (out.length >= limit) break;
+  }
+  return out;
 }
 
 /// Load remembered choices for the foods in a draft, keyed by [choiceKey] so the

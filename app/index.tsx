@@ -337,6 +337,7 @@ export default function HomeScreen() {
           settings.goalMode,
           new Date(),
           settings.goalWeightKg,
+          settings.deficitTempo,
         )
       : null;
   const earnedAdd =
@@ -344,6 +345,18 @@ export default function HomeScreen() {
     Math.round(Math.max(0, workoutRawKcal) * EATBACK_FRACTION);
   const foodBaseKcal = dayBase?.kcal ?? (settings?.targetKcal ?? 0);
   const foodTargetKcal = hasGoal ? foodBaseKcal + earnedAdd : 0;
+
+  // Value ladder for the no-goal user: once a WEIGHT is logged, today's steps get
+  // an honest «≈ N ккал» estimate — walking becomes a real number without needing
+  // the full profile/goal. Suppressed once a goal is active (the food budget's
+  // «шаги +N» already shows it there, so this would just duplicate it). Needs
+  // steps above the resting baseline, so [stepsEarnedKcal] > 0 gates it.
+  const stepsEstimateKcal =
+    !hasGoal && weightRow != null ? stepsEarnedKcal(steps ?? 0, weightRow.weightKg) : 0;
+  const stepsEstimateLine =
+    stepsEstimateKcal > 0
+      ? t('home.steps.earnedEstimate', { kcal: stepsEstimateKcal, steps: formatSteps(steps ?? 0) })
+      : null;
 
   return (
     <View style={[styles.fill, { backgroundColor: theme.background }]}>
@@ -455,7 +468,7 @@ export default function HomeScreen() {
           settings={settings}
           onSaved={reload}
         />
-        <StepsWidget db={db} subtitle={stepsSubtitle} onSaved={reload} />
+        <StepsWidget db={db} subtitle={stepsSubtitle} estimateLine={stepsEstimateLine} onSaved={reload} />
         <ListGroup rows={[diaryRow]} />
 
         {streakWeeks > 0 ? (

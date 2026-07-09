@@ -277,6 +277,28 @@ const MODE_FACTOR: Record<GoalMode, number> = { lose: 0.85, maintain: 1, gain: 1
 const LOSE_FACTOR_OBESE = 0.8;
 const OBESE_BMI = 30;
 
+/// How aggressive the weight-loss deficit is — the ONE lever the user chooses for
+/// pace (the mode is lose/maintain/gain, this refines the "how fast"). Only
+/// applies to `lose`; ignored for maintain/gain.
+///  - 'soft'     — a gentle −10%, for a small reserve / muscle-sparing;
+///  - 'standard' — the default: the BMI-aware −15% (−20% at BMI ≥ 30), i.e. the
+///                 exact pre-choice behaviour, so an untouched setting never
+///                 changes anyone's plan;
+///  - 'fast'     — an assertive −25%, for a large reserve. The BMR / clinical
+///                 floor still caps it, so a small body just floors instead of
+///                 crash-dieting.
+export type DeficitTempo = 'soft' | 'standard' | 'fast';
+
+/// Selection order for the tempo chip row (weight screen, lose mode only).
+export const DEFICIT_TEMPOS: readonly DeficitTempo[] = ['soft', 'standard', 'fast'];
+
+/// Explicit lose factors for the non-default tempos. 'standard' is intentionally
+/// absent — it defers to the BMI-aware pair above so the default is unchanged.
+const TEMPO_LOSE_FACTOR: Record<Exclude<DeficitTempo, 'standard'>, number> = {
+  soft: 0.9, // −10%
+  fast: 0.75, // −25%
+};
+
 /// Neutral adult age used when the birth year isn't set yet, so the plan still
 /// shows a usable estimate instead of vanishing (age shifts Mifflin BMR by only
 /// ~5 kcal per year — small next to the total). The card flags this as a
@@ -350,6 +372,7 @@ export function suggestPlan(
   mode: GoalMode,
   now: Date = new Date(),
   goalWeightKg = 0,
+  tempo: DeficitTempo = 'standard',
 ): MacroPlan | null {
   const sex = profile.sex === 'male' || profile.sex === 'female' ? (profile.sex as Sex) : null;
   const factor = (ACTIVITY_FACTORS as Record<string, number | undefined>)[profile.activityLevel];
@@ -387,7 +410,15 @@ export function suggestPlan(
     : mifflinBmr(sex, weightKg, profile.heightCm, age);
   const bmrMethod: BmrMethod = useKatch ? 'katch' : 'mifflin';
   const maintenance = bmr * factor;
-  const loseFactor = bmi >= OBESE_BMI ? LOSE_FACTOR_OBESE : MODE_FACTOR.lose;
+  // The deficit's size: the user's tempo choice wins for lose (soft/fast), while
+  // 'standard' keeps the BMI-aware default (−15%, −20% at BMI ≥ 30). The floor
+  // below still caps whatever this produces, so 'fast' on a small body is safe.
+  const loseFactor =
+    tempo === 'standard'
+      ? bmi >= OBESE_BMI
+        ? LOSE_FACTOR_OBESE
+        : MODE_FACTOR.lose
+      : TEMPO_LOSE_FACTOR[tempo];
   const raw = maintenance * (mode === 'lose' ? loseFactor : MODE_FACTOR[mode]);
   // Never prescribe eating below resting needs or the clinical minimum: a
   // smaller deficit is slower but stays out of crash-diet territory.
@@ -456,6 +487,7 @@ export function restingPlan(
   mode: GoalMode,
   now: Date = new Date(),
   goalWeightKg = 0,
+  tempo: DeficitTempo = 'standard',
 ): MacroPlan | null {
-  return suggestPlan({ ...profile, activityLevel: 'sedentary' }, weightKg, mode, now, goalWeightKg);
+  return suggestPlan({ ...profile, activityLevel: 'sedentary' }, weightKg, mode, now, goalWeightKg, tempo);
 }

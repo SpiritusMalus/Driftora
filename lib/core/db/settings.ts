@@ -34,6 +34,8 @@ export interface SettingsPatch {
   goalMode?: 'lose' | 'maintain' | 'gain';
   // Goal weight in kg for the plan card; 0 clears back to "not set".
   goalWeightKg?: number;
+  // Weight-loss deficit tempo (lose mode only): soft −10% / standard −15/−20% / fast −25%.
+  deficitTempo?: 'soft' | 'standard' | 'fast';
   // Measured body-fat % for composition-aware BMR; 0 clears back to "not set".
   bodyFatPct?: number;
   // Epoch ms of the last deliberate targets edit; null = defaults never touched.
@@ -78,6 +80,7 @@ export async function updateSettings(
   if (patch.activityLevel != null) set.activityLevel = patch.activityLevel;
   if (patch.goalMode != null) set.goalMode = patch.goalMode;
   if (patch.goalWeightKg != null) set.goalWeightKg = patch.goalWeightKg;
+  if (patch.deficitTempo != null) set.deficitTempo = patch.deficitTempo;
   if (patch.bodyFatPct != null) set.bodyFatPct = patch.bodyFatPct;
   // Accepts an explicit null (reset to "never set") — probe for undefined.
   if (patch.targetsSetAt !== undefined) set.targetsSetAt = patch.targetsSetAt;

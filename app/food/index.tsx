@@ -95,6 +95,7 @@ export default function FoodDayScreen() {
       settings.goalMode,
       new Date(),
       settings.goalWeightKg,
+      settings.deficitTempo,
     );
     const goalActive = settings.targetsSetAt != null && !settings.paused;
     setStepsToday(todaySteps);

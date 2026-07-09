@@ -14,10 +14,12 @@ import type { WeightRow } from '@/lib/core/db/schema';
 import { ensureSettings, updateSettings, type SettingsPatch } from '@/lib/core/db/settings';
 import { listWeights, upsertWeight } from '@/lib/core/db/weight';
 import {
+  DEFICIT_TEMPOS,
   GOAL_MODES,
   bmiCategory,
   bmiValue,
   suggestPlan,
+  type DeficitTempo,
   type GoalMode,
   type Sex,
 } from '@/lib/core/insights/bodyMetrics';
@@ -53,6 +55,7 @@ export default function WeightScreen() {
   const [sex, setSex] = useState<'' | Sex>('');
   const [birthYearText, setBirthYearText] = useState('');
   const [goalMode, setGoalMode] = useState<GoalMode>('maintain');
+  const [deficitTempo, setDeficitTempo] = useState<DeficitTempo>('standard');
   const [goalWeightText, setGoalWeightText] = useState('');
   const [bodyFatText, setBodyFatText] = useState('');
   const [kcal, setKcal] = useState('2000');
@@ -95,6 +98,7 @@ export default function WeightScreen() {
           setSex(s.sex);
           setBirthYearText(s.birthYear > 0 ? String(s.birthYear) : '');
           setGoalMode(s.goalMode);
+          setDeficitTempo(s.deficitTempo);
           setGoalWeightText(s.goalWeightKg > 0 ? String(s.goalWeightKg) : '');
           setBodyFatText(s.bodyFatPct > 0 ? String(s.bodyFatPct) : '');
           setKcal(String(s.targetKcal));
@@ -181,7 +185,7 @@ export default function WeightScreen() {
   // "no weight logged yet", so the plan card can say exactly what's missing.
   const profileComplete = suggestPlan(profile, 70, 'maintain') != null;
   const goalWeightKg = toNumber(goalWeightText);
-  const plan = suggestPlan(profile, latestKg, goalMode, new Date(), goalWeightKg);
+  const plan = suggestPlan(profile, latestKg, goalMode, new Date(), goalWeightKg, deficitTempo);
   // ETA copy: short horizons read best in weeks, long ones in months.
   const eta = (() => {
     if (plan?.etaWeeks == null) return null;
@@ -311,6 +315,32 @@ export default function WeightScreen() {
               />
             ))}
           </View>
+
+          {/* Deficit tempo — the ONE pace lever, lose mode only. «Умеренный» is
+              the BMI-aware default (unchanged behaviour); «Мягкий»/«Быстрый»
+              soften/steepen it. The pace it implies shows live in the intro line
+              below (kg/week) and the clinical floor still caps «Быстрый». */}
+          {goalMode === 'lose' ? (
+            <>
+              <Text style={[styles.fieldLabel, { color: theme.subtle }, theme.font.body]}>
+                {t('weight.plan.tempo.label')}
+              </Text>
+              <View style={styles.chips}>
+                {DEFICIT_TEMPOS.map((tp) => (
+                  <Chip
+                    key={tp}
+                    label={t(`weight.plan.tempo.${tp}`)}
+                    active={deficitTempo === tp}
+                    onPress={() => {
+                      setDeficitTempo(tp);
+                      void persist({ deficitTempo: tp }, t('weight.targets.savedTick'), 'plan');
+                    }}
+                    theme={theme}
+                  />
+                ))}
+              </View>
+            </>
+          ) : null}
 
           {/* Goal weight — the deficit's protein basis (жировой массе белок не
               нужен) and the honest "до цели ≈ …" line. Only for lose/gain:
