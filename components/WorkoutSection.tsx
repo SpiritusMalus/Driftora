@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -10,7 +10,13 @@ import { AI_CONSENT_VERSION, grantAiConsent, needsAiConsent } from '@/lib/core/c
 import type { WorkoutRow } from '@/lib/core/db/schema';
 import { ensureSettings } from '@/lib/core/db/settings';
 import { latestWeight } from '@/lib/core/db/weight';
-import { addParsedWorkout, addWorkout, deleteWorkout, listWorkoutsForDay } from '@/lib/core/db/workouts';
+import {
+  addParsedWorkout,
+  addTrackerWorkout,
+  addWorkout,
+  deleteWorkout,
+  listWorkoutsForDay,
+} from '@/lib/core/db/workouts';
 import {
   EATBACK_FRACTION,
   setsToMinutes,
@@ -19,7 +25,14 @@ import {
   WORKOUT_TYPES,
   type WorkoutType,
 } from '@/lib/core/insights/bodyMetrics';
-import { getWorkoutParser, isWorkoutParserConfigured } from '@/lib/core/services/workoutParser';
+import { isAudioRecordingAvailable, startRecording, type ActiveRecording } from '@/lib/core/services/audioRecorder';
+import type { AudioInput, PhotoInput } from '@/lib/core/services/foodParser';
+import { capturePhoto, isPhotoCaptureAvailable } from '@/lib/core/services/photoProvider';
+import {
+  getWorkoutParser,
+  isWorkoutParserConfigured,
+  type ParsedWorkout,
+} from '@/lib/core/services/workoutParser';
 import { type Theme, useTheme } from '@/lib/theme/theme';
 
 /// Whether an online AI parser is configured for this build (env at bundle time).
@@ -54,6 +67,12 @@ export function WorkoutSection({ db, onChange }: { db: Db; onChange?: (rawKcal: 
   const [aiConsent, setAiConsent] = useState(false);
   const [aiConsentVersion, setAiConsentVersion] = useState('');
   const [consentOpen, setConsentOpen] = useState(false);
+  // The upload that asked for consent — resumed on accept (text, voice or photo).
+  const pendingRun = useRef<((consentNow: boolean) => Promise<void>) | null>(null);
+  // Voice note: the live recording session, if any.
+  const [recording, setRecording] = useState<ActiveRecording | null>(null);
+  const [photoReady, setPhotoReady] = useState(false);
+  const micReady = isAudioRecordingAvailable();
 
   const reload = useCallback(async () => {
     if (!db) return;
@@ -77,6 +96,20 @@ export function WorkoutSection({ db, onChange }: { db: Db; onChange?: (rawKcal: 
     })();
   }, [db]);
 
+  // Whether the system photo picker exists in this build (async probe).
+  useEffect(() => {
+    if (!AI_CONFIGURED) return;
+    void isPhotoCaptureAvailable().then(setPhotoReady);
+  }, []);
+
+  // A recording must not outlive the screen — cancel on unmount.
+  useEffect(
+    () => () => {
+      void recording?.cancel();
+    },
+    [recording],
+  );
+
   async function add() {
     if (!db) return;
     if (supportsSets(type)) {
@@ -98,8 +131,45 @@ export function WorkoutSection({ db, onChange }: { db: Db; onChange?: (rawKcal: 
     await reload();
   }
 
-  /// Run the free-text parse with a known consent value, add every activity, and
-  /// leave an honest note. kcal is computed on-device in `addParsedWorkout`.
+  /// Persist a parsed activity list with an honest note. kcal is computed
+  /// on-device in `addParsedWorkout` — shared by the text, voice and photo paths.
+  async function saveParsed(parsed: ParsedWorkout[]) {
+    if (!db) return;
+    if (parsed.length === 0) {
+      setParseNote(t('workouts.parseNone'));
+      return;
+    }
+    for (const p of parsed) {
+      await addParsedWorkout(
+        db,
+        {
+          type: p.type,
+          name_ru: p.name_ru,
+          minutes: p.minutes,
+          speedKmh: p.speed_kmh ?? null,
+          met: p.met ?? null,
+          sets: p.sets ?? null,
+        },
+        weightKg,
+      );
+    }
+    setDescribe('');
+    setParseNote(t('workouts.parseAdded', { count: parsed.length }));
+    await reload();
+  }
+
+  /// Just-in-time cross-border consent shared by every upload path: with consent
+  /// already held the runner fires now, otherwise it parks in `pendingRun` and
+  /// resumes on accept.
+  async function withConsent(run: (consentNow: boolean) => Promise<void>) {
+    if (AI_CONFIGURED && needsAiConsent({ aiFoodParseConsent: aiConsent, aiFoodParseConsentVersion: aiConsentVersion })) {
+      pendingRun.current = run;
+      setConsentOpen(true);
+      return;
+    }
+    await run(aiConsent);
+  }
+
   async function runParse(consentNow: boolean) {
     const text = describe.trim();
     if (!db || text.length === 0) return;
@@ -107,42 +177,93 @@ export function WorkoutSection({ db, onChange }: { db: Db; onChange?: (rawKcal: 
     setParseNote(null);
     try {
       const parser = getWorkoutParser(consentNow);
-      const parsed = parser ? await parser.parse(text) : [];
-      if (parsed.length === 0) {
-        setParseNote(t('workouts.parseNone'));
-        return;
-      }
-      for (const p of parsed) {
-        await addParsedWorkout(
-          db,
-          {
-            type: p.type,
-            name_ru: p.name_ru,
-            minutes: p.minutes,
-            speedKmh: p.speed_kmh ?? null,
-            met: p.met ?? null,
-            sets: p.sets ?? null,
-          },
-          weightKg,
-        );
-      }
-      setDescribe('');
-      setParseNote(t('workouts.parseAdded', { count: parsed.length }));
-      await reload();
+      await saveParsed(parser ? await parser.parse(text) : []);
     } finally {
       setParsing(false);
     }
   }
 
-  /// Free-text submit: just-in-time cross-border consent first (only when an
-  /// online parser exists and the user hasn't consented at the current version).
   async function onDescribe() {
     if (!db || describe.trim().length === 0) return;
-    if (AI_CONFIGURED && needsAiConsent({ aiFoodParseConsent: aiConsent, aiFoodParseConsentVersion: aiConsentVersion })) {
-      setConsentOpen(true);
+    await withConsent(runParse);
+  }
+
+  /// Voice note: first tap starts recording, second stops it and sends the clip
+  /// through the same parse→save path as text.
+  async function onMic() {
+    if (!db || parsing) return;
+    if (recording) {
+      const rec = recording;
+      setRecording(null);
+      const clip = await rec.stop();
+      if (!clip) {
+        setParseNote(t('workouts.voiceFailed'));
+        return;
+      }
+      await withConsent((c) => runVoiceParse(clip, c));
       return;
     }
-    await runParse(aiConsent);
+    setParseNote(null);
+    const rec = await startRecording();
+    if (!rec) {
+      setParseNote(t('workouts.voiceUnavailable'));
+      return;
+    }
+    setRecording(rec);
+  }
+
+  async function runVoiceParse(clip: AudioInput, consentNow: boolean) {
+    setParsing(true);
+    setParseNote(null);
+    try {
+      const parser = getWorkoutParser(consentNow);
+      await saveParsed(parser ? await parser.parseAudio(clip) : []);
+    } finally {
+      setParsing(false);
+    }
+  }
+
+  /// Tracker screenshot from the gallery. If the tracker printed its own total
+  /// kcal, THAT number is logged verbatim («по трекеру») — the watch measured
+  /// it, we don't out-guess it. Otherwise the activities go the usual MET path.
+  async function onScreenshot() {
+    if (!db || parsing) return;
+    const res = await capturePhoto('library');
+    if (res.status === 'cancelled') return;
+    if (res.status !== 'ok') {
+      setParseNote(t('workouts.photoFailed'));
+      return;
+    }
+    await withConsent((c) => runPhotoParse(res.photo, c));
+  }
+
+  async function runPhotoParse(photo: PhotoInput, consentNow: boolean) {
+    if (!db) return;
+    setParsing(true);
+    setParseNote(null);
+    try {
+      const parser = getWorkoutParser(consentNow);
+      const parsed = parser ? await parser.parsePhoto(photo) : { workouts: [] };
+      if (parsed.device_kcal != null && parsed.device_kcal > 0) {
+        const names = parsed.workouts.map((w) => w.name_ru).filter(Boolean).join(', ');
+        const single = parsed.workouts.length === 1 ? parsed.workouts[0] : null;
+        const minutes =
+          parsed.device_minutes ?? parsed.workouts.reduce((s, w) => s + Math.max(0, w.minutes), 0);
+        await addTrackerWorkout(db, {
+          kcal: parsed.device_kcal,
+          minutes,
+          type: single?.type ?? 'other',
+          label: names ? `${names} · ${t('workouts.fromTracker')}` : t('workouts.fromTracker'),
+          sets: single?.sets ?? null,
+        });
+        setParseNote(t('workouts.trackerAdded', { kcal: parsed.device_kcal }));
+        await reload();
+        return;
+      }
+      await saveParsed(parsed.workouts);
+    } finally {
+      setParsing(false);
+    }
   }
 
   async function onConsentAccept() {
@@ -150,11 +271,14 @@ export function WorkoutSection({ db, onChange }: { db: Db; onChange?: (rawKcal: 
     if (db) await grantAiConsent(db);
     setAiConsent(true);
     setAiConsentVersion(AI_CONSENT_VERSION);
-    await runParse(true);
+    const run = pendingRun.current ?? runParse;
+    pendingRun.current = null;
+    await run(true);
   }
 
   function onConsentDecline() {
     setConsentOpen(false);
+    pendingRun.current = null;
     setParseNote(t('workouts.parseDeclined'));
   }
 
@@ -276,23 +400,70 @@ export function WorkoutSection({ db, onChange }: { db: Db; onChange?: (rawKcal: 
                 multiline
                 style={styles.describeInput}
               />
-              <Pressable
-                onPress={() => void onDescribe()}
-                disabled={parsing || describe.trim().length === 0}
-                accessibilityRole="button"
-                accessibilityLabel={t('workouts.describeAction')}
-                style={({ pressed }) => [
-                  styles.describeBtn,
-                  {
-                    backgroundColor: theme.primary,
-                    opacity: parsing || describe.trim().length === 0 ? 0.5 : pressed ? 0.7 : 1,
-                  },
-                ]}
-              >
-                <Text style={[styles.addBtnText, { color: theme.onPrimary }, theme.font.bodySemiBold]}>
-                  {parsing ? t('workouts.parsing') : t('workouts.describeAction')}
+              <View style={styles.describeActions}>
+                <Pressable
+                  onPress={() => void onDescribe()}
+                  disabled={parsing || describe.trim().length === 0}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('workouts.describeAction')}
+                  style={({ pressed }) => [
+                    styles.describeBtn,
+                    {
+                      backgroundColor: theme.primary,
+                      opacity: parsing || describe.trim().length === 0 ? 0.5 : pressed ? 0.7 : 1,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.addBtnText, { color: theme.onPrimary }, theme.font.bodySemiBold]}>
+                    {parsing ? t('workouts.parsing') : t('workouts.describeAction')}
+                  </Text>
+                </Pressable>
+                {micReady ? (
+                  <Pressable
+                    onPress={() => void onMic()}
+                    disabled={parsing}
+                    accessibilityRole="button"
+                    accessibilityLabel={t(recording ? 'workouts.voiceStop' : 'workouts.voiceStart')}
+                    style={({ pressed }) => [
+                      styles.iconBtn,
+                      {
+                        backgroundColor: recording ? theme.primary : theme.card,
+                        borderColor: recording ? theme.primary : theme.separator,
+                        opacity: parsing ? 0.5 : pressed ? 0.7 : 1,
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name={recording ? 'stop' : 'mic-outline'}
+                      size={18}
+                      color={recording ? theme.onPrimary : theme.primary}
+                    />
+                  </Pressable>
+                ) : null}
+                {photoReady ? (
+                  <Pressable
+                    onPress={() => void onScreenshot()}
+                    disabled={parsing || recording != null}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('workouts.screenshot')}
+                    style={({ pressed }) => [
+                      styles.iconBtn,
+                      {
+                        backgroundColor: theme.card,
+                        borderColor: theme.separator,
+                        opacity: parsing || recording != null ? 0.5 : pressed ? 0.7 : 1,
+                      },
+                    ]}
+                  >
+                    <Ionicons name="image-outline" size={18} color={theme.primary} />
+                  </Pressable>
+                ) : null}
+              </View>
+              {recording ? (
+                <Text style={[styles.parseNote, { color: theme.primary }, theme.font.bodyMedium]}>
+                  {t('workouts.voiceRecording')}
                 </Text>
-              </Pressable>
+              ) : null}
               {parseNote ? (
                 <Text style={[styles.parseNote, { color: theme.subtle }, theme.font.body]}>{parseNote}</Text>
               ) : null}
@@ -365,7 +536,9 @@ const styles = StyleSheet.create({
   describeBlock: { marginTop: 16, gap: 8 },
   describeLabel: { fontSize: 13 },
   describeInput: { minHeight: 64 },
+  describeActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   describeBtn: { alignSelf: 'flex-start', paddingVertical: 9, paddingHorizontal: 16, borderRadius: 12 },
+  iconBtn: { width: 38, height: 38, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   parseNote: { fontSize: 12, lineHeight: 17 },
   list: { marginTop: 12, gap: 8 },
   item: { flexDirection: 'row', alignItems: 'center', gap: 10 },

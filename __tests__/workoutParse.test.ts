@@ -4,7 +4,7 @@ import { drizzle } from 'drizzle-orm/better-sqlite3';
 
 import { applySchema } from '@/lib/core/db/init';
 import * as schema from '@/lib/core/db/schema';
-import { addParsedWorkout, listWorkoutsForDay } from '@/lib/core/db/workouts';
+import { addParsedWorkout, addTrackerWorkout, listWorkoutsForDay } from '@/lib/core/db/workouts';
 import { kcalFromMet, workoutKcal } from '@/lib/core/insights/bodyMetrics';
 
 async function makeDb() {
@@ -73,5 +73,31 @@ describe('addParsedWorkout (LLM parse path → on-device kcal)', () => {
     expect(row.sets).toBe(4);
     expect(row.minutes).toBe(12);
     expect(row.label).toBe('жим лёжа');
+  });
+});
+
+describe('addTrackerWorkout (a screenshot’s printed burn is logged verbatim)', () => {
+  it('stores the device kcal as-is — no MET math, no EPOC bonus', async () => {
+    const db = await makeDb();
+    const kcal = await addTrackerWorkout(db, {
+      kcal: 412,
+      minutes: 31,
+      type: 'run',
+      label: 'бег 5 км · по трекеру',
+    });
+    expect(kcal).toBe(412);
+    const [row] = await listWorkoutsForDay(db);
+    expect(row.kcal).toBe(412);
+    expect(row.minutes).toBe(31);
+    expect(row.type).toBe('run');
+    expect(row.label).toBe('бег 5 км · по трекеру');
+    expect(row.sets).toBeNull();
+  });
+
+  it('clamps an absurd device number instead of blowing up the day', async () => {
+    const db = await makeDb();
+    const kcal = await addTrackerWorkout(db, { kcal: 99_999, minutes: 20 });
+    expect(kcal).toBe(5000);
+    expect((await addTrackerWorkout(db, { kcal: -50, minutes: 20 }))).toBe(0);
   });
 });

@@ -81,6 +81,30 @@ export async function addParsedWorkout(
   return kcal;
 }
 
+/// Log a workout whose burn came from the user's OWN tracker screenshot: the
+/// device measured it (heart rate + sensors), so its printed kcal is stored
+/// VERBATIM instead of a MET estimate — no EPOC bonus either (a watch total
+/// already is the session's measurement). Clamped to a sane band so an OCR
+/// misread can't blow up the day. Returns the stored kcal.
+export async function addTrackerWorkout(
+  db: AnyDb,
+  input: { kcal: number; minutes: number; type?: string; label?: string | null; sets?: number | null },
+  when: Date = new Date(),
+): Promise<number> {
+  const kcal = Math.round(Math.min(Math.max(0, input.kcal), 5000));
+  await db.insert(workouts).values({
+    ts: when,
+    date: dayKey(when),
+    type: input.type ?? 'other',
+    minutes: Math.round(Math.min(Math.max(0, input.minutes), 600)),
+    kcal,
+    speedKmh: null,
+    label: input.label?.trim() || null,
+    sets: input.sets != null && input.sets > 0 ? Math.round(input.sets) : null,
+  });
+  return kcal;
+}
+
 /// A day's logged workouts, newest-first.
 export async function listWorkoutsForDay(
   db: AnyDb,

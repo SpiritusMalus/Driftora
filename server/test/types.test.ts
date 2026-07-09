@@ -6,6 +6,7 @@ import {
   coercePer100,
   emptyMealDraft,
   normalizeIdentified,
+  normalizeParsedWorkoutPhoto,
   normalizeParsedWorkouts,
   scaleToGrams,
   sumNutrients,
@@ -237,6 +238,24 @@ test('normalizeParsedWorkouts: unknown type folds to "other"; name falls back to
   const [w] = normalizeParsedWorkouts({ workouts: [{ type: 'quidditch', minutes: 20, confidence: 0.5 }] });
   assert.equal(w.type, 'other');
   assert.equal(w.name_ru, 'other');
+});
+
+test('normalizeParsedWorkoutPhoto: keeps plausible tracker totals, drops wild ones', () => {
+  const ok = normalizeParsedWorkoutPhoto({
+    workouts: [{ type: 'run', name_ru: 'бег', minutes: 30, confidence: 0.9 }],
+    device_kcal: 412.6,
+    device_minutes: 31.2,
+  });
+  assert.equal(ok.workouts.length, 1);
+  assert.equal(ok.device_kcal, 413);
+  assert.equal(ok.device_minutes, 31);
+  // Steps misread as kcal (10 000) or a 12-hour "duration" must not pass.
+  const wild = normalizeParsedWorkoutPhoto({ workouts: [], device_kcal: 10_000, device_minutes: 720 });
+  assert.equal(wild.device_kcal, undefined);
+  assert.equal(wild.device_minutes, undefined);
+  // Garbage payloads → an empty, well-formed result. Never a throw.
+  assert.deepEqual(normalizeParsedWorkoutPhoto(null), { workouts: [] });
+  assert.deepEqual(normalizeParsedWorkoutPhoto('nope'), { workouts: [] });
 });
 
 test('normalizeParsedWorkouts: sets ride along for strength only, clamped', () => {

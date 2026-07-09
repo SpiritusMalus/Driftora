@@ -5,18 +5,23 @@ import {
   IDENTIFY_PHOTO_SYSTEM_PROMPT,
   IDENTIFY_SCHEMA,
   IDENTIFY_SYSTEM_PROMPT,
+  PARSE_WORKOUT_PHOTO_SCHEMA,
+  PARSE_WORKOUT_PHOTO_SYSTEM_PROMPT,
   PARSE_WORKOUT_SCHEMA,
   PARSE_WORKOUT_SYSTEM_PROMPT,
   userAudioInstruction,
   userInstruction,
   userPhotoInstruction,
   userWorkoutInstruction,
+  userWorkoutPhotoInstruction,
 } from './prompt.js';
 import {
   normalizeIdentified,
   normalizeParsedWorkouts,
+  normalizeParsedWorkoutPhoto,
   type IdentifiedItem,
   type ParsedWorkout,
+  type ParsedWorkoutPhoto,
   type Region,
 } from './types.js';
 
@@ -213,6 +218,19 @@ export async function identifyFromAudio(
   ]);
 }
 
+/** `choices[0].message.content` → parsed JSON payload, or null on any malformation. */
+function completionPayload(data: unknown): unknown {
+  const d = data as { choices?: { message?: { content?: unknown } }[] } | null;
+  const content = d?.choices?.[0]?.message?.content;
+  const raw = typeof content === 'string' ? content.trim() : '';
+  if (!raw) return null;
+  try {
+    return JSON.parse(stripFences(raw));
+  } catch {
+    return null; // malformed structured output → nothing parsed, never a crash
+  }
+}
+
 /**
  * Parse a free-text workout description → structured activities. No escalation
  * (parsing "100 отжиманий" is easy for the fast model) and no region (activity
@@ -228,13 +246,53 @@ export async function parseWorkoutFromText(text: string): Promise<ParsedWorkout[
     MODEL,
     PARSE_WORKOUT_SCHEMA,
   );
-  const d = data as { choices?: { message?: { content?: unknown } }[] } | null;
-  const content = d?.choices?.[0]?.message?.content;
-  const raw = typeof content === 'string' ? content.trim() : '';
-  if (!raw) return [];
-  try {
-    return normalizeParsedWorkouts(JSON.parse(stripFences(raw)));
-  } catch {
-    return []; // malformed structured output → nothing parsed, never a crash
-  }
+  return normalizeParsedWorkouts(completionPayload(data));
+}
+
+/**
+ * Spoken workout description → the same structured activities as the text
+ * parser: the clip rides in as an `input_audio` part, everything else —
+ * prompt, schema, honesty split (kcal stays client-side) — is identical.
+ */
+export async function parseWorkoutFromAudio(base64: string, format: string): Promise<ParsedWorkout[]> {
+  const data = await complete(
+    [
+      { role: 'system', content: PARSE_WORKOUT_SYSTEM_PROMPT },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: userWorkoutInstruction() },
+          { type: 'input_audio', input_audio: { data: base64, format } },
+        ],
+      },
+    ],
+    MODEL,
+    PARSE_WORKOUT_SCHEMA,
+  );
+  return normalizeParsedWorkouts(completionPayload(data));
+}
+
+/**
+ * Fitness-tracker screenshot → activities + the tracker's OWN printed totals
+ * (device_kcal / device_minutes, transcribed — never estimated). When the
+ * device names a burn the client logs that number, so this path may return
+ * energy values, unlike every other workout parse: they are the tracker's
+ * measurements passing through, not model arithmetic.
+ */
+export async function parseWorkoutFromPhoto(base64: string, mimeType: string): Promise<ParsedWorkoutPhoto> {
+  const data = await complete(
+    [
+      { role: 'system', content: PARSE_WORKOUT_PHOTO_SYSTEM_PROMPT },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: userWorkoutPhotoInstruction() },
+          { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } },
+        ],
+      },
+    ],
+    MODEL,
+    PARSE_WORKOUT_PHOTO_SCHEMA,
+  );
+  return normalizeParsedWorkoutPhoto(completionPayload(data));
 }

@@ -543,6 +543,19 @@ export interface ParsedWorkout {
   confidence: number;
 }
 
+/**
+ * A workout parsed from a SCREENSHOT of a fitness tracker / watch app. On top
+ * of the activities, the model reads the numbers the tracker itself printed:
+ * `device_kcal` (total active calories) and `device_minutes` (total duration).
+ * When the tracker names a burn, the client logs THAT number («по трекеру»)
+ * instead of re-deriving one — the device measured it, we don't out-guess it.
+ */
+export interface ParsedWorkoutPhoto {
+  workouts: ParsedWorkout[];
+  device_kcal?: number;
+  device_minutes?: number;
+}
+
 /** Same amplification cap rationale as food's MAX_ITEMS. */
 const MAX_WORKOUTS = 20;
 
@@ -588,6 +601,22 @@ export function normalizeParsedWorkouts(payload: unknown): ParsedWorkout[] {
     }
     out.push(item);
   }
+  return out;
+}
+
+/**
+ * Validate + normalize a raw LLM workout-SCREENSHOT payload. The activities go
+ * through [normalizeParsedWorkouts]; the tracker's own totals are kept only in
+ * plausible bands (an OCR misread of «10 000 steps» as kcal must not become a
+ * 10 000-kcal day). Pure and total like its sibling.
+ */
+export function normalizeParsedWorkoutPhoto(payload: unknown): ParsedWorkoutPhoto {
+  const p = (payload && typeof payload === 'object' ? payload : {}) as Record<string, unknown>;
+  const out: ParsedWorkoutPhoto = { workouts: normalizeParsedWorkouts(payload) };
+  const kcal = posNum(p.device_kcal);
+  if (kcal !== undefined && kcal <= 5000) out.device_kcal = Math.round(kcal);
+  const minutes = posNum(p.device_minutes);
+  if (minutes !== undefined && minutes <= 600) out.device_minutes = Math.round(minutes);
   return out;
 }
 
