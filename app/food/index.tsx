@@ -9,7 +9,7 @@ import { FillBar } from '@/components/ui/FillBar';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
 import { WorkoutSection } from '@/components/WorkoutSection';
-import { EATBACK_FRACTION, stepsActivityFactor, suggestPlan } from '@/lib/core/insights/bodyMetrics';
+import { EATBACK_FRACTION, restingPlan, stepsEarnedKcal } from '@/lib/core/insights/bodyMetrics';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { listEntriesForDay, repeatFoodEntry, todayMacroTotals, todayMicroTotals, type MicroTotals } from '@/lib/core/db/food';
 import { ensureSettings } from '@/lib/core/db/settings';
@@ -49,10 +49,10 @@ export default function FoodDayScreen() {
   // RAW calories burned in today's logged workouts (before the eat-back share) —
   // fed up from WorkoutSection so the day card can show the hybrid target.
   const [workoutRawKcal, setWorkoutRawKcal] = useState(0);
-  // Today's steps + whether they DROVE the budget (recomputed the plan via the
-  // continuous activity factor). Used for the honest «бюджет по шагам» caption.
+  // «Base + earned»: today's step count and the kcal it EARNED (added on top of
+  // the resting base). Shown as a transparent «покой + шаги + тренировки» sum.
   const [stepsToday, setStepsToday] = useState(0);
-  const [stepsDriven, setStepsDriven] = useState(false);
+  const [stepsEarned, setStepsEarned] = useState(0);
   // «Добавлено ещё раз ✓» after a one-tap repeat; cleared after a moment.
   const [repeatAck, setRepeatAck] = useState<string | null>(null);
   const ackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -78,13 +78,12 @@ export default function FoodDayScreen() {
     setTotals(tot);
     setMicros(mic);
     setSex(settings.sex);
-    // Steps DRIVE the day's budget: when steps are logged, a continuous activity
-    // factor from the count REPLACES the manual level and the plan is recomputed
-    // for today — a low-step day lowers the budget, a high-step day raises it. The
-    // manual level is only the fallback when there are no steps. Falls back to the
+    // «Base + earned» budget: the goal card shows a RESTING base (maintenance at
+    // the sedentary factor, goal-adjusted) and adds today's earned activity — steps
+    // and workouts — ON TOP, transparently. So more movement always raises the day,
+    // never lowers it, and activity is never double-counted. Falls back to the
     // frozen applied target when the profile can't compute a plan (manual КБЖУ).
-    const factorOverride = todaySteps > 0 ? stepsActivityFactor(todaySteps) : undefined;
-    const plan = suggestPlan(
+    const base = restingPlan(
       {
         sex: settings.sex,
         birthYear: settings.birthYear,
@@ -96,16 +95,15 @@ export default function FoodDayScreen() {
       settings.goalMode,
       new Date(),
       settings.goalWeightKg,
-      factorOverride,
     );
     const goalActive = settings.targetsSetAt != null && !settings.paused;
     setStepsToday(todaySteps);
-    setStepsDriven(goalActive && plan != null && todaySteps > 0);
+    setStepsEarned(stepsEarnedKcal(todaySteps, weightRow?.weightKg ?? 0));
     // The progress card needs a deliberate goal AND an unpaused app — otherwise
     // it would pressure with an arbitrary default, which this app never does.
     setGoal(
-      goalActive && plan != null
-        ? { kcal: plan.kcal, prot: plan.prot, fat: plan.fat, carb: plan.carb, hideCalories: settings.hideCalories }
+      goalActive && base != null
+        ? { kcal: base.kcal, prot: base.prot, fat: base.fat, carb: base.carb, hideCalories: settings.hideCalories }
         : goalActive && settings.targetKcal > 0
           ? {
               kcal: settings.targetKcal,
@@ -154,7 +152,7 @@ export default function FoodDayScreen() {
           totals={totals}
           workoutKcalRaw={workoutRawKcal}
           steps={stepsToday}
-          stepsDriven={stepsDriven}
+          stepsEarned={stepsEarned}
           theme={theme}
         />
       ) : null}
@@ -222,24 +220,29 @@ function DayProgress({
   totals,
   workoutKcalRaw,
   steps,
-  stepsDriven,
+  stepsEarned,
   theme,
 }: {
   goal: DayGoal;
   totals: { kcal: number; proteinG: number; fatG: number; carbG: number };
   workoutKcalRaw: number;
   steps: number;
-  stepsDriven: boolean;
+  stepsEarned: number;
   theme: Theme;
 }) {
   const { t } = useTranslation();
   const kcalEaten = Math.round(totals.kcal);
-  // The base target ALREADY reflects today's steps (the plan was recomputed from
-  // the continuous step-driven activity factor). Workouts are structured exercise
-  // ON TOP — their eat-back share still adds to the day, shown as a separate line.
-  const counted = Math.round(Math.max(0, workoutKcalRaw) * EATBACK_FRACTION);
-  const targetWithWorkouts = goal.kcal + counted;
-  const onPlan = kcalEaten <= (counted > 0 ? targetWithWorkouts : goal.kcal);
+  // «Base + earned» budget, shown as a transparent sum: goal.kcal is the RESTING
+  // base (what you can eat if you barely moved); today's steps and workouts are
+  // added ON TOP, so movement always raises the budget and the user sees why.
+  const stepsAdd = Math.max(0, stepsEarned);
+  const workoutAdd = Math.round(Math.max(0, workoutKcalRaw) * EATBACK_FRACTION);
+  const target = goal.kcal + stepsAdd + workoutAdd;
+  const onPlan = kcalEaten <= target;
+  // The visible breakdown: «покой N · шаги +N · тренировки +N».
+  const parts = [t('food.day.restBase', { kcal: goal.kcal })];
+  if (stepsAdd > 0) parts.push(t('food.day.stepsPart', { kcal: stepsAdd, steps }));
+  if (workoutAdd > 0) parts.push(t('food.day.workoutsPart', { kcal: workoutAdd }));
   const macros = [
     { label: t('macros.protein'), eaten: Math.round(totals.proteinG), target: goal.prot },
     { label: t('macros.fat'), eaten: Math.round(totals.fatG), target: goal.fat },
@@ -258,24 +261,11 @@ function DayProgress({
       {goal.hideCalories ? null : (
         <>
           <Text style={[styles.dayKcal, { color: theme.text }, theme.font.bodyMedium]}>
-            {t('food.day.kcal', { eaten: kcalEaten, target: goal.kcal })}
+            {t('food.day.kcal', { eaten: kcalEaten, target })}
           </Text>
-          <Bar
-            value={kcalEaten}
-            max={counted > 0 ? targetWithWorkouts : goal.kcal}
-            color={theme.primary}
-            track={theme.fill}
-            height={8}
-          />
-          {stepsDriven ? (
-            <Text style={[styles.dayWorkout, { color: theme.subtle }, theme.font.body]}>
-              {t('food.day.bySteps', { steps: steps })}
-            </Text>
-          ) : null}
-          {counted > 0 ? (
-            <Text style={[styles.dayWorkout, { color: theme.subtle }, theme.font.body]}>
-              {t('food.day.withWorkouts', { counted, target: targetWithWorkouts })}
-            </Text>
+          <Bar value={kcalEaten} max={target} color={theme.primary} track={theme.fill} height={8} />
+          {stepsAdd > 0 || workoutAdd > 0 ? (
+            <Text style={[styles.dayWorkout, { color: theme.subtle }, theme.font.body]}>{parts.join(' · ')}</Text>
           ) : null}
         </>
       )}

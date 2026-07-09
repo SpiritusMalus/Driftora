@@ -226,25 +226,22 @@ export function suggestActivityLevel(avgStepsPerDay: number): ActivityLevel {
   return 'sedentary';
 }
 
-/// Step counts that anchor the continuous activity multiplier: at/below this the
-/// factor is «sedentary», at/above [STEPS_AT_HIGH] it is «high».
-const STEPS_AT_SEDENTARY = 3000;
-const STEPS_AT_HIGH = 13000;
+/// Steps already covered by the RESTING base (BMR × sedentary factor): a
+/// sedentary day still involves a few thousand incidental steps, so «earned»
+/// walking energy is counted only ABOVE this — no double count with the base.
+const STEP_REST_BASELINE = 3000;
+/// Real walking energy per step per kg (~0.035 kcal/step at 70 kg) — the honest
+/// cost of a step, kept transparent (shown as-is in the day's «шаги +N» line).
+const KCAL_PER_STEP_PER_KG = 0.0005;
 
-/// Continuous TDEE activity multiplier straight from a day's step count — linear
-/// between the sedentary factor (≤3k steps) and the high factor (≥13k), so EVERY
-/// step count moves the budget (no dead band). Same endpoints as the lifestyle
-/// [ACTIVITY_FACTORS], so a step-driven day is calibrated exactly like a chosen
-/// level. When steps are logged this REPLACES the manual activity multiplier (a
-/// low-step day lowers the budget, a high-step day raises it — honest both ways);
-/// the manual level is only the fallback for days with no steps. Clamps input.
-export function stepsActivityFactor(steps: number): number {
-  const lo = ACTIVITY_FACTORS.sedentary;
-  const hi = ACTIVITY_FACTORS.high;
-  if (!Number.isFinite(steps) || steps <= STEPS_AT_SEDENTARY) return lo;
-  if (steps >= STEPS_AT_HIGH) return hi;
-  const frac = (steps - STEPS_AT_SEDENTARY) / (STEPS_AT_HIGH - STEPS_AT_SEDENTARY);
-  return lo + frac * (hi - lo);
+/// «Base + earned» model: kcal EARNED by today's steps above the resting baseline,
+/// added to a resting-level budget. Always ≥ 0 — walking only ever adds to the
+/// day, never subtracts (you did the movement, so you can eat it). This replaces
+/// the activity multiplier as the budget's activity signal. Clamps input.
+export function stepsEarnedKcal(steps: number, weightKg: number): number {
+  const extra = Math.max(0, (Number.isFinite(steps) ? steps : 0) - STEP_REST_BASELINE);
+  const kg = Math.min(Math.max(20, weightKg || 0), 400);
+  return Math.round(extra * KCAL_PER_STEP_PER_KG * kg);
 }
 
 export interface MacroTargets {
@@ -353,16 +350,9 @@ export function suggestPlan(
   mode: GoalMode,
   now: Date = new Date(),
   goalWeightKg = 0,
-  activityFactorOverride?: number,
 ): MacroPlan | null {
   const sex = profile.sex === 'male' || profile.sex === 'female' ? (profile.sex as Sex) : null;
-  // A step-driven day supplies its own continuous factor (see stepsActivityFactor),
-  // which REPLACES the manual level; otherwise the chosen activity level maps to a
-  // factor and still gates the plan when unset.
-  const factor =
-    activityFactorOverride != null && Number.isFinite(activityFactorOverride) && activityFactorOverride > 0
-      ? activityFactorOverride
-      : (ACTIVITY_FACTORS as Record<string, number | undefined>)[profile.activityLevel];
+  const factor = (ACTIVITY_FACTORS as Record<string, number | undefined>)[profile.activityLevel];
   // Birth year is the ONE input we can safely default: age moves BMR by ~5 kcal
   // a year, so an unset year falls back to a neutral adult age (flagged) rather
   // than hiding the whole plan. Sex/activity/height/weight are NOT defaulted —
@@ -452,4 +442,20 @@ export function suggestPlan(
 export function suggestTargets(profile: BodyProfile, weightKg: number, now: Date = new Date()): MacroTargets | null {
   const plan = suggestPlan(profile, weightKg, 'maintain', now);
   return plan ? { kcal: plan.kcal, prot: plan.prot, fat: plan.fat, carb: plan.carb } : null;
+}
+
+/// The RESTING-level plan — the «база» of the base+earned budget: goal-adjusted
+/// maintenance at the SEDENTARY factor (what you can eat if you barely moved).
+/// Steps ([stepsEarnedKcal]) and workouts are added on top, so daily activity
+/// always adds and is never double-counted. Forces the sedentary factor
+/// regardless of the stored activity level (which no longer drives the budget —
+/// today's steps are the activity signal). Null until the profile is complete.
+export function restingPlan(
+  profile: BodyProfile,
+  weightKg: number,
+  mode: GoalMode,
+  now: Date = new Date(),
+  goalWeightKg = 0,
+): MacroPlan | null {
+  return suggestPlan({ ...profile, activityLevel: 'sedentary' }, weightKg, mode, now, goalWeightKg);
 }

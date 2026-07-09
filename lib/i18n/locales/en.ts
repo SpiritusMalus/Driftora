@@ -287,6 +287,7 @@ export const en = {
         gain: 'You weigh {{kg}} kg. For a gradual gain — about +{{pace}} kg a week — you need:',
       },
       kcalPerDay: '≈ {{kcal}} kcal a day',
+      restNote: 'This is your «resting» base. Your steps and workouts for the day add to it on the Food screen.',
       goalWeight: 'Goal weight',
       // Transparency: which kilograms the protein was computed from. Adipose
       // tissue needs almost no protein — at high BMI total weight over-prescribes.
@@ -385,7 +386,7 @@ export const en = {
       birthYear: 'Birth year',
       activity: 'Activity',
       activityLevel: { sedentary: 'Sedentary', light: 'Light', moderate: 'Moderate', high: 'High' },
-      activityNote: 'This is about everyday walking, NOT workouts — log those separately under «Workouts» on the Food screen. By steps: sedentary — under 5k · light — 5–8k · moderate — 8–12k · high — 12k+ or a job on your feet. If you log steps, the daily budget is computed from them automatically (the level is just the fallback for days with no steps): more steps — higher budget the same day, fewer — lower.',
+      activityNote: 'No activity level needed anymore: the daily budget is transparent — «resting» (your formula metabolism) plus your steps and workouts for the day, which are added on the Food screen. More movement — more you can eat; movement only ever adds, never subtracts.',
       bodyFat: 'Body fat %',
       bodyFatHint: 'e.g. 20',
       bodyFatNote: 'Optional. If you know your measured body-fat % (smart scale, calipers, DEXA), we base metabolism on body composition (Katch–McArdle): at the same weight, more muscle = higher burn. A 120 kg athlete and a 120 kg couch-sitter get different numbers. Leave blank or guessed — we keep the standard formula, which is more honest.',
@@ -448,8 +449,9 @@ export const en = {
       kcal: '{{eaten}} of {{target}} kcal',
       onPlan: 'on plan ✓',
       over: 'over plan today',
-      bySteps: 'budget recomputed from today’s steps: {{steps}}',
-      withWorkouts: '+{{counted}} kcal from workouts → target with training {{target}} kcal',
+      restBase: 'resting {{kcal}}',
+      stepsPart: 'steps {{steps}} +{{kcal}}',
+      workoutsPart: 'workouts +{{kcal}}',
     },
     parseIssue: {
       offline: 'The server didn’t answer — parsed offline, without AI, so the numbers are rougher. You can try again.',

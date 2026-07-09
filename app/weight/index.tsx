@@ -14,12 +14,10 @@ import type { WeightRow } from '@/lib/core/db/schema';
 import { ensureSettings, updateSettings, type SettingsPatch } from '@/lib/core/db/settings';
 import { listWeights, upsertWeight } from '@/lib/core/db/weight';
 import {
-  ACTIVITY_LEVELS,
   GOAL_MODES,
   bmiCategory,
   bmiValue,
   suggestPlan,
-  type ActivityLevel,
   type GoalMode,
   type Sex,
 } from '@/lib/core/insights/bodyMetrics';
@@ -54,7 +52,6 @@ export default function WeightScreen() {
   const [heightText, setHeightText] = useState('');
   const [sex, setSex] = useState<'' | Sex>('');
   const [birthYearText, setBirthYearText] = useState('');
-  const [activity, setActivity] = useState<'' | ActivityLevel>('');
   const [goalMode, setGoalMode] = useState<GoalMode>('maintain');
   const [goalWeightText, setGoalWeightText] = useState('');
   const [bodyFatText, setBodyFatText] = useState('');
@@ -97,7 +94,6 @@ export default function WeightScreen() {
           setHeightText(s.heightCm > 0 ? String(s.heightCm) : '');
           setSex(s.sex);
           setBirthYearText(s.birthYear > 0 ? String(s.birthYear) : '');
-          setActivity(s.activityLevel);
           setGoalMode(s.goalMode);
           setGoalWeightText(s.goalWeightKg > 0 ? String(s.goalWeightKg) : '');
           setBodyFatText(s.bodyFatPct > 0 ? String(s.bodyFatPct) : '');
@@ -107,7 +103,6 @@ export default function WeightScreen() {
           setCarb(String(s.targetCarbG));
           const complete =
             (s.sex === 'male' || s.sex === 'female') &&
-            s.activityLevel !== '' &&
             s.heightCm >= 100 &&
             s.heightCm <= 250 &&
             s.birthYear > 0;
@@ -171,11 +166,15 @@ export default function WeightScreen() {
   const heightCm = toNumber(heightText);
   const bmi = bmiValue(latestKg, heightCm);
 
+  // The plan is now a RESTING base (sedentary): the daily budget on «Еда» adds
+  // today's steps + workouts on top, so the manual activity multiplier no longer
+  // drives the budget (it double-counted steps). Force sedentary here so this card
+  // matches the food day's base; the activity chips are retired below.
   const profile = {
     sex,
     birthYear: Math.round(toNumber(birthYearText)),
     heightCm,
-    activityLevel: activity,
+    activityLevel: 'sedentary' as const,
     bodyFatPct: toNumber(bodyFatText),
   };
   // Probe with a plausible dummy weight: tells "profile incomplete" apart from
@@ -207,12 +206,7 @@ export default function WeightScreen() {
   }));
 
   const bodySummary = profileComplete
-    ? [
-        `${Math.round(heightCm)} ${t('weight.heightUnit')}`,
-        sex ? t(`weight.formula.${sex}`) : '',
-        birthYearText,
-        activity ? t(`weight.formula.activityLevel.${activity}`) : '',
-      ]
+    ? [`${Math.round(heightCm)} ${t('weight.heightUnit')}`, sex ? t(`weight.formula.${sex}`) : '', birthYearText]
         .filter(Boolean)
         .join(' · ')
     : t('weight.sections.body.empty');
@@ -366,6 +360,11 @@ export default function WeightScreen() {
                   </View>
                 ))}
               </View>
+              {/* The plan is a RESTING base — steps + workouts add on «Еда». Say so
+                  right under the number so it never reads as the whole budget. */}
+              <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
+                {t('weight.plan.restNote')}
+              </Text>
               {/* Birth year missing → the plan is shown as an estimate on a
                   neutral adult age; say so plainly and point to the fix. Stays
                   VISIBLE (not folded) so the number never looks more certain
@@ -598,55 +597,6 @@ export default function WeightScreen() {
               }
               theme={theme}
             />
-            <Text style={[styles.fieldLabel, { color: theme.subtle }, theme.font.body]}>
-              {t('weight.formula.activity')}
-            </Text>
-            <View style={styles.chips}>
-              {ACTIVITY_LEVELS.map((a) => (
-                <Chip
-                  key={a}
-                  label={t(`weight.formula.activityLevel.${a}`)}
-                  active={activity === a}
-                  onPress={() => {
-                    setActivity(a);
-                    // Keep the applied plan in sync with the activity it's derived
-                    // from: if the current targets ARE the plan (planApplied), the
-                    // budget silently embeds the OLD activity's NEAT — leaving it
-                    // stale would double-count once steps drive the day. Re-apply
-                    // at the new activity. A hand-typed target (planApplied=false)
-                    // is a deliberate override — never overwritten.
-                    const nextPlan = suggestPlan(
-                      { ...profile, activityLevel: a },
-                      latestKg,
-                      goalMode,
-                      new Date(),
-                      goalWeightKg,
-                    );
-                    if (planApplied && nextPlan != null) {
-                      setKcal(String(nextPlan.kcal));
-                      setProtein(String(nextPlan.prot));
-                      setFat(String(nextPlan.fat));
-                      setCarb(String(nextPlan.carb));
-                      void persist(
-                        {
-                          activityLevel: a,
-                          targetKcal: nextPlan.kcal,
-                          targetProteinG: nextPlan.prot,
-                          targetFatG: nextPlan.fat,
-                          targetCarbG: nextPlan.carb,
-                          targetsSetAt: Date.now(),
-                        },
-                        t('weight.plan.appliedTick'),
-                        'body',
-                      );
-                    } else {
-                      void persist({ activityLevel: a }, t('weight.targets.savedTick'), 'body');
-                    }
-                  }}
-                  theme={theme}
-                />
-              ))}
-            </View>
             <Text style={[styles.disclaimer, { color: theme.subtle }, theme.font.body]}>
               {t('weight.formula.activityNote')}
             </Text>
