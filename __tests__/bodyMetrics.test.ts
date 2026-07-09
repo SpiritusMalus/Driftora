@@ -4,6 +4,7 @@ import {
   ACTIVITY_FACTORS,
   bmiCategory,
   bmiValue,
+  dayBudgetKcal,
   EATBACK_FRACTION,
   katchMcArdleBmr,
   metForSpeed,
@@ -424,5 +425,69 @@ describe('restingPlan (the «база» — sedentary regardless of stored level
     // are added ON TOP, so activity always adds and is never double-counted.
     const asModerate = suggestPlan(moderate, 90, 'maintain', NOW)!;
     expect(rest.kcal).toBeLessThan(asModerate.kcal);
+  });
+});
+
+describe('dayBudgetKcal (the day-level minimum: earned movement re-opens the deficit)', () => {
+  it('adds earned kcal to the base and floors the SUM, not the base', () => {
+    expect(dayBudgetKcal(2080, 2170, 455)).toBe(2535); // gap filled, deficit intact
+    expect(dayBudgetKcal(2080, 2170, 0)).toBe(2170); // couch day rests at the minimum
+    expect(dayBudgetKcal(2080, 2170, 50)).toBe(2170); // small movement still under the min
+    expect(dayBudgetKcal(2340, 2170, 100)).toBe(2440); // base above min: plain sum
+  });
+
+  it('never counts negative earned kcal', () => {
+    expect(dayBudgetKcal(2000, 0, -300)).toBe(2000);
+  });
+});
+
+// The endocrinology regression that drove the day-level floor: male, 30 y.o.,
+// 130 kg at a MEASURED 36 % body fat, walking ~10k steps. Reference numbers an
+// endocrinologist computes by hand: LBM 83.2 kg → Katch–McArdle BMR ≈ 2167;
+// sedentary-day burn ≈ 2600; day burn with 10k steps ≈ 3055 (band 3050–3150).
+describe('130 kg / 36 % fat / 10k steps — matches the by-hand clinical numbers', () => {
+  const profile = { sex: 'male', birthYear: 1996, heightCm: 175, activityLevel: 'moderate', bodyFatPct: 36 };
+
+  it('BMR comes from lean mass (Katch–McArdle), not total weight', () => {
+    const rest = restingPlan(profile, 130, 'maintain', NOW)!;
+    expect(rest.bmrMethod).toBe('katch');
+    expect(rest.bmrKcal).toBe(2167); // 370 + 21.6 × 83.2
+    expect(rest.kcal).toBe(2600); // ×1.2 — a no-movement day
+  });
+
+  it('maintenance budget with 10k steps lands in the clinical 3050–3150 band', () => {
+    const rest = restingPlan(profile, 130, 'maintain', NOW)!;
+    const earned = stepsEarnedKcal(10_000, 130);
+    expect(earned).toBe(455); // (10000 − 3000) × 0.0005 × 130
+    expect(rest.kcal + earned).toBe(3055);
+  });
+
+  it('deficit tempos produce DIFFERENT day budgets once movement is counted', () => {
+    const earned = stepsEarnedKcal(10_000, 130);
+    const soft = restingPlan(profile, 130, 'lose', NOW, 0, 'soft')!;
+    const standard = restingPlan(profile, 130, 'lose', NOW, 0, 'standard')!;
+    const fast = restingPlan(profile, 130, 'lose', NOW, 0, 'fast')!;
+    // −20 % and −25 % of the sedentary maintenance both sit below BMR, so the
+    // couch-day figure is floored for both…
+    expect(standard.floored).toBe(true);
+    expect(fast.floored).toBe(true);
+    expect(standard.kcal).toBe(2170);
+    expect(standard.minDayKcal).toBe(2170);
+    // …but the bases differ, and the day-level floor lets movement re-open the
+    // chosen deficit — the tempo lever works again (it used to collapse to one
+    // number for every obese user: the old per-base floor made 2625 for all).
+    expect(soft.baseKcal).toBe(2340);
+    expect(standard.baseKcal).toBe(2080);
+    expect(fast.baseKcal).toBe(1950);
+    const budgets = [soft, standard, fast].map((p) => dayBudgetKcal(p.baseKcal, p.minDayKcal, earned));
+    expect(budgets).toEqual([2795, 2535, 2405]);
+    // A zero-movement day still never dips below the healthy minimum.
+    expect(dayBudgetKcal(fast.baseKcal, fast.minDayKcal, 0)).toBe(2170);
+  });
+
+  it('for maintain/gain the minimum is absent (0) and base equals the target', () => {
+    const rest = restingPlan(profile, 130, 'maintain', NOW)!;
+    expect(rest.minDayKcal).toBe(0);
+    expect(rest.baseKcal).toBe(rest.kcal);
   });
 });

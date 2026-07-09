@@ -79,6 +79,31 @@ export async function listStepsDays(db: AnyDb, limit?: number): Promise<StepsRow
   return (await (limit != null ? query.limit(limit) : query)) as StepsRow[];
 }
 
+/// «Как обычно у вас»: the median of the most recent RECORDED days (up to
+/// [window] of them), EXCLUDING today — the honest stand-in the food budget
+/// shows in the morning, before today's steps are entered (today's real count
+/// replaces it the moment it exists). Median, not mean: one couch/hike day
+/// shouldn't drag the typical. Excluding today keeps a half-day partial entry
+/// from feeding back into its own forecast. Needs ≥ 3 recorded days — a 1–2
+/// day «typical» whipsaws — otherwise null and the budget just shows the base.
+export async function typicalSteps(
+  db: AnyDb,
+  today: Date | string = new Date(),
+  window = 14,
+): Promise<number | null> {
+  const todayKey = typeof today === 'string' ? today : dayKey(today);
+  const rows = await listStepsDays(db, window + 1);
+  const counts = rows
+    .filter((r) => r.date !== todayKey)
+    .slice(0, window)
+    .map((r) => Number(r.steps))
+    .filter((n) => Number.isFinite(n) && n >= 0)
+    .sort((a, b) => a - b);
+  if (counts.length < 3) return null;
+  const mid = Math.floor(counts.length / 2);
+  return counts.length % 2 === 1 ? counts[mid] : Math.round((counts[mid - 1] + counts[mid]) / 2);
+}
+
 /// Reads the day's steps from the health service and stores them. Honest about
 /// "no data":
 ///  - a 'manual' day is sticky — returned unchanged, never overwritten;

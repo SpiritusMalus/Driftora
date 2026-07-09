@@ -244,6 +244,18 @@ export function stepsEarnedKcal(steps: number, weightKg: number): number {
   return Math.round(extra * KCAL_PER_STEP_PER_KG * kg);
 }
 
+/// The day's assembled eating target under «база + заработал»: the tempo's
+/// deficit base plus today's earned activity (steps above the baseline + the
+/// workout eat-back), never below the healthy day-minimum. The minimum guards
+/// the WHOLE day's intake, not the base alone: earned kcal fill the
+/// base→minimum gap first, so the chosen deficit actually happens on days you
+/// move (a per-base floor made «стандартный» и «быстрый» identical — the
+/// deficit maths always lands below BMR at the sedentary factor), and only a
+/// zero-movement day rests exactly at the minimum.
+export function dayBudgetKcal(baseKcal: number, minDayKcal: number, earnedKcal: number): number {
+  return Math.max(baseKcal + Math.max(0, earnedKcal), minDayKcal);
+}
+
 export interface MacroTargets {
   kcal: number;
   prot: number;
@@ -338,8 +350,22 @@ export interface MacroPlan extends MacroTargets {
   maintenanceKcal: number;
   /// Expected pace at this deficit/surplus, kg per week (magnitude; 0 for maintain).
   paceKgPerWeek: number;
-  /// True when the safety floors (BMR / clinical minimum) capped the deficit.
+  /// True when the deficit base sits below the day-minimum: a zero-movement day
+  /// rests at [minDayKcal]; movement re-opens the chosen deficit (see
+  /// [dayBudgetKcal]).
   floored: boolean;
+  /// The tempo's deficit base BEFORE the day-minimum — what the chosen pace
+  /// actually asks for. May sit below [minDayKcal]; the day's target is
+  /// assembled via [dayBudgetKcal], so earned activity fills that gap first.
+  /// Equals [kcal] for maintain/gain and whenever the minimum doesn't bind.
+  baseKcal: number;
+  /// The day's healthy intake minimum — max(BMR, clinical minimum) for lose,
+  /// 0 otherwise. The assembled day target never goes below it.
+  minDayKcal: number;
+  /// Resting metabolism (BMR) behind the plan, whole kcal — surfaced so the
+  /// card can answer «какой у меня основной обмен?» with the same number a
+  /// doctor / external calculator would give (the budget's «база» is NOT it).
+  bmrKcal: number;
   /// Daily fiber guideline for this kcal level (14 g / 1000 kcal) — guidance
   /// for hunger control, not a tracked diary target (meals don't persist fiber).
   fiber: number;
@@ -420,11 +446,15 @@ export function suggestPlan(
         : MODE_FACTOR.lose
       : TEMPO_LOSE_FACTOR[tempo];
   const raw = maintenance * (mode === 'lose' ? loseFactor : MODE_FACTOR[mode]);
-  // Never prescribe eating below resting needs or the clinical minimum: a
-  // smaller deficit is slower but stays out of crash-diet territory.
+  // Never prescribe eating below resting needs or the clinical minimum. The
+  // floor guards the DAY's intake ([dayBudgetKcal]), so `kcal` here is the
+  // zero-movement day: the deficit base lifted to the minimum. The unlifted
+  // base is returned alongside — earned activity re-opens the chosen deficit.
   const floor = mode === 'lose' ? Math.max(bmr, MIN_KCAL[sex]) : 0;
   const floored = mode === 'lose' && raw < floor;
   const kcal = Math.round(Math.max(raw, floor) / 10) * 10;
+  const baseKcal = Math.round(raw / 10) * 10;
+  const minDayKcal = mode === 'lose' ? Math.round(floor / 10) * 10 : 0;
   const maintenanceKcal = Math.round(maintenance / 10) * 10;
   // Directional, clamped at 0: a fully-floored "lose" plan can sit AT (or, for
   // very small bodies, above) maintenance — that is a zero pace, not a gain.
@@ -458,6 +488,9 @@ export function suggestPlan(
     maintenanceKcal,
     paceKgPerWeek,
     floored,
+    baseKcal,
+    minDayKcal,
+    bmrKcal: Math.round(bmr),
     fiber,
     proteinBasis,
     proteinBasisKg: Math.round(basisKg),

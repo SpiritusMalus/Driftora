@@ -412,7 +412,7 @@ export default function WeightScreen() {
               ) : null}
               {plan.floored ? (
                 <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
-                  {t('weight.plan.floored')}
+                  {t('weight.plan.floored', { kcal: plan.minDayKcal })}
                 </Text>
               ) : null}
               {planApplied ? (
@@ -460,6 +460,16 @@ export default function WeightScreen() {
               </Pressable>
               {openPlanWhy ? (
                 <View style={styles.whyBody}>
+                  {/* BMR first — the number a doctor / external calculator
+                      would name. Users compared those against the budget's
+                      «база» (BMR × 1.2, goal-adjusted) and read the mismatch
+                      as a wrong formula; naming both kills the confusion. */}
+                  <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
+                    {t('weight.plan.bmrLine', {
+                      kcal: plan.bmrKcal,
+                      method: t(`weight.plan.bmrMethod.${plan.bmrMethod}`),
+                    })}
+                  </Text>
                   {/* Energy breakdown — the answer to «2540 кажется мало»: the
                       target is maintenance MINUS a deficit, not «сколько нужно». */}
                   <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
