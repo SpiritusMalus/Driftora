@@ -8,6 +8,7 @@ import {
   katchMcArdleBmr,
   metForSpeed,
   mifflinBmr,
+  stepsActiveKcal,
   suggestActivityLevel,
   suggestPlan,
   suggestTargets,
@@ -344,5 +345,33 @@ describe('suggestActivityLevel (steps → lifestyle multiplier)', () => {
     expect(suggestActivityLevel(6000)).toBe('light');
     expect(suggestActivityLevel(9000)).toBe('moderate');
     expect(suggestActivityLevel(13000)).toBe('high');
+  });
+});
+
+describe('stepsActiveKcal (steps above the activity baseline → active energy)', () => {
+  it('adds nothing at/below the level baseline (a normal day never subtracts)', () => {
+    expect(stepsActiveKcal(9000, 80, 'moderate')).toBe(0); // moderate assumes ~9500
+    expect(stepsActiveKcal(3000, 80, 'sedentary')).toBe(0); // sedentary assumes ~3000
+    expect(stepsActiveKcal(0, 80, 'moderate')).toBe(0);
+  });
+
+  it('prices only steps ABOVE the level baseline, scaling with weight', () => {
+    // moderate baseline 9500: extra 2500 × 0.0005 × 80 = 100
+    expect(stepsActiveKcal(12000, 80, 'moderate')).toBe(100);
+    // heavier body burns more for the same extra steps
+    expect(stepsActiveKcal(12000, 120, 'moderate')).toBeGreaterThan(stepsActiveKcal(12000, 80, 'moderate'));
+  });
+
+  it('sedentary makes the budget fully step-driven (low baseline)', () => {
+    // sedentary baseline 3000: extra 9000 × 0.0005 × 80 = 360 ≫ the moderate result
+    expect(stepsActiveKcal(12000, 80, 'sedentary')).toBe(360);
+    expect(stepsActiveKcal(12000, 80, 'sedentary')).toBeGreaterThan(stepsActiveKcal(12000, 80, 'moderate'));
+  });
+
+  it('an unknown/empty activity level falls back to the sedentary baseline; garbage → 0', () => {
+    expect(stepsActiveKcal(12000, 80, '')).toBe(360);
+    expect(stepsActiveKcal(12000, 80, 'nonsense')).toBe(360);
+    expect(stepsActiveKcal(NaN, 80, 'moderate')).toBe(0);
+    expect(Number.isFinite(stepsActiveKcal(12000, 0, 'moderate'))).toBe(true); // weight clamps
   });
 });

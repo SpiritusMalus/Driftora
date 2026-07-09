@@ -226,6 +226,37 @@ export function suggestActivityLevel(avgStepsPerDay: number): ActivityLevel {
   return 'sedentary';
 }
 
+/// Steps a given activity multiplier ALREADY assumes (the factor is a NEAT proxy
+/// for everyday movement). Step-active energy counts only steps ABOVE this
+/// baseline, so it never double-counts what the multiplier already includes.
+/// Rough midpoints of the [suggestActivityLevel] bands.
+const ASSUMED_STEPS: Record<ActivityLevel, number> = {
+  sedentary: 3000,
+  light: 6500,
+  moderate: 9500,
+  high: 13000,
+};
+
+/// Conservative walking energy per step per kg (~0.035 kcal/step at 70 kg).
+/// Predictive like every formula here, so — mirroring workouts — the caller adds
+/// only [EATBACK_FRACTION] of it to the day's budget.
+const KCAL_PER_STEP_PER_KG = 0.0005;
+
+/// Gross active kcal from a day's steps ABOVE the baseline the user's activity
+/// level already assumes. Returns 0 when steps don't exceed that baseline (a
+/// normal day for that lifestyle), so it only ever ADDS budget on a
+/// more-active-than-usual day — exactly how a logged workout adds, never
+/// subtracting. Steps at/below the assumed level leave the chosen plan untouched.
+/// Set activity to «sedentary» to make the budget fully step-driven. Clamps input.
+export function stepsActiveKcal(steps: number, weightKg: number, activityLevel: string): number {
+  const level = ACTIVITY_LEVELS.includes(activityLevel as ActivityLevel)
+    ? (activityLevel as ActivityLevel)
+    : 'sedentary';
+  const extra = Math.max(0, (Number.isFinite(steps) ? steps : 0) - ASSUMED_STEPS[level]);
+  const kg = Math.min(Math.max(20, weightKg || 0), 400);
+  return Math.round(extra * KCAL_PER_STEP_PER_KG * kg);
+}
+
 export interface MacroTargets {
   kcal: number;
   prot: number;
