@@ -206,11 +206,14 @@ test('DB hit consistent with the AI estimate → DB wins, not demoted, no AI alt
 });
 
 test('referee: DB hit grossly contradicts the AI estimate → demoted + AI estimate offered', async () => {
-  // USDA answers with an apple-like row (protein 0.3) for a high-protein product.
-  const apple = {
+  // USDA returns a NAME-plausible «skyr» row (shares the query token, so it
+  // survives the relevance filter) whose composition is wrong (protein 0.3 for
+  // a high-protein food). The referee — not the relevance filter — is what
+  // catches this, so the DB row stays primary but is demoted.
+  const badSkyr = {
     foods: [
       {
-        description: 'Apple, raw',
+        description: 'Skyr, plain',
         score: 100,
         foodNutrients: [
           { nutrientNumber: '1008', value: 57 },
@@ -221,7 +224,7 @@ test('referee: DB hit grossly contradicts the AI estimate → demoted + AI estim
       },
     ],
   };
-  mockFetch(() => json(apple));
+  mockFetch(() => json(badSkyr));
   const resolver = new Resolver([new UsdaProvider('KEY')]);
   const r = await resolver.resolveItem(
     item({
@@ -236,4 +239,34 @@ test('referee: DB hit grossly contradicts the AI estimate → demoted + AI estim
   assert.equal(r.confidence, 0.3, 'referee demotes so the client surfaces the picker');
   assert.equal(r.alternatives?.[0]?.per100.source, 'ai_estimate', 'AI estimate offered as the top switch');
   assert.equal(r.alternatives?.[0]?.per100.prot, 11);
+});
+
+test('relevance filter: a name-DISSIMILAR DB row (skyr → apple) is rejected, not demoted', async () => {
+  // The other half of the skyr bug: USDA fuzzy-returns «Apple, raw» for a skyr
+  // query. Zero name overlap → filtered out entirely → we fall to the honest AI
+  // estimate (the correct skyr numbers), instead of adopting apple at all.
+  const apple = {
+    foods: [
+      {
+        description: 'Apple, raw',
+        score: 100,
+        foodNutrients: [
+          { nutrientNumber: '1008', value: 57 },
+          { nutrientNumber: '1003', value: 0.3 },
+        ],
+      },
+    ],
+  };
+  mockFetch(() => json(apple));
+  const resolver = new Resolver([new UsdaProvider('KEY')]);
+  const r = await resolver.resolveItem(
+    item({
+      name_ru: 'исландский скир',
+      name_en: 'skyr',
+      estimate: { kcal_100g: 66, prot_100g: 11, fat_100g: 0.2, carb_100g: 4 },
+    }),
+    'US',
+  );
+  assert.equal(r.per100.source, 'ai_estimate');
+  assert.equal(r.per100.prot, 11); // the correct skyr protein, not apple's 0.3
 });

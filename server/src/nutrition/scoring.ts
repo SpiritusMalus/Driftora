@@ -69,8 +69,17 @@ export function rankByName<T>(
     .sort((a, b) => b.score - a.score);
 }
 
-/** Map a 0..1 name score to a provider confidence, floored so a real hit never reads as junk. */
+/**
+ * Map a 0..1 name score to a provider confidence. A real-but-terse hit is
+ * floored at 0.4 so it never reads as junk — BUT a candidate that shares
+ * NOTHING with the query (score 0: no common token, no substring) is not a
+ * match at all and must return 0, not the floor. Otherwise a broad free-text
+ * provider (e.g. FatSecret returning milk rows for «овощной салат») would have
+ * its garbage promoted to a confident 0.4 hit, stop the chain, and outrank the
+ * honest AI-estimate fallback.
+ */
 export function scoreToConfidence(score: number): number {
+  if (score <= 0) return 0;
   return Math.min(1, Math.max(0.4, score));
 }
 

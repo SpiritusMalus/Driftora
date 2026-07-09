@@ -63,6 +63,27 @@ test('no alternatives field on a full DB miss', async () => {
   assert.equal(r.alternatives, undefined);
 });
 
+test('a zero-confidence (off-topic) row never wins or stops the chain', async () => {
+  // FatSecret-style junk: a milk row for a salad query, floored to confidence 0
+  // by scoreToConfidence. The next provider has the real match — the resolver
+  // must skip the junk and continue, not adopt milk and halt.
+  const junk = { name: 'fake', regions: ['US', 'RU'] as const,
+    async search() { return { per100: per100(42), confidence: 0, name: '1% Fat Milk' }; },
+    async searchMany() { return [{ per100: per100(42), confidence: 0, name: '1% Fat Milk' }]; } };
+  const real = listProvider([{ per100: per100(40), confidence: 0.8, name: 'Vegetable salad' }]);
+  const resolver = new Resolver([junk, real]);
+  const r = await resolver.resolveItem(item({ name_ru: 'овощной салат', name_en: 'vegetable salad' }), 'RU');
+  assert.equal(r.per100.kcal, 40); // the real salad match, not the milk
+  assert.equal(r.matched_name, 'Vegetable salad');
+});
+
+test('only-junk chain falls through to the estimate, never to milk', async () => {
+  const junk = listProvider([{ per100: per100(42), confidence: 0, name: '1% Fat Milk' }]);
+  const resolver = new Resolver([junk]);
+  const r = await resolver.resolveItem(item({ name_ru: 'овощной салат', name_en: 'vegetable salad' }), 'RU');
+  assert.equal(r.per100.source, 'estimate'); // honest placeholder, not the milk row
+});
+
 const realFetch = globalThis.fetch;
 afterEach(() => {
   globalThis.fetch = realFetch;
