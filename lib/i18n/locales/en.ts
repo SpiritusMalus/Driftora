@@ -58,7 +58,7 @@ export const en = {
       weight: 'Weight',
       mood: 'Mood',
     },
-    steps: { unit: 'steps' },
+    steps: { unit: 'steps', placeholder: 'Steps today' },
     // Compare today to the user's own normal (personal step baseline). Tone is
     // curious and supportive — never a target, never "you're behind".
     baseline: {
@@ -130,6 +130,16 @@ export const en = {
       mind: 'Mind · mood',
     },
     foodBar: { placeholder: 'Tell or type what you ate…' },
+    food: { title: 'Food today' },
+    weight: {
+      placeholder: 'Weight today',
+      save: 'Save',
+      saving: 'Saving…',
+      planToggle: 'Daily КБЖУ',
+      planKcal: 'Target ≈ {{kcal}} kcal',
+      planHint: 'The plan follows your latest weight. More on the «Weight» screen.',
+      planNeedProfile: 'Fill in your profile (height, sex, year, activity) on the «Weight» screen to see КБЖУ.',
+    },
     northStar: 'Showing up {{weeks}} weeks running.',
     paused: {
       title: 'You are on a break',

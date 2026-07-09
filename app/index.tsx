@@ -5,6 +5,9 @@ import { useTranslation } from 'react-i18next';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { FoodTodayWidget } from '@/components/home/FoodTodayWidget';
+import { StepsWidget } from '@/components/home/StepsWidget';
+import { WeightWidget } from '@/components/home/WeightWidget';
 import { BodyMindCard } from '@/components/ui/BodyMindCard';
 import { Card } from '@/components/ui/Card';
 import { FoodBar } from '@/components/ui/FoodBar';
@@ -17,6 +20,7 @@ import { bestBodyMindFromDb } from '@/lib/core/db/bodyMind';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { countDiaryEntries } from '@/lib/core/db/diary';
 import { todayMacroTotals } from '@/lib/core/db/food';
+import type { AppSettings } from '@/lib/core/db/schema';
 import { latestMood, logMood } from '@/lib/core/db/mood';
 import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
 import { syncDaySleep } from '@/lib/core/db/sleep';
@@ -65,13 +69,14 @@ export default function HomeScreen() {
   const [streakWeeks, setStreakWeeks] = useState(0);
   const [paused, setPaused] = useState(false);
   const [weightRow, setWeightRow] = useState<{ weightKg: number; date: string } | null>(null);
+  // Today's food totals + the settings row — fed to the Home input widgets
+  // (food summary, weight plan preview). Kept alongside the insight state above.
+  const [totals, setTotals] = useState({ kcal: 0, proteinG: 0, fatG: 0, carbG: 0 });
+  const [settings, setSettings] = useState<AppSettings | null>(null);
 
-  useFocusEffect(
-    useCallback(() => {
-      let active = true;
-      void (async () => {
+  const reload = useCallback(async () => {
         if (!db) return;
-        const [tot, settings, diaryN, moodRow, review, weightLatest] = await Promise.all([
+        const [tot, settingsRow, diaryN, moodRow, review, weightLatest] = await Promise.all([
           todayMacroTotals(db),
           ensureSettings(db),
           countDiaryEntries(db),
@@ -103,10 +108,10 @@ export default function HomeScreen() {
           db,
           {
             steps: stepsForGoals,
-            stepsGoal: settings.stepsGoal,
+            stepsGoal: settingsRow.stepsGoal,
             proteinG: tot.proteinG,
-            proteinTargetG: settings.targetProteinG,
-            paused: settings.paused,
+            proteinTargetG: settingsRow.targetProteinG,
+            paused: settingsRow.paused,
           },
           {
             // Rotate the celebration copy by day-of-year — varied & specific,
@@ -143,17 +148,18 @@ export default function HomeScreen() {
           if (lastActivity == null || dt > lastActivity) lastActivity = dt;
         }
         const daysGap = daysSince(lastActivity);
-        if (!active) return;
         setSteps(stepCount);
-        setStepsMeaning(stepCount == null ? null : stepInsight(stepCount, settings.stepsGoal));
+        setStepsMeaning(stepCount == null ? null : stepInsight(stepCount, settingsRow.stepsGoal));
         setStepsBaselineKind(stepsBaseline ? stepsBaseline.kind : null);
         setSleepMin(sleepMinutes);
         setProteinG(tot.proteinG);
+        setTotals({ kcal: tot.kcal, proteinG: tot.proteinG, fatG: tot.fatG, carbG: tot.carbG });
+        setSettings(settingsRow);
         setDiaryCount(diaryN);
         setBest(bestLink);
         setMoodValue(moodRow ? moodRow.value : null);
         setStreakWeeks(review.streakWeeks);
-        setPaused(settings.paused);
+        setPaused(settingsRow.paused);
         setWeightRow(weightLatest ? { weightKg: weightLatest.weightKg, date: weightLatest.date } : null);
         setSummary(
           daySummary(
@@ -166,11 +172,12 @@ export default function HomeScreen() {
             dayOfYear(),
           ),
         );
-      })();
-      return () => {
-        active = false;
-      };
-    }, [db, t]),
+  }, [db, t]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void reload();
+    }, [reload]),
   );
 
   async function onResume() {
@@ -269,43 +276,26 @@ export default function HomeScreen() {
     return t('home.feeders.weightDaysAgo', { kg, days });
   })();
 
-  const feeders: RowSpec[] = [
-    {
-      key: 'steps',
-      icon: 'walk-outline',
-      tint: theme.accent,
-      iconBg: theme.scheme === 'light' ? '#FBEFD9' : '#33261F',
-      title: t('home.feeders.steps'),
-      subtitle: stepsSubtitle,
-      onPress: () => router.push('/steps'),
-    },
-    {
-      key: 'sleep',
-      icon: 'moon-outline',
-      tint: theme.primary,
-      iconBg: theme.scheme === 'light' ? '#E9E2FA' : '#272138',
-      title: t('home.feeders.sleep'),
-      subtitle: sleepSubtitle,
-    },
-    {
-      key: 'weight',
-      icon: 'scale-outline',
-      tint: theme.accent,
-      iconBg: theme.scheme === 'light' ? '#EFE6E0' : '#2C2622',
-      title: t('home.feeders.weight'),
-      subtitle: weightSubtitle,
-      onPress: () => router.push('/weight'),
-    },
-    {
-      key: 'diary',
-      icon: 'sparkles-outline',
-      tint: theme.primary,
-      iconBg: theme.scheme === 'light' ? '#FBE2D9' : '#3A241B',
-      title: t('home.feeders.diary'),
-      subtitle: diaryCount > 0 ? t('home.feeders.diaryCount', { count: diaryCount }) : t('home.feeders.diaryCta'),
-      onPress: () => router.push('/diary'),
-    },
-  ];
+  // Diary stays a simple tap-through row (unchanged by request). Steps, weight and
+  // food became input widgets above; sleep is a passive display row pinned to the
+  // very bottom.
+  const diaryRow: RowSpec = {
+    key: 'diary',
+    icon: 'sparkles-outline',
+    tint: theme.primary,
+    iconBg: theme.scheme === 'light' ? '#FBE2D9' : '#3A241B',
+    title: t('home.feeders.diary'),
+    subtitle: diaryCount > 0 ? t('home.feeders.diaryCount', { count: diaryCount }) : t('home.feeders.diaryCta'),
+    onPress: () => router.push('/diary'),
+  };
+  const sleepRow: RowSpec = {
+    key: 'sleep',
+    icon: 'moon-outline',
+    tint: theme.primary,
+    iconBg: theme.scheme === 'light' ? '#E9E2FA' : '#272138',
+    title: t('home.feeders.sleep'),
+    subtitle: sleepSubtitle,
+  };
 
   // Rotate the feeder section header across a few warm variants — stable within
   // a day (day-of-year seed), so Home feels alive without changing mid-session.
@@ -411,7 +401,26 @@ export default function HomeScreen() {
         </Card>
 
         <SectionHeader>{feederHeader}</SectionHeader>
-        <ListGroup rows={feeders} />
+        <FoodTodayWidget
+          kcal={totals.kcal}
+          targetKcal={settings?.targetKcal ?? 0}
+          prot={totals.proteinG}
+          targetProt={settings?.targetProteinG ?? 0}
+          fat={totals.fatG}
+          targetFat={settings?.targetFatG ?? 0}
+          carb={totals.carbG}
+          targetCarb={settings?.targetCarbG ?? 0}
+          onPress={() => router.push('/food')}
+        />
+        <WeightWidget
+          db={db}
+          latestKg={weightRow?.weightKg ?? 0}
+          subtitle={weightSubtitle}
+          settings={settings}
+          onSaved={reload}
+        />
+        <StepsWidget db={db} subtitle={stepsSubtitle} onSaved={reload} />
+        <ListGroup rows={[diaryRow]} />
 
         {streakWeeks > 0 ? (
           <Text style={[styles.northStar, { color: theme.accent }, theme.font.bodyMedium]}>
@@ -419,6 +428,11 @@ export default function HomeScreen() {
           </Text>
         ) : null}
         <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('home.gentleNorm')}</Text>
+
+        {/* Sleep pinned to the very bottom (passive display; by request). */}
+        <View style={styles.sleepBottom}>
+          <ListGroup rows={[sleepRow]} />
+        </View>
       </ScrollView>
 
       <View
@@ -487,6 +501,7 @@ const styles = StyleSheet.create({
   moodTitle: { fontSize: 15 },
   moodHint: { fontSize: 12 },
   northStar: { fontSize: 12, textAlign: 'center', marginTop: 22 },
+  sleepBottom: { marginTop: 22 },
   hint: { fontSize: 12, textAlign: 'center', marginTop: 10, lineHeight: 17 },
   footer: { position: 'absolute', left: 0, right: 0 },
   footerAndroid: { paddingHorizontal: 18 },
