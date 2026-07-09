@@ -9,11 +9,11 @@ import { FillBar } from '@/components/ui/FillBar';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
 import { WorkoutSection } from '@/components/WorkoutSection';
-import { EATBACK_FRACTION, restingPlan, stepsEarnedKcal } from '@/lib/core/insights/bodyMetrics';
+import { dayBudgetKcal, EATBACK_FRACTION, restingPlan, stepsEarnedKcal } from '@/lib/core/insights/bodyMetrics';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { listEntriesForDay, repeatFoodEntry, todayMacroTotals, todayMicroTotals, type MicroTotals } from '@/lib/core/db/food';
 import { ensureSettings } from '@/lib/core/db/settings';
-import { getStepsForDay } from '@/lib/core/db/steps';
+import { getStepsRow, typicalSteps } from '@/lib/core/db/steps';
 import { latestWeight } from '@/lib/core/db/weight';
 import { dailyMicroNorms, type MicroRow } from '@/lib/core/insights/microNutrients';
 import { groupEntriesByMeal } from '@/lib/core/insights/mealType';
@@ -25,6 +25,12 @@ import { type Theme, useTheme } from '@/lib/theme/theme';
 /// untouched 2000/120/70/200 defaults are not a goal) and the app isn't paused.
 interface DayGoal {
   kcal: number;
+  /// «База + заработал»: the tempo's deficit base (may sit below the healthy
+  /// day-minimum) and that minimum — the day target is assembled with
+  /// [dayBudgetKcal], so earned movement re-opens the chosen deficit. The
+  /// frozen manual-targets fallback uses kcal as the base with no minimum.
+  baseKcal: number;
+  minDayKcal: number;
   prot: number;
   fat: number;
   carb: number;
@@ -50,9 +56,12 @@ export default function FoodDayScreen() {
   // fed up from WorkoutSection so the day card can show the hybrid target.
   const [workoutRawKcal, setWorkoutRawKcal] = useState(0);
   // «Base + earned»: today's step count and the kcal it EARNED (added on top of
-  // the resting base). Shown as a transparent «покой + шаги + тренировки» sum.
+  // the deficit base). Shown as a transparent «база + шаги + тренировки» sum.
+  // Until today's steps are entered, the count is a FORECAST from the median of
+  // recent days («как обычно») — flagged so the target reads as ≈.
   const [stepsToday, setStepsToday] = useState(0);
   const [stepsEarned, setStepsEarned] = useState(0);
+  const [stepsForecast, setStepsForecast] = useState(false);
   // «Добавлено ещё раз ✓» after a one-tap repeat; cleared after a moment.
   const [repeatAck, setRepeatAck] = useState<string | null>(null);
   const ackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -66,12 +75,13 @@ export default function FoodDayScreen() {
 
   const reload = useCallback(async () => {
     if (!db) return;
-    const [list, tot, mic, settings, todaySteps, weightRow] = await Promise.all([
+    const [list, tot, mic, settings, stepsRow, usualSteps, weightRow] = await Promise.all([
       listEntriesForDay(db),
       todayMacroTotals(db),
       todayMicroTotals(db),
       ensureSettings(db),
-      getStepsForDay(db),
+      getStepsRow(db),
+      typicalSteps(db),
       latestWeight(db),
     ]);
     setEntries(list);
@@ -98,16 +108,32 @@ export default function FoodDayScreen() {
       settings.deficitTempo,
     );
     const goalActive = settings.targetsSetAt != null && !settings.paused;
-    setStepsToday(todaySteps);
-    setStepsEarned(stepsEarnedKcal(todaySteps, weightRow?.weightKg ?? 0));
+    // Morning-planning honesty: before today's steps are entered the budget
+    // stands on the median of your recent recorded days («как обычно»), marked
+    // as a forecast — the entered fact replaces it the moment it exists.
+    const todaySteps = stepsRow != null ? Number(stepsRow.steps) : null;
+    const effectiveSteps = todaySteps ?? usualSteps ?? 0;
+    setStepsToday(effectiveSteps);
+    setStepsForecast(todaySteps == null && usualSteps != null);
+    setStepsEarned(stepsEarnedKcal(effectiveSteps, weightRow?.weightKg ?? 0));
     // The progress card needs a deliberate goal AND an unpaused app — otherwise
     // it would pressure with an arbitrary default, which this app never does.
     setGoal(
       goalActive && base != null
-        ? { kcal: base.kcal, prot: base.prot, fat: base.fat, carb: base.carb, hideCalories: settings.hideCalories }
+        ? {
+            kcal: base.kcal,
+            baseKcal: base.baseKcal,
+            minDayKcal: base.minDayKcal,
+            prot: base.prot,
+            fat: base.fat,
+            carb: base.carb,
+            hideCalories: settings.hideCalories,
+          }
         : goalActive && settings.targetKcal > 0
           ? {
               kcal: settings.targetKcal,
+              baseKcal: settings.targetKcal,
+              minDayKcal: 0,
               prot: settings.targetProteinG,
               fat: settings.targetFatG,
               carb: settings.targetCarbG,
@@ -154,6 +180,7 @@ export default function FoodDayScreen() {
           workoutKcalRaw={workoutRawKcal}
           steps={stepsToday}
           stepsEarned={stepsEarned}
+          stepsForecast={stepsForecast}
           theme={theme}
         />
       ) : null}
@@ -222,6 +249,7 @@ function DayProgress({
   workoutKcalRaw,
   steps,
   stepsEarned,
+  stepsForecast,
   theme,
 }: {
   goal: DayGoal;
@@ -229,21 +257,28 @@ function DayProgress({
   workoutKcalRaw: number;
   steps: number;
   stepsEarned: number;
+  stepsForecast: boolean;
   theme: Theme;
 }) {
   const { t } = useTranslation();
   const kcalEaten = Math.round(totals.kcal);
-  // «Base + earned» budget, shown as a transparent sum: goal.kcal is the RESTING
-  // base (what you can eat if you barely moved); today's steps and workouts are
-  // added ON TOP, so movement always raises the budget and the user sees why.
+  // «Base + earned» budget, shown as a transparent sum: the deficit base (what
+  // the chosen tempo asks for) plus today's steps and workouts ON TOP — never
+  // below the healthy day-minimum. Movement always raises the day and re-opens
+  // the chosen deficit; only a zero-movement day rests at the minimum.
   const stepsAdd = Math.max(0, stepsEarned);
   const workoutAdd = Math.round(Math.max(0, workoutKcalRaw) * EATBACK_FRACTION);
-  const target = goal.kcal + stepsAdd + workoutAdd;
+  const target = dayBudgetKcal(goal.baseKcal, goal.minDayKcal, stepsAdd + workoutAdd);
+  const minBinds = goal.baseKcal + stepsAdd + workoutAdd < goal.minDayKcal;
+  // A forecast only makes the target «≈» when it actually moves the number.
+  const approx = stepsForecast && stepsAdd > 0;
   const onPlan = kcalEaten <= target;
-  // The visible breakdown: «покой N · шаги +N · тренировки +N».
-  const parts = [t('food.day.restBase', { kcal: goal.kcal })];
-  if (stepsAdd > 0) parts.push(t('food.day.stepsPart', { kcal: stepsAdd, steps }));
+  // The visible breakdown: «база N · шаги +N · тренировки +N [· не ниже N]».
+  const parts = [t('food.day.restBase', { kcal: goal.baseKcal })];
+  if (stepsAdd > 0)
+    parts.push(t(stepsForecast ? 'food.day.stepsForecastPart' : 'food.day.stepsPart', { kcal: stepsAdd, steps }));
   if (workoutAdd > 0) parts.push(t('food.day.workoutsPart', { kcal: workoutAdd }));
+  if (minBinds) parts.push(t('food.day.minPart', { kcal: goal.minDayKcal }));
   const macros = [
     { label: t('macros.protein'), eaten: Math.round(totals.proteinG), target: goal.prot },
     { label: t('macros.fat'), eaten: Math.round(totals.fatG), target: goal.fat },
@@ -262,11 +297,16 @@ function DayProgress({
       {goal.hideCalories ? null : (
         <>
           <Text style={[styles.dayKcal, { color: theme.text }, theme.font.bodyMedium]}>
-            {t('food.day.kcal', { eaten: kcalEaten, target })}
+            {t(approx ? 'food.day.kcalApprox' : 'food.day.kcal', { eaten: kcalEaten, target })}
           </Text>
           <Bar value={kcalEaten} max={target} color={theme.primary} track={theme.fill} height={8} />
-          {stepsAdd > 0 || workoutAdd > 0 ? (
+          {stepsAdd > 0 || workoutAdd > 0 || minBinds ? (
             <Text style={[styles.dayWorkout, { color: theme.subtle }, theme.font.body]}>{parts.join(' · ')}</Text>
+          ) : null}
+          {approx ? (
+            <Text style={[styles.dayWorkout, { color: theme.subtle }, theme.font.body]}>
+              {t('food.day.forecastNote')}
+            </Text>
           ) : null}
         </>
       )}

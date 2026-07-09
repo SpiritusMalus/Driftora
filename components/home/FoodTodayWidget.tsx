@@ -13,6 +13,7 @@ import { useTheme } from '@/lib/theme/theme';
 export function FoodTodayWidget({
   kcal,
   targetKcal,
+  targetApprox = false,
   prot,
   targetProt,
   fat,
@@ -23,6 +24,9 @@ export function FoodTodayWidget({
 }: {
   kcal: number;
   targetKcal: number;
+  /// True when the target stands on FORECAST steps (median of recent days,
+  /// today's not entered yet) — rendered as «≈N» so it never reads as a fact.
+  targetApprox?: boolean;
   prot: number;
   targetProt: number;
   fat: number;
@@ -50,7 +54,7 @@ export function FoodTodayWidget({
         {Math.round(kcal)}
         <Text style={{ color: theme.subtle }}>
           {' '}
-          / {targetKcal > 0 ? Math.round(targetKcal) : '—'} {t('units.kcal')}
+          / {targetKcal > 0 ? (targetApprox ? '≈' : '') + Math.round(targetKcal) : '—'} {t('units.kcal')}
         </Text>
       </Text>
       {targetKcal > 0 ? (

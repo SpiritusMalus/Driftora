@@ -11,6 +11,7 @@ import {
   listStepsDays,
   setManualSteps,
   syncDaySteps,
+  typicalSteps,
   upsertSteps,
 } from '@/lib/core/db/steps';
 import type { HealthService } from '@/lib/core/services/health';
@@ -148,6 +149,65 @@ describe('steps provenance + manual stickiness', () => {
     await syncDaySteps(db, makeDevice(7200), day);
     expect(await getStepsForDay(db, day)).toBe(7200);
     expect(await listStepsDays(db)).toHaveLength(1);
+
+    sqlite.close();
+  });
+});
+
+describe('typicalSteps (the «как обычно» forecast feeding the morning budget)', () => {
+  const TODAY = '2026-06-16';
+
+  it('needs at least 3 recorded days — otherwise null (no whipsawing forecast)', async () => {
+    const { sqlite, db } = makeDb();
+    await applySchema((s) => sqlite.exec(s));
+
+    expect(await typicalSteps(db, TODAY)).toBeNull();
+    await upsertSteps(db, '2026-06-14', 8000);
+    await upsertSteps(db, '2026-06-15', 9000);
+    expect(await typicalSteps(db, TODAY)).toBeNull();
+
+    sqlite.close();
+  });
+
+  it('takes the MEDIAN of recorded days, excluding today (a partial entry must not feed itself)', async () => {
+    const { sqlite, db } = makeDb();
+    await applySchema((s) => sqlite.exec(s));
+
+    await upsertSteps(db, '2026-06-13', 4000);
+    await upsertSteps(db, '2026-06-14', 10000);
+    await upsertSteps(db, '2026-06-15', 25000); // one hike day doesn't drag the typical
+    await upsertSteps(db, TODAY, 500); // half-day partial — excluded
+    expect(await typicalSteps(db, TODAY)).toBe(10000);
+
+    sqlite.close();
+  });
+
+  it('averages the middle pair on an even count', async () => {
+    const { sqlite, db } = makeDb();
+    await applySchema((s) => sqlite.exec(s));
+
+    await upsertSteps(db, '2026-06-12', 4000);
+    await upsertSteps(db, '2026-06-13', 8000);
+    await upsertSteps(db, '2026-06-14', 9000);
+    await upsertSteps(db, '2026-06-15', 20000);
+    expect(await typicalSteps(db, TODAY)).toBe(8500);
+
+    sqlite.close();
+  });
+
+  it('looks at the most recent recorded days only (window), gaps in the calendar are fine', async () => {
+    const { sqlite, db } = makeDb();
+    await applySchema((s) => sqlite.exec(s));
+
+    // 3 old low days beyond the window…
+    await upsertSteps(db, '2026-05-01', 1000);
+    await upsertSteps(db, '2026-05-02', 1000);
+    await upsertSteps(db, '2026-05-03', 1000);
+    // …and 14 recent 10k days (sparse calendar — only recorded days count).
+    for (let d = 1; d <= 14; d++) {
+      await upsertSteps(db, `2026-06-${String(d).padStart(2, '0')}`, 10000);
+    }
+    expect(await typicalSteps(db, TODAY)).toBe(10000);
 
     sqlite.close();
   });

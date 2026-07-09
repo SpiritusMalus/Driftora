@@ -295,7 +295,7 @@ export const en = {
         gain: 'You weigh {{kg}} kg. For a gradual gain — about +{{pace}} kg a week — you need:',
       },
       kcalPerDay: '≈ {{kcal}} kcal a day',
-      restNote: 'This is your «resting» base. Your steps and workouts for the day add to it on the Food screen.',
+      restNote: 'This is the base — a day with no movement at all. Your steps and workouts add to it on the Food screen.',
       goalWeight: 'Goal weight',
       // Transparency: which kilograms the protein was computed from. Adipose
       // tissue needs almost no protein — at high BMI total weight over-prescribes.
@@ -303,6 +303,12 @@ export const en = {
         goal: 'Protein is computed from your goal weight of {{kg}} kg: enough for muscle — fat mass needs none.',
         adjusted:
           'Protein is based on a "working" weight of {{kg}} kg, not your full weight — this is NOT your weight but a calculation basis: fat mass barely uses protein, so the full weight would over-prescribe. Set a goal weight to base it on that instead.',
+      },
+      bmrLine:
+        'Resting metabolism (BMR) ≈ {{kcal}} kcal — what your body burns at complete rest, {{method}}. This is the number a doctor or calculator would name; the day’s base sits above it because even a sedentary day burns more.',
+      bmrMethod: {
+        katch: 'computed from body composition (Katch–McArdle, lean mass)',
+        mifflin: 'computed with the Mifflin–St Jeor formula',
       },
       maintenanceLine: 'Maintenance ≈ {{maintenance}} kcal — what it takes to HOLD your current weight (this is NOT your target).',
       deltaLine: {
@@ -313,7 +319,7 @@ export const en = {
       etaWeeks: 'To your goal of {{goal}} kg ≈ {{n}} wk at this pace.',
       etaMonths: 'To your goal of {{goal}} kg ≈ {{n}} mo at this pace.',
       floored:
-        'Going lower isn’t worth it: this is the minimum where weight loss stays healthy. Slower — but without crashes.',
+        'On a day with no movement the target won’t drop below {{kcal}} kcal — the healthy minimum. Steps and workouts add to the base, so on days you move the chosen pace applies in full.',
       apply: 'Make this the diary goal',
       applied: 'Already your diary goal ✓',
       appliedTick: 'Goal updated ✓',
@@ -394,7 +400,7 @@ export const en = {
       birthYear: 'Birth year',
       activity: 'Activity',
       activityLevel: { sedentary: 'Sedentary', light: 'Light', moderate: 'Moderate', high: 'High' },
-      activityNote: 'No activity level needed anymore: the daily budget is transparent — «resting» (your formula metabolism) plus your steps and workouts for the day, which are added on the Food screen. More movement — more you can eat; movement only ever adds, never subtracts.',
+      activityNote: 'No activity level needed anymore: the daily budget is transparent — the base (your formula metabolism, a no-movement day) plus your steps and workouts for the day, which are added on the Food screen. More movement — more you can eat; movement only ever adds, never subtracts.',
       bodyFat: 'Body fat %',
       bodyFatHint: 'e.g. 20',
       bodyFatNote: 'Optional. If you know your measured body-fat % (smart scale, calipers, DEXA), we base metabolism on body composition (Katch–McArdle): at the same weight, more muscle = higher burn. A 120 kg athlete and a 120 kg couch-sitter get different numbers. Leave blank or guessed — we keep the standard formula, which is more honest.',
@@ -455,11 +461,15 @@ export const en = {
     day: {
       title: 'Today',
       kcal: '{{eaten}} of {{target}} kcal',
+      kcalApprox: '{{eaten}} of ≈{{target}} kcal',
       onPlan: 'on plan ✓',
       over: 'over plan today',
-      restBase: 'resting {{kcal}}',
+      restBase: 'base {{kcal}}',
       stepsPart: 'steps {{steps}} +{{kcal}}',
+      stepsForecastPart: 'steps ≈{{steps}} (your usual) +{{kcal}}',
       workoutsPart: 'workouts +{{kcal}}',
+      minPart: 'not below {{kcal}}',
+      forecastNote: 'Today’s steps aren’t logged yet — the budget stands on your usual count. Enter your steps and it firms up.',
     },
     parseIssue: {
       offline: 'The server didn’t answer — parsed offline, without AI, so the numbers are rougher. You can try again.',

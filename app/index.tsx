@@ -24,11 +24,11 @@ import type { AppSettings } from '@/lib/core/db/schema';
 import { latestMood, logMood } from '@/lib/core/db/mood';
 import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
 import { syncDaySleep } from '@/lib/core/db/sleep';
-import { dayKey, listStepsDays, syncDaySteps } from '@/lib/core/db/steps';
+import { dayKey, listStepsDays, syncDaySteps, typicalSteps } from '@/lib/core/db/steps';
 import { weekReview } from '@/lib/core/db/weekReview';
 import { latestWeight } from '@/lib/core/db/weight';
 import { todayWorkoutKcal } from '@/lib/core/db/workouts';
-import { EATBACK_FRACTION, restingPlan, stepsEarnedKcal } from '@/lib/core/insights/bodyMetrics';
+import { dayBudgetKcal, EATBACK_FRACTION, restingPlan, stepsEarnedKcal } from '@/lib/core/insights/bodyMetrics';
 import { personalBaseline, type PersonalBaseline } from '@/lib/core/insights/baseline';
 import {
   MIN_PAIRED_DAYS,
@@ -57,6 +57,10 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
 
   const [steps, setSteps] = useState<number | null>(null);
+  // Median of recent recorded days — the food budget's morning stand-in until
+  // today's steps exist («как обычно у вас»). Never shown in the steps widget
+  // itself: that one is the FACT/input, the forecast only feeds the budget.
+  const [usualSteps, setUsualSteps] = useState<number | null>(null);
   const [stepsMeaning, setStepsMeaning] = useState<string | null>(null);
   // Today's steps vs the user's OWN recent normal (personal baseline). null/
   // 'forming' while we don't have enough days to make an honest high/low claim.
@@ -155,6 +159,7 @@ export default function HomeScreen() {
         }
         const daysGap = daysSince(lastActivity);
         setSteps(stepCount);
+        setUsualSteps(await typicalSteps(db));
         setStepsMeaning(stepCount == null ? null : stepInsight(stepCount, settingsRow.stepsGoal));
         setStepsBaselineKind(stepsBaseline ? stepsBaseline.kind : null);
         setSleepMin(sleepMinutes);
@@ -320,9 +325,12 @@ export default function HomeScreen() {
   // 2000/120/70/200 defaults are not a goal (mirrors the food-day card, which
   // hides the goal otherwise). Without one, the widget shows just what was eaten.
   const hasGoal = settings != null && settings.targetsSetAt != null && !settings.paused && settings.targetKcal > 0;
-  // «Base + earned» — the SAME budget the food day shows: a resting base plus the
-  // eat-back share of today's earned activity (steps above the resting baseline +
-  // workouts). Falls back to the frozen target when the profile can't compute a plan.
+  // «Base + earned» — the SAME budget the food day shows: the tempo's deficit
+  // base plus the eat-back share of today's earned activity, never below the
+  // healthy day-minimum ([dayBudgetKcal]). Until today's steps are entered the
+  // earned part stands on the median of recent days («как обычно») and the
+  // number reads as ≈. Falls back to the frozen target when the profile can't
+  // compute a plan.
   const dayBase =
     settings != null
       ? restingPlan(
@@ -340,11 +348,16 @@ export default function HomeScreen() {
           settings.deficitTempo,
         )
       : null;
-  const earnedAdd =
-    stepsEarnedKcal(steps ?? 0, weightRow?.weightKg ?? 0) +
-    Math.round(Math.max(0, workoutRawKcal) * EATBACK_FRACTION);
-  const foodBaseKcal = dayBase?.kcal ?? (settings?.targetKcal ?? 0);
-  const foodTargetKcal = hasGoal ? foodBaseKcal + earnedAdd : 0;
+  const budgetSteps = steps ?? usualSteps ?? 0;
+  const stepsEarnedAdd = stepsEarnedKcal(budgetSteps, weightRow?.weightKg ?? 0);
+  const earnedAdd = stepsEarnedAdd + Math.round(Math.max(0, workoutRawKcal) * EATBACK_FRACTION);
+  const foodTargetKcal = hasGoal
+    ? dayBase != null
+      ? dayBudgetKcal(dayBase.baseKcal, dayBase.minDayKcal, earnedAdd)
+      : (settings?.targetKcal ?? 0) + earnedAdd
+    : 0;
+  // Forecast only makes the target «≈» when it actually moves the number.
+  const foodTargetApprox = steps == null && usualSteps != null && stepsEarnedAdd > 0;
 
   // Value ladder for the no-goal user: once a WEIGHT is logged, today's steps get
   // an honest «≈ N ккал» estimate — walking becomes a real number without needing
@@ -453,6 +466,7 @@ export default function HomeScreen() {
         <FoodTodayWidget
           kcal={totals.kcal}
           targetKcal={foodTargetKcal}
+          targetApprox={foodTargetApprox}
           prot={totals.proteinG}
           targetProt={hasGoal ? (dayBase?.prot ?? settings!.targetProteinG) : 0}
           fat={totals.fatG}
