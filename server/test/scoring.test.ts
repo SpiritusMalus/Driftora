@@ -40,8 +40,9 @@ test('rankByName: generic plain food beats a closer-typed brand', () => {
   assert.ok(ranked[0]!.score > ranked[1]!.score);
 });
 
-test('scoreToConfidence: floored so a real hit is never junk-low', () => {
-  assert.equal(scoreToConfidence(0), 0.4);
+test('scoreToConfidence: real-but-terse hit floored at 0.4, but zero overlap → 0', () => {
+  assert.equal(scoreToConfidence(0), 0); // nothing in common is NOT a match (milk vs salad)
+  assert.equal(scoreToConfidence(0.1), 0.4); // a real, weak overlap is floored so it doesn't read as junk
   assert.equal(scoreToConfidence(1), 1);
   assert.ok(scoreToConfidence(0.7) > 0.4);
 });

@@ -461,13 +461,7 @@ export default function HomeScreen() {
           targetCarb={hasGoal ? (dayBase?.carb ?? settings!.targetCarbG) : 0}
           onPress={() => router.push('/food')}
         />
-        <WeightWidget
-          db={db}
-          latestKg={weightRow?.weightKg ?? 0}
-          subtitle={weightSubtitle}
-          settings={settings}
-          onSaved={reload}
-        />
+        <WeightWidget db={db} subtitle={weightSubtitle} onSaved={reload} />
         <StepsWidget db={db} subtitle={stepsSubtitle} estimateLine={stepsEstimateLine} onSaved={reload} />
         <ListGroup rows={[diaryRow]} />
 

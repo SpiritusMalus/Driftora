@@ -139,10 +139,6 @@ export const en = {
       placeholder: 'Weight today',
       save: 'Save',
       saving: 'Saving…',
-      planToggle: 'Daily КБЖУ',
-      planKcal: 'Target ≈ {{kcal}} kcal',
-      planHint: 'The plan follows your latest weight. More on the «Weight» screen.',
-      planNeedProfile: 'Fill in your profile (height, sex, year, activity) on the «Weight» screen to see КБЖУ.',
     },
     northStar: 'Showing up {{weeks}} weeks running.',
     paused: {
@@ -552,6 +548,9 @@ export const en = {
       'Per-100g composition is from the database. The whole-dish total is approximate (portion estimated). Confirm the weight for accuracy.',
     grams: 'Weight',
     gramsHint: 'Confirm the weight to make the total exact.',
+    // Editing a single dish inside a saved entry.
+    removeItem: 'Remove dish',
+    replaceItem: 'Replace with another',
     // The user never named a weight — say honestly this is our guess.
     gramsEstimated: '≈ you didn’t name a weight — a typical portion was assumed. Confirm it for accuracy.',
     // Cooking method — neutral, never "healthier/worse".
@@ -577,6 +576,7 @@ export const en = {
       skurikhin: 'from Skurikhin tables',
       openfoodfacts: 'from Open Food Facts',
       apininjas: 'from API Ninjas',
+      fatsecret: 'from FatSecret',
       label: 'from package label',
       ai_estimate: '≈ AI estimate',
       estimate: 'estimate (not in DB)',

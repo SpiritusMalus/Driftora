@@ -185,6 +185,17 @@ export function withItemGrams(draft: MealDraft, index: number, grams: number): M
   return recomputeDraft(draft.region, items);
 }
 
+/// Remove one item from the draft entirely — the user changed their mind about a
+/// dish they'd already logged ("передумал его есть, а уже отметил"). Recomputes
+/// totals/flags off the survivors; a no-op for an out-of-range index.
+export function removeDraftItem(draft: MealDraft, index: number): MealDraft {
+  if (index < 0 || index >= draft.items.length) return draft;
+  return recomputeDraft(
+    draft.region,
+    draft.items.filter((_, i) => i !== index),
+  );
+}
+
 /// Swap one item to a different DB match the user picked from its `alternatives`
 /// ("не то?"). The chosen candidate becomes the live per-100g; the previously
 /// shown match drops back into the alternatives list (so the swap is reversible),

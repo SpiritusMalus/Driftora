@@ -6,9 +6,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card } from '@/components/ui/Card';
 import { TextField } from '@/components/ui/TextField';
-import type { AppSettings } from '@/lib/core/db/schema';
 import { upsertWeight } from '@/lib/core/db/weight';
-import { suggestPlan, type GoalMode } from '@/lib/core/insights/bodyMetrics';
 import { useTheme } from '@/lib/theme/theme';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -19,21 +17,17 @@ function toNumber(v: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-/// Home widget: log today's weight inline (no need to open the full screen) and
-/// peek the day's КБЖУ plan in a collapsible below — the plan follows the latest
-/// weight. The header row still opens the full «Вес» screen (trend, history,
-/// profile). `onSaved` refreshes Home after a save.
+/// Home widget: log today's weight inline (no need to open the full screen). The
+/// header row opens the full «Вес» screen (trend, history, profile, КБЖУ plan).
+/// The daily КБЖУ lives in the food widget above this one, so it isn't repeated
+/// here. `onSaved` refreshes Home after a save.
 export function WeightWidget({
   db,
-  latestKg,
   subtitle,
-  settings,
   onSaved,
 }: {
   db: Db;
-  latestKg: number;
   subtitle: string;
-  settings: AppSettings | null;
   onSaved: () => void | Promise<void>;
 }) {
   const { t } = useTranslation();
@@ -41,7 +35,6 @@ export function WeightWidget({
   const router = useRouter();
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
-  const [planOpen, setPlanOpen] = useState(false);
 
   const kg = toNumber(text);
   const valid = kg > 0;
@@ -57,25 +50,6 @@ export function WeightWidget({
       setSaving(false);
     }
   }
-
-  // Plan preview from the latest weight — same engine as the «Вес» screen.
-  const plan =
-    settings != null && latestKg > 0
-      ? suggestPlan(
-          {
-            sex: settings.sex,
-            birthYear: settings.birthYear,
-            heightCm: settings.heightCm,
-            activityLevel: settings.activityLevel,
-            bodyFatPct: settings.bodyFatPct,
-          },
-          latestKg,
-          (settings.goalMode as GoalMode) ?? 'maintain',
-          new Date(),
-          settings.goalWeightKg,
-          settings.deficitTempo,
-        )
-      : null;
 
   return (
     <Card style={styles.card}>
@@ -114,33 +88,6 @@ export function WeightWidget({
           </Text>
         </Pressable>
       </View>
-
-      <Pressable onPress={() => setPlanOpen((v) => !v)} style={styles.planToggle} hitSlop={6}>
-        <Text style={[styles.planToggleText, { color: theme.primary }, theme.font.bodySemiBold]}>
-          {t('home.weight.planToggle')}
-        </Text>
-        <Ionicons name={planOpen ? 'chevron-up' : 'chevron-down'} size={14} color={theme.primary} />
-      </Pressable>
-
-      {planOpen ? (
-        plan != null ? (
-          <View style={styles.plan}>
-            <Text style={[styles.planKcal, { color: theme.text }, theme.font.body]}>
-              {t('home.weight.planKcal', { kcal: plan.kcal })}
-            </Text>
-            <Text style={[styles.planMacroLine, { color: theme.subtle }, theme.font.body]}>
-              {t('macros.protein')} {plan.prot} · {t('macros.fat')} {plan.fat} · {t('macros.carbs')} {plan.carb} {t('units.g')}
-            </Text>
-            <Text style={[styles.planHint, { color: theme.subtle }, theme.font.body]}>
-              {t('home.weight.planHint')}
-            </Text>
-          </View>
-        ) : (
-          <Text style={[styles.planHint, { color: theme.subtle }, theme.font.body]}>
-            {t('home.weight.planNeedProfile')}
-          </Text>
-        )
-      ) : null}
     </Card>
   );
 }
@@ -156,10 +103,4 @@ const styles = StyleSheet.create({
   unit: { fontSize: 14 },
   saveBtn: { paddingVertical: 9, paddingHorizontal: 16, borderRadius: 12 },
   saveText: { fontSize: 14 },
-  planToggle: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 12 },
-  planToggleText: { fontSize: 13 },
-  plan: { marginTop: 10, gap: 6 },
-  planKcal: { fontSize: 14 },
-  planMacroLine: { fontSize: 13 },
-  planHint: { fontSize: 12, lineHeight: 17, marginTop: 4 },
 });

@@ -65,7 +65,13 @@ beforeEach(() => {
         { name_ru: 'тост', name_en: 'toast', est_grams: 30, confidence: 0.8 },
       ]);
     }
-    if (url.includes('api.nal.usda.gov')) return json(usdaHit);
+    if (url.includes('api.nal.usda.gov')) {
+      // Echo the queried name as the description — a realistic USDA hit (the
+      // resolver now drops rows that share NO token with the query, so a static
+      // 'food' placeholder would no longer resolve).
+      const q = new URL(url).searchParams.get('query') ?? 'food';
+      return json({ foods: [{ ...usdaHit.foods[0], description: q }] });
+    }
     throw new Error(`unexpected fetch in test: ${url}`);
   }) as typeof fetch;
 });

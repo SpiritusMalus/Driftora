@@ -191,10 +191,14 @@ export class Resolver {
     for (const provider of chainFor(this.providers, region)) {
       const name = nameFor(provider);
       if (name.length === 0) continue;
+      // Drop zero-confidence rows (no name overlap at all) BEFORE picking a
+      // primary: a broad free-text provider that returns off-topic junk (milk
+      // rows for a salad query) must not stop the chain or beat the estimate.
+      const candidates = (await this.candidatesFrom(provider, name, region)).filter((c) => c.confidence > 0);
       // Name ranking alone can pick a product the query explicitly negated
       // («без сахара» → sugared row); composition-aware demotion fixes the
       // order and honestly drops confidence when only contradictions exist.
-      const results = demoteContradictions(name, await this.candidatesFrom(provider, name, region));
+      const results = demoteContradictions(name, candidates);
       const primary = results[0];
       if (primary) {
         return {
@@ -289,7 +293,7 @@ export class Resolver {
         cyrillic && p.queryLang === 'en' ? Promise.resolve([]) : this.candidatesFrom(p, trimmed, region),
       ),
     );
-    const merged = demoteContradictions(trimmed, lists.flat());
+    const merged = demoteContradictions(trimmed, lists.flat().filter((c) => c.confidence > 0));
     const out = merged.slice(0, MAX_SEARCH_RESULTS).map((r) => ({
       name: r.name ?? trimmed,
       per100: coercePer100(r.per100),
