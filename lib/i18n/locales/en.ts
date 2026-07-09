@@ -298,6 +298,11 @@ export const en = {
     kmh: 'km/h',
     speedHint: 'e.g. {{n}}',
     speedOptional: 'Pace is optional. Don’t know it? We’ll use an average.',
+    // Strength is logged in sets — no stopwatch needed.
+    setsPlaceholder: 'e.g. 12',
+    setsUnit: 'sets',
+    setsCount: '{{count}} sets',
+    setsHint: 'No timing needed: we assume ≈3 min per set (work + rest) and add an afterburn of ≈ +10%.',
     add: 'Add',
     remove: 'Remove',
     describeLabel: 'Or describe it',
@@ -307,7 +312,7 @@ export const en = {
     parseAdded: 'Added {{count}} entr(ies). Check the time and burn.',
     parseNone: 'Couldn’t parse that. Refine it, or use the buttons above.',
     parseDeclined: 'Free-text needs AI consent. The buttons above work offline.',
-    note: 'Burn is estimated from type and duration (MET × weight). For walking, running and cycling you can add your pace (km/h) for a sharper estimate; without it we assume an average pace. You can also just describe the workout in words — AI splits it into types and durations, and the app computes the calories (a «≈» number is a rough AI estimate for unusual activities). Formulas overstate by ~25%, so only 75% is added to the day’s target. Adjust by how you feel and your weight trend.',
+    note: 'Burn is estimated from type and duration (MET × weight); strength — from sets (≈3 min each). Strength and HIIT get an afterburn (EPOC) of ≈ +10% — the body keeps spending on recovery for 24–48 h after the session. For walking, running and cycling you can add your pace (km/h) for a sharper estimate. You can also just describe the workout in words — AI splits it into types and volume, and the app computes the calories (a «≈» number is a rough AI estimate for unusual activities). Formulas overstate by ~25%, so only 75% is added to the day’s target. Adjust by how you feel and your weight trend.',
     type: {
       walk: 'Walking',
       run: 'Running',

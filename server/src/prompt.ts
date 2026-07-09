@@ -175,7 +175,8 @@ walk, run, cycle, swim, strength, hiit, elliptical, row, sport, dance, martial, 
 For each activity output:
 - type: one of the keys above, or "other".
 - name_ru: a short Russian label of what was actually done (e.g. "отжимания", "приседания", "бег", "планка").
-- minutes: duration in minutes (integer-ish). If the user gave REPS or SETS instead of a time, ESTIMATE the minutes it realistically takes, including short rests (e.g. 100 отжиманий за несколько подходов ≈ 8 мин; 3×15 приседаний ≈ 6 мин; планка 3×1 мин ≈ 4 мин). If a duration is stated, use it. minutes must be > 0.
+- minutes: duration in minutes (integer-ish). If the user gave REPS or SETS instead of a time, ESTIMATE the minutes it realistically takes, including short rests (e.g. 100 отжиманий за несколько подходов ≈ 8 мин; 3×15 приседаний ≈ 6 мин; планка 3×1 мин ≈ 4 мин; a gym strength set with rest ≈ 3 мин). If a duration is stated, use it. minutes must be > 0.
+- sets: for "strength" ONLY — the number of SETS (подходов) when the user stated or clearly implied them ("жим лёжа 4 подхода" → 4; "3×15 приседаний" → 3; "5 подходов приседа и 4 жима" → two entries with 5 and 4). Lifters don't track time, so sets is how the entry will be shown. Omit when not stated and for every non-strength type.
 - speed_kmh: for walk / run / cycle ONLY, the pace in km/h when the user stated or clearly implied one ("бежал 10 км/ч", "10 км за час" → 10; "5 км за 30 минут" → 10). Omit when no pace is given — do NOT guess a pace.
 - met: ONLY when type is "other". Give your best MET (metabolic-equivalent) for that activity at the described effort (e.g. отжимания ≈ 8, планка ≈ 3, скакалка ≈ 12, гребной тренажёр уже есть как "row"). Omit met for every known type — the app has its own.
 - confidence: 0..1.
@@ -203,6 +204,7 @@ export const PARSE_WORKOUT_SCHEMA = {
           type: { type: 'string', enum: [...WORKOUT_TYPE_KEYS] },
           name_ru: { type: 'string' },
           minutes: { type: 'number' },
+          sets: { type: ['number', 'null'], description: 'Set count — ONLY for type "strength" when stated/implied. Omit otherwise.' },
           speed_kmh: { type: ['number', 'null'] },
           met: { type: ['number', 'null'], description: 'Model MET estimate — ONLY for type "other". Omit for known types.' },
           confidence: { type: 'number' },

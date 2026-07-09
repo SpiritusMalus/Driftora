@@ -13,6 +13,8 @@ import { latestWeight } from '@/lib/core/db/weight';
 import { addParsedWorkout, addWorkout, deleteWorkout, listWorkoutsForDay } from '@/lib/core/db/workouts';
 import {
   EATBACK_FRACTION,
+  setsToMinutes,
+  supportsSets,
   supportsSpeed,
   WORKOUT_TYPES,
   type WorkoutType,
@@ -37,6 +39,9 @@ export function WorkoutSection({ db, onChange }: { db: Db; onChange?: (rawKcal: 
   const [weightKg, setWeightKg] = useState(70);
   const [type, setType] = useState<WorkoutType>('walk');
   const [minutes, setMinutes] = useState('');
+  // Strength is logged in SETS («время не нужно») — a separate field so a
+  // half-typed minute count survives switching chips back and forth.
+  const [sets, setSets] = useState('');
   const [speed, setSpeed] = useState('');
   const [open, setOpen] = useState(false);
   // Free-text parse path.
@@ -73,13 +78,23 @@ export function WorkoutSection({ db, onChange }: { db: Db; onChange?: (rawKcal: 
   }, [db]);
 
   async function add() {
-    const min = Number(minutes.replace(',', '.'));
-    if (!db || !Number.isFinite(min) || min <= 0) return;
-    const kmh = supportsSpeed(type) ? Number(speed.replace(',', '.')) : NaN;
-    const speedKmh = Number.isFinite(kmh) && kmh > 0 ? kmh : null;
-    await addWorkout(db, type, min, weightKg, speedKmh);
-    setMinutes('');
-    setSpeed('');
+    if (!db) return;
+    if (supportsSets(type)) {
+      // Strength: sets → estimated minutes (~3 min each incl. rest); no stopwatch.
+      const n = Number(sets.replace(',', '.'));
+      const min = setsToMinutes(n);
+      if (!(min > 0)) return;
+      await addWorkout(db, type, min, weightKg, null, new Date(), Math.round(n));
+      setSets('');
+    } else {
+      const min = Number(minutes.replace(',', '.'));
+      if (!Number.isFinite(min) || min <= 0) return;
+      const kmh = supportsSpeed(type) ? Number(speed.replace(',', '.')) : NaN;
+      const speedKmh = Number.isFinite(kmh) && kmh > 0 ? kmh : null;
+      await addWorkout(db, type, min, weightKg, speedKmh);
+      setMinutes('');
+      setSpeed('');
+    }
     await reload();
   }
 
@@ -100,7 +115,14 @@ export function WorkoutSection({ db, onChange }: { db: Db; onChange?: (rawKcal: 
       for (const p of parsed) {
         await addParsedWorkout(
           db,
-          { type: p.type, name_ru: p.name_ru, minutes: p.minutes, speedKmh: p.speed_kmh ?? null, met: p.met ?? null },
+          {
+            type: p.type,
+            name_ru: p.name_ru,
+            minutes: p.minutes,
+            speedKmh: p.speed_kmh ?? null,
+            met: p.met ?? null,
+            sets: p.sets ?? null,
+          },
           weightKg,
         );
       }
@@ -182,14 +204,29 @@ export function WorkoutSection({ db, onChange }: { db: Db; onChange?: (rawKcal: 
           </View>
 
           <View style={styles.addRow}>
-            <TextField
-              value={minutes}
-              onChangeText={setMinutes}
-              keyboardType="numeric"
-              placeholder={t('workouts.minutes')}
-              style={styles.minInput}
-            />
-            <Text style={[styles.unit, { color: theme.subtle }, theme.font.body]}>{t('workouts.min')}</Text>
+            {supportsSets(type) ? (
+              <>
+                <TextField
+                  value={sets}
+                  onChangeText={setSets}
+                  keyboardType="numeric"
+                  placeholder={t('workouts.setsPlaceholder')}
+                  style={styles.minInput}
+                />
+                <Text style={[styles.unit, { color: theme.subtle }, theme.font.body]}>{t('workouts.setsUnit')}</Text>
+              </>
+            ) : (
+              <>
+                <TextField
+                  value={minutes}
+                  onChangeText={setMinutes}
+                  keyboardType="numeric"
+                  placeholder={t('workouts.minutes')}
+                  style={styles.minInput}
+                />
+                <Text style={[styles.unit, { color: theme.subtle }, theme.font.body]}>{t('workouts.min')}</Text>
+              </>
+            )}
             <Pressable
               onPress={() => void add()}
               accessibilityRole="button"
@@ -201,6 +238,12 @@ export function WorkoutSection({ db, onChange }: { db: Db; onChange?: (rawKcal: 
               </Text>
             </Pressable>
           </View>
+
+          {supportsSets(type) ? (
+            <Text style={[styles.setsHint, { color: theme.tertiary }, theme.font.body]}>
+              {t('workouts.setsHint')}
+            </Text>
+          ) : null}
 
           {supportsSpeed(type) ? (
             <View style={styles.speedRow}>
@@ -261,7 +304,10 @@ export function WorkoutSection({ db, onChange }: { db: Db; onChange?: (rawKcal: 
               {rows.map((r) => (
                 <View key={r.id} style={styles.item}>
                   <Text style={[styles.itemName, { color: theme.text }, theme.font.body]} numberOfLines={1}>
-                    {r.label ? r.label : t(`workouts.type.${r.type}`)} · {r.minutes} {t('workouts.min')}
+                    {r.label ? r.label : t(`workouts.type.${r.type}`)} ·{' '}
+                    {r.sets != null && r.sets > 0
+                      ? t('workouts.setsCount', { count: r.sets })
+                      : `${r.minutes} ${t('workouts.min')}`}
                     {r.speedKmh ? ` · ${Math.round(r.speedKmh * 10) / 10} ${t('workouts.kmh')}` : ''}
                   </Text>
                   <Text style={[styles.itemKcal, { color: theme.subtle }, theme.font.body]}>
@@ -310,6 +356,7 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 13 },
   addRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 },
   speedRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
+  setsHint: { fontSize: 12, lineHeight: 16, marginTop: 6 },
   minInput: { width: 90 },
   unit: { fontSize: 13 },
   speedOptional: { fontSize: 12, flex: 1, lineHeight: 16 },

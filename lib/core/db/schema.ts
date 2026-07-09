@@ -71,6 +71,9 @@ export const workouts = sqliteTable('workouts', {
   // Free-text label from the LLM parse path (e.g. "отжимания") so the log shows
   // what was actually done; null for chip-logged entries (the type IS the label).
   label: text('label'),
+  // Set count for strength entries logged «подходами» (no stopwatch needed);
+  // minutes then hold the ~3-min-per-set estimate. Null for time-based entries.
+  sets: integer('sets'),
 });
 export type WorkoutRow = typeof workouts.$inferSelect;
 

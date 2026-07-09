@@ -174,10 +174,42 @@ export function metForSpeed(type: WorkoutType, speedKmh: number): number | null 
   }
 }
 
+/// Types logged in SETS, not minutes («делаю силовые — тебе не нужно знать
+/// время»): the UI asks «сколько подходов» and estimates the duration at
+/// [MIN_PER_SET] each. Kept to strength — cardio/HIIT are genuinely time-shaped.
+export const SET_WORKOUT_TYPES: readonly WorkoutType[] = ['strength'];
+
+export function supportsSets(type: WorkoutType): boolean {
+  return SET_WORKOUT_TYPES.includes(type);
+}
+
+/// Average whole minutes ONE strength set occupies including the inter-set rest
+/// (~30–60 s of work + ~2 min rest). The Compendium's weights MET already
+/// averages work with rest, so sets × this feeds the same MET model honestly.
+export const MIN_PER_SET = 3;
+
+/// Sets → estimated minutes, clamped to a sane set count so a typo (300) can't
+/// blow up the day's budget.
+export function setsToMinutes(sets: number): number {
+  if (!Number.isFinite(sets)) return 0;
+  return Math.min(Math.max(0, Math.round(sets)), 60) * MIN_PER_SET;
+}
+
+/// «Дожиг» (EPOC): after resistance / interval work the body burns above rest
+/// for 24–48 h — glycogen restock, fiber repair, protein synthesis. Studies put
+/// it around 6–15% of the session's cost, so a conservative +10% is credited
+/// for these types ONLY; steady cardio's afterburn is small enough that adding
+/// it would be false precision.
+export const EPOC_BONUS: Partial<Record<WorkoutType, number>> = {
+  strength: 0.1,
+  hiit: 0.1,
+};
+
 /// Whole-kcal from an explicit MET, minutes and weight — the shared core of the
 /// MET model. Clamps garbage (minutes ≤ 10 h, weight to a sane band, MET must be
 /// positive) so it never returns NaN. Used directly for a free-text "other"
-/// activity whose MET the model supplied (no entry in [WORKOUT_MET]).
+/// activity whose MET the model supplied (no entry in [WORKOUT_MET]); note no
+/// EPOC is added here — an unknown activity has no type to hang the bonus on.
 export function kcalFromMet(met: number, minutes: number, weightKg: number): number {
   if (!Number.isFinite(met) || met <= 0) return 0;
   const min = Math.min(Math.max(0, minutes), 600);
@@ -185,9 +217,9 @@ export function kcalFromMet(met: number, minutes: number, weightKg: number): num
   return Math.round(met * kg * (min / 60));
 }
 
-/// Calories burned by one workout: MET × kg × hours, whole kcal. If a pace
-/// (km/h) is given for a speed-capable type it refines the MET; otherwise the
-/// fixed moderate MET is used.
+/// Calories burned by one workout: MET × kg × hours plus the type's afterburn
+/// ([EPOC_BONUS]), whole kcal. If a pace (km/h) is given for a speed-capable
+/// type it refines the MET; otherwise the fixed moderate MET is used.
 export function workoutKcal(
   type: WorkoutType,
   minutes: number,
@@ -197,7 +229,8 @@ export function workoutKcal(
   const fixed = WORKOUT_MET[type];
   if (fixed == null) return 0;
   const met = (speedKmh != null ? metForSpeed(type, speedKmh) : null) ?? fixed;
-  return kcalFromMet(met, minutes, weightKg);
+  const session = kcalFromMet(met, minutes, weightKg);
+  return Math.round(session * (1 + (EPOC_BONUS[type] ?? 0)));
 }
 
 /// Share of burned exercise calories added back to the day's budget. Predictive

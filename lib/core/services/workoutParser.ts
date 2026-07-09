@@ -23,6 +23,7 @@ export interface ParsedWorkout {
   minutes: number;
   speed_kmh?: number;
   met?: number;
+  sets?: number; // strength only — the entry is shown in подходы, not minutes
   confidence: number;
 }
 
@@ -43,7 +44,8 @@ function isParsedWorkout(v: unknown): v is ParsedWorkout {
     typeof w.minutes === 'number' &&
     typeof w.confidence === 'number' &&
     (w.speed_kmh === undefined || typeof w.speed_kmh === 'number') &&
-    (w.met === undefined || typeof w.met === 'number')
+    (w.met === undefined || typeof w.met === 'number') &&
+    (w.sets === undefined || typeof w.sets === 'number')
   );
 }
 

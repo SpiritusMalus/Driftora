@@ -529,7 +529,9 @@ export type WorkoutTypeKey = (typeof WORKOUT_TYPE_KEYS)[number];
  * One activity parsed from a free-text workout description. `speed_kmh` is only
  * meaningful for walk/run/cycle; `met` is the model's rough MET estimate carried
  * ONLY for `type: 'other'` (the app has its own MET for the known types and
- * ignores the model's there). Reps → `minutes` is estimated by the model.
+ * ignores the model's there). Reps → `minutes` is estimated by the model;
+ * `sets` is carried alongside for strength («жим 4 подхода») so the client can
+ * show the entry the way lifters think — in sets, not minutes.
  */
 export interface ParsedWorkout {
   type: WorkoutTypeKey;
@@ -537,6 +539,7 @@ export interface ParsedWorkout {
   minutes: number;
   speed_kmh?: number;
   met?: number;
+  sets?: number;
   confidence: number;
 }
 
@@ -571,6 +574,11 @@ export function normalizeParsedWorkouts(payload: unknown): ParsedWorkout[] {
     if (type === 'walk' || type === 'run' || type === 'cycle') {
       const s = posNum(r.speed_kmh);
       if (s !== undefined && s <= 60) item.speed_kmh = round1(s);
+    }
+    // Set count only makes sense for strength; clamp so a wild count is dropped.
+    if (type === 'strength') {
+      const s = posNum(r.sets);
+      if (s !== undefined && s <= 60) item.sets = Math.round(s);
     }
     // MET is carried only for 'other' (the app owns MET for known types). Clamp to
     // the realistic human range so a wild number can't inflate the burn.

@@ -239,6 +239,23 @@ test('normalizeParsedWorkouts: unknown type folds to "other"; name falls back to
   assert.equal(w.name_ru, 'other');
 });
 
+test('normalizeParsedWorkouts: sets ride along for strength only, clamped', () => {
+  const [lift] = normalizeParsedWorkouts({
+    workouts: [{ type: 'strength', name_ru: 'жим лёжа', minutes: 12, sets: 4, confidence: 0.9 }],
+  });
+  assert.equal(lift.sets, 4);
+  // A wild count is dropped rather than clamped-and-kept — no fabricated volume.
+  const [wild] = normalizeParsedWorkouts({
+    workouts: [{ type: 'strength', name_ru: 'жим', minutes: 12, sets: 500, confidence: 0.9 }],
+  });
+  assert.equal(wild.sets, undefined);
+  // Sets are meaningless for a run — dropped even if the model emits them.
+  const [run] = normalizeParsedWorkouts({
+    workouts: [{ type: 'run', name_ru: 'бег', minutes: 30, sets: 3, confidence: 0.9 }],
+  });
+  assert.equal(run.sets, undefined);
+});
+
 test('normalizeParsedWorkouts: drops non-positive / garbage durations, never throws', () => {
   assert.deepEqual(normalizeParsedWorkouts({ workouts: [{ type: 'run', minutes: 0, confidence: 1 }] }), []);
   assert.deepEqual(normalizeParsedWorkouts({ workouts: [{ type: 'walk', minutes: 'x', confidence: 1 }] }), []);

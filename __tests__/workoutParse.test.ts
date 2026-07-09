@@ -59,4 +59,19 @@ describe('addParsedWorkout (LLM parse path → on-device kcal)', () => {
     const kcal = await addParsedWorkout(db, { type: 'other', name_ru: 'нечто', minutes: 10 }, 80);
     expect(kcal).toBe(0);
   });
+
+  it('a strength entry keeps the set count (shown in подходы); kcal carries the afterburn', async () => {
+    const db = await makeDb();
+    const kcal = await addParsedWorkout(
+      db,
+      { type: 'strength', name_ru: 'жим лёжа', minutes: 12, sets: 4 },
+      80,
+    );
+    // The model's minutes stay the duration basis; +10% EPOC rides on top.
+    expect(kcal).toBe(workoutKcal('strength', 12, 80));
+    const [row] = await listWorkoutsForDay(db);
+    expect(row.sets).toBe(4);
+    expect(row.minutes).toBe(12);
+    expect(row.label).toBe('жим лёжа');
+  });
 });
