@@ -27,6 +27,8 @@ import { syncDaySleep } from '@/lib/core/db/sleep';
 import { dayKey, listStepsDays, syncDaySteps } from '@/lib/core/db/steps';
 import { weekReview } from '@/lib/core/db/weekReview';
 import { latestWeight } from '@/lib/core/db/weight';
+import { todayWorkoutKcal } from '@/lib/core/db/workouts';
+import { EATBACK_FRACTION, stepsActiveKcal } from '@/lib/core/insights/bodyMetrics';
 import { personalBaseline, type PersonalBaseline } from '@/lib/core/insights/baseline';
 import {
   MIN_PAIRED_DAYS,
@@ -73,16 +75,20 @@ export default function HomeScreen() {
   // (food summary, weight plan preview). Kept alongside the insight state above.
   const [totals, setTotals] = useState({ kcal: 0, proteinG: 0, fatG: 0, carbG: 0 });
   const [settings, setSettings] = useState<AppSettings | null>(null);
+  // Raw workout burn today — for the food widget's movement-adjusted target
+  // (steps are already loaded above; both feed the same eat-back layer).
+  const [workoutRawKcal, setWorkoutRawKcal] = useState(0);
 
   const reload = useCallback(async () => {
         if (!db) return;
-        const [tot, settingsRow, diaryN, moodRow, review, weightLatest] = await Promise.all([
+        const [tot, settingsRow, diaryN, moodRow, review, weightLatest, workoutKcal] = await Promise.all([
           todayMacroTotals(db),
           ensureSettings(db),
           countDiaryEntries(db),
           latestMood(db),
           weekReview(db),
           latestWeight(db),
+          todayWorkoutKcal(db),
         ]);
         const svc = getHealthService();
         // Sync today's passive signals first so the read reflects today too.
@@ -155,6 +161,7 @@ export default function HomeScreen() {
         setProteinG(tot.proteinG);
         setTotals({ kcal: tot.kcal, proteinG: tot.proteinG, fatG: tot.fatG, carbG: tot.carbG });
         setSettings(settingsRow);
+        setWorkoutRawKcal(workoutKcal);
         setDiaryCount(diaryN);
         setBest(bestLink);
         setMoodValue(moodRow ? moodRow.value : null);
@@ -309,6 +316,17 @@ export default function HomeScreen() {
     dayOfYear(),
   );
 
+  // Movement-adjusted food target for the widget — the applied plan plus the
+  // eat-back share of today's active energy (steps above the activity baseline +
+  // workouts), so Home matches the food day instead of a stale base number.
+  const baseFoodTarget = settings?.targetKcal ?? 0;
+  const moveCounted = Math.round(
+    (stepsActiveKcal(steps ?? 0, weightRow?.weightKg ?? 0, settings?.activityLevel ?? '') +
+      Math.max(0, workoutRawKcal)) *
+      EATBACK_FRACTION,
+  );
+  const foodTargetKcal = baseFoodTarget > 0 ? baseFoodTarget + moveCounted : 0;
+
   return (
     <View style={[styles.fill, { backgroundColor: theme.background }]}>
       <Stack.Screen
@@ -403,7 +421,7 @@ export default function HomeScreen() {
         <SectionHeader>{feederHeader}</SectionHeader>
         <FoodTodayWidget
           kcal={totals.kcal}
-          targetKcal={settings?.targetKcal ?? 0}
+          targetKcal={foodTargetKcal}
           prot={totals.proteinG}
           targetProt={settings?.targetProteinG ?? 0}
           fat={totals.fatG}
