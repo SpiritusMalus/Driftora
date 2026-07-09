@@ -226,35 +226,25 @@ export function suggestActivityLevel(avgStepsPerDay: number): ActivityLevel {
   return 'sedentary';
 }
 
-/// Steps a given activity multiplier ALREADY assumes (the factor is a NEAT proxy
-/// for everyday movement). Step-active energy counts only steps ABOVE this
-/// baseline, so it never double-counts what the multiplier already includes.
-/// Rough midpoints of the [suggestActivityLevel] bands.
-const ASSUMED_STEPS: Record<ActivityLevel, number> = {
-  sedentary: 3000,
-  light: 6500,
-  moderate: 9500,
-  high: 13000,
-};
+/// Step counts that anchor the continuous activity multiplier: at/below this the
+/// factor is «sedentary», at/above [STEPS_AT_HIGH] it is «high».
+const STEPS_AT_SEDENTARY = 3000;
+const STEPS_AT_HIGH = 13000;
 
-/// Conservative walking energy per step per kg (~0.035 kcal/step at 70 kg).
-/// Predictive like every formula here, so — mirroring workouts — the caller adds
-/// only [EATBACK_FRACTION] of it to the day's budget.
-const KCAL_PER_STEP_PER_KG = 0.0005;
-
-/// Gross active kcal from a day's steps ABOVE the baseline the user's activity
-/// level already assumes. Returns 0 when steps don't exceed that baseline (a
-/// normal day for that lifestyle), so it only ever ADDS budget on a
-/// more-active-than-usual day — exactly how a logged workout adds, never
-/// subtracting. Steps at/below the assumed level leave the chosen plan untouched.
-/// Set activity to «sedentary» to make the budget fully step-driven. Clamps input.
-export function stepsActiveKcal(steps: number, weightKg: number, activityLevel: string): number {
-  const level = ACTIVITY_LEVELS.includes(activityLevel as ActivityLevel)
-    ? (activityLevel as ActivityLevel)
-    : 'sedentary';
-  const extra = Math.max(0, (Number.isFinite(steps) ? steps : 0) - ASSUMED_STEPS[level]);
-  const kg = Math.min(Math.max(20, weightKg || 0), 400);
-  return Math.round(extra * KCAL_PER_STEP_PER_KG * kg);
+/// Continuous TDEE activity multiplier straight from a day's step count — linear
+/// between the sedentary factor (≤3k steps) and the high factor (≥13k), so EVERY
+/// step count moves the budget (no dead band). Same endpoints as the lifestyle
+/// [ACTIVITY_FACTORS], so a step-driven day is calibrated exactly like a chosen
+/// level. When steps are logged this REPLACES the manual activity multiplier (a
+/// low-step day lowers the budget, a high-step day raises it — honest both ways);
+/// the manual level is only the fallback for days with no steps. Clamps input.
+export function stepsActivityFactor(steps: number): number {
+  const lo = ACTIVITY_FACTORS.sedentary;
+  const hi = ACTIVITY_FACTORS.high;
+  if (!Number.isFinite(steps) || steps <= STEPS_AT_SEDENTARY) return lo;
+  if (steps >= STEPS_AT_HIGH) return hi;
+  const frac = (steps - STEPS_AT_SEDENTARY) / (STEPS_AT_HIGH - STEPS_AT_SEDENTARY);
+  return lo + frac * (hi - lo);
 }
 
 export interface MacroTargets {
@@ -363,9 +353,16 @@ export function suggestPlan(
   mode: GoalMode,
   now: Date = new Date(),
   goalWeightKg = 0,
+  activityFactorOverride?: number,
 ): MacroPlan | null {
   const sex = profile.sex === 'male' || profile.sex === 'female' ? (profile.sex as Sex) : null;
-  const factor = (ACTIVITY_FACTORS as Record<string, number | undefined>)[profile.activityLevel];
+  // A step-driven day supplies its own continuous factor (see stepsActivityFactor),
+  // which REPLACES the manual level; otherwise the chosen activity level maps to a
+  // factor and still gates the plan when unset.
+  const factor =
+    activityFactorOverride != null && Number.isFinite(activityFactorOverride) && activityFactorOverride > 0
+      ? activityFactorOverride
+      : (ACTIVITY_FACTORS as Record<string, number | undefined>)[profile.activityLevel];
   // Birth year is the ONE input we can safely default: age moves BMR by ~5 kcal
   // a year, so an unset year falls back to a neutral adult age (flagged) rather
   // than hiding the whole plan. Sex/activity/height/weight are NOT defaulted —
