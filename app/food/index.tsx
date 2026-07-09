@@ -9,7 +9,7 @@ import { FillBar } from '@/components/ui/FillBar';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
 import { WorkoutSection } from '@/components/WorkoutSection';
-import { EATBACK_FRACTION, stepsActiveKcal } from '@/lib/core/insights/bodyMetrics';
+import { EATBACK_FRACTION, stepsActivityFactor, suggestPlan } from '@/lib/core/insights/bodyMetrics';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { listEntriesForDay, repeatFoodEntry, todayMacroTotals, todayMicroTotals, type MicroTotals } from '@/lib/core/db/food';
 import { ensureSettings } from '@/lib/core/db/settings';
@@ -49,9 +49,10 @@ export default function FoodDayScreen() {
   // RAW calories burned in today's logged workouts (before the eat-back share) —
   // fed up from WorkoutSection so the day card can show the hybrid target.
   const [workoutRawKcal, setWorkoutRawKcal] = useState(0);
-  // Gross active kcal from today's steps ABOVE the level's assumed baseline —
-  // the same «active energy» layer as workouts, so a big walk lifts the budget.
-  const [stepsKcalRaw, setStepsKcalRaw] = useState(0);
+  // Today's steps + whether they DROVE the budget (recomputed the plan via the
+  // continuous activity factor). Used for the honest «бюджет по шагам» caption.
+  const [stepsToday, setStepsToday] = useState(0);
+  const [stepsDriven, setStepsDriven] = useState(false);
   // «Добавлено ещё раз ✓» after a one-tap repeat; cleared after a moment.
   const [repeatAck, setRepeatAck] = useState<string | null>(null);
   const ackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -77,21 +78,43 @@ export default function FoodDayScreen() {
     setTotals(tot);
     setMicros(mic);
     setSex(settings.sex);
-    // Steps→budget: everyday movement above the activity baseline counts as
-    // active energy, immediately (like a workout). Needs a weight to price it.
-    setStepsKcalRaw(stepsActiveKcal(todaySteps, weightRow?.weightKg ?? 0, settings.activityLevel));
+    // Steps DRIVE the day's budget: when steps are logged, a continuous activity
+    // factor from the count REPLACES the manual level and the plan is recomputed
+    // for today — a low-step day lowers the budget, a high-step day raises it. The
+    // manual level is only the fallback when there are no steps. Falls back to the
+    // frozen applied target when the profile can't compute a plan (manual КБЖУ).
+    const factorOverride = todaySteps > 0 ? stepsActivityFactor(todaySteps) : undefined;
+    const plan = suggestPlan(
+      {
+        sex: settings.sex,
+        birthYear: settings.birthYear,
+        heightCm: settings.heightCm,
+        activityLevel: settings.activityLevel,
+        bodyFatPct: settings.bodyFatPct,
+      },
+      weightRow?.weightKg ?? 0,
+      settings.goalMode,
+      new Date(),
+      settings.goalWeightKg,
+      factorOverride,
+    );
+    const goalActive = settings.targetsSetAt != null && !settings.paused;
+    setStepsToday(todaySteps);
+    setStepsDriven(goalActive && plan != null && todaySteps > 0);
     // The progress card needs a deliberate goal AND an unpaused app — otherwise
     // it would pressure with an arbitrary default, which this app never does.
     setGoal(
-      settings.targetsSetAt != null && !settings.paused && settings.targetKcal > 0
-        ? {
-            kcal: settings.targetKcal,
-            prot: settings.targetProteinG,
-            fat: settings.targetFatG,
-            carb: settings.targetCarbG,
-            hideCalories: settings.hideCalories,
-          }
-        : null,
+      goalActive && plan != null
+        ? { kcal: plan.kcal, prot: plan.prot, fat: plan.fat, carb: plan.carb, hideCalories: settings.hideCalories }
+        : goalActive && settings.targetKcal > 0
+          ? {
+              kcal: settings.targetKcal,
+              prot: settings.targetProteinG,
+              fat: settings.targetFatG,
+              carb: settings.targetCarbG,
+              hideCalories: settings.hideCalories,
+            }
+          : null,
     );
   }, [db]);
 
@@ -130,7 +153,8 @@ export default function FoodDayScreen() {
           goal={goal}
           totals={totals}
           workoutKcalRaw={workoutRawKcal}
-          stepsKcalRaw={stepsKcalRaw}
+          steps={stepsToday}
+          stepsDriven={stepsDriven}
           theme={theme}
         />
       ) : null}
@@ -197,30 +221,25 @@ function DayProgress({
   goal,
   totals,
   workoutKcalRaw,
-  stepsKcalRaw,
+  steps,
+  stepsDriven,
   theme,
 }: {
   goal: DayGoal;
   totals: { kcal: number; proteinG: number; fatG: number; carbG: number };
   workoutKcalRaw: number;
-  stepsKcalRaw: number;
+  steps: number;
+  stepsDriven: boolean;
   theme: Theme;
 }) {
   const { t } = useTranslation();
   const kcalEaten = Math.round(totals.kcal);
-  // MOVEMENT layer: today's active energy — steps ABOVE the activity baseline
-  // AND logged workouts — lifts the budget by its eat-back share, immediately.
-  // The base plan is never changed; we show the adjusted target alongside it so
-  // the user sees exactly what moved it (which answers «прошёл 12к — где +?»).
-  const stepsCounted = Math.round(Math.max(0, stepsKcalRaw) * EATBACK_FRACTION);
-  const workoutCounted = Math.round(Math.max(0, workoutKcalRaw) * EATBACK_FRACTION);
-  const counted = stepsCounted + workoutCounted;
-  const targetWithMovement = goal.kcal + counted;
-  const onPlan = kcalEaten <= (counted > 0 ? targetWithMovement : goal.kcal);
-  const moveParts = [
-    stepsCounted > 0 ? t('food.day.moveSteps', { kcal: stepsCounted }) : null,
-    workoutCounted > 0 ? t('food.day.moveWorkout', { kcal: workoutCounted }) : null,
-  ].filter(Boolean);
+  // The base target ALREADY reflects today's steps (the plan was recomputed from
+  // the continuous step-driven activity factor). Workouts are structured exercise
+  // ON TOP — their eat-back share still adds to the day, shown as a separate line.
+  const counted = Math.round(Math.max(0, workoutKcalRaw) * EATBACK_FRACTION);
+  const targetWithWorkouts = goal.kcal + counted;
+  const onPlan = kcalEaten <= (counted > 0 ? targetWithWorkouts : goal.kcal);
   const macros = [
     { label: t('macros.protein'), eaten: Math.round(totals.proteinG), target: goal.prot },
     { label: t('macros.fat'), eaten: Math.round(totals.fatG), target: goal.fat },
@@ -243,14 +262,19 @@ function DayProgress({
           </Text>
           <Bar
             value={kcalEaten}
-            max={counted > 0 ? targetWithMovement : goal.kcal}
+            max={counted > 0 ? targetWithWorkouts : goal.kcal}
             color={theme.primary}
             track={theme.fill}
             height={8}
           />
+          {stepsDriven ? (
+            <Text style={[styles.dayWorkout, { color: theme.subtle }, theme.font.body]}>
+              {t('food.day.bySteps', { steps: steps })}
+            </Text>
+          ) : null}
           {counted > 0 ? (
             <Text style={[styles.dayWorkout, { color: theme.subtle }, theme.font.body]}>
-              {t('food.day.withMovement', { detail: moveParts.join(' · '), target: targetWithMovement })}
+              {t('food.day.withWorkouts', { counted, target: targetWithWorkouts })}
             </Text>
           ) : null}
         </>

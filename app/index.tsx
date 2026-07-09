@@ -28,7 +28,7 @@ import { dayKey, listStepsDays, syncDaySteps } from '@/lib/core/db/steps';
 import { weekReview } from '@/lib/core/db/weekReview';
 import { latestWeight } from '@/lib/core/db/weight';
 import { todayWorkoutKcal } from '@/lib/core/db/workouts';
-import { EATBACK_FRACTION, stepsActiveKcal } from '@/lib/core/insights/bodyMetrics';
+import { EATBACK_FRACTION, stepsActivityFactor, suggestPlan } from '@/lib/core/insights/bodyMetrics';
 import { personalBaseline, type PersonalBaseline } from '@/lib/core/insights/baseline';
 import {
   MIN_PAIRED_DAYS,
@@ -320,15 +320,30 @@ export default function HomeScreen() {
   // 2000/120/70/200 defaults are not a goal (mirrors the food-day card, which
   // hides the goal otherwise). Without one, the widget shows just what was eaten.
   const hasGoal = settings != null && settings.targetsSetAt != null && !settings.paused && settings.targetKcal > 0;
-  // Movement-adjusted food target — the applied plan plus the eat-back share of
-  // today's active energy (steps above the activity baseline + workouts), so Home
-  // matches the food day instead of a stale base number.
-  const moveCounted = Math.round(
-    (stepsActiveKcal(steps ?? 0, weightRow?.weightKg ?? 0, settings?.activityLevel ?? '') +
-      Math.max(0, workoutRawKcal)) *
-      EATBACK_FRACTION,
-  );
-  const foodTargetKcal = hasGoal ? settings!.targetKcal + moveCounted : 0;
+  // Step-driven day plan — the SAME recompute the food day uses: today's steps set
+  // the activity factor (continuous), so the widget's target tracks the day. Plus
+  // the eat-back share of logged workouts. Falls back to the frozen target when the
+  // profile can't compute a plan.
+  const dayPlan =
+    settings != null
+      ? suggestPlan(
+          {
+            sex: settings.sex,
+            birthYear: settings.birthYear,
+            heightCm: settings.heightCm,
+            activityLevel: settings.activityLevel,
+            bodyFatPct: settings.bodyFatPct,
+          },
+          weightRow?.weightKg ?? 0,
+          settings.goalMode,
+          new Date(),
+          settings.goalWeightKg,
+          (steps ?? 0) > 0 ? stepsActivityFactor(steps as number) : undefined,
+        )
+      : null;
+  const workoutCounted = Math.round(Math.max(0, workoutRawKcal) * EATBACK_FRACTION);
+  const foodBaseKcal = dayPlan?.kcal ?? (settings?.targetKcal ?? 0);
+  const foodTargetKcal = hasGoal ? foodBaseKcal + workoutCounted : 0;
 
   return (
     <View style={[styles.fill, { backgroundColor: theme.background }]}>
@@ -426,11 +441,11 @@ export default function HomeScreen() {
           kcal={totals.kcal}
           targetKcal={foodTargetKcal}
           prot={totals.proteinG}
-          targetProt={hasGoal ? settings!.targetProteinG : 0}
+          targetProt={hasGoal ? (dayPlan?.prot ?? settings!.targetProteinG) : 0}
           fat={totals.fatG}
-          targetFat={hasGoal ? settings!.targetFatG : 0}
+          targetFat={hasGoal ? (dayPlan?.fat ?? settings!.targetFatG) : 0}
           carb={totals.carbG}
-          targetCarb={hasGoal ? settings!.targetCarbG : 0}
+          targetCarb={hasGoal ? (dayPlan?.carb ?? settings!.targetCarbG) : 0}
           onPress={() => router.push('/food')}
         />
         <WeightWidget

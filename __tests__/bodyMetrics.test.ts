@@ -8,7 +8,7 @@ import {
   katchMcArdleBmr,
   metForSpeed,
   mifflinBmr,
-  stepsActiveKcal,
+  stepsActivityFactor,
   suggestActivityLevel,
   suggestPlan,
   suggestTargets,
@@ -348,30 +348,43 @@ describe('suggestActivityLevel (steps → lifestyle multiplier)', () => {
   });
 });
 
-describe('stepsActiveKcal (steps above the activity baseline → active energy)', () => {
-  it('adds nothing at/below the level baseline (a normal day never subtracts)', () => {
-    expect(stepsActiveKcal(9000, 80, 'moderate')).toBe(0); // moderate assumes ~9500
-    expect(stepsActiveKcal(3000, 80, 'sedentary')).toBe(0); // sedentary assumes ~3000
-    expect(stepsActiveKcal(0, 80, 'moderate')).toBe(0);
+describe('stepsActivityFactor (continuous multiplier straight from steps)', () => {
+  it('clamps to the sedentary/high endpoints outside the 3k–13k band', () => {
+    expect(stepsActivityFactor(0)).toBe(ACTIVITY_FACTORS.sedentary);
+    expect(stepsActivityFactor(3000)).toBe(ACTIVITY_FACTORS.sedentary);
+    expect(stepsActivityFactor(13000)).toBe(ACTIVITY_FACTORS.high);
+    expect(stepsActivityFactor(20000)).toBe(ACTIVITY_FACTORS.high);
+    expect(stepsActivityFactor(NaN)).toBe(ACTIVITY_FACTORS.sedentary);
   });
 
-  it('prices only steps ABOVE the level baseline, scaling with weight', () => {
-    // moderate baseline 9500: extra 2500 × 0.0005 × 80 = 100
-    expect(stepsActiveKcal(12000, 80, 'moderate')).toBe(100);
-    // heavier body burns more for the same extra steps
-    expect(stepsActiveKcal(12000, 120, 'moderate')).toBeGreaterThan(stepsActiveKcal(12000, 80, 'moderate'));
+  it('rises continuously with steps — every count moves the budget (no dead band)', () => {
+    // 8000 is the midpoint of 3k–13k → halfway between sedentary and high
+    expect(stepsActivityFactor(8000)).toBeCloseTo((ACTIVITY_FACTORS.sedentary + ACTIVITY_FACTORS.high) / 2, 5);
+    expect(stepsActivityFactor(5000)).toBeGreaterThan(stepsActivityFactor(4000));
+    expect(stepsActivityFactor(12000)).toBeGreaterThan(stepsActivityFactor(9000));
+    // 5000 steps already lifts above sedentary (the «5к и ничего» complaint)
+    expect(stepsActivityFactor(5000)).toBeGreaterThan(ACTIVITY_FACTORS.sedentary);
+  });
+});
+
+describe('suggestPlan (steps-driven activity-factor override)', () => {
+  const profile = { sex: 'male', birthYear: 1991, heightCm: 180, activityLevel: 'sedentary' };
+
+  it('an override replaces the activity level and scales maintenance', () => {
+    const base = suggestPlan(profile, 90, 'maintain', NOW)!; // sedentary
+    const active = suggestPlan(profile, 90, 'maintain', NOW, 0, stepsActivityFactor(12000))!;
+    expect(active.maintenanceKcal).toBeGreaterThan(base.maintenanceKcal);
   });
 
-  it('sedentary makes the budget fully step-driven (low baseline)', () => {
-    // sedentary baseline 3000: extra 9000 × 0.0005 × 80 = 360 ≫ the moderate result
-    expect(stepsActiveKcal(12000, 80, 'sedentary')).toBe(360);
-    expect(stepsActiveKcal(12000, 80, 'sedentary')).toBeGreaterThan(stepsActiveKcal(12000, 80, 'moderate'));
+  it('more steps → higher budget; fewer steps → lower (honest both ways)', () => {
+    const few = suggestPlan(profile, 90, 'maintain', NOW, 0, stepsActivityFactor(5000))!;
+    const many = suggestPlan(profile, 90, 'maintain', NOW, 0, stepsActivityFactor(12000))!;
+    expect(many.kcal).toBeGreaterThan(few.kcal);
   });
 
-  it('an unknown/empty activity level falls back to the sedentary baseline; garbage → 0', () => {
-    expect(stepsActiveKcal(12000, 80, '')).toBe(360);
-    expect(stepsActiveKcal(12000, 80, 'nonsense')).toBe(360);
-    expect(stepsActiveKcal(NaN, 80, 'moderate')).toBe(0);
-    expect(Number.isFinite(stepsActiveKcal(12000, 0, 'moderate'))).toBe(true); // weight clamps
+  it('an override lets the plan compute even without a chosen activity level', () => {
+    const noLevel = { ...profile, activityLevel: '' };
+    expect(suggestPlan(noLevel, 90, 'maintain', NOW)).toBeNull(); // no level, no override
+    expect(suggestPlan(noLevel, 90, 'maintain', NOW, 0, stepsActivityFactor(9000))).not.toBeNull();
   });
 });
