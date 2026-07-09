@@ -543,6 +543,9 @@ export const en = {
     favorites: 'Favorites',
     recent: 'Recent',
     sameAsYesterday: 'Same as yesterday',
+    // «From my diet»: foods you've already confirmed — pick one and type the grams.
+    myDiet: 'From my diet',
+    myDietHint: 'Pick a food and type the grams — the exact macros are already saved.',
     per100: 'per 100 g',
     approx: '≈ approx',
     disclaimer:

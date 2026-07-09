@@ -2,10 +2,15 @@ import { describe, expect, it } from '@jest/globals';
 import BetterSqlite3 from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 
-import { loadRememberedChoices, rememberFoodChoice } from '@/lib/core/db/foodChoices';
+import { listFoodChoices, loadRememberedChoices, rememberFoodChoice } from '@/lib/core/db/foodChoices';
 import { applySchema } from '@/lib/core/db/init';
 import * as schema from '@/lib/core/db/schema';
-import { applyRememberedChoices, choiceKey, normalizeChoiceName } from '@/lib/core/services/foodChoice';
+import {
+  applyRememberedChoices,
+  choiceKey,
+  displayItemName,
+  normalizeChoiceName,
+} from '@/lib/core/services/foodChoice';
 import type { MealDraft, NutritionItem, Per100 } from '@/lib/core/services/foodParser';
 
 function per100(kcal: number, source: Per100['source'] = 'fatsecret'): Per100 {
@@ -45,6 +50,21 @@ describe('choice keying', () => {
   it('keys by region + normalized name', () => {
     expect(choiceKey('RU', 'Творог')).toBe('RU::творог');
     expect(choiceKey('US', 'Rice')).toBe('US::rice');
+  });
+});
+
+describe('displayItemName (real name after re-pick, raw words otherwise)', () => {
+  it('keeps the user words when nothing was explicitly chosen', () => {
+    expect(displayItemName(item({ matched_name: 'Творог 5%' }), 'RU')).toBe('творог');
+  });
+  it('uses the chosen DB row name once the user re-picked (userChosen)', () => {
+    expect(displayItemName(item({ matched_name: 'Творог 5%', userChosen: true }), 'RU')).toBe('Творог 5%');
+  });
+  it('falls back to the user words when re-picked but no matched name', () => {
+    expect(displayItemName(item({ userChosen: true, matched_name: undefined }), 'RU')).toBe('творог');
+  });
+  it('is region-aware (US → English name) when not re-picked', () => {
+    expect(displayItemName(item(), 'US')).toBe('cottage cheese');
   });
 });
 
@@ -117,6 +137,52 @@ describe('foodChoices persistence (round-trip)', () => {
     const fresh = draft([item()]); // parser's auto-pick (150)
     const applied = applyRememberedChoices(fresh, 'RU', await loadRememberedChoices(db, 'RU', fresh));
     expect(applied.items[0]!.per100.kcal).toBe(121);
+    sqlite.close();
+  });
+});
+
+describe('listFoodChoices (the «рацион»: pick a known food + type grams)', () => {
+  function makeDb() {
+    const sqlite = new BetterSqlite3(':memory:');
+    const db = drizzle(sqlite, { schema });
+    return { sqlite, db };
+  }
+  // Insert directly so ts (recency order) is deterministic — rememberFoodChoice
+  // stamps `new Date()`, which can't disambiguate same-millisecond inserts.
+  async function seed(db: ReturnType<typeof makeDb>['db'], key: string, name: string, kcal: number, ts: number) {
+    await db.insert(schema.foodChoices).values({ key, name, per100: JSON.stringify(per100(kcal)), ts: new Date(ts) });
+  }
+
+  it('lists this region only, most-recently-used first', async () => {
+    const { sqlite, db } = makeDb();
+    await applySchema((stmt) => sqlite.exec(stmt));
+    await seed(db, 'RU::курица', 'Куриная грудка', 113, 1000);
+    await seed(db, 'RU::рис', 'Рис отварной', 116, 3000);
+    await seed(db, 'US::rice', 'White rice', 130, 5000); // other region — excluded
+    const list = await listFoodChoices(db, 'RU');
+    expect(list.map((f) => f.name)).toEqual(['Рис отварной', 'Куриная грудка']);
+    expect(list[0]!.per100.kcal).toBe(116);
+    sqlite.close();
+  });
+
+  it('dedupes by normalized name (same food remembered under two keys shows once)', async () => {
+    const { sqlite, db } = makeDb();
+    await applySchema((stmt) => sqlite.exec(stmt));
+    // «скир» typed then re-picked as «Скир натуральный» leaves two keys, one name.
+    await seed(db, 'RU::скир', 'Скир натуральный', 90, 1000);
+    await seed(db, 'RU::скир натуральный', 'Скир натуральный', 90, 2000);
+    const list = await listFoodChoices(db, 'RU');
+    expect(list).toHaveLength(1);
+    expect(list[0]!.name).toBe('Скир натуральный');
+    sqlite.close();
+  });
+
+  it('caps the list at the limit', async () => {
+    const { sqlite, db } = makeDb();
+    await applySchema((stmt) => sqlite.exec(stmt));
+    for (let i = 0; i < 30; i++) await seed(db, `RU::food${i}`, `Food ${i}`, 100 + i, 1000 + i);
+    const list = await listFoodChoices(db, 'RU', 5);
+    expect(list).toHaveLength(5);
     sqlite.close();
   });
 });

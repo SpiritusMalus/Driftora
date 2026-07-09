@@ -10,6 +10,7 @@ import type {
   Region,
   Vitamins,
 } from '../services/foodParser';
+import { displayItemName } from '../services/foodChoice';
 import { recomputeDraft } from '../services/mealDraft';
 import { foodEntries, foodItems, type FoodEntry, type FoodItem } from './schema';
 
@@ -130,7 +131,8 @@ async function insertDraftItems(db: AnyDb, entryId: number, d: MealDraft): Promi
   await db.insert(foodItems).values(
     items.map((it) => ({
       entryId,
-      name: it.name_ru,
+      // Real DB name once the user re-picked a match; their own words otherwise.
+      name: displayItemName(it, d.region),
       qtyG: it.grams,
       kcal: it.scaled.kcal,
       proteinG: it.scaled.prot,

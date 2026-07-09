@@ -23,6 +23,23 @@ export function choiceKey(region: Region, name: string): string {
   return `${region}::${normalizeChoiceName(name)}`;
 }
 
+/// The name to DISPLAY / PERSIST for an item. Once the user has explicitly picked
+/// a match ("не то?" / "найти вручную" → `userChosen`), the entry is named by the
+/// real DB row they chose (`matched_name`), NOT their raw typed label — «скир»
+/// becomes «Скир натуральный». Otherwise we keep the user's own words (the card
+/// separately shows the matched row in parentheses for transparency). NOTE: this
+/// is display-only — the memory KEY still uses [lookupNameForItem] (the raw name),
+/// so a correction stays keyed to what the user actually types next time.
+export function displayItemName(
+  item: Pick<NutritionItem, 'name_ru' | 'name_en' | 'matched_name' | 'userChosen'>,
+  region: Region,
+): string {
+  if (item.userChosen && item.matched_name && item.matched_name.trim().length > 0) {
+    return item.matched_name.trim();
+  }
+  return lookupNameForItem(item, region);
+}
+
 /**
  * Re-apply remembered choices to a freshly parsed draft. For each item whose
  * food the user has corrected before, swap in the remembered per-100g (exact,

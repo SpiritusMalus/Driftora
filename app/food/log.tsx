@@ -21,8 +21,18 @@ import {
   todayMacroTotals,
   type QuickMeal,
 } from '@/lib/core/db/food';
-import { loadRememberedChoices, rememberFoodChoice } from '@/lib/core/db/foodChoices';
-import { applyRememberedChoices, lookupNameForItem, normalizeChoiceName } from '@/lib/core/services/foodChoice';
+import {
+  listFoodChoices,
+  loadRememberedChoices,
+  rememberFoodChoice,
+  type RememberedFood,
+} from '@/lib/core/db/foodChoices';
+import {
+  applyRememberedChoices,
+  displayItemName,
+  lookupNameForItem,
+  normalizeChoiceName,
+} from '@/lib/core/services/foodChoice';
 import { deleteTempFile } from '@/lib/core/services/tempFiles';
 import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
 import { mealPromptKeyForHour } from '@/lib/core/insights/mealPrompt';
@@ -39,7 +49,7 @@ import { nutrientDetailRows } from '@/lib/core/insights/nutrientDetail';
 import { dailyMicroNorms, type MicroRow } from '@/lib/core/insights/microNutrients';
 import type { Sex } from '@/lib/core/insights/bodyMetrics';
 import { getFoodParser, resolveRegion } from '@/lib/core/services/foodParserProvider';
-import { recomputeDraft, withItemAlternative, withItemGrams, withItemManualMacros, withItemReplacement } from '@/lib/core/services/mealDraft';
+import { recomputeDraft, scaleToGrams, withItemAlternative, withItemGrams, withItemManualMacros, withItemReplacement } from '@/lib/core/services/mealDraft';
 import { capturePhoto, isPhotoCaptureAvailable, type PhotoSource } from '@/lib/core/services/photoProvider';
 import { getSpeechService } from '@/lib/core/services/speechProvider';
 import { type Theme, useTheme } from '@/lib/theme/theme';
@@ -102,6 +112,10 @@ export default function FoodLogScreen() {
     favorites: [],
     yesterday: [],
   });
+  // The user's «рацион»: individual foods they've confirmed before (per-food
+  // memory), for the quick "pick what I eat + type grams" flow. Distinct from
+  // `quick` above (whole past MEALS from entries) — this is per-food, grams-editable.
+  const [myDiet, setMyDiet] = useState<RememberedFood[]>([]);
   const [speechAvailable, setSpeechAvailable] = useState(false);
   // True once the recognizer probe RESOLVED (either way) — lets the ?voice=1
   // deep-link tell "still probing" apart from "voice truly unavailable".
@@ -226,6 +240,10 @@ export default function FoodLogScreen() {
         distinctFoodItemsToday(db),
       ]);
       if (!active) return;
+      // The «рацион» list is region-scoped, so load it once the region is known.
+      const diet = await listFoodChoices(db, resolveRegion(settings.region));
+      if (!active) return;
+      setMyDiet(diet);
       setProteinTarget(settings.targetProteinG);
       setSex(settings.sex ?? '');
       setPaused(settings.paused);
@@ -259,6 +277,40 @@ export default function FoodLogScreen() {
       approximate: false,
     };
     setFreshDraft(recomputeDraft(region, [item]));
+  }
+
+  /// «Из моего рациона»: add a food the user has eaten before to the current draft
+  /// with a starting 100 g the user then adjusts (grams_source 'estimated' so the
+  /// card shows the "our guess — set the weight" nudge). APPENDS, so a daily eater
+  /// can assemble a plate from memory (курица + рис + …) and type each weight. The
+  /// per-100g is the exact remembered composition; the entry name follows the
+  /// picked foods when the text field is still empty.
+  function onMemoryPick(food: RememberedFood) {
+    const grams = 100;
+    const item: NutritionItem = {
+      name_ru: food.name,
+      name_en: food.name,
+      grams,
+      grams_source: 'estimated',
+      confidence: 1,
+      per100: food.per100,
+      scaled: scaleToGrams(food.per100, grams),
+      approximate: true,
+      matched_name: food.name,
+      userChosen: true, // deliberate pick from the journal → keep it remembered
+    };
+    setSource('text');
+    setParseIssue(null);
+    setDraft((prev) => {
+      const items = [...(prev?.items ?? []), item];
+      return recomputeDraft(region, items);
+    });
+    // Give the entry a real name from the picked foods while the field is empty.
+    setText((prev) =>
+      prev.trim().length === 0
+        ? food.name
+        : `${prev}${prev.trim().endsWith(',') ? '' : ','} ${food.name}`,
+    );
   }
 
   /// Run the text parse with a known consent value. `getFoodParser` only goes
@@ -520,7 +572,12 @@ export default function FoodLogScreen() {
         const realSource = src !== 'estimate' && src !== 'ai_estimate';
         const trustworthy = it.userChosen || it.confidence >= REMEMBER_CONFIDENCE_FLOOR;
         if (realSource && trustworthy) {
-          await rememberFoodChoice(db, region, lookupNameForItem(it, region), { name: it.name_ru, per100: it.per100 });
+          // Key by the RAW typed name (so the correction sticks to what the user
+          // types next time); store the DISPLAY name (real DB row once re-picked).
+          await rememberFoodChoice(db, region, lookupNameForItem(it, region), {
+            name: displayItemName(it, region),
+            per100: it.per100,
+          });
         }
       }
       // Warm, rotating acknowledgment of the *act* of logging (SDT relatedness)
@@ -654,6 +711,43 @@ export default function FoodLogScreen() {
         <Text style={[styles.parseIssue, { color: theme.subtle }, theme.font.body]}>
           {t(parseIssue === 'offline' ? 'food.parseIssue.offline' : 'food.parseIssue.failed')}
         </Text>
+      ) : null}
+
+      {/* «Из моего рациона» — per-food memory, always available (even mid-draft)
+          so a daily eater can assemble a plate food-by-food and type each weight.
+          Tapping appends the food; grams are set in its card below. */}
+      {myDiet.length > 0 ? (
+        <View style={styles.quick}>
+          <View style={styles.quickGroup}>
+            <Text style={[styles.quickLabel, { color: theme.subtle }, theme.font.heading]}>
+              {t('food.myDiet').toUpperCase()}
+            </Text>
+            <Text style={[styles.myDietHint, { color: theme.subtle }, theme.font.body]}>
+              {t('food.myDietHint')}
+            </Text>
+            <View style={styles.quickWrap}>
+              {myDiet.slice(0, 12).map((food, i) => (
+                <Pressable
+                  key={i}
+                  onPress={() => onMemoryPick(food)}
+                  style={({ pressed }) => [
+                    styles.chip,
+                    { backgroundColor: theme.card, borderColor: theme.separator, opacity: pressed ? 0.6 : 1 },
+                  ]}
+                >
+                  <Text numberOfLines={1} style={[styles.chipText, { color: theme.text }, theme.font.bodySemiBold]}>
+                    {food.name}
+                  </Text>
+                  <Text style={[styles.chipMacro, { color: theme.subtle }, theme.font.body]}>
+                    {hideCalories
+                      ? `${t('macros.protein')} ${Math.round(food.per100.prot)} ${t('units.g')} / 100 ${t('units.g')}`
+                      : `${Math.round(food.per100.kcal)} ${t('units.kcal')} / 100 ${t('units.g')}`}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        </View>
       ) : null}
 
       {draft == null &&
@@ -979,6 +1073,16 @@ function ItemCard({
     normalizeChoiceName(item.matched_name) !== normalizeChoiceName(item.name_en)
       ? item.matched_name
       : null;
+  // The card title. After an explicit re-pick the entry takes the real DB name
+  // alone («Скир натуральный») — the user confirmed it, so the crooked input is
+  // no longer needed. Before that, we show «как ввёл (настоящее)» so a wrong
+  // auto-match is transparent without hiding what the user actually wrote.
+  const titleName =
+    item.userChosen && item.matched_name
+      ? item.matched_name
+      : matchedLabel
+        ? `${item.name_ru} (${matchedLabel})`
+        : item.name_ru;
   // The "per 100 g · <source>" line shows the DB row itself (the footnote's promise).
   const dbPer100 = item.per100;
   // A full DB miss: the resolver's coarse placeholder. We show NO fabricated
@@ -1012,7 +1116,7 @@ function ItemCard({
 
   return (
     <Card style={styles.item}>
-      <Text style={[styles.itemName, { color: theme.text }, theme.font.bodySemiBold]}>{item.name_ru}</Text>
+      <Text style={[styles.itemName, { color: theme.text }, theme.font.bodySemiBold]}>{titleName}</Text>
 
       {isMiss ? (
         /* DB miss → never render the placeholder macros. State it plainly and
@@ -1023,8 +1127,7 @@ function ItemCard({
           {/* Per-100g composition — EXACT (DB) or user-entered (manual), with
               the matched row's own name when it differs from the logged one. */}
           <Text style={[styles.per100Label, { color: theme.subtle }, theme.font.body]}>
-            {t('food.per100')}
-            {matchedLabel ? ` · «${matchedLabel}»` : ''} · {t(`food.source.${item.per100.source}`)}
+            {t('food.per100')} · {t(`food.source.${item.per100.source}`)}
           </Text>
           <Text style={[styles.per100Value, { color: theme.text }, theme.font.body]}>
             {hideCalories
@@ -1339,6 +1442,7 @@ const styles = StyleSheet.create({
   quick: { marginTop: 16 },
   quickGroup: { marginBottom: 14 },
   quickLabel: { fontSize: 11, letterSpacing: 1.2, marginBottom: 8 },
+  myDietHint: { fontSize: 12, marginTop: -2, marginBottom: 8, lineHeight: 16 },
   quickWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 9 },
   chipText: { fontSize: 14, maxWidth: 240 },
