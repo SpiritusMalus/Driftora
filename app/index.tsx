@@ -316,16 +316,19 @@ export default function HomeScreen() {
     dayOfYear(),
   );
 
-  // Movement-adjusted food target for the widget — the applied plan plus the
-  // eat-back share of today's active energy (steps above the activity baseline +
-  // workouts), so Home matches the food day instead of a stale base number.
-  const baseFoodTarget = settings?.targetKcal ?? 0;
+  // A target/КБЖУ is shown only when it was DELIBERATELY set — the untouched
+  // 2000/120/70/200 defaults are not a goal (mirrors the food-day card, which
+  // hides the goal otherwise). Without one, the widget shows just what was eaten.
+  const hasGoal = settings != null && settings.targetsSetAt != null && !settings.paused && settings.targetKcal > 0;
+  // Movement-adjusted food target — the applied plan plus the eat-back share of
+  // today's active energy (steps above the activity baseline + workouts), so Home
+  // matches the food day instead of a stale base number.
   const moveCounted = Math.round(
     (stepsActiveKcal(steps ?? 0, weightRow?.weightKg ?? 0, settings?.activityLevel ?? '') +
       Math.max(0, workoutRawKcal)) *
       EATBACK_FRACTION,
   );
-  const foodTargetKcal = baseFoodTarget > 0 ? baseFoodTarget + moveCounted : 0;
+  const foodTargetKcal = hasGoal ? settings!.targetKcal + moveCounted : 0;
 
   return (
     <View style={[styles.fill, { backgroundColor: theme.background }]}>
@@ -423,11 +426,11 @@ export default function HomeScreen() {
           kcal={totals.kcal}
           targetKcal={foodTargetKcal}
           prot={totals.proteinG}
-          targetProt={settings?.targetProteinG ?? 0}
+          targetProt={hasGoal ? settings!.targetProteinG : 0}
           fat={totals.fatG}
-          targetFat={settings?.targetFatG ?? 0}
+          targetFat={hasGoal ? settings!.targetFatG : 0}
           carb={totals.carbG}
-          targetCarb={settings?.targetCarbG ?? 0}
+          targetCarb={hasGoal ? settings!.targetCarbG : 0}
           onPress={() => router.push('/food')}
         />
         <WeightWidget
