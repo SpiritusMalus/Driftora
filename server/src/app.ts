@@ -3,7 +3,15 @@ import crypto from 'node:crypto';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import multer from 'multer';
 
-import { identifyFromAudio, identifyFromPhoto, identifyFromText, parseWorkoutFromText, VisionUnavailableError } from './llm.js';
+import {
+  identifyFromAudio,
+  identifyFromPhoto,
+  identifyFromText,
+  parseWorkoutFromAudio,
+  parseWorkoutFromPhoto,
+  parseWorkoutFromText,
+  VisionUnavailableError,
+} from './llm.js';
 import { metrics } from './metrics.js';
 import { Resolver } from './nutrition/resolver.js';
 import { buildMealDraft, buildProviders } from './orchestrator.js';
@@ -235,11 +243,52 @@ export function createApp(
       const workouts = await parseWorkoutFromText(text);
       res.json({ workouts });
     } catch (err) {
-      if (err instanceof VisionUnavailableError) {
-        fail(res, 503, 'llm_unavailable', 'The parsing service is temporarily unavailable.');
-        return;
-      }
-      fail(res, 500, 'internal_error', 'Internal server error.');
+      failWorkoutParse(res, err);
+    }
+  });
+
+  /// Shared error tail for the workout parse family: the model only ever maps
+  /// input → structured activities, so every route answers the same way.
+  function failWorkoutParse(res: Response, err: unknown): void {
+    if (err instanceof VisionUnavailableError) {
+      fail(res, 503, 'llm_unavailable', 'The parsing service is temporarily unavailable.');
+      return;
+    }
+    fail(res, 500, 'internal_error', 'Internal server error.');
+  }
+
+  // Spoken WORKOUT: multipart `audio` → `{ workouts }`. Same honesty split as
+  // the text parse (kcal client-side); the clip stays in memory, never persisted.
+  app.post('/workout/parse-audio', requireToken, limiters.photoDaily, uploadAudio.single('audio'), async (req: Request, res: Response) => {
+    const file = req.file;
+    if (!file || file.size === 0) {
+      fail(res, 400, 'empty_input', 'Field "audio" is required.');
+      return;
+    }
+    const format = audioFormat(file.mimetype, file.originalname);
+    try {
+      const workouts = await parseWorkoutFromAudio(file.buffer.toString('base64'), format);
+      res.json({ workouts });
+    } catch (err) {
+      failWorkoutParse(res, err);
+    }
+  });
+
+  // Fitness-tracker SCREENSHOT: multipart `image` → `{ workouts, device_kcal?,
+  // device_minutes? }`. The tracker's own printed totals are transcribed and,
+  // when present, the client logs THEM («по трекеру») instead of re-deriving.
+  app.post('/workout/parse-photo', requireToken, limiters.photoDaily, upload.single('image'), async (req: Request, res: Response) => {
+    const file = req.file;
+    if (!file || file.size === 0) {
+      fail(res, 400, 'empty_input', 'Field "image" is required.');
+      return;
+    }
+    const mimeType = sniffImageMime(file.buffer) ?? (file.mimetype || 'image/jpeg');
+    try {
+      const parsed = await parseWorkoutFromPhoto(file.buffer.toString('base64'), mimeType);
+      res.json(parsed);
+    } catch (err) {
+      failWorkoutParse(res, err);
     }
   });
 

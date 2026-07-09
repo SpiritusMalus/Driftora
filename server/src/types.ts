@@ -529,7 +529,9 @@ export type WorkoutTypeKey = (typeof WORKOUT_TYPE_KEYS)[number];
  * One activity parsed from a free-text workout description. `speed_kmh` is only
  * meaningful for walk/run/cycle; `met` is the model's rough MET estimate carried
  * ONLY for `type: 'other'` (the app has its own MET for the known types and
- * ignores the model's there). Reps → `minutes` is estimated by the model.
+ * ignores the model's there). Reps → `minutes` is estimated by the model;
+ * `sets` is carried alongside for strength («жим 4 подхода») so the client can
+ * show the entry the way lifters think — in sets, not minutes.
  */
 export interface ParsedWorkout {
   type: WorkoutTypeKey;
@@ -537,7 +539,21 @@ export interface ParsedWorkout {
   minutes: number;
   speed_kmh?: number;
   met?: number;
+  sets?: number;
   confidence: number;
+}
+
+/**
+ * A workout parsed from a SCREENSHOT of a fitness tracker / watch app. On top
+ * of the activities, the model reads the numbers the tracker itself printed:
+ * `device_kcal` (total active calories) and `device_minutes` (total duration).
+ * When the tracker names a burn, the client logs THAT number («по трекеру»)
+ * instead of re-deriving one — the device measured it, we don't out-guess it.
+ */
+export interface ParsedWorkoutPhoto {
+  workouts: ParsedWorkout[];
+  device_kcal?: number;
+  device_minutes?: number;
 }
 
 /** Same amplification cap rationale as food's MAX_ITEMS. */
@@ -572,6 +588,11 @@ export function normalizeParsedWorkouts(payload: unknown): ParsedWorkout[] {
       const s = posNum(r.speed_kmh);
       if (s !== undefined && s <= 60) item.speed_kmh = round1(s);
     }
+    // Set count only makes sense for strength; clamp so a wild count is dropped.
+    if (type === 'strength') {
+      const s = posNum(r.sets);
+      if (s !== undefined && s <= 60) item.sets = Math.round(s);
+    }
     // MET is carried only for 'other' (the app owns MET for known types). Clamp to
     // the realistic human range so a wild number can't inflate the burn.
     if (type === 'other') {
@@ -580,6 +601,22 @@ export function normalizeParsedWorkouts(payload: unknown): ParsedWorkout[] {
     }
     out.push(item);
   }
+  return out;
+}
+
+/**
+ * Validate + normalize a raw LLM workout-SCREENSHOT payload. The activities go
+ * through [normalizeParsedWorkouts]; the tracker's own totals are kept only in
+ * plausible bands (an OCR misread of «10 000 steps» as kcal must not become a
+ * 10 000-kcal day). Pure and total like its sibling.
+ */
+export function normalizeParsedWorkoutPhoto(payload: unknown): ParsedWorkoutPhoto {
+  const p = (payload && typeof payload === 'object' ? payload : {}) as Record<string, unknown>;
+  const out: ParsedWorkoutPhoto = { workouts: normalizeParsedWorkouts(payload) };
+  const kcal = posNum(p.device_kcal);
+  if (kcal !== undefined && kcal <= 5000) out.device_kcal = Math.round(kcal);
+  const minutes = posNum(p.device_minutes);
+  if (minutes !== undefined && minutes <= 600) out.device_minutes = Math.round(minutes);
   return out;
 }
 

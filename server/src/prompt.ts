@@ -175,7 +175,8 @@ walk, run, cycle, swim, strength, hiit, elliptical, row, sport, dance, martial, 
 For each activity output:
 - type: one of the keys above, or "other".
 - name_ru: a short Russian label of what was actually done (e.g. "отжимания", "приседания", "бег", "планка").
-- minutes: duration in minutes (integer-ish). If the user gave REPS or SETS instead of a time, ESTIMATE the minutes it realistically takes, including short rests (e.g. 100 отжиманий за несколько подходов ≈ 8 мин; 3×15 приседаний ≈ 6 мин; планка 3×1 мин ≈ 4 мин). If a duration is stated, use it. minutes must be > 0.
+- minutes: duration in minutes (integer-ish). If the user gave REPS or SETS instead of a time, ESTIMATE the minutes it realistically takes, including short rests (e.g. 100 отжиманий за несколько подходов ≈ 8 мин; 3×15 приседаний ≈ 6 мин; планка 3×1 мин ≈ 4 мин; a gym strength set with rest ≈ 3 мин). If a duration is stated, use it. minutes must be > 0.
+- sets: for "strength" ONLY — the number of SETS (подходов) when the user stated or clearly implied them ("жим лёжа 4 подхода" → 4; "3×15 приседаний" → 3; "5 подходов приседа и 4 жима" → two entries with 5 and 4). Lifters don't track time, so sets is how the entry will be shown. Omit when not stated and for every non-strength type.
 - speed_kmh: for walk / run / cycle ONLY, the pace in km/h when the user stated or clearly implied one ("бежал 10 км/ч", "10 км за час" → 10; "5 км за 30 минут" → 10). Omit when no pace is given — do NOT guess a pace.
 - met: ONLY when type is "other". Give your best MET (metabolic-equivalent) for that activity at the described effort (e.g. отжимания ≈ 8, планка ≈ 3, скакалка ≈ 12, гребной тренажёр уже есть как "row"). Omit met for every known type — the app has its own.
 - confidence: 0..1.
@@ -191,6 +192,38 @@ export function userWorkoutInstruction(): string {
   return `Parse the workout description below into structured activities (type, minutes, pace where applicable). Do not compute calories.`;
 }
 
+/**
+ * System prompt for parsing a SCREENSHOT of a fitness tracker / sports watch
+ * app (Apple Watch, Garmin, Mi Fit, Strava…). Two jobs: (1) read the numbers
+ * the tracker itself printed — total active calories and duration — verbatim;
+ * (2) map the visible activities to the same structured entries as the text
+ * parser. The device's kcal, when present, WINS on the client («по трекеру» —
+ * the device measured it with heart rate, we don't out-guess it), so
+ * transcription honesty matters more than estimation here.
+ */
+export const PARSE_WORKOUT_PHOTO_SYSTEM_PROMPT = `You read a SCREENSHOT from a fitness tracker / sports-watch / workout app and turn it into structured entries for a fitness app.
+
+Two tasks:
+1. TRANSCRIBE the tracker's own totals when they are visibly printed:
+   - device_kcal: the total ACTIVE/workout calories shown on the screen (kcal). Transcribe the printed number exactly — do NOT estimate, do NOT confuse it with steps, distance, heart rate or total daily calories. Omit if no calorie figure is visible.
+   - device_minutes: the total workout duration shown, in minutes ("47:32" → 48). Omit if not visible.
+2. PARSE the visible activities into the workouts array, exactly like a text description:
+   - type: walk, run, cycle, swim, strength, hiit, elliptical, row, sport, dance, martial, yoga — or "other" only when none fits.
+   - name_ru: a short Russian label of the activity as shown (e.g. "силовая тренировка", "бег 5 км").
+   - minutes: the activity's duration from the screen; if only distance/reps are shown, estimate realistically. Must be > 0.
+   - sets: for "strength" ONLY, when the screen shows a set count.
+   - speed_kmh: for walk/run/cycle when pace/speed is shown ("5'30\\"/km" → ~10.9). Omit otherwise.
+   - met: ONLY for "other".
+   - confidence: 0..1 — how sure you are of the reading (blurry screenshot → lower).
+
+Rules:
+- This is NOT a food photo. If the image is not a workout/tracker screen at all, return an empty workouts array and no device numbers.
+- Never invent an activity or a number that is not on the screen.`;
+
+export function userWorkoutPhotoInstruction(): string {
+  return `Read the workout screenshot: transcribe the tracker's printed calorie/duration totals if visible, and parse the activities. Do not estimate calories yourself.`;
+}
+
 /** JSON Schema for workout parsing — structured output, no nutrition numbers. */
 export const PARSE_WORKOUT_SCHEMA = {
   type: 'object',
@@ -203,12 +236,33 @@ export const PARSE_WORKOUT_SCHEMA = {
           type: { type: 'string', enum: [...WORKOUT_TYPE_KEYS] },
           name_ru: { type: 'string' },
           minutes: { type: 'number' },
+          sets: { type: ['number', 'null'], description: 'Set count — ONLY for type "strength" when stated/implied. Omit otherwise.' },
           speed_kmh: { type: ['number', 'null'] },
           met: { type: ['number', 'null'], description: 'Model MET estimate — ONLY for type "other". Omit for known types.' },
           confidence: { type: 'number' },
         },
         required: ['type', 'name_ru', 'minutes', 'confidence'],
       },
+    },
+  },
+  required: ['workouts'],
+} as const;
+
+/**
+ * JSON Schema for the workout-screenshot parse: the same activities array plus
+ * the tracker's own printed totals (transcribed, never estimated).
+ */
+export const PARSE_WORKOUT_PHOTO_SCHEMA = {
+  type: 'object',
+  properties: {
+    workouts: PARSE_WORKOUT_SCHEMA.properties.workouts,
+    device_kcal: {
+      type: ['number', 'null'],
+      description: 'Total active calories PRINTED on the screen, transcribed verbatim. Omit when not visible.',
+    },
+    device_minutes: {
+      type: ['number', 'null'],
+      description: 'Total workout duration printed on the screen, in minutes. Omit when not visible.',
     },
   },
   required: ['workouts'],

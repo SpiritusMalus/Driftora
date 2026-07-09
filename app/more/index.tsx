@@ -66,6 +66,15 @@ export default function MoreScreen() {
       onPress: () => router.push('/review'),
     },
     {
+      key: 'how',
+      icon: 'help-circle-outline',
+      tint: theme.primary,
+      iconBg: coralTile,
+      title: t('more.sections.how'),
+      subtitle: t('more.subtitles.how'),
+      onPress: () => router.push('/more/how-it-works'),
+    },
+    {
       key: 'settings',
       icon: 'settings-outline',
       tint: theme.isIOS ? '#8E8E93' : theme.subtle,

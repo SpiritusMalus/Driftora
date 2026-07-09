@@ -174,10 +174,42 @@ export function metForSpeed(type: WorkoutType, speedKmh: number): number | null 
   }
 }
 
+/// Types logged in SETS, not minutes («делаю силовые — тебе не нужно знать
+/// время»): the UI asks «сколько подходов» and estimates the duration at
+/// [MIN_PER_SET] each. Kept to strength — cardio/HIIT are genuinely time-shaped.
+export const SET_WORKOUT_TYPES: readonly WorkoutType[] = ['strength'];
+
+export function supportsSets(type: WorkoutType): boolean {
+  return SET_WORKOUT_TYPES.includes(type);
+}
+
+/// Average whole minutes ONE strength set occupies including the inter-set rest
+/// (~30–60 s of work + ~2 min rest). The Compendium's weights MET already
+/// averages work with rest, so sets × this feeds the same MET model honestly.
+export const MIN_PER_SET = 3;
+
+/// Sets → estimated minutes, clamped to a sane set count so a typo (300) can't
+/// blow up the day's budget.
+export function setsToMinutes(sets: number): number {
+  if (!Number.isFinite(sets)) return 0;
+  return Math.min(Math.max(0, Math.round(sets)), 60) * MIN_PER_SET;
+}
+
+/// «Дожиг» (EPOC): after resistance / interval work the body burns above rest
+/// for 24–48 h — glycogen restock, fiber repair, protein synthesis. Studies put
+/// it around 6–15% of the session's cost, so a conservative +10% is credited
+/// for these types ONLY; steady cardio's afterburn is small enough that adding
+/// it would be false precision.
+export const EPOC_BONUS: Partial<Record<WorkoutType, number>> = {
+  strength: 0.1,
+  hiit: 0.1,
+};
+
 /// Whole-kcal from an explicit MET, minutes and weight — the shared core of the
 /// MET model. Clamps garbage (minutes ≤ 10 h, weight to a sane band, MET must be
 /// positive) so it never returns NaN. Used directly for a free-text "other"
-/// activity whose MET the model supplied (no entry in [WORKOUT_MET]).
+/// activity whose MET the model supplied (no entry in [WORKOUT_MET]); note no
+/// EPOC is added here — an unknown activity has no type to hang the bonus on.
 export function kcalFromMet(met: number, minutes: number, weightKg: number): number {
   if (!Number.isFinite(met) || met <= 0) return 0;
   const min = Math.min(Math.max(0, minutes), 600);
@@ -185,9 +217,9 @@ export function kcalFromMet(met: number, minutes: number, weightKg: number): num
   return Math.round(met * kg * (min / 60));
 }
 
-/// Calories burned by one workout: MET × kg × hours, whole kcal. If a pace
-/// (km/h) is given for a speed-capable type it refines the MET; otherwise the
-/// fixed moderate MET is used.
+/// Calories burned by one workout: MET × kg × hours plus the type's afterburn
+/// ([EPOC_BONUS]), whole kcal. If a pace (km/h) is given for a speed-capable
+/// type it refines the MET; otherwise the fixed moderate MET is used.
 export function workoutKcal(
   type: WorkoutType,
   minutes: number,
@@ -197,7 +229,8 @@ export function workoutKcal(
   const fixed = WORKOUT_MET[type];
   if (fixed == null) return 0;
   const met = (speedKmh != null ? metForSpeed(type, speedKmh) : null) ?? fixed;
-  return kcalFromMet(met, minutes, weightKg);
+  const session = kcalFromMet(met, minutes, weightKg);
+  return Math.round(session * (1 + (EPOC_BONUS[type] ?? 0)));
 }
 
 /// Share of burned exercise calories added back to the day's budget. Predictive
@@ -289,9 +322,9 @@ const MODE_FACTOR: Record<GoalMode, number> = { lose: 0.85, maintain: 1, gain: 1
 const LOSE_FACTOR_OBESE = 0.8;
 const OBESE_BMI = 30;
 
-/// How aggressive the weight-loss deficit is — the ONE lever the user chooses for
-/// pace (the mode is lose/maintain/gain, this refines the "how fast"). Only
-/// applies to `lose`; ignored for maintain/gain.
+/// How aggressive the pace is — the ONE lever the user chooses on top of the
+/// mode (lose/maintain/gain picks the direction, this refines the "how fast").
+/// Ignored for maintain (there is no pace to size). For lose:
 ///  - 'soft'     — a gentle −10%, for a small reserve / muscle-sparing;
 ///  - 'standard' — the default: the BMI-aware −15% (−20% at BMI ≥ 30), i.e. the
 ///                 exact pre-choice behaviour, so an untouched setting never
@@ -299,9 +332,10 @@ const OBESE_BMI = 30;
 ///  - 'fast'     — an assertive −25%, for a large reserve. The BMR / clinical
 ///                 floor still caps it, so a small body just floors instead of
 ///                 crash-dieting.
+/// For gain the same three levels size the SURPLUS: +5% / +10% / +15%.
 export type DeficitTempo = 'soft' | 'standard' | 'fast';
 
-/// Selection order for the tempo chip row (weight screen, lose mode only).
+/// Selection order for the tempo chip row (weight screen, lose & gain modes).
 export const DEFICIT_TEMPOS: readonly DeficitTempo[] = ['soft', 'standard', 'fast'];
 
 /// Explicit lose factors for the non-default tempos. 'standard' is intentionally
@@ -309,6 +343,15 @@ export const DEFICIT_TEMPOS: readonly DeficitTempo[] = ['soft', 'standard', 'fas
 const TEMPO_LOSE_FACTOR: Record<Exclude<DeficitTempo, 'standard'>, number> = {
   soft: 0.9, // −10%
   fast: 0.75, // −25%
+};
+
+/// Gain (surplus) factors for the non-default tempos; 'standard' again defers
+/// to MODE_FACTOR.gain (+10%) so an untouched setting keeps the old plan.
+/// Deliberately modest — muscle synthesis is slow and any surplus beyond it is
+/// stored as fat, so even 'fast' is +15%, not a dirty bulk.
+const TEMPO_GAIN_FACTOR: Record<Exclude<DeficitTempo, 'standard'>, number> = {
+  soft: 1.05, // +5%
+  fast: 1.15, // +15%
 };
 
 /// Neutral adult age used when the birth year isn't set yet, so the plan still
@@ -445,7 +488,10 @@ export function suggestPlan(
         ? LOSE_FACTOR_OBESE
         : MODE_FACTOR.lose
       : TEMPO_LOSE_FACTOR[tempo];
-  const raw = maintenance * (mode === 'lose' ? loseFactor : MODE_FACTOR[mode]);
+  // The same lever sizes the surplus for gain (+5/+10/+15%); maintain has no
+  // pace, so the tempo is simply ignored there.
+  const gainFactor = tempo === 'standard' ? MODE_FACTOR.gain : TEMPO_GAIN_FACTOR[tempo];
+  const raw = maintenance * (mode === 'lose' ? loseFactor : mode === 'gain' ? gainFactor : 1);
   // Never prescribe eating below resting needs or the clinical minimum. The
   // floor guards the DAY's intake ([dayBudgetKcal]), so `kcal` here is the
   // zero-movement day: the deficit base lifted to the minimum. The unlifted

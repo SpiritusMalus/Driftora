@@ -146,6 +146,13 @@ export const en = {
       body: 'Goals and auto-wins are off. Your data is safe — pick it back up whenever you are ready.',
       resume: 'Resume goals',
     },
+    // The "what do I do first?" card: shown while the day budget can't be
+    // computed yet (empty body profile / no weigh-in), pointing at the wizard.
+    setup: {
+      title: 'Set up your body',
+      body: 'A few quick questions — and we compute your daily calorie and macro targets.',
+      cta: 'Set up',
+    },
   },
   onboarding: {
     next: 'Next',
@@ -164,6 +171,134 @@ export const en = {
       body: 'Check in your mood with one tap — Driftora pulls steps and sleep from Health. In a few days your personal pattern shows up here.',
     },
   },
+  // Body-setup wizard: one question per screen, everything saved by the single
+  // «Compute my daily target» tap, then the result with its breakdown.
+  bodySetup: {
+    title: 'Body setup',
+    progress: 'Step {{i}} of {{n}}',
+    back: 'Back',
+    next: 'Next',
+    calc: 'Compute my daily target',
+    birthYear: {
+      title: 'Birth year',
+      hint: 'Age is part of the energy-expenditure formula.',
+      placeholder: 'e.g. 1990',
+      invalid: 'Enter a real year — e.g. 1990.',
+    },
+    sex: {
+      title: 'Sex',
+      hint: 'Resting-energy formulas differ for men and women.',
+      male: 'Male',
+      female: 'Female',
+    },
+    height: {
+      title: 'Height',
+      placeholder: 'e.g. 175',
+      invalid: 'Height in centimeters: 100 to 250.',
+    },
+    weight: {
+      title: 'Current weight',
+      hint: 'We will log this as today’s weigh-in.',
+      placeholder: 'e.g. 80',
+      invalid: 'Weight in kilograms: 20 to 400.',
+    },
+    bodyFat: {
+      title: 'Body fat %',
+      hint: 'Optional. If you know it (smart scale, DEXA) the target gets more precise — computed from lean mass, not total weight. Don’t know it? Just skip.',
+      placeholder: 'e.g. 25',
+      invalid: 'Realistic range: 3–70%. Leave empty if unsure.',
+      skip: 'Don’t know — skip',
+    },
+    goal: {
+      title: 'Your goal',
+      lose: 'Lose weight',
+      loseDesc: 'A calorie deficit — weight gently down.',
+      maintain: 'Maintain weight',
+      maintainDesc: 'Eat to your needs and hold steady.',
+      gain: 'Build muscle',
+      gainDesc: 'A surplus + strength training — muscle grows.',
+    },
+    goalWeight: {
+      title: 'Goal weight',
+      hint: 'Optional — the plan works without it, you just won’t see the "time to goal" line.',
+      placeholder: 'e.g. 90',
+      directionLose: 'To lose weight, the goal must be below your current weight.',
+      directionGain: 'To gain, the goal must be above your current weight.',
+    },
+    tempo: {
+      titleLose: 'Weight-loss pace',
+      titleGain: 'Gain pace',
+      lose: {
+        soft: 'Soft',
+        softDesc: '−10% of maintenance — the gentlest.',
+        standard: 'Moderate',
+        standardDesc: '−15% (−20% at BMI ≥ 30) — recommended.',
+        fast: 'Fast',
+        fastDesc: '−25% — assertive. We still never go below the healthy minimum.',
+      },
+      gain: {
+        soft: 'Lean',
+        softDesc: '+5% — a clean bulk, minimal fat.',
+        standard: 'Standard',
+        standardDesc: '+10% — recommended.',
+        fast: 'Fast',
+        fastDesc: '+15% — quicker, but a visible share of the gain will be fat.',
+      },
+    },
+    result: {
+      title: 'Your daily target',
+      kcal: '≈ {{kcal}} kcal a day',
+      howTitle: 'Where the number comes from',
+      bmr: 'Resting metabolism ≈ {{kcal}} kcal — expenditure at complete rest ({{method}}).',
+      method: {
+        katch: 'from body composition, Katch–McArdle',
+        mifflin: 'Mifflin–St Jeor formula',
+      },
+      maintenance: 'A day with no sport and barely any walking ≈ {{kcal}} kcal.',
+      delta: {
+        lose: 'Minus {{pct}}% for weight loss → your base is {{kcal}} kcal.',
+        gain: 'Plus {{pct}}% for gaining → your base is {{kcal}} kcal.',
+        maintain: 'For maintenance the target equals that expenditure.',
+      },
+      boostTitle: 'How to raise the target',
+      boost: 'The base is a day with no movement at all. Steps above ~3,000 and workouts add to the budget the same day: move more — eat more. You’ll see the “rest · steps · workouts” line on Food.',
+      gainNote: 'A surplus builds muscle only together with strength training. Without it, the extra calories become fat.',
+      applied: 'Saved as your daily goal ✓ — progress shows on Food.',
+      edit: 'You can change this anytime: Weight → Body parameters → Edit.',
+      done: 'Done',
+    },
+  },
+  // "How it works" — the honesty page: where every number comes from, its real
+  // accuracy, and how to raise the daily budget. Mirrors the RU copy.
+  howItWorks: {
+    title: 'How it works',
+    linkTitle: 'How the numbers work',
+    intro: 'Short and honest: where the app’s numbers come from, how accurate they are, and how to improve them.',
+    norm: {
+      title: 'Your daily target',
+      body: 'The foundation is resting metabolism (BMR): what the body burns at complete rest. We use the Mifflin–St Jeor formula (sex, height, weight, age) — or, when a measured body-fat % is set, Katch–McArdle from lean mass: more honest for a non-average body composition.\n\nThen the goal. Losing — minus 10–25% of maintenance (you pick the pace), gaining — plus 5–15%, maintaining — no shift. The plan never drops below the healthy minimum (BMR and the clinical floor).\n\nProtein 1.6–1.8 g/kg (at a high BMI — from the goal or “working” weight: fat mass needs none), fat ~30% of calories, carbs the remainder, fiber 14 g per 1000 kcal.',
+    },
+    budget: {
+      title: 'The day’s budget: base + steps + workouts',
+      body: 'The plan’s number is a day with no movement at all (a sedentary 1.2 on BMR). All movement adds on top the same day:\n\n· steps above ~3,000 (the first ~3,000 are already inside the sedentary base) — about 0.0005 kcal per step per kg;\n· workouts — 75% of their burn (why not 100% — below).\n\nThe “base · steps · workouts” line on Food shows the sum transparently. Move more — eat more, while your chosen pace stays intact.',
+    },
+    food: {
+      title: 'Where food numbers come from',
+      body: 'Source order: verified databases (the Russian table, USDA, Open Food Facts, FatSecret) → the nutrition label read from a package photo (“from the label”) → a rough AI estimate (“≈ AI estimate”) when no database has the food.\n\nHonest accuracy: even with “exact” databases a real plate differs by ±10–20% (variety, cooking, portion size); an AI estimate is rougher, up to ±30%. If the match is wrong — “not it?” and manual search are always one tap away.',
+    },
+    workouts: {
+      title: 'Workouts and the afterburn',
+      body: 'Burn = MET × weight × time. MET is an averaged “cost” of the activity from the Compendium of Physical Activities; for walking, running and cycling your pace (km/h) refines it. Strength is logged in sets: ≈3 minutes per set (work + rest) — no stopwatch needed.\n\nStrength and HIIT get an afterburn (EPOC) of ≈ +10%: for 24–48 hours after the session the body keeps spending on fiber repair and protein synthesis. Studies put it at 6–15% of the session — tens of kcal, not hundreds, and we promise no more.\n\nOnly 75% of the estimate enters the budget: formulas systematically overstate by ~25%, and undercounting is more honest than eating phantom calories. The exception is a tracker screenshot with a printed calorie figure: we log exactly that number (“from tracker”). Overall workout accuracy is ±20–25%.',
+    },
+    boost: {
+      title: 'How to raise your target',
+      body: 'The target is a base, not a ceiling. Every workout and every step above ~3,000 adds calories to the budget the same day — you see it immediately in the budget line on Food: log a workout, eat more.\n\nLong-term, muscle raises the target: it burns energy even at rest. Gaining muscle (surplus + strength training) grows the base over time — the app picks that up through your measured body-fat %.',
+    },
+    honesty: {
+      title: 'About accuracy — honestly',
+      body: 'Every number here is an estimate, which is why we show them with “≈”, a source and their assumptions instead of passing them off as truth. The real instrument is your weight trend: if it moves the wrong way for 2–3 weeks, adjust the target by 5–10% and keep watching. The app is not medical advice.',
+    },
+  },
   more: {
     title: 'More',
     intro: 'Everything else lives here, off the daily screen.',
@@ -174,6 +309,7 @@ export const en = {
       wins: 'Wins',
       review: 'Weekly review',
       settings: 'Settings',
+      how: 'How it works',
     },
     subtitles: {
       food: 'Calories and protein, when you want them',
@@ -182,6 +318,7 @@ export const en = {
       wins: 'Small things that went well',
       review: 'You vs your past self',
       settings: 'Privacy, targets, break',
+      how: 'Where the numbers come from and how accurate they are',
     },
   },
   units: { kcal: 'kcal', g: 'g', h: 'h' },
@@ -194,16 +331,32 @@ export const en = {
     kmh: 'km/h',
     speedHint: 'e.g. {{n}}',
     speedOptional: 'Pace is optional. Don’t know it? We’ll use an average.',
+    // Strength is logged in sets — no stopwatch needed.
+    setsPlaceholder: 'e.g. 12',
+    setsUnit: 'sets',
+    setsCount: '{{count}} sets',
+    setsHint: 'No timing needed: we assume ≈3 min per set (work + rest) and add an afterburn of ≈ +10%.',
     add: 'Add',
     remove: 'Remove',
-    describeLabel: 'Or describe it',
+    describeLabel: 'Or describe it — in words, by voice, or with a tracker screenshot',
     describeHint: 'e.g. 100 push-ups, then a 20-min run',
     describeAction: 'Parse',
     parsing: 'Parsing…',
     parseAdded: 'Added {{count}} entr(ies). Check the time and burn.',
     parseNone: 'Couldn’t parse that. Refine it, or use the buttons above.',
     parseDeclined: 'Free-text needs AI consent. The buttons above work offline.',
-    note: 'Burn is estimated from type and duration (MET × weight). For walking, running and cycling you can add your pace (km/h) for a sharper estimate; without it we assume an average pace. You can also just describe the workout in words — AI splits it into types and durations, and the app computes the calories (a «≈» number is a rough AI estimate for unusual activities). Formulas overstate by ~25%, so only 75% is added to the day’s target. Adjust by how you feel and your weight trend.',
+    // Voice note & fitness-tracker screenshot.
+    voiceStart: 'Dictate the workout',
+    voiceStop: 'Stop recording',
+    voiceRecording: 'Recording… tap ■ when done.',
+    voiceFailed: 'Couldn’t record. Try again or type it instead.',
+    voiceUnavailable: 'Microphone unavailable. Check the permission or type it instead.',
+    screenshot: 'Workout screenshot',
+    photoFailed: 'Couldn’t open the image. Try another screenshot.',
+    fromTracker: 'from tracker',
+    trackerAdded: 'Logged from your tracker: {{kcal}} kcal.',
+    budgetAck: '✓ Workout logged: +{{kcal}} kcal added to today’s budget.',
+    note: 'Burn is estimated from type and duration (MET × weight); strength — from sets (≈3 min each). Strength and HIIT get an afterburn (EPOC) of ≈ +10% — the body keeps spending on recovery for 24–48 h after the session. For walking, running and cycling you can add your pace (km/h) for a sharper estimate. You can describe the workout in words or by voice — AI splits it into types and volume, and the app computes the calories (a «≈» number is a rough AI estimate for unusual activities). A fitness-tracker screenshot: when it shows a calorie figure, we log exactly that («from tracker»). Formulas overstate by ~25%, so only 75% is added to the day’s target. Adjust by how you feel and your weight trend.',
     type: {
       walk: 'Walking',
       run: 'Running',
@@ -281,11 +434,18 @@ export const en = {
     plan: {
       title: 'Nutrition plan',
       mode: { lose: 'Lose weight', maintain: 'Maintain', gain: 'Gain' },
-      // Weight-loss pace — the one speed lever (lose mode only). 'Standard' is the
-      // BMI-aware default (unchanged); 'Gentle'/'Fast' soften/steepen it.
+      // Pace — the one speed lever. 'Standard' is the BMI-aware default
+      // (unchanged); 'Gentle'/'Fast' soften/steepen the deficit.
       tempo: {
         label: 'Weight-loss pace',
         soft: 'Gentle',
+        standard: 'Standard',
+        fast: 'Fast',
+      },
+      // The same lever for gain: lean +5% / standard +10% / fast +15%.
+      tempoGain: {
+        label: 'Gain pace',
+        soft: 'Lean',
         standard: 'Standard',
         fast: 'Fast',
       },
@@ -325,10 +485,11 @@ export const en = {
       appliedTick: 'Goal updated ✓',
       recalc: 'The plan recalculates itself after every new weigh-in.',
       needWeight: 'Log a weight above — the plan is computed from it.',
-      needProfile: 'Fill in “Body parameters” below — height, sex, birth year and activity — and the plan appears here.',
+      needProfile: 'Run the quick body setup — height, sex, birth year — and the plan appears here.',
+      setupCta: 'Set up my body',
       assumedAge: 'Age isn’t set — this plan is an estimate. Add your birth year in “Body parameters” below to firm up the numbers.',
       note:
-        'The Mifflin–St Jeor formula estimates the “average” person: real needs differ. Start from these numbers and adjust by your weight trend and how you feel. You set the deficit by pace: gentle −10%, standard −15% (−20% at BMI ≥ 30), fast −25% · protein 1.6–1.8 g/kg · fat 30% of calories · carbs the remainder.',
+        'The Mifflin–St Jeor formula estimates the “average” person: real needs differ. Start from these numbers and adjust by your weight trend and how you feel. You set the deficit by pace: gentle −10%, standard −15% (−20% at BMI ≥ 30), fast −25%; the gain surplus: lean +5%, standard +10%, fast +15% · protein 1.6–1.8 g/kg · fat 30% of calories · carbs the remainder.',
       why: 'Why these numbers',
       whyHide: 'Hide explanation',
     },
@@ -364,7 +525,12 @@ export const en = {
       },
     },
     sections: {
-      body: { title: 'Body parameters', empty: 'Not filled in — needed for the plan and BMI' },
+      body: {
+        title: 'Body parameters',
+        empty: 'Not filled in — needed for the plan and BMI',
+        edit: 'Edit',
+        fatUnset: 'not set',
+      },
       history: { title: 'History', count: 'Entries: {{count}}' },
       manual: { title: 'Manual targets', summary: '{{kcal}} kcal · P {{prot}} · F {{fat}} · C {{carb}}' },
     },
@@ -470,6 +636,7 @@ export const en = {
       workoutsPart: 'workouts +{{kcal}}',
       minPart: 'not below {{kcal}}',
       forecastNote: 'Today’s steps aren’t logged yet — the budget stands on your usual count. Enter your steps and it firms up.',
+      how: 'how is the budget computed?',
     },
     parseIssue: {
       offline: 'The server didn’t answer — parsed offline, without AI, so the numbers are rougher. You can try again.',

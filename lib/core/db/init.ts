@@ -53,7 +53,8 @@ CREATE TABLE IF NOT EXISTS workouts (
   minutes INTEGER NOT NULL,
   kcal REAL NOT NULL DEFAULT 0,
   speed_kmh REAL,
-  label TEXT
+  label TEXT,
+  sets INTEGER
 );
 CREATE TABLE IF NOT EXISTS weights (
   date TEXT PRIMARY KEY,
@@ -189,6 +190,9 @@ export const MIGRATIONS: string[] = [
   // standard −15/−20% / fast −25%). Ships 'standard' = the prior BMI-aware
   // default, so existing installs see no change until the user picks another.
   `ALTER TABLE app_settings ADD COLUMN deficit_tempo TEXT NOT NULL DEFAULT 'standard'`,
+  // 2026-07-09: set count for strength workouts logged «подходами» (minutes
+  // then hold the ~3-min-per-set estimate). Null for time-based entries.
+  `ALTER TABLE workouts ADD COLUMN sets INTEGER`,
 ];
 
 /// Runs each CREATE statement through [run], then the idempotent [MIGRATIONS].

@@ -34,7 +34,8 @@ export interface SettingsPatch {
   goalMode?: 'lose' | 'maintain' | 'gain';
   // Goal weight in kg for the plan card; 0 clears back to "not set".
   goalWeightKg?: number;
-  // Weight-loss deficit tempo (lose mode only): soft −10% / standard −15/−20% / fast −25%.
+  // Pace tempo: lose soft −10% / standard −15…−20% / fast −25%; gain soft +5% /
+  // standard +10% / fast +15%. Ignored for maintain.
   deficitTempo?: 'soft' | 'standard' | 'fast';
   // Measured body-fat % for composition-aware BMR; 0 clears back to "not set".
   bodyFatPct?: number;

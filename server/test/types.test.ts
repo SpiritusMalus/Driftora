@@ -6,6 +6,7 @@ import {
   coercePer100,
   emptyMealDraft,
   normalizeIdentified,
+  normalizeParsedWorkoutPhoto,
   normalizeParsedWorkouts,
   scaleToGrams,
   sumNutrients,
@@ -237,6 +238,41 @@ test('normalizeParsedWorkouts: unknown type folds to "other"; name falls back to
   const [w] = normalizeParsedWorkouts({ workouts: [{ type: 'quidditch', minutes: 20, confidence: 0.5 }] });
   assert.equal(w.type, 'other');
   assert.equal(w.name_ru, 'other');
+});
+
+test('normalizeParsedWorkoutPhoto: keeps plausible tracker totals, drops wild ones', () => {
+  const ok = normalizeParsedWorkoutPhoto({
+    workouts: [{ type: 'run', name_ru: 'бег', minutes: 30, confidence: 0.9 }],
+    device_kcal: 412.6,
+    device_minutes: 31.2,
+  });
+  assert.equal(ok.workouts.length, 1);
+  assert.equal(ok.device_kcal, 413);
+  assert.equal(ok.device_minutes, 31);
+  // Steps misread as kcal (10 000) or a 12-hour "duration" must not pass.
+  const wild = normalizeParsedWorkoutPhoto({ workouts: [], device_kcal: 10_000, device_minutes: 720 });
+  assert.equal(wild.device_kcal, undefined);
+  assert.equal(wild.device_minutes, undefined);
+  // Garbage payloads → an empty, well-formed result. Never a throw.
+  assert.deepEqual(normalizeParsedWorkoutPhoto(null), { workouts: [] });
+  assert.deepEqual(normalizeParsedWorkoutPhoto('nope'), { workouts: [] });
+});
+
+test('normalizeParsedWorkouts: sets ride along for strength only, clamped', () => {
+  const [lift] = normalizeParsedWorkouts({
+    workouts: [{ type: 'strength', name_ru: 'жим лёжа', minutes: 12, sets: 4, confidence: 0.9 }],
+  });
+  assert.equal(lift.sets, 4);
+  // A wild count is dropped rather than clamped-and-kept — no fabricated volume.
+  const [wild] = normalizeParsedWorkouts({
+    workouts: [{ type: 'strength', name_ru: 'жим', minutes: 12, sets: 500, confidence: 0.9 }],
+  });
+  assert.equal(wild.sets, undefined);
+  // Sets are meaningless for a run — dropped even if the model emits them.
+  const [run] = normalizeParsedWorkouts({
+    workouts: [{ type: 'run', name_ru: 'бег', minutes: 30, sets: 3, confidence: 0.9 }],
+  });
+  assert.equal(run.sets, undefined);
 });
 
 test('normalizeParsedWorkouts: drops non-positive / garbage durations, never throws', () => {

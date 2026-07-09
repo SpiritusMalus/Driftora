@@ -9,11 +9,14 @@ import {
   katchMcArdleBmr,
   metForSpeed,
   mifflinBmr,
+  MIN_PER_SET,
   restingPlan,
+  setsToMinutes,
   stepsEarnedKcal,
   suggestActivityLevel,
   suggestPlan,
   suggestTargets,
+  supportsSets,
   supportsSpeed,
   validBodyFatPct,
   withWorkoutEnergy,
@@ -293,6 +296,36 @@ describe('workoutKcal (MET × kg × hours)', () => {
       expect(workoutKcal(t, 30, 80)).toBeGreaterThan(0);
     }
   });
+
+  it('strength and HIIT carry the +10% afterburn (EPOC); steady cardio does not', () => {
+    // strength: 5.0 × 80 × 1 h = 400 session → 440 with the afterburn
+    expect(workoutKcal('strength', 60, 80)).toBe(440);
+    // hiit: 8.0 × 80 × 0.5 h = 320 → 352
+    expect(workoutKcal('hiit', 30, 80)).toBe(352);
+    // walk stays session-only: 4.3 × 130 × 1 h = 559
+    expect(workoutKcal('walk', 60, 130)).toBe(559);
+  });
+});
+
+describe('sets-based strength logging (no stopwatch needed)', () => {
+  it('only strength is logged in sets', () => {
+    expect(supportsSets('strength')).toBe(true);
+    expect(supportsSets('hiit')).toBe(false);
+    expect(supportsSets('run')).toBe(false);
+  });
+
+  it('sets → minutes at ~3 min per set, clamped against typos', () => {
+    expect(setsToMinutes(12)).toBe(12 * MIN_PER_SET); // 36
+    expect(setsToMinutes(0)).toBe(0);
+    expect(setsToMinutes(-3)).toBe(0);
+    expect(setsToMinutes(300)).toBe(60 * MIN_PER_SET); // a typo can't triple the day
+    expect(setsToMinutes(NaN)).toBe(0);
+  });
+
+  it('a 12-set gym session lands on a plausible burn for 80 kg', () => {
+    // 12 × 3 min = 36 min → 5.0 × 80 × 0.6 = 240 session → 264 with afterburn
+    expect(workoutKcal('strength', setsToMinutes(12), 80)).toBe(264);
+  });
 });
 
 describe('metForSpeed + speed-aware workoutKcal', () => {
@@ -376,12 +409,23 @@ describe('suggestPlan (deficit tempo: the pace lever)', () => {
     expect(fast.kcal).toBeGreaterThanOrEqual(1200);
   });
 
-  it('tempo is ignored for maintain / gain (it only sizes a deficit)', () => {
-    for (const mode of ['maintain', 'gain'] as const) {
-      const std = suggestPlan(heavy, 130, mode, NOW, 0, 'standard')!;
-      const fast = suggestPlan(heavy, 130, mode, NOW, 0, 'fast')!;
-      expect(fast.kcal).toBe(std.kcal);
-    }
+  it('tempo is ignored for maintain (no pace to size)', () => {
+    const std = suggestPlan(heavy, 130, 'maintain', NOW, 0, 'standard')!;
+    const fast = suggestPlan(heavy, 130, 'maintain', NOW, 0, 'fast')!;
+    expect(fast.kcal).toBe(std.kcal);
+  });
+
+  it('gain tempo sizes the surplus: +5% / +10% / +15%', () => {
+    const soft = suggestPlan(heavy, 130, 'gain', NOW, 0, 'soft')!;
+    const standard = suggestPlan(heavy, 130, 'gain', NOW, 0, 'standard')!;
+    const fast = suggestPlan(heavy, 130, 'gain', NOW, 0, 'fast')!;
+    // 3100.6 × {1.05, 1.10, 1.15} → 3260 / 3410 / 3570. 'standard' reproduces
+    // the pre-lever +10%, so an untouched setting keeps the old plan.
+    expect(soft.kcal).toBe(3260);
+    expect(standard.kcal).toBe(3410);
+    expect(fast.kcal).toBe(3570);
+    // A bolder surplus → a faster expected gain pace.
+    expect(fast.paceKgPerWeek).toBeGreaterThan(soft.paceKgPerWeek);
   });
 });
 

@@ -261,6 +261,7 @@ function DayProgress({
   theme: Theme;
 }) {
   const { t } = useTranslation();
+  const router = useRouter();
   const kcalEaten = Math.round(totals.kcal);
   // «Base + earned» budget, shown as a transparent sum: the deficit base (what
   // the chosen tempo asks for) plus today's steps and workouts ON TOP — never
@@ -308,6 +309,9 @@ function DayProgress({
               {t('food.day.forecastNote')}
             </Text>
           ) : null}
+          <Pressable onPress={() => router.push('/more/how-it-works')} hitSlop={6}>
+            <Text style={[styles.dayHowLink, { color: theme.tertiary }, theme.font.body]}>{t('food.day.how')}</Text>
+          </Pressable>
         </>
       )}
       <View style={styles.macroRow}>
@@ -463,6 +467,7 @@ const styles = StyleSheet.create({
   dayChip: { fontSize: 12 },
   dayKcal: { fontSize: 14, marginBottom: 6 },
   dayWorkout: { fontSize: 12, marginTop: 6, lineHeight: 17 },
+  dayHowLink: { fontSize: 12, marginTop: 6, textDecorationLine: 'underline' },
   macroRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
   macroCol: { flex: 1 },
   macroLabel: { fontSize: 11, marginBottom: 4 },
