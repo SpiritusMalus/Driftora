@@ -268,6 +268,37 @@ export const en = {
       done: 'Done',
     },
   },
+  // "How it works" — the honesty page: where every number comes from, its real
+  // accuracy, and how to raise the daily budget. Mirrors the RU copy.
+  howItWorks: {
+    title: 'How it works',
+    linkTitle: 'How the numbers work',
+    intro: 'Short and honest: where the app’s numbers come from, how accurate they are, and how to improve them.',
+    norm: {
+      title: 'Your daily target',
+      body: 'The foundation is resting metabolism (BMR): what the body burns at complete rest. We use the Mifflin–St Jeor formula (sex, height, weight, age) — or, when a measured body-fat % is set, Katch–McArdle from lean mass: more honest for a non-average body composition.\n\nThen the goal. Losing — minus 10–25% of maintenance (you pick the pace), gaining — plus 5–15%, maintaining — no shift. The plan never drops below the healthy minimum (BMR and the clinical floor).\n\nProtein 1.6–1.8 g/kg (at a high BMI — from the goal or “working” weight: fat mass needs none), fat ~30% of calories, carbs the remainder, fiber 14 g per 1000 kcal.',
+    },
+    budget: {
+      title: 'The day’s budget: base + steps + workouts',
+      body: 'The plan’s number is a day with no movement at all (a sedentary 1.2 on BMR). All movement adds on top the same day:\n\n· steps above ~3,000 (the first ~3,000 are already inside the sedentary base) — about 0.0005 kcal per step per kg;\n· workouts — 75% of their burn (why not 100% — below).\n\nThe “base · steps · workouts” line on Food shows the sum transparently. Move more — eat more, while your chosen pace stays intact.',
+    },
+    food: {
+      title: 'Where food numbers come from',
+      body: 'Source order: verified databases (the Russian table, USDA, Open Food Facts, FatSecret) → the nutrition label read from a package photo (“from the label”) → a rough AI estimate (“≈ AI estimate”) when no database has the food.\n\nHonest accuracy: even with “exact” databases a real plate differs by ±10–20% (variety, cooking, portion size); an AI estimate is rougher, up to ±30%. If the match is wrong — “not it?” and manual search are always one tap away.',
+    },
+    workouts: {
+      title: 'Workouts and the afterburn',
+      body: 'Burn = MET × weight × time. MET is an averaged “cost” of the activity from the Compendium of Physical Activities; for walking, running and cycling your pace (km/h) refines it. Strength is logged in sets: ≈3 minutes per set (work + rest) — no stopwatch needed.\n\nStrength and HIIT get an afterburn (EPOC) of ≈ +10%: for 24–48 hours after the session the body keeps spending on fiber repair and protein synthesis. Studies put it at 6–15% of the session — tens of kcal, not hundreds, and we promise no more.\n\nOnly 75% of the estimate enters the budget: formulas systematically overstate by ~25%, and undercounting is more honest than eating phantom calories. The exception is a tracker screenshot with a printed calorie figure: we log exactly that number (“from tracker”). Overall workout accuracy is ±20–25%.',
+    },
+    boost: {
+      title: 'How to raise your target',
+      body: 'The target is a base, not a ceiling. Every workout and every step above ~3,000 adds calories to the budget the same day — you see it immediately in the budget line on Food: log a workout, eat more.\n\nLong-term, muscle raises the target: it burns energy even at rest. Gaining muscle (surplus + strength training) grows the base over time — the app picks that up through your measured body-fat %.',
+    },
+    honesty: {
+      title: 'About accuracy — honestly',
+      body: 'Every number here is an estimate, which is why we show them with “≈”, a source and their assumptions instead of passing them off as truth. The real instrument is your weight trend: if it moves the wrong way for 2–3 weeks, adjust the target by 5–10% and keep watching. The app is not medical advice.',
+    },
+  },
   more: {
     title: 'More',
     intro: 'Everything else lives here, off the daily screen.',
@@ -278,6 +309,7 @@ export const en = {
       wins: 'Wins',
       review: 'Weekly review',
       settings: 'Settings',
+      how: 'How it works',
     },
     subtitles: {
       food: 'Calories and protein, when you want them',
@@ -286,6 +318,7 @@ export const en = {
       wins: 'Small things that went well',
       review: 'You vs your past self',
       settings: 'Privacy, targets, break',
+      how: 'Where the numbers come from and how accurate they are',
     },
   },
   units: { kcal: 'kcal', g: 'g', h: 'h' },
@@ -322,6 +355,7 @@ export const en = {
     photoFailed: 'Couldn’t open the image. Try another screenshot.',
     fromTracker: 'from tracker',
     trackerAdded: 'Logged from your tracker: {{kcal}} kcal.',
+    budgetAck: '✓ Workout logged: +{{kcal}} kcal added to today’s budget.',
     note: 'Burn is estimated from type and duration (MET × weight); strength — from sets (≈3 min each). Strength and HIIT get an afterburn (EPOC) of ≈ +10% — the body keeps spending on recovery for 24–48 h after the session. For walking, running and cycling you can add your pace (km/h) for a sharper estimate. You can describe the workout in words or by voice — AI splits it into types and volume, and the app computes the calories (a «≈» number is a rough AI estimate for unusual activities). A fitness-tracker screenshot: when it shows a calorie figure, we log exactly that («from tracker»). Formulas overstate by ~25%, so only 75% is added to the day’s target. Adjust by how you feel and your weight trend.',
     type: {
       walk: 'Walking',
@@ -602,6 +636,7 @@ export const en = {
       workoutsPart: 'workouts +{{kcal}}',
       minPart: 'not below {{kcal}}',
       forecastNote: 'Today’s steps aren’t logged yet — the budget stands on your usual count. Enter your steps and it firms up.',
+      how: 'how is the budget computed?',
     },
     parseIssue: {
       offline: 'The server didn’t answer — parsed offline, without AI, so the numbers are rougher. You can try again.',

@@ -389,6 +389,17 @@ export default function BodySetupScreen() {
             ) : null}
           </Card>
 
+          <Pressable
+            onPress={() => router.push('/more/how-it-works')}
+            hitSlop={6}
+            style={styles.howLink}
+            accessibilityRole="button"
+          >
+            <Text style={[styles.howLinkText, { color: theme.primary }, theme.font.body]}>
+              {t('howItWorks.linkTitle')}
+            </Text>
+            <Ionicons name="chevron-forward" size={14} color={theme.primary} />
+          </Pressable>
           <Text style={[styles.editHint, { color: theme.subtle }, theme.font.body]}>{t('bodySetup.result.edit')}</Text>
           <PrimaryButton label={t('bodySetup.result.done')} onPress={() => router.back()} style={styles.cta} />
         </>
@@ -570,5 +581,7 @@ const styles = StyleSheet.create({
   blockTitle: { fontSize: 15, marginBottom: 4 },
   note: { fontSize: 13, lineHeight: 19, marginTop: 6 },
   editHint: { fontSize: 12, lineHeight: 17, marginBottom: 12, textAlign: 'center' },
+  howLink: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'center', marginBottom: 10 },
+  howLinkText: { fontSize: 13 },
   cta: { marginTop: 4, marginBottom: 24 },
 });

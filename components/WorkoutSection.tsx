@@ -73,6 +73,25 @@ export function WorkoutSection({ db, onChange }: { db: Db; onChange?: (rawKcal: 
   const [recording, setRecording] = useState<ActiveRecording | null>(null);
   const [photoReady, setPhotoReady] = useState(false);
   const micReady = isAudioRecordingAvailable();
+  // The teaching moment after any successful log: «+N ккал к бюджету сегодня» —
+  // the user must SEE that a workout raises the day, not infer it.
+  const [budgetAck, setBudgetAck] = useState<string | null>(null);
+  const budgetAckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (budgetAckTimer.current) clearTimeout(budgetAckTimer.current);
+    },
+    [],
+  );
+
+  function ackBudget(rawKcal: number) {
+    const add = Math.round(Math.max(0, rawKcal) * EATBACK_FRACTION);
+    if (add <= 0) return;
+    setBudgetAck(t('workouts.budgetAck', { kcal: add }));
+    if (budgetAckTimer.current) clearTimeout(budgetAckTimer.current);
+    budgetAckTimer.current = setTimeout(() => setBudgetAck(null), 6000);
+  }
 
   const reload = useCallback(async () => {
     if (!db) return;
@@ -117,14 +136,14 @@ export function WorkoutSection({ db, onChange }: { db: Db; onChange?: (rawKcal: 
       const n = Number(sets.replace(',', '.'));
       const min = setsToMinutes(n);
       if (!(min > 0)) return;
-      await addWorkout(db, type, min, weightKg, null, new Date(), Math.round(n));
+      ackBudget(await addWorkout(db, type, min, weightKg, null, new Date(), Math.round(n)));
       setSets('');
     } else {
       const min = Number(minutes.replace(',', '.'));
       if (!Number.isFinite(min) || min <= 0) return;
       const kmh = supportsSpeed(type) ? Number(speed.replace(',', '.')) : NaN;
       const speedKmh = Number.isFinite(kmh) && kmh > 0 ? kmh : null;
-      await addWorkout(db, type, min, weightKg, speedKmh);
+      ackBudget(await addWorkout(db, type, min, weightKg, speedKmh));
       setMinutes('');
       setSpeed('');
     }
@@ -139,8 +158,9 @@ export function WorkoutSection({ db, onChange }: { db: Db; onChange?: (rawKcal: 
       setParseNote(t('workouts.parseNone'));
       return;
     }
+    let raw = 0;
     for (const p of parsed) {
-      await addParsedWorkout(
+      raw += await addParsedWorkout(
         db,
         {
           type: p.type,
@@ -155,6 +175,7 @@ export function WorkoutSection({ db, onChange }: { db: Db; onChange?: (rawKcal: 
     }
     setDescribe('');
     setParseNote(t('workouts.parseAdded', { count: parsed.length }));
+    ackBudget(raw);
     await reload();
   }
 
@@ -257,6 +278,7 @@ export function WorkoutSection({ db, onChange }: { db: Db; onChange?: (rawKcal: 
           sets: single?.sets ?? null,
         });
         setParseNote(t('workouts.trackerAdded', { kcal: parsed.device_kcal }));
+        ackBudget(parsed.device_kcal);
         await reload();
         return;
       }
@@ -303,6 +325,9 @@ export function WorkoutSection({ db, onChange }: { db: Db; onChange?: (rawKcal: 
 
       {open ? (
         <View style={styles.body}>
+          {budgetAck ? (
+            <Text style={[styles.budgetAck, { color: theme.accent }, theme.font.bodyMedium]}>{budgetAck}</Text>
+          ) : null}
           <View style={styles.chips}>
             {WORKOUT_TYPES.map((w) => {
               const active = type === w;
@@ -522,6 +547,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 15 },
   summary: { fontSize: 13, flex: 1, textAlign: 'right' },
   body: { marginTop: 12 },
+  budgetAck: { fontSize: 13, lineHeight: 18, marginBottom: 10 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { paddingVertical: 7, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1 },
   chipText: { fontSize: 13 },

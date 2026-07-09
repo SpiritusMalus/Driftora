@@ -495,6 +495,12 @@ export default function WeightScreen() {
                   <Text style={[styles.disclaimer, { color: theme.subtle }, theme.font.body]}>
                     {t('weight.plan.note')}
                   </Text>
+                  <Pressable onPress={() => router.push('/more/how-it-works')} hitSlop={6} style={styles.whyToggle}>
+                    <Text style={[styles.whyToggleText, { color: theme.primary }, theme.font.body]}>
+                      {t('howItWorks.linkTitle')}
+                    </Text>
+                    <Ionicons name="chevron-forward" size={14} color={theme.primary} />
+                  </Pressable>
                 </View>
               ) : null}
             </>
