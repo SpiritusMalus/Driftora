@@ -40,6 +40,17 @@ test('rankByName: generic plain food beats a closer-typed brand', () => {
   assert.ok(ranked[0]!.score > ranked[1]!.score);
 });
 
+test('rankByName: genericBonus never rescues a zero-name-overlap row (salad→milk)', () => {
+  // FatSecret returns a "Generic" milk row for a salad query. The +0.1 generic
+  // bonus must NOT lift its zero name score above 0 — otherwise it floors to
+  // 0.4 confidence and survives the resolver's junk filter.
+  const ranked = rankByName('овощной салат с пекинской капустой и помидорами', [
+    { value: 'milk', name: '1% Fat Milk (Calcium Fortified)', foodType: 'Generic' },
+  ]);
+  assert.equal(ranked[0]?.score, 0);
+  assert.equal(scoreToConfidence(ranked[0]!.score), 0); // → filtered out as junk
+});
+
 test('scoreToConfidence: real-but-terse hit floored at 0.4, but zero overlap → 0', () => {
   assert.equal(scoreToConfidence(0), 0); // nothing in common is NOT a match (milk vs salad)
   assert.equal(scoreToConfidence(0.1), 0.4); // a real, weak overlap is floored so it doesn't read as junk
