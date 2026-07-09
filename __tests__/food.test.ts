@@ -107,19 +107,25 @@ describe('food logging (parse → save → totals)', () => {
     const { sqlite, db } = makeDb();
     await applySchema((stmt) => sqlite.exec(stmt));
 
+    // Anchor both the original and the re-log to a fixed, non-boundary time of
+    // day so the test doesn't flake when run near local midnight (a relative
+    // "3h ago" could land on the previous day). Noon and 9am share a local day.
+    const day = new Date(2020, 0, 1, 12, 0, 0); // "now" for the re-log
+    const morning = new Date(2020, 0, 1, 9, 0, 0); // original meal, same day
+
     const draft = fillMacros(await new StubFoodParser().parse('банан', 'US'));
     const originalId = await saveParsedEntry(db, {
       rawText: 'банан',
       source: 'text',
       draft,
-      ts: new Date(Date.now() - 3 * 3600_000), // this morning
+      ts: morning,
     });
 
-    const newId = await repeatFoodEntry(db, originalId);
+    const newId = await repeatFoodEntry(db, originalId, day);
     expect(newId).not.toBeNull();
     expect(newId).not.toBe(originalId);
 
-    const entries = await listEntriesForDay(db);
+    const entries = await listEntriesForDay(db, day);
     expect(entries).toHaveLength(2);
 
     const copy = await getFoodEntry(db, newId!);
@@ -130,7 +136,7 @@ describe('food logging (parse → save → totals)', () => {
     expect(copy!.items.map((i) => i.name)).toEqual(original!.items.map((i) => i.name));
     expect(copy!.entry.ts.getTime()).toBeGreaterThan(original!.entry.ts.getTime());
 
-    const totals = await todayMacroTotals(db);
+    const totals = await todayMacroTotals(db, day);
     expect(totals.kcal).toBeCloseTo(draft.totals.kcal * 2, 1);
 
     sqlite.close();
