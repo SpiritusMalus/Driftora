@@ -5,10 +5,14 @@ import {
   bmiCategory,
   bmiValue,
   EATBACK_FRACTION,
+  katchMcArdleBmr,
+  metForSpeed,
   mifflinBmr,
   suggestActivityLevel,
   suggestPlan,
   suggestTargets,
+  supportsSpeed,
+  validBodyFatPct,
   withWorkoutEnergy,
   workoutKcal,
   WORKOUT_TYPES,
@@ -48,6 +52,53 @@ describe('mifflinBmr', () => {
     expect(mifflinBmr('male', 70, 175, 30)).toBeCloseTo(1648.75);
     // 10·60 + 6.25·165 − 5·30 − 161 = 1320.25
     expect(mifflinBmr('female', 60, 165, 30)).toBeCloseTo(1320.25);
+  });
+});
+
+describe('katchMcArdleBmr + validBodyFatPct (composition-aware BMR)', () => {
+  it('matches the published formula (370 + 21.6 × lean mass)', () => {
+    // 120 kg at 15% fat → LBM 102 → 370 + 21.6·102 = 2573.2
+    expect(katchMcArdleBmr(120, 15)).toBeCloseTo(2573.2);
+    // 120 kg at 40% fat → LBM 72 → 370 + 21.6·72 = 1925.2
+    expect(katchMcArdleBmr(120, 40)).toBeCloseTo(1925.2);
+  });
+
+  it('at the SAME weight, more muscle (lower fat%) means a higher resting burn', () => {
+    expect(katchMcArdleBmr(120, 15)).toBeGreaterThan(katchMcArdleBmr(120, 40));
+  });
+
+  it('only accepts a plausible measured band; 0/guesses/garbage fall back', () => {
+    expect(validBodyFatPct(20)).toBe(true);
+    expect(validBodyFatPct(0)).toBe(false); // the "not set" default
+    expect(validBodyFatPct(2)).toBe(false); // implausibly low
+    expect(validBodyFatPct(80)).toBe(false); // implausibly high
+    expect(validBodyFatPct(undefined)).toBe(false);
+    expect(validBodyFatPct(NaN)).toBe(false);
+  });
+});
+
+describe('suggestPlan (body composition → Katch–McArdle)', () => {
+  const base = { sex: 'male', birthYear: 1991, heightCm: 180, activityLevel: 'light' };
+
+  it('a lean 120 kg gets a higher maintenance than a high-fat 120 kg', () => {
+    const lean = suggestPlan({ ...base, bodyFatPct: 15 }, 120, 'maintain', NOW)!;
+    const fat = suggestPlan({ ...base, bodyFatPct: 40 }, 120, 'maintain', NOW)!;
+    expect(lean.bmrMethod).toBe('katch');
+    expect(fat.bmrMethod).toBe('katch');
+    expect(lean.maintenanceKcal).toBeGreaterThan(fat.maintenanceKcal);
+  });
+
+  it('without a measured body-fat % it stays on Mifflin (unchanged behaviour)', () => {
+    const plan = suggestPlan(base, 120, 'maintain', NOW)!;
+    expect(plan.bmrMethod).toBe('mifflin');
+    const guessed = suggestPlan({ ...base, bodyFatPct: 0 }, 120, 'maintain', NOW)!;
+    expect(guessed.bmrMethod).toBe('mifflin');
+  });
+
+  it('under Katch–McArdle a missing birth year is NOT flagged as an assumption (age unused)', () => {
+    const plan = suggestPlan({ ...base, birthYear: 0, bodyFatPct: 18 }, 120, 'maintain', NOW)!;
+    expect(plan.bmrMethod).toBe('katch');
+    expect(plan.assumedAge).toBe(false);
   });
 });
 
@@ -238,6 +289,39 @@ describe('workoutKcal (MET × kg × hours)', () => {
     for (const t of WORKOUT_TYPES) {
       expect(workoutKcal(t, 30, 80)).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('metForSpeed + speed-aware workoutKcal', () => {
+  it('only walk/run/cycle support a pace', () => {
+    expect(supportsSpeed('walk')).toBe(true);
+    expect(supportsSpeed('run')).toBe(true);
+    expect(supportsSpeed('cycle')).toBe(true);
+    expect(supportsSpeed('strength')).toBe(false);
+    expect(supportsSpeed('yoga')).toBe(false);
+  });
+
+  it('returns null for a type/speed it cannot refine (caller falls back to fixed MET)', () => {
+    expect(metForSpeed('strength', 12)).toBeNull();
+    expect(metForSpeed('run', 0)).toBeNull();
+    expect(metForSpeed('run', NaN)).toBeNull();
+  });
+
+  it('a faster run burns more than the fixed moderate MET, a slower run less', () => {
+    const fixed = workoutKcal('run', 30, 130); // 637 at the 9.8 MET default
+    expect(workoutKcal('run', 30, 130, 12)).toBeGreaterThan(fixed); // ~12.4 MET
+    expect(workoutKcal('run', 30, 130, 8)).toBeLessThan(fixed); // ~8.6 MET
+  });
+
+  it('ignores a pace on a non-speed type (uses fixed MET)', () => {
+    expect(workoutKcal('strength', 30, 80, 10)).toBe(workoutKcal('strength', 30, 80));
+  });
+
+  it('clamps an absurd pace instead of returning NaN', () => {
+    const met = metForSpeed('run', 999);
+    expect(met).not.toBeNull();
+    expect(Number.isFinite(met as number)).toBe(true);
+    expect(met as number).toBeLessThan(30);
   });
 });
 

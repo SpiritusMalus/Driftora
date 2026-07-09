@@ -1,4 +1,4 @@
-import type { Region } from './types.js';
+import { WORKOUT_TYPE_KEYS, type Region } from './types.js';
 
 /**
  * System prompt for IDENTIFICATION (BUILD SPEC §1/§4). The model's PRIMARY job
@@ -157,3 +157,59 @@ export const IDENTIFY_PHOTO_SCHEMA = {
 export function userAudioInstruction(region: Region): string {
   return `Region: ${region}. The audio is a person describing, in Russian, a meal they ate. Understand what they said, then identify the foods and estimate grams. Identification and grams are your primary job; the nutrition DB is authoritative for numbers.`;
 }
+
+/**
+ * System prompt for WORKOUT parsing. Symmetric to food: the model's job is to
+ * PARSE a free-text activity description into structured entries (type +
+ * minutes, and pace where it applies) — it does NOT compute calories. The app
+ * computes kcal on-device from the user's weight (MET × kg × hours), so no
+ * energy numbers cross the wire. The one exception is `met` for `type: "other"`:
+ * an activity outside the fixed list has no app-side MET, so the model supplies
+ * a rough one — clearly a model estimate, flagged as such in the UI.
+ */
+export const PARSE_WORKOUT_SYSTEM_PROMPT = `You parse a free-text description of physical activity / a workout into structured entries for a fitness app. You do NOT compute calories — the app does that from the user's weight. Your job is: WHICH activities, HOW LONG, and (where it applies) HOW FAST.
+
+Map each activity to exactly ONE type:
+walk, run, cycle, swim, strength, hiit, elliptical, row, sport, dance, martial, yoga — or "other" only when none genuinely fits.
+
+For each activity output:
+- type: one of the keys above, or "other".
+- name_ru: a short Russian label of what was actually done (e.g. "отжимания", "приседания", "бег", "планка").
+- minutes: duration in minutes (integer-ish). If the user gave REPS or SETS instead of a time, ESTIMATE the minutes it realistically takes, including short rests (e.g. 100 отжиманий за несколько подходов ≈ 8 мин; 3×15 приседаний ≈ 6 мин; планка 3×1 мин ≈ 4 мин). If a duration is stated, use it. minutes must be > 0.
+- speed_kmh: for walk / run / cycle ONLY, the pace in km/h when the user stated or clearly implied one ("бежал 10 км/ч", "10 км за час" → 10; "5 км за 30 минут" → 10). Omit when no pace is given — do NOT guess a pace.
+- met: ONLY when type is "other". Give your best MET (metabolic-equivalent) for that activity at the described effort (e.g. отжимания ≈ 8, планка ≈ 3, скакалка ≈ 12, гребной тренажёр уже есть как "row"). Omit met for every known type — the app has its own.
+- confidence: 0..1.
+
+Classification rules:
+- Bodyweight strength moves (отжимания, подтягивания, приседания, выпады, планка) → "strength".
+- Explicitly cardio-for-time bursts (бёрпи, джампинг-джек, табата, круговая) → "hiit".
+- Ball / team games (футбол, баскетбол, волейбол, теннис) → "sport".
+- Several activities in one description → several entries.
+- Never invent an activity that was not mentioned. If there is nothing activity-like, return an empty workouts array.`;
+
+export function userWorkoutInstruction(): string {
+  return `Parse the workout description below into structured activities (type, minutes, pace where applicable). Do not compute calories.`;
+}
+
+/** JSON Schema for workout parsing — structured output, no nutrition numbers. */
+export const PARSE_WORKOUT_SCHEMA = {
+  type: 'object',
+  properties: {
+    workouts: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          type: { type: 'string', enum: [...WORKOUT_TYPE_KEYS] },
+          name_ru: { type: 'string' },
+          minutes: { type: 'number' },
+          speed_kmh: { type: ['number', 'null'] },
+          met: { type: ['number', 'null'], description: 'Model MET estimate — ONLY for type "other". Omit for known types.' },
+          confidence: { type: 'number' },
+        },
+        required: ['type', 'name_ru', 'minutes', 'confidence'],
+      },
+    },
+  },
+  required: ['workouts'],
+} as const;

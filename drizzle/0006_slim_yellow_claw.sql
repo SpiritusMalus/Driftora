@@ -1,0 +1,1 @@
+ALTER TABLE `workouts` ADD `speed_kmh` real;

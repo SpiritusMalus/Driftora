@@ -56,6 +56,30 @@ export function mifflinBmr(sex: Sex, weightKg: number, heightCm: number, ageYear
   return 10 * weightKg + 6.25 * heightCm - 5 * ageYears + (sex === 'male' ? 5 : -161);
 }
 
+/// Which resting-energy formula the plan used — surfaced so the card can name it
+/// honestly instead of presenting one number as ground truth.
+export type BmrMethod = 'mifflin' | 'katch';
+
+/// Katch–McArdle resting energy: 370 + 21.6 × lean body mass (kg). Uses body
+/// COMPOSITION, not just total weight, so two people at the same kg but different
+/// muscle read differently — the honest resolution of "120 kg качка ≠ 120 kg
+/// толстого" (muscle burns at rest, fat barely does). This lives in BMR, NOT in
+/// the per-workout burn: moving a given mass costs ~the same regardless of what
+/// it's made of, so folding composition into MET would be false precision.
+/// Only genuinely better than Mifflin when the body-fat % is MEASURED (smart
+/// scale / calipers / DEXA); a guess doesn't add signal, so callers apply it
+/// only for a plausible provided value (see [validBodyFatPct]).
+export function katchMcArdleBmr(weightKg: number, bodyFatPct: number): number {
+  const lbm = weightKg * (1 - bodyFatPct / 100);
+  return 370 + 21.6 * lbm;
+}
+
+/// Plausible measured adult body-fat band. Outside it (incl. the 0 = "not set"
+/// default) the value is treated as absent and the plan stays on Mifflin.
+export function validBodyFatPct(pct: number | undefined): pct is number {
+  return typeof pct === 'number' && Number.isFinite(pct) && pct >= 3 && pct <= 70;
+}
+
 // ---- workouts / active energy (MET-based, fully on-device — no external API) -
 
 /// Structured-exercise types the user can log. Kept short (the common ones).
@@ -89,11 +113,12 @@ export const WORKOUT_TYPES: readonly WorkoutType[] = [
 ];
 
 /// MET (metabolic equivalent) per type — moderate intensity, rounded from the
-/// Compendium of Physical Activities. kcal = MET × weightKg × hours.
+/// Compendium of Physical Activities. This is the FALLBACK used when the user
+/// doesn't know / doesn't enter a pace. kcal = MET × weightKg × hours.
 const WORKOUT_MET: Record<WorkoutType, number> = {
-  walk: 4.3, // brisk walk
+  walk: 4.3, // brisk walk (~5.5 km/h)
   run: 9.8, // ~8–9 km/h
-  cycle: 7.5,
+  cycle: 7.5, // ~19–22 km/h
   swim: 7.0,
   strength: 5.0, // vigorous weights
   hiit: 8.0, // circuit / HIIT
@@ -105,14 +130,74 @@ const WORKOUT_MET: Record<WorkoutType, number> = {
   yoga: 2.8, // hatha / stretching
 };
 
-/// Calories burned by one workout: MET × kg × hours, whole kcal. Clamps garbage
-/// input (minutes ≤ 10 h, weight to a sane band) so it never returns NaN.
-export function workoutKcal(type: WorkoutType, minutes: number, weightKg: number): number {
-  const met = WORKOUT_MET[type];
-  if (met == null) return 0;
+/// Types whose energy cost scales cleanly with speed — for these the UI offers an
+/// optional km/h field, and [metForSpeed] refines the MET. The rest (strength,
+/// yoga, sport…) have no meaningful single "speed", so they always use the fixed
+/// moderate MET above.
+export const SPEED_WORKOUT_TYPES: readonly WorkoutType[] = ['walk', 'run', 'cycle'];
+
+export function supportsSpeed(type: WorkoutType): boolean {
+  return SPEED_WORKOUT_TYPES.includes(type);
+}
+
+/// Sane km/h band per speed-capable type — used to clamp user input so a typo
+/// (e.g. 200) can't blow up the estimate, and to hint the placeholder.
+const SPEED_KMH_RANGE: Partial<Record<WorkoutType, { min: number; max: number }>> = {
+  walk: { min: 2, max: 8 },
+  run: { min: 5, max: 25 },
+  cycle: { min: 8, max: 45 },
+};
+
+/// MET from an actual pace, for the speed-capable types. Walking and running use
+/// the ACSM level-ground equations (VO₂ from speed, MET = VO₂ / 3.5); cycling has
+/// no tidy linear law (air drag dominates), so it's a rounded fit to the
+/// Compendium's speed buckets. Returns null for a type/speed we can't refine, so
+/// callers fall back to the fixed [WORKOUT_MET].
+export function metForSpeed(type: WorkoutType, speedKmh: number): number | null {
+  const range = SPEED_KMH_RANGE[type];
+  if (!range || !Number.isFinite(speedKmh) || speedKmh <= 0) return null;
+  const kmh = Math.min(Math.max(range.min, speedKmh), range.max);
+  const mPerMin = kmh * (1000 / 60);
+  switch (type) {
+    // ACSM walking: VO₂ = 0.1·(m/min) + 3.5 ; MET = VO₂/3.5.
+    case 'walk':
+      return Math.max(2, (0.1 * mPerMin + 3.5) / 3.5);
+    // ACSM running: VO₂ = 0.2·(m/min) + 3.5 (level ground).
+    case 'run':
+      return Math.max(6, (0.2 * mPerMin + 3.5) / 3.5);
+    // Cycling — rounded fit to the Compendium buckets (~16 km/h≈6, 20≈7.5,
+    // 25≈10, 30≈12). Linear enough over the realistic band.
+    case 'cycle':
+      return Math.max(3, 0.5 * kmh - 2.5);
+    default:
+      return null;
+  }
+}
+
+/// Whole-kcal from an explicit MET, minutes and weight — the shared core of the
+/// MET model. Clamps garbage (minutes ≤ 10 h, weight to a sane band, MET must be
+/// positive) so it never returns NaN. Used directly for a free-text "other"
+/// activity whose MET the model supplied (no entry in [WORKOUT_MET]).
+export function kcalFromMet(met: number, minutes: number, weightKg: number): number {
+  if (!Number.isFinite(met) || met <= 0) return 0;
   const min = Math.min(Math.max(0, minutes), 600);
   const kg = Math.min(Math.max(20, weightKg || 0), 400);
   return Math.round(met * kg * (min / 60));
+}
+
+/// Calories burned by one workout: MET × kg × hours, whole kcal. If a pace
+/// (km/h) is given for a speed-capable type it refines the MET; otherwise the
+/// fixed moderate MET is used.
+export function workoutKcal(
+  type: WorkoutType,
+  minutes: number,
+  weightKg: number,
+  speedKmh?: number | null,
+): number {
+  const fixed = WORKOUT_MET[type];
+  if (fixed == null) return 0;
+  const met = (speedKmh != null ? metForSpeed(type, speedKmh) : null) ?? fixed;
+  return kcalFromMet(met, minutes, weightKg);
 }
 
 /// Share of burned exercise calories added back to the day's budget. Predictive
@@ -154,6 +239,9 @@ export interface BodyProfile {
   birthYear: number;
   heightCm: number;
   activityLevel: string;
+  /// Optional MEASURED body-fat %. Absent / 0 / out-of-band → plan uses Mifflin;
+  /// a plausible value switches the BMR to composition-aware Katch–McArdle.
+  bodyFatPct?: number;
 }
 
 // ---- goal-aware plan (похудение / поддержание / набор) ----------------------
@@ -224,8 +312,12 @@ export interface MacroPlan extends MacroTargets {
   etaWeeks: number | null;
   /// True when the birth year wasn't set and a neutral adult age was assumed —
   /// the card shows the plan anyway but labels it a «прикидка» and asks for the
-  /// year. False once a real birth year drives the estimate.
+  /// year. False once a real birth year drives the estimate (or Katch–McArdle is
+  /// used, where age doesn't enter the BMR at all).
   assumedAge: boolean;
+  /// Which resting-energy formula produced `maintenanceKcal` — 'katch' when a
+  /// measured body-fat % was available (composition-aware), else 'mifflin'.
+  bmrMethod: BmrMethod;
 }
 
 /// Goal-aware КБЖУ plan from the profile + the LATEST logged weight — the card
@@ -268,7 +360,14 @@ export function suggestPlan(
       ? Math.max(goalWeightKg, minHealthyKg)
       : null;
 
-  const bmr = mifflinBmr(sex, weightKg, profile.heightCm, age);
+  // Composition-aware BMR when a measured body-fat % is present (Katch–McArdle
+  // uses lean mass, so muscle vs fat at the same weight finally diverges);
+  // otherwise the population-average Mifflin. Age is unused under Katch.
+  const useKatch = validBodyFatPct(profile.bodyFatPct);
+  const bmr = useKatch
+    ? katchMcArdleBmr(weightKg, profile.bodyFatPct as number)
+    : mifflinBmr(sex, weightKg, profile.heightCm, age);
+  const bmrMethod: BmrMethod = useKatch ? 'katch' : 'mifflin';
   const maintenance = bmr * factor;
   const loseFactor = bmi >= OBESE_BMI ? LOSE_FACTOR_OBESE : MODE_FACTOR.lose;
   const raw = maintenance * (mode === 'lose' ? loseFactor : MODE_FACTOR[mode]);
@@ -314,7 +413,10 @@ export function suggestPlan(
     proteinBasis,
     proteinBasisKg: Math.round(basisKg),
     etaWeeks,
-    assumedAge: !hasBirthYear,
+    // Under Katch–McArdle age never enters the BMR, so an unset year isn't an
+    // assumption the number rests on — don't nag for it in that case.
+    assumedAge: !hasBirthYear && !useKatch,
+    bmrMethod,
   };
 }
 

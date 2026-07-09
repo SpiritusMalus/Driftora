@@ -3,13 +3,25 @@ import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { ConsentModal } from '@/components/consent/ConsentModal';
 import { Card } from '@/components/ui/Card';
 import { TextField } from '@/components/ui/TextField';
+import { AI_CONSENT_VERSION, grantAiConsent, needsAiConsent } from '@/lib/core/consent/consent';
 import type { WorkoutRow } from '@/lib/core/db/schema';
+import { ensureSettings } from '@/lib/core/db/settings';
 import { latestWeight } from '@/lib/core/db/weight';
-import { addWorkout, deleteWorkout, listWorkoutsForDay } from '@/lib/core/db/workouts';
-import { EATBACK_FRACTION, WORKOUT_TYPES, type WorkoutType } from '@/lib/core/insights/bodyMetrics';
+import { addParsedWorkout, addWorkout, deleteWorkout, listWorkoutsForDay } from '@/lib/core/db/workouts';
+import {
+  EATBACK_FRACTION,
+  supportsSpeed,
+  WORKOUT_TYPES,
+  type WorkoutType,
+} from '@/lib/core/insights/bodyMetrics';
+import { getWorkoutParser, isWorkoutParserConfigured } from '@/lib/core/services/workoutParser';
 import { type Theme, useTheme } from '@/lib/theme/theme';
+
+/// Whether an online AI parser is configured for this build (env at bundle time).
+const AI_CONFIGURED = isWorkoutParserConfigured();
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Db = any;
@@ -25,7 +37,18 @@ export function WorkoutSection({ db, onChange }: { db: Db; onChange?: (rawKcal: 
   const [weightKg, setWeightKg] = useState(70);
   const [type, setType] = useState<WorkoutType>('walk');
   const [minutes, setMinutes] = useState('');
+  const [speed, setSpeed] = useState('');
   const [open, setOpen] = useState(false);
+  // Free-text parse path.
+  const [describe, setDescribe] = useState('');
+  const [parsing, setParsing] = useState(false);
+  // Transient result note under the free-text row: how many activities were added,
+  // or an honest "couldn't parse". Cleared on the next edit.
+  const [parseNote, setParseNote] = useState<string | null>(null);
+  // Cross-border AI consent — mirrors app_settings; drives the just-in-time gate.
+  const [aiConsent, setAiConsent] = useState(false);
+  const [aiConsentVersion, setAiConsentVersion] = useState('');
+  const [consentOpen, setConsentOpen] = useState(false);
 
   const reload = useCallback(async () => {
     if (!db) return;
@@ -39,12 +62,78 @@ export function WorkoutSection({ db, onChange }: { db: Db; onChange?: (rawKcal: 
     void reload();
   }, [reload]);
 
+  // Load the AI-consent state once so the free-text button can gate correctly.
+  useEffect(() => {
+    if (!db || !AI_CONFIGURED) return;
+    void (async () => {
+      const s = await ensureSettings(db);
+      setAiConsent(s.aiFoodParseConsent);
+      setAiConsentVersion(s.aiFoodParseConsentVersion);
+    })();
+  }, [db]);
+
   async function add() {
     const min = Number(minutes.replace(',', '.'));
     if (!db || !Number.isFinite(min) || min <= 0) return;
-    await addWorkout(db, type, min, weightKg);
+    const kmh = supportsSpeed(type) ? Number(speed.replace(',', '.')) : NaN;
+    const speedKmh = Number.isFinite(kmh) && kmh > 0 ? kmh : null;
+    await addWorkout(db, type, min, weightKg, speedKmh);
     setMinutes('');
+    setSpeed('');
     await reload();
+  }
+
+  /// Run the free-text parse with a known consent value, add every activity, and
+  /// leave an honest note. kcal is computed on-device in `addParsedWorkout`.
+  async function runParse(consentNow: boolean) {
+    const text = describe.trim();
+    if (!db || text.length === 0) return;
+    setParsing(true);
+    setParseNote(null);
+    try {
+      const parser = getWorkoutParser(consentNow);
+      const parsed = parser ? await parser.parse(text) : [];
+      if (parsed.length === 0) {
+        setParseNote(t('workouts.parseNone'));
+        return;
+      }
+      for (const p of parsed) {
+        await addParsedWorkout(
+          db,
+          { type: p.type, name_ru: p.name_ru, minutes: p.minutes, speedKmh: p.speed_kmh ?? null, met: p.met ?? null },
+          weightKg,
+        );
+      }
+      setDescribe('');
+      setParseNote(t('workouts.parseAdded', { count: parsed.length }));
+      await reload();
+    } finally {
+      setParsing(false);
+    }
+  }
+
+  /// Free-text submit: just-in-time cross-border consent first (only when an
+  /// online parser exists and the user hasn't consented at the current version).
+  async function onDescribe() {
+    if (!db || describe.trim().length === 0) return;
+    if (AI_CONFIGURED && needsAiConsent({ aiFoodParseConsent: aiConsent, aiFoodParseConsentVersion: aiConsentVersion })) {
+      setConsentOpen(true);
+      return;
+    }
+    await runParse(aiConsent);
+  }
+
+  async function onConsentAccept() {
+    setConsentOpen(false);
+    if (db) await grantAiConsent(db);
+    setAiConsent(true);
+    setAiConsentVersion(AI_CONSENT_VERSION);
+    await runParse(true);
+  }
+
+  function onConsentDecline() {
+    setConsentOpen(false);
+    setParseNote(t('workouts.parseDeclined'));
   }
 
   async function remove(id: number) {
@@ -113,14 +202,70 @@ export function WorkoutSection({ db, onChange }: { db: Db; onChange?: (rawKcal: 
             </Pressable>
           </View>
 
+          {supportsSpeed(type) ? (
+            <View style={styles.speedRow}>
+              <TextField
+                value={speed}
+                onChangeText={setSpeed}
+                keyboardType="numeric"
+                placeholder={t('workouts.speedHint', { n: type === 'walk' ? 5 : type === 'run' ? 10 : 20 })}
+                style={styles.minInput}
+              />
+              <Text style={[styles.unit, { color: theme.subtle }, theme.font.body]}>{t('workouts.kmh')}</Text>
+              <Text style={[styles.speedOptional, { color: theme.tertiary }, theme.font.body]} numberOfLines={2}>
+                {t('workouts.speedOptional')}
+              </Text>
+            </View>
+          ) : null}
+
+          {AI_CONFIGURED ? (
+            <View style={styles.describeBlock}>
+              <Text style={[styles.describeLabel, { color: theme.subtle }, theme.font.body]}>
+                {t('workouts.describeLabel')}
+              </Text>
+              <TextField
+                value={describe}
+                onChangeText={(v) => {
+                  setDescribe(v);
+                  if (parseNote) setParseNote(null);
+                }}
+                placeholder={t('workouts.describeHint')}
+                multiline
+                style={styles.describeInput}
+              />
+              <Pressable
+                onPress={() => void onDescribe()}
+                disabled={parsing || describe.trim().length === 0}
+                accessibilityRole="button"
+                accessibilityLabel={t('workouts.describeAction')}
+                style={({ pressed }) => [
+                  styles.describeBtn,
+                  {
+                    backgroundColor: theme.primary,
+                    opacity: parsing || describe.trim().length === 0 ? 0.5 : pressed ? 0.7 : 1,
+                  },
+                ]}
+              >
+                <Text style={[styles.addBtnText, { color: theme.onPrimary }, theme.font.bodySemiBold]}>
+                  {parsing ? t('workouts.parsing') : t('workouts.describeAction')}
+                </Text>
+              </Pressable>
+              {parseNote ? (
+                <Text style={[styles.parseNote, { color: theme.subtle }, theme.font.body]}>{parseNote}</Text>
+              ) : null}
+            </View>
+          ) : null}
+
           {rows.length > 0 ? (
             <View style={styles.list}>
               {rows.map((r) => (
                 <View key={r.id} style={styles.item}>
                   <Text style={[styles.itemName, { color: theme.text }, theme.font.body]} numberOfLines={1}>
-                    {t(`workouts.type.${r.type}`)} · {r.minutes} {t('workouts.min')}
+                    {r.label ? r.label : t(`workouts.type.${r.type}`)} · {r.minutes} {t('workouts.min')}
+                    {r.speedKmh ? ` · ${Math.round(r.speedKmh * 10) / 10} ${t('workouts.kmh')}` : ''}
                   </Text>
                   <Text style={[styles.itemKcal, { color: theme.subtle }, theme.font.body]}>
+                    {r.type === 'other' ? '≈ ' : ''}
                     {Math.round(r.kcal)} {t('units.kcal')}
                   </Text>
                   <Pressable
@@ -139,6 +284,17 @@ export function WorkoutSection({ db, onChange }: { db: Db; onChange?: (rawKcal: 
           <Text style={[styles.note, { color: theme.subtle }, theme.font.body]}>{t('workouts.note')}</Text>
         </View>
       ) : null}
+
+      <ConsentModal
+        visible={consentOpen}
+        title={t('consent.workout.title')}
+        body={t('consent.workout.body')}
+        confirmLabel={t('consent.workout.accept')}
+        declineLabel={t('consent.workout.decline')}
+        declineCaption={t('consent.workout.declineCaption')}
+        onConfirm={() => void onConsentAccept()}
+        onDecline={onConsentDecline}
+      />
     </Card>
   );
 }
@@ -153,10 +309,17 @@ const styles = StyleSheet.create({
   chip: { paddingVertical: 7, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1 },
   chipText: { fontSize: 13 },
   addRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 },
+  speedRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
   minInput: { width: 90 },
   unit: { fontSize: 13 },
+  speedOptional: { fontSize: 12, flex: 1, lineHeight: 16 },
   addBtn: { marginLeft: 'auto', paddingVertical: 9, paddingHorizontal: 16, borderRadius: 12 },
   addBtnText: { fontSize: 14 },
+  describeBlock: { marginTop: 16, gap: 8 },
+  describeLabel: { fontSize: 13 },
+  describeInput: { minHeight: 64 },
+  describeBtn: { alignSelf: 'flex-start', paddingVertical: 9, paddingHorizontal: 16, borderRadius: 12 },
+  parseNote: { fontSize: 12, lineHeight: 17 },
   list: { marginTop: 12, gap: 8 },
   item: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   itemName: { fontSize: 13, flex: 1 },

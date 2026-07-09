@@ -6,6 +6,7 @@ import {
   coercePer100,
   emptyMealDraft,
   normalizeIdentified,
+  normalizeParsedWorkouts,
   scaleToGrams,
   sumNutrients,
   type NutritionItem,
@@ -210,4 +211,46 @@ test('emptyMealDraft is a valid unrecognized result', () => {
   assert.deepEqual(d.items, []);
   assert.equal(d.approximate, false);
   assert.equal(d.totals.kcal, 0);
+});
+
+test('normalizeParsedWorkouts: known type keeps pace, drops model met', () => {
+  const [w] = normalizeParsedWorkouts({
+    workouts: [{ type: 'run', name_ru: 'бег', minutes: 30, speed_kmh: 10, met: 9, confidence: 0.9 }],
+  });
+  assert.equal(w.type, 'run');
+  assert.equal(w.minutes, 30);
+  assert.equal(w.speed_kmh, 10);
+  assert.equal(w.met, undefined); // met is ignored for known types (app owns MET)
+});
+
+test('normalizeParsedWorkouts: "other" carries a clamped met, no pace', () => {
+  const [w] = normalizeParsedWorkouts({
+    workouts: [{ type: 'other', name_ru: 'отжимания', minutes: 8, speed_kmh: 5, met: 999, confidence: 0.7 }],
+  });
+  assert.equal(w.type, 'other');
+  assert.equal(w.name_ru, 'отжимания');
+  assert.equal(w.met, 25); // clamped to the human ceiling
+  assert.equal(w.speed_kmh, undefined); // pace meaningless for a non-speed type
+});
+
+test('normalizeParsedWorkouts: unknown type folds to "other"; name falls back to type', () => {
+  const [w] = normalizeParsedWorkouts({ workouts: [{ type: 'quidditch', minutes: 20, confidence: 0.5 }] });
+  assert.equal(w.type, 'other');
+  assert.equal(w.name_ru, 'other');
+});
+
+test('normalizeParsedWorkouts: drops non-positive / garbage durations, never throws', () => {
+  assert.deepEqual(normalizeParsedWorkouts({ workouts: [{ type: 'run', minutes: 0, confidence: 1 }] }), []);
+  assert.deepEqual(normalizeParsedWorkouts({ workouts: [{ type: 'walk', minutes: 'x', confidence: 1 }] }), []);
+  assert.deepEqual(normalizeParsedWorkouts(null), []);
+  assert.deepEqual(normalizeParsedWorkouts({ workouts: 'nope' }), []);
+});
+
+test('normalizeParsedWorkouts: clamps minutes to 10 h and caps the array', () => {
+  const [w] = normalizeParsedWorkouts({ workouts: [{ type: 'walk', minutes: 99999, confidence: 1 }] });
+  assert.equal(w.minutes, 600);
+  const many = normalizeParsedWorkouts({
+    workouts: Array.from({ length: 50 }, () => ({ type: 'run', minutes: 10, confidence: 1 })),
+  });
+  assert.equal(many.length, 20);
 });

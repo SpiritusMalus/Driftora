@@ -1,7 +1,7 @@
 import { desc, eq } from 'drizzle-orm';
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
-import { workoutKcal, type WorkoutType } from '../insights/bodyMetrics';
+import { kcalFromMet, workoutKcal, WORKOUT_TYPES, type WorkoutType } from '../insights/bodyMetrics';
 import { workouts, type WorkoutRow } from './schema';
 import { dayKey } from './steps';
 
@@ -12,21 +12,63 @@ type AnyDb = BaseSQLiteDatabase<any, any, any>;
 
 /// Log one workout for a day. kcal is computed HERE from the then-current weight
 /// (MET × kg × hours) and stored, so the number is stable even if the user later
-/// re-weighs. Returns the inserted row's kcal so callers can echo it immediately.
+/// re-weighs. An optional pace (km/h, for walk/run/cycle) refines the MET; when
+/// omitted the fixed moderate MET is used. Returns the inserted row's kcal so
+/// callers can echo it immediately.
 export async function addWorkout(
   db: AnyDb,
   type: WorkoutType,
   minutes: number,
   weightKg: number,
+  speedKmh: number | null = null,
   when: Date = new Date(),
 ): Promise<number> {
-  const kcal = workoutKcal(type, minutes, weightKg);
+  const kcal = workoutKcal(type, minutes, weightKg, speedKmh);
   await db.insert(workouts).values({
     ts: when,
     date: dayKey(when),
     type,
     minutes: Math.round(Math.max(0, minutes)),
     kcal,
+    speedKmh: speedKmh != null && speedKmh > 0 ? speedKmh : null,
+  });
+  return kcal;
+}
+
+/// One activity parsed from a free-text description (LLM parse path). `type` is a
+/// WorkoutType key or 'other'; `met` is the model's estimate, used ONLY for
+/// 'other' (known types use the app's own MET). Mirrors the server `ParsedWorkout`.
+export interface ParsedWorkoutInput {
+  type: string;
+  name_ru: string;
+  minutes: number;
+  speedKmh?: number | null;
+  met?: number | null;
+}
+
+/// Log a workout parsed from free text. kcal is computed HERE (client-side) from
+/// the user's weight — a known type uses the app's MET (pace-refined when given),
+/// an 'other' activity uses the model's MET. The model's phrasing is kept in
+/// `label` so the log shows what was actually done. Returns the stored kcal.
+export async function addParsedWorkout(
+  db: AnyDb,
+  parsed: ParsedWorkoutInput,
+  weightKg: number,
+  when: Date = new Date(),
+): Promise<number> {
+  const known = (WORKOUT_TYPES as readonly string[]).includes(parsed.type);
+  const speedKmh = parsed.speedKmh != null && parsed.speedKmh > 0 ? parsed.speedKmh : null;
+  const kcal = known
+    ? workoutKcal(parsed.type as WorkoutType, parsed.minutes, weightKg, speedKmh)
+    : kcalFromMet(parsed.met ?? 0, parsed.minutes, weightKg);
+  await db.insert(workouts).values({
+    ts: when,
+    date: dayKey(when),
+    type: parsed.type,
+    minutes: Math.round(Math.max(0, parsed.minutes)),
+    kcal,
+    speedKmh,
+    label: parsed.name_ru.trim() || null,
   });
   return kcal;
 }

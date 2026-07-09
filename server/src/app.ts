@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import multer from 'multer';
 
-import { identifyFromAudio, identifyFromPhoto, identifyFromText, VisionUnavailableError } from './llm.js';
+import { identifyFromAudio, identifyFromPhoto, identifyFromText, parseWorkoutFromText, VisionUnavailableError } from './llm.js';
 import { metrics } from './metrics.js';
 import { Resolver } from './nutrition/resolver.js';
 import { buildMealDraft, buildProviders } from './orchestrator.js';
@@ -214,6 +214,33 @@ export function createApp(
     }
     const candidates = await resolver.search(query, region).catch(() => []);
     res.json({ candidates });
+  });
+
+  // Free-text WORKOUT parse: `{ text }` → `{ workouts: ParsedWorkout[] }`. The
+  // model only maps text → structured activities (type/minutes/pace); kcal is
+  // computed client-side from the user's weight, so no energy numbers cross the
+  // wire. Reuses the text daily cap (one cheap LLM call, same cost profile).
+  app.post('/workout/parse', requireToken, limiters.textDaily, async (req: Request, res: Response) => {
+    const body = (req.body ?? {}) as { text?: unknown };
+    const text = typeof body.text === 'string' ? body.text.trim() : '';
+    if (text.length === 0) {
+      fail(res, 400, 'empty_input', 'Field "text" is required and cannot be empty.');
+      return;
+    }
+    if (text.length > MAX_TEXT) {
+      fail(res, 400, 'input_too_long', `Field "text" must be at most ${MAX_TEXT} characters.`);
+      return;
+    }
+    try {
+      const workouts = await parseWorkoutFromText(text);
+      res.json({ workouts });
+    } catch (err) {
+      if (err instanceof VisionUnavailableError) {
+        fail(res, 503, 'llm_unavailable', 'The parsing service is temporarily unavailable.');
+        return;
+      }
+      fail(res, 500, 'internal_error', 'Internal server error.');
+    }
   });
 
   // Photo input (BUILD SPEC §5.1): multipart `image` + `region` → MealDraft via

@@ -51,7 +51,9 @@ CREATE TABLE IF NOT EXISTS workouts (
   date TEXT NOT NULL,
   type TEXT NOT NULL,
   minutes INTEGER NOT NULL,
-  kcal REAL NOT NULL DEFAULT 0
+  kcal REAL NOT NULL DEFAULT 0,
+  speed_kmh REAL,
+  label TEXT
 );
 CREATE TABLE IF NOT EXISTS weights (
   date TEXT PRIMARY KEY,
@@ -97,6 +99,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
   activity_level TEXT NOT NULL DEFAULT '',
   goal_mode TEXT NOT NULL DEFAULT 'maintain',
   goal_weight_kg REAL NOT NULL DEFAULT 0,
+  body_fat_pct REAL NOT NULL DEFAULT 0,
   targets_set_at INTEGER,
   reminder_times TEXT NOT NULL DEFAULT '[]',
   hide_calories INTEGER NOT NULL DEFAULT 0,
@@ -172,6 +175,15 @@ export const MIGRATIONS: string[] = [
   // 2026-07-07: per-entry micronutrient totals (JSON {minerals, vitamins}) for
   // the daily micro roll-up. Nullable — old entries and micro-less foods have none.
   `ALTER TABLE food_entries ADD COLUMN micros TEXT`,
+  // 2026-07-08: optional workout pace (km/h) for walk/run/cycle. Null = the user
+  // didn't enter a speed, so the fixed moderate MET was used (kcal already frozen).
+  `ALTER TABLE workouts ADD COLUMN speed_kmh REAL`,
+  // 2026-07-08: optional MEASURED body-fat % → composition-aware BMR (Katch–
+  // McArdle) on the weight screen. 0 = not set, plan stays on Mifflin.
+  `ALTER TABLE app_settings ADD COLUMN body_fat_pct REAL NOT NULL DEFAULT 0`,
+  // 2026-07-08: free-text label for a workout logged via the LLM parse path
+  // (e.g. "отжимания"). Null for chip entries. Additive, nullable.
+  `ALTER TABLE workouts ADD COLUMN label TEXT`,
 ];
 
 /// Runs each CREATE statement through [run], then the idempotent [MIGRATIONS].

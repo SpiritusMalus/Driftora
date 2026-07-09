@@ -43,6 +43,27 @@
       "when": 1783539802767,
       "tag": "0005_married_mercury",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1783574894040,
+      "tag": "0006_slim_yellow_claw",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1783577708430,
+      "tag": "0007_numerous_shape",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1783579203125,
+      "tag": "0008_fair_jackpot",
+      "breakpoints": true
     }
   ]
 }
