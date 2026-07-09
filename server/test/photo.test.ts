@@ -53,7 +53,12 @@ beforeEach(() => {
       lastLlmBody = JSON.parse(String(init?.body ?? '{}'));
       return llmReply([{ name_ru: 'яичница', name_en: 'fried eggs', est_grams: 120, confidence: 0.7 }]);
     }
-    if (url.includes('api.nal.usda.gov')) return json(usdaHit);
+    if (url.includes('api.nal.usda.gov')) {
+      // Echo the queried name — a realistic USDA hit (the resolver now drops
+      // rows that share NO token with the query).
+      const q = new URL(url).searchParams.get('query') ?? 'food';
+      return json({ foods: [{ ...usdaHit.foods[0], description: q }] });
+    }
     throw new Error(`unexpected fetch: ${url}`);
   }) as typeof fetch;
 });
