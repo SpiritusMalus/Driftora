@@ -146,6 +146,13 @@ export const en = {
       body: 'Goals and auto-wins are off. Your data is safe — pick it back up whenever you are ready.',
       resume: 'Resume goals',
     },
+    // The "what do I do first?" card: shown while the day budget can't be
+    // computed yet (empty body profile / no weigh-in), pointing at the wizard.
+    setup: {
+      title: 'Set up your body',
+      body: 'A few quick questions — and we compute your daily calorie and macro targets.',
+      cta: 'Set up',
+    },
   },
   onboarding: {
     next: 'Next',
@@ -162,6 +169,103 @@ export const en = {
     feed: {
       title: 'One tap a day is enough',
       body: 'Check in your mood with one tap — Driftora pulls steps and sleep from Health. In a few days your personal pattern shows up here.',
+    },
+  },
+  // Body-setup wizard: one question per screen, everything saved by the single
+  // «Compute my daily target» tap, then the result with its breakdown.
+  bodySetup: {
+    title: 'Body setup',
+    progress: 'Step {{i}} of {{n}}',
+    back: 'Back',
+    next: 'Next',
+    calc: 'Compute my daily target',
+    birthYear: {
+      title: 'Birth year',
+      hint: 'Age is part of the energy-expenditure formula.',
+      placeholder: 'e.g. 1990',
+      invalid: 'Enter a real year — e.g. 1990.',
+    },
+    sex: {
+      title: 'Sex',
+      hint: 'Resting-energy formulas differ for men and women.',
+      male: 'Male',
+      female: 'Female',
+    },
+    height: {
+      title: 'Height',
+      placeholder: 'e.g. 175',
+      invalid: 'Height in centimeters: 100 to 250.',
+    },
+    weight: {
+      title: 'Current weight',
+      hint: 'We will log this as today’s weigh-in.',
+      placeholder: 'e.g. 80',
+      invalid: 'Weight in kilograms: 20 to 400.',
+    },
+    bodyFat: {
+      title: 'Body fat %',
+      hint: 'Optional. If you know it (smart scale, DEXA) the target gets more precise — computed from lean mass, not total weight. Don’t know it? Just skip.',
+      placeholder: 'e.g. 25',
+      invalid: 'Realistic range: 3–70%. Leave empty if unsure.',
+      skip: 'Don’t know — skip',
+    },
+    goal: {
+      title: 'Your goal',
+      lose: 'Lose weight',
+      loseDesc: 'A calorie deficit — weight gently down.',
+      maintain: 'Maintain weight',
+      maintainDesc: 'Eat to your needs and hold steady.',
+      gain: 'Build muscle',
+      gainDesc: 'A surplus + strength training — muscle grows.',
+    },
+    goalWeight: {
+      title: 'Goal weight',
+      hint: 'Optional — the plan works without it, you just won’t see the "time to goal" line.',
+      placeholder: 'e.g. 90',
+      directionLose: 'To lose weight, the goal must be below your current weight.',
+      directionGain: 'To gain, the goal must be above your current weight.',
+    },
+    tempo: {
+      titleLose: 'Weight-loss pace',
+      titleGain: 'Gain pace',
+      lose: {
+        soft: 'Soft',
+        softDesc: '−10% of maintenance — the gentlest.',
+        standard: 'Moderate',
+        standardDesc: '−15% (−20% at BMI ≥ 30) — recommended.',
+        fast: 'Fast',
+        fastDesc: '−25% — assertive. We still never go below the healthy minimum.',
+      },
+      gain: {
+        soft: 'Lean',
+        softDesc: '+5% — a clean bulk, minimal fat.',
+        standard: 'Standard',
+        standardDesc: '+10% — recommended.',
+        fast: 'Fast',
+        fastDesc: '+15% — quicker, but a visible share of the gain will be fat.',
+      },
+    },
+    result: {
+      title: 'Your daily target',
+      kcal: '≈ {{kcal}} kcal a day',
+      howTitle: 'Where the number comes from',
+      bmr: 'Resting metabolism ≈ {{kcal}} kcal — expenditure at complete rest ({{method}}).',
+      method: {
+        katch: 'from body composition, Katch–McArdle',
+        mifflin: 'Mifflin–St Jeor formula',
+      },
+      maintenance: 'A day with no sport and barely any walking ≈ {{kcal}} kcal.',
+      delta: {
+        lose: 'Minus {{pct}}% for weight loss → your base is {{kcal}} kcal.',
+        gain: 'Plus {{pct}}% for gaining → your base is {{kcal}} kcal.',
+        maintain: 'For maintenance the target equals that expenditure.',
+      },
+      boostTitle: 'How to raise the target',
+      boost: 'The base is a day with no movement at all. Steps above ~3,000 and workouts add to the budget the same day: move more — eat more. You’ll see the “rest · steps · workouts” line on Food.',
+      gainNote: 'A surplus builds muscle only together with strength training. Without it, the extra calories become fat.',
+      applied: 'Saved as your daily goal ✓ — progress shows on Food.',
+      edit: 'You can change this anytime: Weight → Body parameters → Edit.',
+      done: 'Done',
     },
   },
   more: {
@@ -281,11 +385,18 @@ export const en = {
     plan: {
       title: 'Nutrition plan',
       mode: { lose: 'Lose weight', maintain: 'Maintain', gain: 'Gain' },
-      // Weight-loss pace — the one speed lever (lose mode only). 'Standard' is the
-      // BMI-aware default (unchanged); 'Gentle'/'Fast' soften/steepen it.
+      // Pace — the one speed lever. 'Standard' is the BMI-aware default
+      // (unchanged); 'Gentle'/'Fast' soften/steepen the deficit.
       tempo: {
         label: 'Weight-loss pace',
         soft: 'Gentle',
+        standard: 'Standard',
+        fast: 'Fast',
+      },
+      // The same lever for gain: lean +5% / standard +10% / fast +15%.
+      tempoGain: {
+        label: 'Gain pace',
+        soft: 'Lean',
         standard: 'Standard',
         fast: 'Fast',
       },
@@ -325,10 +436,11 @@ export const en = {
       appliedTick: 'Goal updated ✓',
       recalc: 'The plan recalculates itself after every new weigh-in.',
       needWeight: 'Log a weight above — the plan is computed from it.',
-      needProfile: 'Fill in “Body parameters” below — height, sex, birth year and activity — and the plan appears here.',
+      needProfile: 'Run the quick body setup — height, sex, birth year — and the plan appears here.',
+      setupCta: 'Set up my body',
       assumedAge: 'Age isn’t set — this plan is an estimate. Add your birth year in “Body parameters” below to firm up the numbers.',
       note:
-        'The Mifflin–St Jeor formula estimates the “average” person: real needs differ. Start from these numbers and adjust by your weight trend and how you feel. You set the deficit by pace: gentle −10%, standard −15% (−20% at BMI ≥ 30), fast −25% · protein 1.6–1.8 g/kg · fat 30% of calories · carbs the remainder.',
+        'The Mifflin–St Jeor formula estimates the “average” person: real needs differ. Start from these numbers and adjust by your weight trend and how you feel. You set the deficit by pace: gentle −10%, standard −15% (−20% at BMI ≥ 30), fast −25%; the gain surplus: lean +5%, standard +10%, fast +15% · protein 1.6–1.8 g/kg · fat 30% of calories · carbs the remainder.',
       why: 'Why these numbers',
       whyHide: 'Hide explanation',
     },
@@ -364,7 +476,12 @@ export const en = {
       },
     },
     sections: {
-      body: { title: 'Body parameters', empty: 'Not filled in — needed for the plan and BMI' },
+      body: {
+        title: 'Body parameters',
+        empty: 'Not filled in — needed for the plan and BMI',
+        edit: 'Edit',
+        fatUnset: 'not set',
+      },
       history: { title: 'History', count: 'Entries: {{count}}' },
       manual: { title: 'Manual targets', summary: '{{kcal}} kcal · P {{prot}} · F {{fat}} · C {{carb}}' },
     },

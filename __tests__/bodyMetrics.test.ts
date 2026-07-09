@@ -376,12 +376,23 @@ describe('suggestPlan (deficit tempo: the pace lever)', () => {
     expect(fast.kcal).toBeGreaterThanOrEqual(1200);
   });
 
-  it('tempo is ignored for maintain / gain (it only sizes a deficit)', () => {
-    for (const mode of ['maintain', 'gain'] as const) {
-      const std = suggestPlan(heavy, 130, mode, NOW, 0, 'standard')!;
-      const fast = suggestPlan(heavy, 130, mode, NOW, 0, 'fast')!;
-      expect(fast.kcal).toBe(std.kcal);
-    }
+  it('tempo is ignored for maintain (no pace to size)', () => {
+    const std = suggestPlan(heavy, 130, 'maintain', NOW, 0, 'standard')!;
+    const fast = suggestPlan(heavy, 130, 'maintain', NOW, 0, 'fast')!;
+    expect(fast.kcal).toBe(std.kcal);
+  });
+
+  it('gain tempo sizes the surplus: +5% / +10% / +15%', () => {
+    const soft = suggestPlan(heavy, 130, 'gain', NOW, 0, 'soft')!;
+    const standard = suggestPlan(heavy, 130, 'gain', NOW, 0, 'standard')!;
+    const fast = suggestPlan(heavy, 130, 'gain', NOW, 0, 'fast')!;
+    // 3100.6 × {1.05, 1.10, 1.15} → 3260 / 3410 / 3570. 'standard' reproduces
+    // the pre-lever +10%, so an untouched setting keeps the old plan.
+    expect(soft.kcal).toBe(3260);
+    expect(standard.kcal).toBe(3410);
+    expect(fast.kcal).toBe(3570);
+    // A bolder surplus → a faster expected gain pace.
+    expect(fast.paceKgPerWeek).toBeGreaterThan(soft.paceKgPerWeek);
   });
 });
 

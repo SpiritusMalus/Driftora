@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -33,14 +33,16 @@ import { type Theme, useTheme } from '@/lib/theme/theme';
 /// everything secondary — BMI, body parameters, history, manual targets — is
 /// folded into one-line sections so the ritual never scrolls through a form.
 ///
-/// UX rule for this screen (user feedback 2026-07-03: «не понятно что
-/// нажимать»): NOTHING here needs a separate save. Profile facts and targets
-/// persist the moment they're edited (chips immediately, text fields when
-/// editing ends), every save answers with a visible «✓», and the logged weight
-/// is echoed right where it was typed instead of silently moving to a list.
+/// UX rule for this screen (user feedback 2026-07-03 «не понятно что нажимать»,
+/// then 2026-07-09 «бесит автосейв на каждый ввод»): the PLAN LEVERS (goal /
+/// tempo / goal weight / manual targets) still persist the moment they're
+/// edited with a visible «✓» — instant feedback is their point. The BODY FACTS
+/// (height / sex / birth year / body fat) are read-only here and edited in the
+/// body-setup wizard, which saves everything once at «Рассчитать».
 export default function WeightScreen() {
   const { t } = useTranslation();
   const theme = useTheme();
+  const router = useRouter();
   const db = useDatabase();
 
   const [items, setItems] = useState<WeightRow[] | null>(null);
@@ -49,8 +51,8 @@ export default function WeightScreen() {
   // «120.0 кг — записано ✓» under the save button; cleared when typing again.
   const [weightAck, setWeightAck] = useState<string | null>(null);
 
-  // Body profile + КБЖУ targets (single app_settings row, auto-persisted).
-  const [profileLoaded, setProfileLoaded] = useState(false);
+  // Body profile + КБЖУ targets (single app_settings row). Body facts are
+  // display-only here (edited in the wizard); plan levers persist on edit.
   const [heightText, setHeightText] = useState('');
   const [sex, setSex] = useState<'' | Sex>('');
   const [birthYearText, setBirthYearText] = useState('');
@@ -63,7 +65,7 @@ export default function WeightScreen() {
   const [fat, setFat] = useState('70');
   const [carb, setCarb] = useState('200');
   // Transient «Сохранено ✓» after any auto-save, shown WHERE the edit happened.
-  const [ack, setAck] = useState<{ where: 'plan' | 'body' | 'manual'; text: string } | null>(null);
+  const [ack, setAck] = useState<{ where: 'plan' | 'manual'; text: string } | null>(null);
   const ackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Collapsed-by-default sections; body opens itself while the profile is
@@ -91,38 +93,33 @@ export default function WeightScreen() {
         if (!db) return;
         const list = await listWeights(db, 30);
         if (active) setItems(list);
-        if (!profileLoaded) {
-          const s = await ensureSettings(db);
-          if (!active) return;
-          setHeightText(s.heightCm > 0 ? String(s.heightCm) : '');
-          setSex(s.sex);
-          setBirthYearText(s.birthYear > 0 ? String(s.birthYear) : '');
-          setGoalMode(s.goalMode);
-          setDeficitTempo(s.deficitTempo);
-          setGoalWeightText(s.goalWeightKg > 0 ? String(s.goalWeightKg) : '');
-          setBodyFatText(s.bodyFatPct > 0 ? String(s.bodyFatPct) : '');
-          setKcal(String(s.targetKcal));
-          setProtein(String(s.targetProteinG));
-          setFat(String(s.targetFatG));
-          setCarb(String(s.targetCarbG));
-          const complete =
-            (s.sex === 'male' || s.sex === 'female') &&
-            s.heightCm >= 100 &&
-            s.heightCm <= 250 &&
-            s.birthYear > 0;
-          if (!complete) setOpenBody(true);
-          setProfileLoaded(true);
-        }
+        // Settings re-read on EVERY focus: body facts are edited in the
+        // body-setup wizard now, so returning from it must show the fresh save.
+        // Inline levers persist on end-editing, so nothing unsaved is clobbered.
+        const s = await ensureSettings(db);
+        if (!active) return;
+        setHeightText(s.heightCm > 0 ? String(s.heightCm) : '');
+        setSex(s.sex);
+        setBirthYearText(s.birthYear > 0 ? String(s.birthYear) : '');
+        setGoalMode(s.goalMode);
+        setDeficitTempo(s.deficitTempo);
+        setGoalWeightText(s.goalWeightKg > 0 ? String(s.goalWeightKg) : '');
+        setBodyFatText(s.bodyFatPct > 0 ? String(s.bodyFatPct) : '');
+        setKcal(String(s.targetKcal));
+        setProtein(String(s.targetProteinG));
+        setFat(String(s.targetFatG));
+        setCarb(String(s.targetCarbG));
       })();
       return () => {
         active = false;
       };
-    }, [db, profileLoaded]),
+    }, [db]),
   );
 
   /// Persist a settings patch immediately and flash the «✓» tick at `where`.
-  /// This screen has no save buttons — edits ARE the save.
-  async function persist(patch: SettingsPatch, ackText: string, where: 'plan' | 'body' | 'manual') {
+  /// Only the plan levers and manual targets use this — body facts save in the
+  /// wizard, all at once.
+  async function persist(patch: SettingsPatch, ackText: string, where: 'plan' | 'manual') {
     if (!db) return;
     await updateSettings(db, patch);
     setAck({ where, text: ackText });
@@ -316,20 +313,21 @@ export default function WeightScreen() {
             ))}
           </View>
 
-          {/* Deficit tempo — the ONE pace lever, lose mode only. «Умеренный» is
-              the BMI-aware default (unchanged behaviour); «Мягкий»/«Быстрый»
-              soften/steepen it. The pace it implies shows live in the intro line
-              below (kg/week) and the clinical floor still caps «Быстрый». */}
-          {goalMode === 'lose' ? (
+          {/* Pace tempo — the ONE speed lever. For lose it sizes the deficit
+              (soft −10% / standard −15…−20% / fast −25%), for gain the surplus
+              (+5% / +10% / +15%); «standard» keeps the pre-lever default. The
+              implied kg/week shows live in the intro line below, and the
+              clinical floor still caps a fast deficit. */}
+          {goalMode !== 'maintain' ? (
             <>
               <Text style={[styles.fieldLabel, { color: theme.subtle }, theme.font.body]}>
-                {t('weight.plan.tempo.label')}
+                {t(goalMode === 'lose' ? 'weight.plan.tempo.label' : 'weight.plan.tempoGain.label')}
               </Text>
               <View style={styles.chips}>
                 {DEFICIT_TEMPOS.map((tp) => (
                   <Chip
                     key={tp}
-                    label={t(`weight.plan.tempo.${tp}`)}
+                    label={t(`weight.plan.${goalMode === 'lose' ? 'tempo' : 'tempoGain'}.${tp}`)}
                     active={deficitTempo === tp}
                     onPress={() => {
                       setDeficitTempo(tp);
@@ -501,9 +499,21 @@ export default function WeightScreen() {
               ) : null}
             </>
           ) : (
-            <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
-              {profileComplete ? t('weight.plan.needWeight') : t('weight.plan.needProfile')}
-            </Text>
+            <>
+              <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
+                {profileComplete ? t('weight.plan.needWeight') : t('weight.plan.needProfile')}
+              </Text>
+              {!profileComplete ? (
+                <Pressable
+                  onPress={() => router.push('/body-setup')}
+                  style={({ pressed }) => [styles.applyBtn, { borderColor: theme.primary, opacity: pressed ? 0.6 : 1 }]}
+                >
+                  <Text style={[styles.applyText, { color: theme.primary }, theme.font.bodySemiBold]}>
+                    {t('weight.plan.setupCta')}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </>
           )}
         </Card>
       ) : null}
@@ -599,66 +609,31 @@ export default function WeightScreen() {
             summary={bodySummary}
             open={openBody}
             onToggle={() => setOpenBody((v) => !v)}
-            ack={ack?.where === 'body' ? ack.text : null}
             theme={theme}
           >
-            <View style={styles.heightRow}>
-              <Text style={[styles.fieldLabel, { color: theme.subtle }, theme.font.body]}>{t('weight.height')}</Text>
-              <TextField
-                value={heightText}
-                onChangeText={setHeightText}
-                onEndEditing={() => void persist({ heightCm: toNumber(heightText) }, t('weight.targets.savedTick'), 'body')}
-                keyboardType="numeric"
-                style={styles.heightInput}
-              />
-              <Text style={[styles.unit, { color: theme.subtle }, theme.font.body]}>{t('weight.heightUnit')}</Text>
-            </View>
-            <Text style={[styles.fieldLabel, { color: theme.subtle }, theme.font.body]}>{t('weight.formula.sex')}</Text>
-            <View style={styles.chips}>
-              {(['male', 'female'] as const).map((s) => (
-                <Chip
-                  key={s}
-                  label={t(`weight.formula.${s}`)}
-                  active={sex === s}
-                  onPress={() => {
-                    setSex(s);
-                    void persist({ sex: s }, t('weight.targets.savedTick'), 'body');
-                  }}
-                  theme={theme}
-                />
-              ))}
-            </View>
-            <Field
-              label={t('weight.formula.birthYear')}
-              value={birthYearText}
-              onChange={setBirthYearText}
-              onDone={() =>
-                void persist({ birthYear: Math.round(toNumber(birthYearText)) }, t('weight.targets.savedTick'), 'body')
-              }
+            {/* Read-only: the body-setup wizard is the single editor for these
+                facts (all answered, then saved ONCE) — nothing here autosaves
+                mid-typing anymore. */}
+            <ProfileLine
+              label={t('weight.height')}
+              value={heightCm > 0 ? `${Math.round(heightCm)} ${t('weight.heightUnit')}` : '—'}
               theme={theme}
             />
-            <Text style={[styles.disclaimer, { color: theme.subtle }, theme.font.body]}>
-              {t('weight.formula.activityNote')}
-            </Text>
-            <View style={styles.heightRow}>
-              <Text style={[styles.fieldLabel, { color: theme.subtle }, theme.font.body]}>
-                {t('weight.formula.bodyFat')}
+            <ProfileLine label={t('weight.formula.sex')} value={sex ? t(`weight.formula.${sex}`) : '—'} theme={theme} />
+            <ProfileLine label={t('weight.formula.birthYear')} value={birthYearText || '—'} theme={theme} />
+            <ProfileLine
+              label={t('weight.formula.bodyFat')}
+              value={bodyFatText ? `${bodyFatText}%` : t('weight.sections.body.fatUnset')}
+              theme={theme}
+            />
+            <Pressable
+              onPress={() => router.push('/body-setup')}
+              style={({ pressed }) => [styles.applyBtn, { borderColor: theme.primary, opacity: pressed ? 0.6 : 1 }]}
+            >
+              <Text style={[styles.applyText, { color: theme.primary }, theme.font.bodySemiBold]}>
+                {t('weight.sections.body.edit')}
               </Text>
-              <TextField
-                value={bodyFatText}
-                onChangeText={setBodyFatText}
-                onEndEditing={() =>
-                  void persist({ bodyFatPct: toNumber(bodyFatText) }, t('weight.targets.savedTick'), 'body')
-                }
-                keyboardType="numeric"
-                placeholder={t('weight.formula.bodyFatHint')}
-                style={styles.heightInput}
-              />
-              <Text style={[styles.unit, { color: theme.subtle }, theme.font.body]}>%</Text>
-            </View>
-            <Text style={[styles.disclaimer, { color: theme.subtle }, theme.font.body]}>
-              {t('weight.formula.bodyFatNote')}
-            </Text>
+            </Pressable>
           </Section>
 
           <Section
@@ -785,6 +760,16 @@ function Field({
     <View style={styles.field}>
       <Text style={[styles.fieldLabel, { color: theme.subtle }, theme.font.body]}>{label}</Text>
       <TextField value={value} onChangeText={onChange} onEndEditing={onDone} keyboardType="numeric" />
+    </View>
+  );
+}
+
+/// One read-only body fact: label left, value right (like the micro rows).
+function ProfileLine({ label, value, theme }: { label: string; value: string; theme: Theme }) {
+  return (
+    <View style={[styles.microRow, { borderBottomColor: theme.separator }]}>
+      <Text style={[styles.microName, { color: theme.subtle }, theme.font.body]}>{label}</Text>
+      <Text style={[styles.microValue, { color: theme.text }, theme.font.bodySemiBold]}>{value}</Text>
     </View>
   );
 }

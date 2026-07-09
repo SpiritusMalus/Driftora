@@ -289,9 +289,9 @@ const MODE_FACTOR: Record<GoalMode, number> = { lose: 0.85, maintain: 1, gain: 1
 const LOSE_FACTOR_OBESE = 0.8;
 const OBESE_BMI = 30;
 
-/// How aggressive the weight-loss deficit is — the ONE lever the user chooses for
-/// pace (the mode is lose/maintain/gain, this refines the "how fast"). Only
-/// applies to `lose`; ignored for maintain/gain.
+/// How aggressive the pace is — the ONE lever the user chooses on top of the
+/// mode (lose/maintain/gain picks the direction, this refines the "how fast").
+/// Ignored for maintain (there is no pace to size). For lose:
 ///  - 'soft'     — a gentle −10%, for a small reserve / muscle-sparing;
 ///  - 'standard' — the default: the BMI-aware −15% (−20% at BMI ≥ 30), i.e. the
 ///                 exact pre-choice behaviour, so an untouched setting never
@@ -299,9 +299,10 @@ const OBESE_BMI = 30;
 ///  - 'fast'     — an assertive −25%, for a large reserve. The BMR / clinical
 ///                 floor still caps it, so a small body just floors instead of
 ///                 crash-dieting.
+/// For gain the same three levels size the SURPLUS: +5% / +10% / +15%.
 export type DeficitTempo = 'soft' | 'standard' | 'fast';
 
-/// Selection order for the tempo chip row (weight screen, lose mode only).
+/// Selection order for the tempo chip row (weight screen, lose & gain modes).
 export const DEFICIT_TEMPOS: readonly DeficitTempo[] = ['soft', 'standard', 'fast'];
 
 /// Explicit lose factors for the non-default tempos. 'standard' is intentionally
@@ -309,6 +310,15 @@ export const DEFICIT_TEMPOS: readonly DeficitTempo[] = ['soft', 'standard', 'fas
 const TEMPO_LOSE_FACTOR: Record<Exclude<DeficitTempo, 'standard'>, number> = {
   soft: 0.9, // −10%
   fast: 0.75, // −25%
+};
+
+/// Gain (surplus) factors for the non-default tempos; 'standard' again defers
+/// to MODE_FACTOR.gain (+10%) so an untouched setting keeps the old plan.
+/// Deliberately modest — muscle synthesis is slow and any surplus beyond it is
+/// stored as fat, so even 'fast' is +15%, not a dirty bulk.
+const TEMPO_GAIN_FACTOR: Record<Exclude<DeficitTempo, 'standard'>, number> = {
+  soft: 1.05, // +5%
+  fast: 1.15, // +15%
 };
 
 /// Neutral adult age used when the birth year isn't set yet, so the plan still
@@ -445,7 +455,10 @@ export function suggestPlan(
         ? LOSE_FACTOR_OBESE
         : MODE_FACTOR.lose
       : TEMPO_LOSE_FACTOR[tempo];
-  const raw = maintenance * (mode === 'lose' ? loseFactor : MODE_FACTOR[mode]);
+  // The same lever sizes the surplus for gain (+5/+10/+15%); maintain has no
+  // pace, so the tempo is simply ignored there.
+  const gainFactor = tempo === 'standard' ? MODE_FACTOR.gain : TEMPO_GAIN_FACTOR[tempo];
+  const raw = maintenance * (mode === 'lose' ? loseFactor : mode === 'gain' ? gainFactor : 1);
   // Never prescribe eating below resting needs or the clinical minimum. The
   // floor guards the DAY's intake ([dayBudgetKcal]), so `kcal` here is the
   // zero-movement day: the deficit base lifted to the minimum. The unlifted

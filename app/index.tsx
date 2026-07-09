@@ -359,6 +359,11 @@ export default function HomeScreen() {
   // Forecast only makes the target «≈» when it actually moves the number.
   const foodTargetApprox = steps == null && usualSteps != null && stepsEarnedAdd > 0;
 
+  // The «а что дальше?» card: while the day budget can't be computed (body
+  // profile incomplete or no weigh-in yet) Home points at the body-setup
+  // wizard. Disappears for good once the profile + weight exist.
+  const setupNeeded = db != null && settings != null && dayBase == null;
+
   // Value ladder for the no-goal user: once a WEIGHT is logged, today's steps get
   // an honest «≈ N ккал» estimate — walking becomes a real number without needing
   // the full profile/goal. Suppressed once a goal is active (the food budget's
@@ -428,6 +433,25 @@ export default function HomeScreen() {
             >
               <Text style={[styles.pauseBtnText, { color: theme.onPrimary }, theme.font.bodySemiBold]}>
                 {t('home.paused.resume')}
+              </Text>
+            </Pressable>
+          </Card>
+        ) : null}
+
+        {setupNeeded ? (
+          <Card style={styles.setupCard}>
+            <Text style={[styles.pauseTitle, { color: theme.text }, theme.font.bodySemiBold]}>
+              {t('home.setup.title')}
+            </Text>
+            <Text style={[styles.pauseBody, { color: theme.subtle }, theme.font.body]}>
+              {t('home.setup.body')}
+            </Text>
+            <Pressable
+              onPress={() => router.push('/body-setup')}
+              style={({ pressed }) => [styles.pauseBtn, { backgroundColor: theme.primary, opacity: pressed ? 0.85 : 1 }]}
+            >
+              <Text style={[styles.pauseBtnText, { color: theme.onPrimary }, theme.font.bodySemiBold]}>
+                {t('home.setup.cta')}
               </Text>
             </Pressable>
           </Card>
@@ -564,6 +588,7 @@ const styles = StyleSheet.create({
   footerAndroid: { paddingHorizontal: 18 },
   footerIOS: { paddingHorizontal: 16 },
   pauseBanner: { marginBottom: 4 },
+  setupCard: { marginTop: 12 },
   pauseTitle: { fontSize: 16 },
   pauseBody: { fontSize: 13, marginTop: 6, lineHeight: 18 },
   pauseBtn: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 18, paddingVertical: 10, marginTop: 12 },
