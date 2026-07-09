@@ -61,11 +61,16 @@ export function rankByName<T>(
   candidates: { value: T; name: string; foodType?: string }[],
 ): ScoredCandidate<T>[] {
   return candidates
-    .map((c) => ({
-      value: c.value,
-      name: c.name,
-      score: Math.max(0, Math.min(1, scoreName(query, c.name) + genericBonus(c.foodType))),
-    }))
+    .map((c) => {
+      const nameScore = scoreName(query, c.name);
+      // genericBonus is a TIE-BREAKER among name-relevant candidates, not a
+      // relevance signal of its own. A row that shares NOTHING with the query
+      // must stay at 0 — otherwise a "Generic" milk row scores 0.1 on a salad
+      // query, floors to 0.4 confidence, and survives the resolver's junk
+      // filter (the salad→milk bug). Only nudge once the name already matches.
+      const score = nameScore <= 0 ? 0 : Math.max(0, Math.min(1, nameScore + genericBonus(c.foodType)));
+      return { value: c.value, name: c.name, score };
+    })
     .sort((a, b) => b.score - a.score);
 }
 
