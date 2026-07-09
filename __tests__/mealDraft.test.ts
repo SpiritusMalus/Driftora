@@ -3,6 +3,7 @@ import { describe, expect, it } from '@jest/globals';
 import type { MealDraft, NutritionItem, Per100 } from '@/lib/core/services/foodParser';
 import {
   recomputeDraft,
+  removeDraftItem,
   scaleToGrams,
   withItemGrams,
   withItemManualMacros,
@@ -52,6 +53,21 @@ describe('mealDraft', () => {
     expect(after.approximate).toBe(false);
     expect(after.portion_state).toBe('confirmed');
     expect(after.totals.kcal).toBe(330);
+  });
+
+  it('removeDraftItem drops one dish and recomputes the total', () => {
+    const d = recomputeDraft('US', [item(), item({ name_ru: 'рис' })]);
+    expect(d.totals.kcal).toBe(496); // both dishes
+    const after = removeDraftItem(d, 0);
+    expect(after.items).toHaveLength(1);
+    expect(after.items[0].name_ru).toBe('рис');
+    expect(after.totals.kcal).toBe(248); // only the survivor
+  });
+
+  it('removeDraftItem is a no-op for an out-of-range index', () => {
+    const d = recomputeDraft('US', [item()]);
+    expect(removeDraftItem(d, 5).items).toHaveLength(1);
+    expect(removeDraftItem(d, -1).items).toHaveLength(1);
   });
 
   it('stays approximate while any item is still estimated', () => {
