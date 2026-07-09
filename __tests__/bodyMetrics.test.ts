@@ -8,7 +8,8 @@ import {
   katchMcArdleBmr,
   metForSpeed,
   mifflinBmr,
-  stepsActivityFactor,
+  restingPlan,
+  stepsEarnedKcal,
   suggestActivityLevel,
   suggestPlan,
   suggestTargets,
@@ -348,43 +349,36 @@ describe('suggestActivityLevel (steps → lifestyle multiplier)', () => {
   });
 });
 
-describe('stepsActivityFactor (continuous multiplier straight from steps)', () => {
-  it('clamps to the sedentary/high endpoints outside the 3k–13k band', () => {
-    expect(stepsActivityFactor(0)).toBe(ACTIVITY_FACTORS.sedentary);
-    expect(stepsActivityFactor(3000)).toBe(ACTIVITY_FACTORS.sedentary);
-    expect(stepsActivityFactor(13000)).toBe(ACTIVITY_FACTORS.high);
-    expect(stepsActivityFactor(20000)).toBe(ACTIVITY_FACTORS.high);
-    expect(stepsActivityFactor(NaN)).toBe(ACTIVITY_FACTORS.sedentary);
+describe('stepsEarnedKcal (base+earned: steps only ever ADD)', () => {
+  it('earns nothing at/below the resting baseline (never subtracts)', () => {
+    expect(stepsEarnedKcal(3000, 80)).toBe(0);
+    expect(stepsEarnedKcal(1000, 80)).toBe(0);
+    expect(stepsEarnedKcal(0, 80)).toBe(0);
   });
 
-  it('rises continuously with steps — every count moves the budget (no dead band)', () => {
-    // 8000 is the midpoint of 3k–13k → halfway between sedentary and high
-    expect(stepsActivityFactor(8000)).toBeCloseTo((ACTIVITY_FACTORS.sedentary + ACTIVITY_FACTORS.high) / 2, 5);
-    expect(stepsActivityFactor(5000)).toBeGreaterThan(stepsActivityFactor(4000));
-    expect(stepsActivityFactor(12000)).toBeGreaterThan(stepsActivityFactor(9000));
-    // 5000 steps already lifts above sedentary (the «5к и ничего» complaint)
-    expect(stepsActivityFactor(5000)).toBeGreaterThan(ACTIVITY_FACTORS.sedentary);
+  it('adds real walking energy above the baseline, scaling with steps and weight', () => {
+    // (5000−3000) × 0.0005 × 80 = 80 — a gentle, visible add for 5k steps
+    expect(stepsEarnedKcal(5000, 80)).toBe(80);
+    expect(stepsEarnedKcal(12000, 80)).toBe(360);
+    expect(stepsEarnedKcal(12000, 80)).toBeGreaterThan(stepsEarnedKcal(5000, 80)); // more steps → more
+    expect(stepsEarnedKcal(12000, 120)).toBeGreaterThan(stepsEarnedKcal(12000, 80)); // heavier → more
+  });
+
+  it('clamps garbage input, never NaN', () => {
+    expect(stepsEarnedKcal(NaN, 80)).toBe(0);
+    expect(Number.isFinite(stepsEarnedKcal(12000, 0))).toBe(true); // weight clamps up to 20
   });
 });
 
-describe('suggestPlan (steps-driven activity-factor override)', () => {
-  const profile = { sex: 'male', birthYear: 1991, heightCm: 180, activityLevel: 'sedentary' };
-
-  it('an override replaces the activity level and scales maintenance', () => {
-    const base = suggestPlan(profile, 90, 'maintain', NOW)!; // sedentary
-    const active = suggestPlan(profile, 90, 'maintain', NOW, 0, stepsActivityFactor(12000))!;
-    expect(active.maintenanceKcal).toBeGreaterThan(base.maintenanceKcal);
-  });
-
-  it('more steps → higher budget; fewer steps → lower (honest both ways)', () => {
-    const few = suggestPlan(profile, 90, 'maintain', NOW, 0, stepsActivityFactor(5000))!;
-    const many = suggestPlan(profile, 90, 'maintain', NOW, 0, stepsActivityFactor(12000))!;
-    expect(many.kcal).toBeGreaterThan(few.kcal);
-  });
-
-  it('an override lets the plan compute even without a chosen activity level', () => {
-    const noLevel = { ...profile, activityLevel: '' };
-    expect(suggestPlan(noLevel, 90, 'maintain', NOW)).toBeNull(); // no level, no override
-    expect(suggestPlan(noLevel, 90, 'maintain', NOW, 0, stepsActivityFactor(9000))).not.toBeNull();
+describe('restingPlan (the «база» — sedentary regardless of stored level)', () => {
+  it('ignores the stored activity level, always computing at the sedentary factor', () => {
+    const moderate = { sex: 'male', birthYear: 1991, heightCm: 180, activityLevel: 'moderate' };
+    const rest = restingPlan(moderate, 90, 'maintain', NOW)!;
+    const sedentary = suggestPlan({ ...moderate, activityLevel: 'sedentary' }, 90, 'maintain', NOW)!;
+    expect(rest.kcal).toBe(sedentary.kcal);
+    // The resting base is below the person's moderate maintenance — steps/workouts
+    // are added ON TOP, so activity always adds and is never double-counted.
+    const asModerate = suggestPlan(moderate, 90, 'maintain', NOW)!;
+    expect(rest.kcal).toBeLessThan(asModerate.kcal);
   });
 });
