@@ -5,11 +5,20 @@ import {
   IDENTIFY_PHOTO_SYSTEM_PROMPT,
   IDENTIFY_SCHEMA,
   IDENTIFY_SYSTEM_PROMPT,
+  PARSE_WORKOUT_SCHEMA,
+  PARSE_WORKOUT_SYSTEM_PROMPT,
   userAudioInstruction,
   userInstruction,
   userPhotoInstruction,
+  userWorkoutInstruction,
 } from './prompt.js';
-import { normalizeIdentified, type IdentifiedItem, type Region } from './types.js';
+import {
+  normalizeIdentified,
+  normalizeParsedWorkouts,
+  type IdentifiedItem,
+  type ParsedWorkout,
+  type Region,
+} from './types.js';
 
 /**
  * LLM identification client (provider migration 2026-06-25).
@@ -91,7 +100,8 @@ export function parseResponse(data: unknown): IdentifiedItem[] {
   return normalizeIdentified(payload);
 }
 
-async function callModel(messages: ChatMessage[], model: string, schema: object = IDENTIFY_SCHEMA): Promise<IdentifiedItem[]> {
+/** POST one chat-completions request and return the raw parsed JSON (or throw). */
+async function complete(messages: ChatMessage[], model: string, schema: object): Promise<unknown> {
   const key = process.env.OPENROUTER_API_KEY || '';
   if (!key) {
     throw new VisionUnavailableError('OPENROUTER_API_KEY is not configured');
@@ -118,9 +128,11 @@ async function callModel(messages: ChatMessage[], model: string, schema: object 
   if (!res.ok) {
     throw new VisionUnavailableError(`OpenRouter returned ${res.status}`);
   }
+  return (await res.json().catch(() => null)) as unknown;
+}
 
-  const data = (await res.json().catch(() => null)) as unknown;
-  return parseResponse(data);
+async function callModel(messages: ChatMessage[], model: string, schema: object = IDENTIFY_SCHEMA): Promise<IdentifiedItem[]> {
+  return parseResponse(await complete(messages, model, schema));
 }
 
 /**
@@ -199,4 +211,30 @@ export async function identifyFromAudio(
       ],
     },
   ]);
+}
+
+/**
+ * Parse a free-text workout description → structured activities. No escalation
+ * (parsing "100 отжиманий" is easy for the fast model) and no region (activity
+ * is universal). kcal is computed client-side, so nothing energy-related is
+ * returned — the model only maps text → type/minutes/pace (+ a MET for 'other').
+ */
+export async function parseWorkoutFromText(text: string): Promise<ParsedWorkout[]> {
+  const data = await complete(
+    [
+      { role: 'system', content: PARSE_WORKOUT_SYSTEM_PROMPT },
+      { role: 'user', content: `${userWorkoutInstruction()}\n\n${text}` },
+    ],
+    MODEL,
+    PARSE_WORKOUT_SCHEMA,
+  );
+  const d = data as { choices?: { message?: { content?: unknown } }[] } | null;
+  const content = d?.choices?.[0]?.message?.content;
+  const raw = typeof content === 'string' ? content.trim() : '';
+  if (!raw) return [];
+  try {
+    return normalizeParsedWorkouts(JSON.parse(stripFences(raw)));
+  } catch {
+    return []; // malformed structured output → nothing parsed, never a crash
+  }
 }

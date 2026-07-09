@@ -57,6 +57,7 @@ export default function WeightScreen() {
   const [activity, setActivity] = useState<'' | ActivityLevel>('');
   const [goalMode, setGoalMode] = useState<GoalMode>('maintain');
   const [goalWeightText, setGoalWeightText] = useState('');
+  const [bodyFatText, setBodyFatText] = useState('');
   const [kcal, setKcal] = useState('2000');
   const [protein, setProtein] = useState('120');
   const [fat, setFat] = useState('70');
@@ -99,6 +100,7 @@ export default function WeightScreen() {
           setActivity(s.activityLevel);
           setGoalMode(s.goalMode);
           setGoalWeightText(s.goalWeightKg > 0 ? String(s.goalWeightKg) : '');
+          setBodyFatText(s.bodyFatPct > 0 ? String(s.bodyFatPct) : '');
           setKcal(String(s.targetKcal));
           setProtein(String(s.targetProteinG));
           setFat(String(s.targetFatG));
@@ -169,7 +171,13 @@ export default function WeightScreen() {
   const heightCm = toNumber(heightText);
   const bmi = bmiValue(latestKg, heightCm);
 
-  const profile = { sex, birthYear: Math.round(toNumber(birthYearText)), heightCm, activityLevel: activity };
+  const profile = {
+    sex,
+    birthYear: Math.round(toNumber(birthYearText)),
+    heightCm,
+    activityLevel: activity,
+    bodyFatPct: toNumber(bodyFatText),
+  };
   // Probe with a plausible dummy weight: tells "profile incomplete" apart from
   // "no weight logged yet", so the plan card can say exactly what's missing.
   const profileComplete = suggestPlan(profile, 70, 'maintain') != null;
@@ -609,6 +617,25 @@ export default function WeightScreen() {
             </View>
             <Text style={[styles.disclaimer, { color: theme.subtle }, theme.font.body]}>
               {t('weight.formula.activityNote')}
+            </Text>
+            <View style={styles.heightRow}>
+              <Text style={[styles.fieldLabel, { color: theme.subtle }, theme.font.body]}>
+                {t('weight.formula.bodyFat')}
+              </Text>
+              <TextField
+                value={bodyFatText}
+                onChangeText={setBodyFatText}
+                onEndEditing={() =>
+                  void persist({ bodyFatPct: toNumber(bodyFatText) }, t('weight.targets.savedTick'), 'body')
+                }
+                keyboardType="numeric"
+                placeholder={t('weight.formula.bodyFatHint')}
+                style={styles.heightInput}
+              />
+              <Text style={[styles.unit, { color: theme.subtle }, theme.font.body]}>%</Text>
+            </View>
+            <Text style={[styles.disclaimer, { color: theme.subtle }, theme.font.body]}>
+              {t('weight.formula.bodyFatNote')}
             </Text>
           </Section>
 

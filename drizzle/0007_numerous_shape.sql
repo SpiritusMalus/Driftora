@@ -1,0 +1,1 @@
+ALTER TABLE `app_settings` ADD `body_fat_pct` real DEFAULT 0 NOT NULL;

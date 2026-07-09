@@ -155,3 +155,57 @@ test('empty text → 400 empty_input', async () => {
     await stop();
   }
 });
+
+/** POST helper for the workout endpoint (same real-fetch rationale as `post`). */
+function postWorkout(base: string, body: unknown): Promise<Response> {
+  return realFetch(`${base}/workout/parse`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+function workoutReply(workouts: unknown[]): Response {
+  return json({ choices: [{ message: { content: JSON.stringify({ workouts }) } }] });
+}
+
+test('POST /workout/parse → structured activities, no energy numbers on the wire', async () => {
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input.toString();
+    if (url.includes('127.0.0.1')) return realFetch(input as never, init);
+    if (url.includes('openrouter.ai')) {
+      return workoutReply([
+        { type: 'strength', name_ru: 'отжимания', minutes: 8, confidence: 0.8 },
+        { type: 'run', name_ru: 'бег', minutes: 20, speed_kmh: 10, confidence: 0.9 },
+      ]);
+    }
+    throw new Error(`unexpected fetch: ${url}`);
+  }) as typeof fetch;
+
+  const { base, stop } = await startApp();
+  try {
+    const res = await postWorkout(base, { text: '100 отжиманий и пробежка 20 минут' });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { workouts: any[] };
+    assert.equal(body.workouts.length, 2);
+    assert.equal(body.workouts[0].type, 'strength');
+    assert.equal(body.workouts[0].name_ru, 'отжимания');
+    assert.equal(body.workouts[1].speed_kmh, 10);
+    // No calories anywhere in the payload — the client computes them on-device.
+    assert.ok(!JSON.stringify(body).toLowerCase().includes('kcal'));
+  } finally {
+    await stop();
+  }
+});
+
+test('POST /workout/parse rejects empty input with 400', async () => {
+  const { base, stop } = await startApp();
+  try {
+    const res = await postWorkout(base, { text: '   ' });
+    assert.equal(res.status, 400);
+    const body = (await res.json()) as { error: { code: string } };
+    assert.equal(body.error.code, 'empty_input');
+  } finally {
+    await stop();
+  }
+});

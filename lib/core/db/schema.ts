@@ -67,6 +67,10 @@ export const workouts = sqliteTable('workouts', {
   type: text('type').notNull(), // WorkoutType key — MET table lives in bodyMetrics
   minutes: integer('minutes').notNull(),
   kcal: real('kcal').notNull().default(0),
+  speedKmh: real('speed_kmh'), // optional pace for walk/run/cycle; null = fixed MET used
+  // Free-text label from the LLM parse path (e.g. "отжимания") so the log shows
+  // what was actually done; null for chip-logged entries (the type IS the label).
+  label: text('label'),
 });
 export type WorkoutRow = typeof workouts.$inferSelect;
 
@@ -151,6 +155,10 @@ export const appSettings = sqliteTable('app_settings', {
   // honest "до цели ≈ N мес." ETA. 0 = not set (the plan falls back to the
   // adjusted/current-weight protein basis).
   goalWeightKg: real('goal_weight_kg').notNull().default(0),
+  // Optional MEASURED body-fat %. 0 = not set. A plausible value (3–70) switches
+  // the plan's BMR to composition-aware Katch–McArdle so muscle vs fat at the
+  // same weight diverges; otherwise Mifflin. Local-only, never synced.
+  bodyFatPct: real('body_fat_pct').notNull().default(0),
   // Epoch ms of the last DELIBERATE targets change (plan applied / manual edit).
   // Null = the 2000/120/70/200 defaults were never touched — progress UI must
   // stay hidden then, or it would pressure the user with an arbitrary number.

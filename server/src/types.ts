@@ -499,6 +499,90 @@ export function normalizeIdentified(payload: unknown): IdentifiedItem[] {
   return items;
 }
 
+// ---- workout free-text parsing (separate, tiny contract) --------------------
+
+/**
+ * Structured-exercise type keys — MUST match the client's `WorkoutType`
+ * (bodyMetrics.ts) plus `'other'` for an activity that fits none of them. The
+ * server only PARSES text into these; kcal is computed CLIENT-SIDE from the
+ * user's weight (MET × kg × h), so no energy numbers cross the wire — same
+ * honesty split as food (the model identifies, the app does the arithmetic).
+ */
+export const WORKOUT_TYPE_KEYS = [
+  'walk',
+  'run',
+  'cycle',
+  'swim',
+  'strength',
+  'hiit',
+  'elliptical',
+  'row',
+  'sport',
+  'dance',
+  'martial',
+  'yoga',
+  'other',
+] as const;
+export type WorkoutTypeKey = (typeof WORKOUT_TYPE_KEYS)[number];
+
+/**
+ * One activity parsed from a free-text workout description. `speed_kmh` is only
+ * meaningful for walk/run/cycle; `met` is the model's rough MET estimate carried
+ * ONLY for `type: 'other'` (the app has its own MET for the known types and
+ * ignores the model's there). Reps → `minutes` is estimated by the model.
+ */
+export interface ParsedWorkout {
+  type: WorkoutTypeKey;
+  name_ru: string;
+  minutes: number;
+  speed_kmh?: number;
+  met?: number;
+  confidence: number;
+}
+
+/** Same amplification cap rationale as food's MAX_ITEMS. */
+const MAX_WORKOUTS = 20;
+
+/**
+ * Validate + normalize a raw LLM workout payload into `ParsedWorkout[]`. Pure
+ * and total: never throws; garbage in → an empty list. Clamps every number to a
+ * sane band so a bad model response can't produce absurd durations/MET.
+ */
+export function normalizeParsedWorkouts(payload: unknown): ParsedWorkout[] {
+  const p = (payload && typeof payload === 'object' ? payload : {}) as Record<string, unknown>;
+  const rawItems = (Array.isArray(p.workouts) ? p.workouts : []).slice(0, MAX_WORKOUTS);
+  const out: ParsedWorkout[] = [];
+  for (const raw of rawItems) {
+    if (raw === null || typeof raw !== 'object') continue;
+    const r = raw as Record<string, unknown>;
+    const type: WorkoutTypeKey = WORKOUT_TYPE_KEYS.includes(r.type as WorkoutTypeKey)
+      ? (r.type as WorkoutTypeKey)
+      : 'other';
+    const minutes = Math.min(600, Math.round(num(r.minutes)));
+    if (!(minutes > 0)) continue; // an activity with no positive duration is unusable
+    const name_ru = typeof r.name_ru === 'string' ? r.name_ru.trim() : '';
+    const item: ParsedWorkout = {
+      type,
+      name_ru: name_ru.slice(0, 60) || type,
+      minutes,
+      confidence: Math.min(1, Math.max(0, num(r.confidence))),
+    };
+    // Pace only makes sense for the speed-capable types; clamp to a plausible band.
+    if (type === 'walk' || type === 'run' || type === 'cycle') {
+      const s = posNum(r.speed_kmh);
+      if (s !== undefined && s <= 60) item.speed_kmh = round1(s);
+    }
+    // MET is carried only for 'other' (the app owns MET for known types). Clamp to
+    // the realistic human range so a wild number can't inflate the burn.
+    if (type === 'other') {
+      const m = posNum(r.met);
+      if (m !== undefined) item.met = round1(Math.min(m, 25));
+    }
+    out.push(item);
+  }
+  return out;
+}
+
 /** Empty draft for unrecognized input — client shows "не удалось распознать". */
 export function emptyMealDraft(region: Region): MealDraft {
   return {
