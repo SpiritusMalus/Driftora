@@ -58,7 +58,11 @@ export const en = {
       weight: 'Weight',
       mood: 'Mood',
     },
-    steps: { unit: 'steps', placeholder: 'Steps today' },
+    steps: {
+      unit: 'steps',
+      placeholder: 'Steps today',
+      earnedEstimate: '{{steps}} steps today ≈ {{kcal}} kcal above resting.',
+    },
     // Compare today to the user's own normal (personal step baseline). Tone is
     // curious and supportive — never a target, never "you're behind".
     baseline: {
@@ -281,6 +285,14 @@ export const en = {
     plan: {
       title: 'Nutrition plan',
       mode: { lose: 'Lose weight', maintain: 'Maintain', gain: 'Gain' },
+      // Weight-loss pace — the one speed lever (lose mode only). 'Standard' is the
+      // BMI-aware default (unchanged); 'Gentle'/'Fast' soften/steepen it.
+      tempo: {
+        label: 'Weight-loss pace',
+        soft: 'Gentle',
+        standard: 'Standard',
+        fast: 'Fast',
+      },
       intro: {
         lose: 'You weigh {{kg}} kg. To lose weight calmly — about −{{pace}} kg a week, no crash dieting — you need:',
         maintain: 'You weigh {{kg}} kg. To hold this weight you need about:',
@@ -314,7 +326,7 @@ export const en = {
       needProfile: 'Fill in “Body parameters” below — height, sex, birth year and activity — and the plan appears here.',
       assumedAge: 'Age isn’t set — this plan is an estimate. Add your birth year in “Body parameters” below to firm up the numbers.',
       note:
-        'The Mifflin–St Jeor formula estimates the “average” person: real needs differ. Start from these numbers and adjust by your weight trend and how you feel. Deficit −15% (−20% at BMI ≥ 30) · protein 1.6–1.8 g/kg · fat 30% of calories · carbs the remainder.',
+        'The Mifflin–St Jeor formula estimates the “average” person: real needs differ. Start from these numbers and adjust by your weight trend and how you feel. You set the deficit by pace: gentle −10%, standard −15% (−20% at BMI ≥ 30), fast −25% · protein 1.6–1.8 g/kg · fat 30% of calories · carbs the remainder.',
       why: 'Why these numbers',
       whyHide: 'Hide explanation',
     },

@@ -99,6 +99,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
   activity_level TEXT NOT NULL DEFAULT '',
   goal_mode TEXT NOT NULL DEFAULT 'maintain',
   goal_weight_kg REAL NOT NULL DEFAULT 0,
+  deficit_tempo TEXT NOT NULL DEFAULT 'standard',
   body_fat_pct REAL NOT NULL DEFAULT 0,
   targets_set_at INTEGER,
   reminder_times TEXT NOT NULL DEFAULT '[]',
@@ -184,6 +185,10 @@ export const MIGRATIONS: string[] = [
   // 2026-07-08: free-text label for a workout logged via the LLM parse path
   // (e.g. "отжимания"). Null for chip entries. Additive, nullable.
   `ALTER TABLE workouts ADD COLUMN label TEXT`,
+  // 2026-07-09: user-chosen deficit tempo for the weight-loss plan (soft −10% /
+  // standard −15/−20% / fast −25%). Ships 'standard' = the prior BMI-aware
+  // default, so existing installs see no change until the user picks another.
+  `ALTER TABLE app_settings ADD COLUMN deficit_tempo TEXT NOT NULL DEFAULT 'standard'`,
 ];
 
 /// Runs each CREATE statement through [run], then the idempotent [MIGRATIONS].

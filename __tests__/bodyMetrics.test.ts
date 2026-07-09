@@ -340,6 +340,50 @@ describe('withWorkoutEnergy (eat-back layered onto a base)', () => {
   });
 });
 
+describe('suggestPlan (deficit tempo: the pace lever)', () => {
+  // Male 130 kg, 180 cm, 35 y.o., light activity — maintenance 3100 kcal, BMI 40.
+  const heavy = { sex: 'male', birthYear: 1991, heightCm: 180, activityLevel: 'light' };
+
+  it("defaults to 'standard', which reproduces the pre-choice BMI-aware plan", () => {
+    const omitted = suggestPlan(heavy, 130, 'lose', NOW, 90)!;
+    const explicit = suggestPlan(heavy, 130, 'lose', NOW, 90, 'standard')!;
+    expect(omitted.kcal).toBe(explicit.kcal);
+    expect(explicit.kcal).toBe(2480); // BMI ≥ 30 → −20%, same as before the lever existed
+  });
+
+  it('soft eases the deficit (−10%), fast steepens it (−25%)', () => {
+    const soft = suggestPlan(heavy, 130, 'lose', NOW, 90, 'soft')!;
+    const standard = suggestPlan(heavy, 130, 'lose', NOW, 90, 'standard')!;
+    const fast = suggestPlan(heavy, 130, 'lose', NOW, 90, 'fast')!;
+    // 3100.6 × {0.9, 0.8, 0.75} → 2790 / 2480 / 2330 (floors don't bind here).
+    expect(soft.kcal).toBe(2790);
+    expect(standard.kcal).toBe(2480);
+    expect(fast.kcal).toBe(2330);
+    expect(soft.kcal).toBeGreaterThan(standard.kcal);
+    expect(fast.kcal).toBeLessThan(standard.kcal);
+    // Faster deficit → faster expected pace.
+    expect(fast.paceKgPerWeek).toBeGreaterThan(soft.paceKgPerWeek);
+  });
+
+  it('the clinical floor still caps fast on a small body (no crash diet)', () => {
+    const small = { sex: 'female', birthYear: 1966, heightCm: 150, activityLevel: 'sedentary' };
+    const standard = suggestPlan(small, 45, 'lose', NOW, 0, 'standard')!;
+    const fast = suggestPlan(small, 45, 'lose', NOW, 0, 'fast')!;
+    // Both floor to the female clinical minimum (1200) — fast can't push below it.
+    expect(fast.floored).toBe(true);
+    expect(fast.kcal).toBe(standard.kcal);
+    expect(fast.kcal).toBeGreaterThanOrEqual(1200);
+  });
+
+  it('tempo is ignored for maintain / gain (it only sizes a deficit)', () => {
+    for (const mode of ['maintain', 'gain'] as const) {
+      const std = suggestPlan(heavy, 130, mode, NOW, 0, 'standard')!;
+      const fast = suggestPlan(heavy, 130, mode, NOW, 0, 'fast')!;
+      expect(fast.kcal).toBe(std.kcal);
+    }
+  });
+});
+
 describe('suggestActivityLevel (steps → lifestyle multiplier)', () => {
   it('maps step bands to levels', () => {
     expect(suggestActivityLevel(3000)).toBe('sedentary');

@@ -155,6 +155,12 @@ export const appSettings = sqliteTable('app_settings', {
   // honest "до цели ≈ N мес." ETA. 0 = not set (the plan falls back to the
   // adjusted/current-weight protein basis).
   goalWeightKg: real('goal_weight_kg').notNull().default(0),
+  // How aggressive the weight-loss deficit is (the pace lever, lose mode only):
+  // 'soft' −10%, 'standard' the BMI-aware −15/−20% default, 'fast' −25%. Ships
+  // 'standard' so an untouched setting reproduces the pre-choice plan exactly.
+  deficitTempo: text('deficit_tempo', { enum: ['soft', 'standard', 'fast'] })
+    .notNull()
+    .default('standard'),
   // Optional MEASURED body-fat %. 0 = not set. A plausible value (3–70) switches
   // the plan's BMR to composition-aware Katch–McArdle so muscle vs fat at the
   // same weight diverges; otherwise Mifflin. Local-only, never synced.
