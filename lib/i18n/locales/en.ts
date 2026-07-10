@@ -45,24 +45,13 @@ export const en = {
   },
   home: {
     title: 'Today',
-    greeting: 'One honest read on how moving shapes how you feel.',
-    emptyHint: 'Nothing here yet — entries will appear once you start.',
-    gentleNorm: 'You don\'t have to log every day — a skipped day won\'t break your progress.',
-    sections: {
-      nutrition: 'Nutrition',
-      steps: 'Steps',
-      diary: 'Thought diary',
-      wins: 'Wins',
-      bodyMind: 'Body & mood',
-      weight: 'Weight',
-      mood: 'Mood',
-    },
+    inlineAdd: 'Log it',
     steps: {
       unit: 'steps',
       placeholder: 'Steps today',
-      // Empty state: the input sits right below, so it's an invitation — the
-      // old "Coming soon" read as "doesn't work".
-      noneYet: 'none yet today — type them below',
+      // Empty state: an invitation (the field unfolds via «+») — the old
+      // "Coming soon" read as "doesn't work".
+      noneYet: 'none yet today',
       earnedEstimate: '{{steps}} steps today ≈ {{kcal}} kcal above resting.',
     },
     activity: {
@@ -91,7 +80,6 @@ export const en = {
       signalNoun: { steps: 'a steps reading', sleep: 'a sleep reading', protein: 'a protein reading' },
     },
     sleep: {
-      noData: 'no data',
       meaning: {
         unknown: 'no sleep data yet',
         very_short: 'under 6 hours — a short night; one won\'t undo you',
@@ -115,11 +103,7 @@ export const en = {
       returning4: 'Back together. No need to catch up — just note how you are right now.',
     },
     feeders: {
-      header: 'Feed your insight',
-      header2: 'What will you add today?',
-      header3: 'Every check-in feeds your insight',
-      header4: 'Share a little — see the day clearer',
-      mood: 'Mood check-in',
+      mind: 'Mood & diary',
       moodCta: 'One tap — how are you right now?',
       moodValue: 'Last: {{value}}/10',
       steps: 'Activity today',
@@ -134,9 +118,6 @@ export const en = {
       weightDaysAgo: '{{kg}} kg — {{days}} d ago',
     },
     moreLink: 'More',
-    bodyMindWhy:
-      'One mood check-in a day — and the app can honestly show how steps, sleep and protein relate to how you feel.',
-    moodNow: { title: 'How are you right now?', hint: 'one tap · 0–10' },
     bodyMindCol: {
       body: 'Body · steps',
       bodySignal: { steps: 'Body · steps', sleep: 'Body · sleep', protein: 'Body · protein' },
@@ -619,12 +600,11 @@ export const en = {
     historySection: 'Step history',
   },
   mood: {
-    title: 'Mood',
+    title: 'Mood & diary',
     prompt: 'How are you right now?',
     scale: '0 — very low, 10 — great. One tap, no explanation needed.',
     empty: 'No mood check-ins yet.',
     dbUnavailable: 'Mood is available in a device dev build.',
-    cta: 'Log mood',
   },
   food: {
     title: 'Add food',

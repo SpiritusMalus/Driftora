@@ -8,20 +8,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FoodTodayWidget } from '@/components/home/FoodTodayWidget';
 import { StepsWidget } from '@/components/home/StepsWidget';
 import { WeightWidget } from '@/components/home/WeightWidget';
-import { BodyMindCard } from '@/components/ui/BodyMindCard';
 import { Card } from '@/components/ui/Card';
 import { FoodBar } from '@/components/ui/FoodBar';
 import { ListGroup, type RowSpec } from '@/components/ui/ListGroup';
-import { MoodScale } from '@/components/ui/MoodScale';
-import { SectionHeader } from '@/components/ui/SectionHeader';
 import { selfInitiatedLogDays } from '@/lib/core/db/activity';
 import { hasAnyWinOnDay, runAutoWins } from '@/lib/core/db/autoWins';
-import { bestBodyMindFromDb } from '@/lib/core/db/bodyMind';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
-import { countDiaryEntries } from '@/lib/core/db/diary';
 import { todayMacroTotals } from '@/lib/core/db/food';
 import type { AppSettings } from '@/lib/core/db/schema';
-import { latestMood, logMood } from '@/lib/core/db/mood';
+import { latestMood } from '@/lib/core/db/mood';
 import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
 import { syncDaySleep } from '@/lib/core/db/sleep';
 import { dayKey, listStepsDays, syncDaySteps, typicalSteps } from '@/lib/core/db/steps';
@@ -30,25 +25,18 @@ import { latestWeight } from '@/lib/core/db/weight';
 import { todayWorkoutKcal } from '@/lib/core/db/workouts';
 import { dayBudgetKcal, EATBACK_FRACTION, restingPlan, stepsEarnedKcal } from '@/lib/core/insights/bodyMetrics';
 import { personalBaseline, type PersonalBaseline } from '@/lib/core/insights/baseline';
-import {
-  MIN_PAIRED_DAYS,
-  type BodyMindSignal,
-  type SignalAssociation,
-} from '@/lib/core/insights/bodyMind';
 import { daySummary, daysSince, type DaySummary } from '@/lib/core/insights/daySummary';
-import { sleepBand, sleepHours } from '@/lib/core/insights/sleepInsight';
 import { dayOfYear, pickVariant } from '@/lib/core/insights/variant';
 import { stepInsight } from '@/lib/core/insights/stepInsight';
 import { getHealthService } from '@/lib/core/services/healthProvider';
 import { useTheme } from '@/lib/theme/theme';
 
-/// Home is a single-insight surface, not a dashboard. The Body↔Mind read
-/// (movement ↔ mood) is the editorial hero card at the top; beneath it sit only
-/// the inputs that *feed* that insight — a one-tap mood scale, today's steps, the
-/// diary — plus a pinned food bar. Everything else lives behind "More". The
-/// hero's honesty states are preserved exactly: a building-up placeholder below
-/// the paired-days gate, an honest "no clear link yet", and the "association,
-/// not cause" framing on real findings.
+/// Home is the BODY-tracking surface (device feedback 2026-07-10: «разделить
+/// тренировки и психику»): food, weight, activity — the things fed daily. The
+/// whole mind side (mood scale, the Body↔Mind insight, the thought diary, the
+/// sleep signal) lives on the mood screen, reachable through one calm row here.
+/// Home still runs the passive steps/sleep sync so those signals keep flowing
+/// into the insight regardless of which screen shows them.
 export default function HomeScreen() {
   const { t } = useTranslation();
   const theme = useTheme();
@@ -66,10 +54,6 @@ export default function HomeScreen() {
   // 'forming' while we don't have enough days to make an honest high/low claim.
   const [stepsBaselineKind, setStepsBaselineKind] =
     useState<PersonalBaseline['kind'] | null>(null);
-  const [sleepMin, setSleepMin] = useState<number | null>(null);
-  const [proteinG, setProteinG] = useState(0);
-  const [diaryCount, setDiaryCount] = useState(0);
-  const [best, setBest] = useState<SignalAssociation | null>(null);
   const [summary, setSummary] = useState<DaySummary | null>(null);
   const [moodValue, setMoodValue] = useState<number | null>(null);
   const [streakWeeks, setStreakWeeks] = useState(0);
@@ -85,10 +69,9 @@ export default function HomeScreen() {
 
   const reload = useCallback(async () => {
         if (!db) return;
-        const [tot, settingsRow, diaryN, moodRow, review, weightLatest, workoutKcal] = await Promise.all([
+        const [tot, settingsRow, moodRow, review, weightLatest, workoutKcal] = await Promise.all([
           todayMacroTotals(db),
           ensureSettings(db),
-          countDiaryEntries(db),
           latestMood(db),
           weekReview(db),
           latestWeight(db),
@@ -110,8 +93,10 @@ export default function HomeScreen() {
           .map((r) => Number(r.steps));
         const stepsBaseline =
           stepCount == null ? null : personalBaseline(recentSteps, stepCount);
-        const sleepMinutes = await syncDaySleep(db, svc);
-        const bestLink = await bestBodyMindFromDb(db);
+        // Passive sleep sync stays on Home (the app's entry) so the sleep↔mood
+        // insight keeps its data even though sleep is DISPLAYED on the mood
+        // screen only — and only once real data exists.
+        await syncDaySleep(db, svc);
         // Celebrate the day's earned goals automatically (deduped per day). A
         // quiet background behavior, not a Home card — kept as-is.
         await runAutoWins(
@@ -162,13 +147,9 @@ export default function HomeScreen() {
         setUsualSteps(await typicalSteps(db));
         setStepsMeaning(stepCount == null ? null : stepInsight(stepCount, settingsRow.stepsGoal));
         setStepsBaselineKind(stepsBaseline ? stepsBaseline.kind : null);
-        setSleepMin(sleepMinutes);
-        setProteinG(tot.proteinG);
         setTotals({ kcal: tot.kcal, proteinG: tot.proteinG, fatG: tot.fatG, carbG: tot.carbG });
         setSettings(settingsRow);
         setWorkoutRawKcal(workoutKcal);
-        setDiaryCount(diaryN);
-        setBest(bestLink);
         setMoodValue(moodRow ? moodRow.value : null);
         setStreakWeeks(review.streakWeeks);
         setPaused(settingsRow.paused);
@@ -198,68 +179,6 @@ export default function HomeScreen() {
     setPaused(false);
   }
 
-  // One-tap mood check-in straight from Home — the lowest-friction feeder.
-  async function onPickMood(value: number) {
-    if (!db) return;
-    await logMood(db, value);
-    setMoodValue(value);
-  }
-
-  // The signal the hero speaks about (steps / sleep / protein), and today's
-  // value + glyph for its body column. Defaults to steps while still forming.
-  const heroSignal: BodyMindSignal = best?.signal ?? 'steps';
-  const signalNoun = t(`home.hero.signalNoun.${heroSignal}`);
-
-  // Map the structured Body↔Mind result onto the presentational hero. Every
-  // honesty state is preserved: building placeholder below the gate, an honest
-  // no-link line, and the "association, not cause" caption on real findings.
-  const hero = ((): {
-    eyebrow: string;
-    accent?: string;
-    headline: string;
-    basis?: string;
-    caption?: string;
-  } => {
-    const eyebrow = t('home.hero.eyebrow');
-    const result = best?.result;
-    if (!result || result.kind === 'insufficient') {
-      const remaining = Math.max(1, MIN_PAIRED_DAYS - (result?.pairedDays ?? 0));
-      return {
-        eyebrow,
-        headline: t(buildingKey(remaining), { days: remaining, signal: signalNoun }),
-        caption: t('home.hero.buildingCaption'),
-      };
-    }
-    const basis = t('home.bodyMind.basis', { days: result.pairedDays, signal: signalNoun });
-    if (result.kind === 'no_link') {
-      return {
-        eyebrow,
-        headline: t(`bodyMind.hero.signalNoLink.${heroSignal}`),
-        basis,
-        caption: t('home.hero.caption'),
-      };
-    }
-    const dir = result.direction === 'more_better' ? 'better' : 'worse';
-    return {
-      eyebrow,
-      accent: t('bodyMind.hero.accent', { gap: result.moodGap }),
-      headline: t(`bodyMind.hero.signal.${heroSignal}.${dir}`, { gap: result.moodGap }),
-      basis,
-      caption: t('home.hero.caption'),
-    };
-  })();
-
-  const bodyColValue = ((): string => {
-    if (heroSignal === 'sleep') {
-      return sleepMin != null ? `${sleepHours(sleepMin)} ${t('units.h')}` : '—';
-    }
-    if (heroSignal === 'protein') {
-      return `${Math.round(proteinG)} ${t('units.g')}`;
-    }
-    return steps != null ? formatSteps(steps) : '—';
-  })();
-  const bodyColIcon = SIGNAL_ICON[heroSignal];
-
   // Personalize the steps line once there's enough history: speak to the user's
   // OWN normal ("above/typical/quieter than usual") instead of the generic
   // evidence line. While still 'forming' (or with no baseline yet) keep the
@@ -268,18 +187,13 @@ export default function HomeScreen() {
     stepsBaselineKind != null && stepsBaselineKind !== 'forming'
       ? t(`home.baseline.${stepsBaselineKind}`)
       : stepsMeaning;
-  // No steps yet is an INVITATION, not a locked feature — the input sits right
-  // below, so the old «Скоро» placeholder read as "doesn't work" (device
-  // feedback 2026-07-10). Sleep stays passive → an honest «нет данных».
+  // No steps yet is an INVITATION, not a locked feature — the input unfolds via
+  // [+], so the old «Скоро» placeholder read as "doesn't work" (device
+  // feedback 2026-07-10).
   const stepsSubtitle =
     steps == null || stepsMeaningLine == null
       ? t('home.steps.noneYet')
       : `${formatSteps(steps)} — ${stepsMeaningLine}`;
-
-  const sleepSubtitle =
-    sleepMin == null
-      ? t('home.sleep.noData')
-      : `${sleepHours(sleepMin)} ${t('units.h')} — ${t(`home.sleep.meaning.${sleepBand(sleepMin)}`)}`;
 
   // «92.4 кг — 3 дн. назад» or a gentle weekly-cadence CTA before the first log.
   const weightSubtitle = (() => {
@@ -291,38 +205,18 @@ export default function HomeScreen() {
     return t('home.feeders.weightDaysAgo', { kg, days });
   })();
 
-  // Diary stays a simple tap-through row (unchanged by request). Steps, weight and
-  // food became input widgets above; sleep is a passive display row pinned to the
-  // very bottom.
-  const diaryRow: RowSpec = {
-    key: 'diary',
-    icon: 'sparkles-outline',
+  // The whole MIND side behind one calm row: mood scale, the Body↔Mind insight,
+  // the thought diary and the sleep signal live on the mood screen («разделить
+  // тренировки и психику», 2026-07-10). Subtitle = today's check-in, or a CTA.
+  const mindRow: RowSpec = {
+    key: 'mind',
+    icon: 'happy-outline',
     tint: theme.primary,
     iconBg: theme.scheme === 'light' ? '#FBE2D9' : '#3A241B',
-    title: t('home.feeders.diary'),
-    subtitle: diaryCount > 0 ? t('home.feeders.diaryCount', { count: diaryCount }) : t('home.feeders.diaryCta'),
-    onPress: () => router.push('/diary'),
+    title: t('home.feeders.mind'),
+    subtitle: moodValue != null ? t('home.feeders.moodValue', { value: moodValue }) : t('home.feeders.moodCta'),
+    onPress: () => router.push('/mood'),
   };
-  const sleepRow: RowSpec = {
-    key: 'sleep',
-    icon: 'moon-outline',
-    tint: theme.primary,
-    iconBg: theme.scheme === 'light' ? '#E9E2FA' : '#272138',
-    title: t('home.feeders.sleep'),
-    subtitle: sleepSubtitle,
-  };
-
-  // Rotate the feeder section header across a few warm variants — stable within
-  // a day (day-of-year seed), so Home feels alive without changing mid-session.
-  const feederHeader = pickVariant(
-    [
-      t('home.feeders.header'),
-      t('home.feeders.header2'),
-      t('home.feeders.header3'),
-      t('home.feeders.header4'),
-    ],
-    dayOfYear(),
-  );
 
   // A target/КБЖУ is shown only when it was DELIBERATELY set — the untouched
   // 2000/120/70/200 defaults are not a goal (mirrors the food-day card, which
@@ -421,11 +315,11 @@ export default function HomeScreen() {
         ]}
         contentInsetAdjustmentBehavior="automatic"
       >
-        <Text style={[styles.greeting, { color: theme.subtle }, theme.font.body]}>
-          {t('home.greeting')}
-        </Text>
-
-        {summary ? (
+        {/* Noise cleanup 2026-07-10 («много шума, непонятно куда жмать»): the
+            greeting tagline and the empty-day summary are gone — a fresh day
+            opens straight on the food card. The summary line returns only once
+            it has something REAL to say (steps/mood/win/welcome-back). */}
+        {summary && summary.key !== 'empty' ? (
           <Text style={[styles.daySummary, { color: theme.text }, theme.font.bodyMedium]}>
             {t(`home.daySummary.${summary.key}`, {
               steps: summary.steps != null ? formatSteps(summary.steps) : '',
@@ -473,9 +367,8 @@ export default function HomeScreen() {
         ) : null}
 
         {/* FOOD FIRST (device feedback 2026-07-10: «почему еда третьей строчкой»)
-            — the daily-use widgets open the screen; the Body↔Mind insight and
-            the mood check-in live in their own explained section below. */}
-        <SectionHeader>{feederHeader}</SectionHeader>
+            — Home is the body-tracking surface; the mind side sits behind one
+            row below. */}
         <FoodTodayWidget
           kcal={totals.kcal}
           targetKcal={foodTargetKcal}
@@ -497,54 +390,13 @@ export default function HomeScreen() {
           workoutLine={workoutLine}
           onSaved={reload}
         />
-        <ListGroup rows={[diaryRow]} />
-
-        <SectionHeader>{t('home.sections.bodyMind')}</SectionHeader>
-        {/* «При чём тут настроение?» — say the deal out loud: one tap a day
-            buys the honest movement↔mood insight above it. */}
-        <Text style={[styles.bodyMindWhy, { color: theme.subtle }, theme.font.body]}>
-          {t('home.bodyMindWhy')}
-        </Text>
-        <View style={styles.hero}>
-          <BodyMindCard
-            eyebrow={hero.eyebrow}
-            accent={hero.accent}
-            headline={hero.headline}
-            basis={hero.basis}
-            caption={hero.caption}
-            bodyLabel={t(`home.bodyMindCol.bodySignal.${heroSignal}`)}
-            bodyValue={bodyColValue}
-            bodyIcon={bodyColIcon}
-            mindLabel={t('home.bodyMindCol.mind')}
-            mindValue={moodValue != null ? `${moodValue}/10` : '—'}
-          />
-        </View>
-
-        <Card style={styles.moodCard}>
-          <View style={styles.moodHead}>
-            <Text style={[styles.moodTitle, { color: theme.text }, theme.font.bodySemiBold]}>
-              {t('home.moodNow.title')}
-            </Text>
-            <Text style={[styles.moodHint, { color: theme.subtle }, theme.font.body]}>
-              {t('home.moodNow.hint')}
-            </Text>
-          </View>
-          <View style={{ marginTop: 14 }}>
-            <MoodScale selected={moodValue} onPick={onPickMood} disabled={db == null} />
-          </View>
-        </Card>
+        <ListGroup rows={[mindRow]} />
 
         {streakWeeks > 0 ? (
           <Text style={[styles.northStar, { color: theme.accent }, theme.font.bodyMedium]}>
             {t('home.northStar', { weeks: streakWeeks })}
           </Text>
         ) : null}
-        <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('home.gentleNorm')}</Text>
-
-        {/* Sleep pinned to the very bottom (passive display; by request). */}
-        <View style={styles.sleepBottom}>
-          <ListGroup rows={[sleepRow]} />
-        </View>
       </ScrollView>
 
       <View
@@ -567,18 +419,6 @@ export default function HomeScreen() {
   );
 }
 
-/// Picks the plural-correct "N more days" key. i18next here is configured without
-/// the plural-suffix plugin, so we branch explicitly (ru: one/few/many, en:
-/// one/other) to keep the building copy grammatical.
-function buildingKey(n: number): string {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return 'home.hero.buildingOne';
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
-    return 'home.hero.buildingFew';
-  }
-  return 'home.hero.buildingMany';
-}
 
 /// Thin-space thousands so "6 240" reads like the mockup.
 function formatSteps(n: number): string {
@@ -594,28 +434,12 @@ function daysAgo(dayString: string): number {
   return Math.round((today.getTime() - then.getTime()) / 86_400_000);
 }
 
-/// The body-column glyph for each hero signal.
-const SIGNAL_ICON: Record<BodyMindSignal, 'walk-outline' | 'moon-outline' | 'nutrition-outline'> = {
-  steps: 'walk-outline',
-  sleep: 'moon-outline',
-  protein: 'nutrition-outline',
-};
-
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   androidContent: { paddingHorizontal: 18, paddingTop: 4, paddingBottom: 96 },
   iosContent: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 96 },
-  greeting: { fontSize: 14, lineHeight: 20, marginBottom: 2 },
-  daySummary: { fontSize: 15, lineHeight: 21, marginTop: 8 },
-  hero: { marginTop: 14 },
-  moodCard: { marginTop: 14 },
-  bodyMindWhy: { fontSize: 12, lineHeight: 17, marginTop: 2 },
-  moodHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  moodTitle: { fontSize: 15 },
-  moodHint: { fontSize: 12 },
+  daySummary: { fontSize: 15, lineHeight: 21, marginTop: 8, marginBottom: 10 },
   northStar: { fontSize: 12, textAlign: 'center', marginTop: 22 },
-  sleepBottom: { marginTop: 22 },
-  hint: { fontSize: 12, textAlign: 'center', marginTop: 10, lineHeight: 17 },
   footer: { position: 'absolute', left: 0, right: 0 },
   footerAndroid: { paddingHorizontal: 18 },
   footerIOS: { paddingHorizontal: 16 },
