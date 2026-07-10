@@ -116,11 +116,16 @@ export const WORKOUT_TYPES: readonly WorkoutType[] = [
 /// Compendium of Physical Activities. This is the FALLBACK used when the user
 /// doesn't know / doesn't enter a pace. kcal = MET × weightKg × hours.
 const WORKOUT_MET: Record<WorkoutType, number> = {
-  walk: 4.3, // brisk walk (~5.5 km/h)
-  run: 9.8, // ~8–9 km/h
+  walk: 4.3, // deliberate exercise walk, brisk (~5.6 km/h; Compendium 17190)
+  run: 9.8, // ~9.7 km/h (Compendium 12050)
   cycle: 7.5, // ~19–22 km/h
   swim: 7.0,
-  strength: 5.0, // vigorous weights
+  // Compendium 02050 «resistance training, multiple exercises, 8–15 reps» = 3.5
+  // — the typical gym session INCLUDING inter-set rest, which our sets→minutes
+  // path also models. The old 5.0 was the vigorous-bodybuilding entry stacked
+  // on top of rest-inclusive minutes — it overshot trackers ~40% (device
+  // feedback 2026-07-10: «подсчёт тренировок не очень точный»).
+  strength: 3.5,
   hiit: 8.0, // circuit / HIIT
   elliptical: 5.0,
   row: 7.0,
@@ -148,27 +153,73 @@ const SPEED_KMH_RANGE: Partial<Record<WorkoutType, { min: number; max: number }>
   cycle: { min: 8, max: 45 },
 };
 
-/// MET from an actual pace, for the speed-capable types. Walking and running use
-/// the ACSM level-ground equations (VO₂ from speed, MET = VO₂ / 3.5); cycling has
-/// no tidy linear law (air drag dominates), so it's a rounded fit to the
-/// Compendium's speed buckets. Returns null for a type/speed we can't refine, so
-/// callers fall back to the fixed [WORKOUT_MET].
+/// Compendium (2011) anchor points, km/h → MET, for pace-aware walking and
+/// running. Interpolated linearly between anchors, flat outside them. Chosen
+/// over the ACSM treadmill equations after a device-feedback accuracy audit
+/// (2026-07-10): ACSM walking underestimated fast walking badly (4.8 vs the
+/// Compendium's 8.3 at 8 km/h — the equation isn't valid past ~6.5 km/h), and
+/// worse, an honestly-typed 5.5 km/h pace LOWERED the estimate below the fixed
+/// brisk default (3.6 vs 4.3) — «уточнил → стало меньше». Anchors keep the
+/// paced and default numbers on one scale (5.6 km/h ⇒ 4.3 ⇒ the walk default).
+const WALK_MET_ANCHORS: readonly (readonly [number, number])[] = [
+  [2.0, 2.0], // strolling
+  [3.2, 2.8], // 2.0 mph
+  [4.0, 3.0], // 2.5 mph
+  [4.8, 3.5], // 3.0 mph
+  [5.6, 4.3], // 3.5 mph, brisk
+  [6.4, 5.0], // 4.0 mph, very brisk
+  [7.2, 7.0], // 4.5 mph
+  [8.0, 8.3], // 5.0 mph
+];
+
+/// Running anchors (Compendium 2011). The ACSM running equation tracked these
+/// within ~5% mid-band but drifted +13% high by 13 km/h; the table is flatter
+/// and matches the published per-speed entries exactly.
+const RUN_MET_ANCHORS: readonly (readonly [number, number])[] = [
+  [6.4, 6.0], // 4 mph
+  [8.0, 8.3], // 5 mph
+  [9.7, 9.8], // 6 mph
+  [10.8, 10.5], // 6.7 mph
+  [11.3, 11.0], // 7 mph
+  [12.9, 11.8], // 8 mph
+  [14.5, 12.8], // 9 mph
+  [16.1, 14.5], // 10 mph
+  [17.7, 16.0], // 11 mph
+];
+
+/// Piecewise-linear read of an anchor table; flat beyond the first/last anchor.
+function interpolateMet(anchors: readonly (readonly [number, number])[], kmh: number): number {
+  if (kmh <= anchors[0][0]) return anchors[0][1];
+  for (let i = 1; i < anchors.length; i++) {
+    const [x2, y2] = anchors[i];
+    if (kmh <= x2) {
+      const [x1, y1] = anchors[i - 1];
+      return y1 + ((y2 - y1) * (kmh - x1)) / (x2 - x1);
+    }
+  }
+  return anchors[anchors.length - 1][1];
+}
+
+/// MET from an actual pace, for the speed-capable types. Walking and running
+/// interpolate the Compendium anchor tables above; cycling is a linear fit to
+/// the Compendium speed buckets (air drag makes it steeper than walking).
+/// Returns null for a type/speed we can't refine, so callers fall back to the
+/// fixed [WORKOUT_MET].
 export function metForSpeed(type: WorkoutType, speedKmh: number): number | null {
   const range = SPEED_KMH_RANGE[type];
   if (!range || !Number.isFinite(speedKmh) || speedKmh <= 0) return null;
   const kmh = Math.min(Math.max(range.min, speedKmh), range.max);
-  const mPerMin = kmh * (1000 / 60);
   switch (type) {
-    // ACSM walking: VO₂ = 0.1·(m/min) + 3.5 ; MET = VO₂/3.5.
     case 'walk':
-      return Math.max(2, (0.1 * mPerMin + 3.5) / 3.5);
-    // ACSM running: VO₂ = 0.2·(m/min) + 3.5 (level ground).
+      return interpolateMet(WALK_MET_ANCHORS, kmh);
     case 'run':
-      return Math.max(6, (0.2 * mPerMin + 3.5) / 3.5);
-    // Cycling — rounded fit to the Compendium buckets (~16 km/h≈6, 20≈7.5,
-    // 25≈10, 30≈12). Linear enough over the realistic band.
+      return interpolateMet(RUN_MET_ANCHORS, kmh);
+    // Cycling — fit through the Compendium bucket midpoints (leisure ~15 km/h
+    // ≈ 5.5, 16–19 ≈ 6.8, 19–22 ≈ 8.0, 22.5–25.6 ≈ 10, 26–31 ≈ 12); the old
+    // −2.5 intercept sat ~0.5 MET low across the whole band. Floor 4.0 =
+    // the Compendium's slowest leisure bucket.
     case 'cycle':
-      return Math.max(3, 0.5 * kmh - 2.5);
+      return Math.max(4, 0.5 * kmh - 2);
     default:
       return null;
   }

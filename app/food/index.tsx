@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card } from '@/components/ui/Card';
 import { FillBar } from '@/components/ui/FillBar';
@@ -10,7 +10,14 @@ import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
 import { dayBudgetKcal, EATBACK_FRACTION, restingPlan, stepsEarnedKcal } from '@/lib/core/insights/bodyMetrics';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
-import { listEntriesForDay, repeatFoodEntry, todayMacroTotals, todayMicroTotals, type MicroTotals } from '@/lib/core/db/food';
+import {
+  deleteFoodEntry,
+  listEntriesForDay,
+  repeatFoodEntry,
+  todayMacroTotals,
+  todayMicroTotals,
+  type MicroTotals,
+} from '@/lib/core/db/food';
 import { ensureSettings } from '@/lib/core/db/settings';
 import { getStepsRow, typicalSteps } from '@/lib/core/db/steps';
 import { latestWeight } from '@/lib/core/db/weight';
@@ -168,6 +175,26 @@ export default function FoodDayScreen() {
     ackTimer.current = setTimeout(() => setRepeatAck(null), 2500);
   }
 
+  /// Quick ✕ on a day row — an accidental quick-pick/repeat shouldn't take a
+  /// trip into the detail screen to undo. Same confirm as the detail delete:
+  /// one habitual tap must not silently erase data.
+  function onDelete(id: number) {
+    Alert.alert(t('food.deleteTitle'), t('food.deleteConfirm'), [
+      { text: t('food.deleteCancel'), style: 'cancel' },
+      {
+        text: t('food.delete'),
+        style: 'destructive',
+        onPress: () => {
+          if (!db) return;
+          void (async () => {
+            await deleteFoodEntry(db, id);
+            await reload();
+          })();
+        },
+      },
+    ]);
+  }
+
   return (
     <Screen>
       <PrimaryButton label={t('food.add')} onPress={() => router.push('/food/log')} style={styles.add} />
@@ -230,6 +257,15 @@ export default function FoodDayScreen() {
                       style={({ pressed }) => [styles.repeatBtn, { opacity: pressed ? 0.5 : 1 }]}
                     >
                       <Ionicons name="repeat-outline" size={18} color={theme.primary} />
+                    </Pressable>
+                    <Pressable
+                      onPress={() => onDelete(e.id)}
+                      hitSlop={10}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('food.delete')}
+                      style={({ pressed }) => [styles.repeatBtn, { opacity: pressed ? 0.5 : 1 }]}
+                    >
+                      <Ionicons name="close" size={18} color={theme.tertiary} />
                     </Pressable>
                   </View>
                   <Text style={[styles.rowMacros, { color: theme.subtle }, theme.font.body]}>

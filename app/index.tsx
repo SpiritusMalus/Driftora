@@ -472,6 +472,39 @@ export default function HomeScreen() {
           </Card>
         ) : null}
 
+        {/* FOOD FIRST (device feedback 2026-07-10: «почему еда третьей строчкой»)
+            — the daily-use widgets open the screen; the Body↔Mind insight and
+            the mood check-in live in their own explained section below. */}
+        <SectionHeader>{feederHeader}</SectionHeader>
+        <FoodTodayWidget
+          kcal={totals.kcal}
+          targetKcal={foodTargetKcal}
+          targetApprox={foodTargetApprox}
+          movementHint={movementHint}
+          prot={totals.proteinG}
+          targetProt={hasGoal ? (dayBase?.prot ?? settings!.targetProteinG) : 0}
+          fat={totals.fatG}
+          targetFat={hasGoal ? (dayBase?.fat ?? settings!.targetFatG) : 0}
+          carb={totals.carbG}
+          targetCarb={hasGoal ? (dayBase?.carb ?? settings!.targetCarbG) : 0}
+          onPress={() => router.push('/food')}
+        />
+        <WeightWidget db={db} subtitle={weightSubtitle} onSaved={reload} />
+        <StepsWidget
+          db={db}
+          subtitle={stepsSubtitle}
+          estimateLine={stepsEstimateLine}
+          workoutLine={workoutLine}
+          onSaved={reload}
+        />
+        <ListGroup rows={[diaryRow]} />
+
+        <SectionHeader>{t('home.sections.bodyMind')}</SectionHeader>
+        {/* «При чём тут настроение?» — say the deal out loud: one tap a day
+            buys the honest movement↔mood insight above it. */}
+        <Text style={[styles.bodyMindWhy, { color: theme.subtle }, theme.font.body]}>
+          {t('home.bodyMindWhy')}
+        </Text>
         <View style={styles.hero}>
           <BodyMindCard
             eyebrow={hero.eyebrow}
@@ -500,30 +533,6 @@ export default function HomeScreen() {
             <MoodScale selected={moodValue} onPick={onPickMood} disabled={db == null} />
           </View>
         </Card>
-
-        <SectionHeader>{feederHeader}</SectionHeader>
-        <FoodTodayWidget
-          kcal={totals.kcal}
-          targetKcal={foodTargetKcal}
-          targetApprox={foodTargetApprox}
-          movementHint={movementHint}
-          prot={totals.proteinG}
-          targetProt={hasGoal ? (dayBase?.prot ?? settings!.targetProteinG) : 0}
-          fat={totals.fatG}
-          targetFat={hasGoal ? (dayBase?.fat ?? settings!.targetFatG) : 0}
-          carb={totals.carbG}
-          targetCarb={hasGoal ? (dayBase?.carb ?? settings!.targetCarbG) : 0}
-          onPress={() => router.push('/food')}
-        />
-        <WeightWidget db={db} subtitle={weightSubtitle} onSaved={reload} />
-        <StepsWidget
-          db={db}
-          subtitle={stepsSubtitle}
-          estimateLine={stepsEstimateLine}
-          workoutLine={workoutLine}
-          onSaved={reload}
-        />
-        <ListGroup rows={[diaryRow]} />
 
         {streakWeeks > 0 ? (
           <Text style={[styles.northStar, { color: theme.accent }, theme.font.bodyMedium]}>
@@ -600,6 +609,7 @@ const styles = StyleSheet.create({
   daySummary: { fontSize: 15, lineHeight: 21, marginTop: 8 },
   hero: { marginTop: 14 },
   moodCard: { marginTop: 14 },
+  bodyMindWhy: { fontSize: 12, lineHeight: 17, marginTop: 2 },
   moodHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   moodTitle: { fontSize: 15 },
   moodHint: { fontSize: 12 },

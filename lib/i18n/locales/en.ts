@@ -134,13 +134,15 @@ export const en = {
       weightDaysAgo: '{{kg}} kg — {{days}} d ago',
     },
     moreLink: 'More',
+    bodyMindWhy:
+      'One mood check-in a day — and the app can honestly show how steps, sleep and protein relate to how you feel.',
     moodNow: { title: 'How are you right now?', hint: 'one tap · 0–10' },
     bodyMindCol: {
       body: 'Body · steps',
       bodySignal: { steps: 'Body · steps', sleep: 'Body · sleep', protein: 'Body · protein' },
       mind: 'Mind · mood',
     },
-    foodBar: { placeholder: 'Tell or type what you ate…' },
+    foodBar: { placeholder: 'Log food' },
     food: {
       title: 'Food today',
       movementHint: '+ steps and workouts raise the budget',
@@ -348,7 +350,9 @@ export const en = {
     setsHint: 'No timing needed: we assume ≈3 min per set (work + rest) and add an afterburn of ≈ +10%.',
     add: 'Add',
     remove: 'Remove',
-    describeLabel: 'Or describe it — in words, by voice, or with a tracker screenshot',
+    exactHead: 'Enter exactly',
+    aiHead: 'Or describe it — AI will parse',
+    weightFallback: 'Estimated from {{kg}} kg — log your weight on the Weight screen for accuracy.',
     describeHint: 'e.g. 100 push-ups, then a 20-min run',
     describeAction: 'Parse',
     parsing: 'Parsing…',
@@ -721,8 +725,10 @@ export const en = {
     // Switch to another DB match when the wrong food was picked.
     alternatives: {
       prompt: 'Not it? Pick another food',
+      promptCount: 'Similar matches ({{count}})',
       hide: 'Hide options',
     },
+    matchedPick: 'system pick',
     // Manual DB search — find and replace the food yourself.
     manualSearch: {
       open: 'Find it manually',

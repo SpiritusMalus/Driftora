@@ -1138,11 +1138,13 @@ function ItemCard({
            let the user supply real per-100g numbers below. */
         <Text style={[styles.notInDb, { color: theme.subtle }, theme.font.body]}>{t('food.notInDb')}</Text>
       ) : (
-        <>
-          {/* Per-100g composition — EXACT (DB) or user-entered (manual), with
-              the matched row's own name when it differs from the logged one. */}
+        /* THE SYSTEM'S PICK as one bounded block (device feedback 2026-07-10:
+           «всё в одном блоке — мешанина»): what matched, its per-100g and the
+           honesty notes live inside the frame; the similar-match blocks sit
+           collapsed below it. */
+        <View style={[styles.matchBox, { borderColor: theme.primary }]}>
           <Text style={[styles.per100Label, { color: theme.subtle }, theme.font.body]}>
-            {t('food.per100')} · {t(`food.source.${item.per100.source}`)}
+            {t('food.matchedPick')} · {t('food.per100')} · {t(`food.source.${item.per100.source}`)}
           </Text>
           <Text style={[styles.per100Value, { color: theme.text }, theme.font.body]}>
             {hideCalories
@@ -1174,16 +1176,18 @@ function ItemCard({
               </Text>
             </View>
           ) : null}
-        </>
+        </View>
       )}
 
-      {/* "не то?" — switch to another DB match. Shown only when the source
-          returned runners-up; opens proactively on a low-confidence auto-pick. */}
+      {/* Similar matches — collapsed count-labeled group of clickable blocks;
+          opens proactively on a low-confidence auto-pick or a referee flag. */}
       {!isMiss && alternatives.length > 0 ? (
         <View style={styles.altWrap}>
           <Pressable onPress={() => setShowAlts((s) => !s)} hitSlop={6}>
             <Text style={[styles.altToggle, { color: theme.primary }, theme.font.body]}>
-              {showAlts ? t('food.alternatives.hide') : t('food.alternatives.prompt')}
+              {showAlts
+                ? t('food.alternatives.hide')
+                : t('food.alternatives.promptCount', { count: alternatives.length })}
             </Text>
           </Pressable>
           {showAlts ? (
@@ -1411,6 +1415,8 @@ const styles = StyleSheet.create({
   results: { marginTop: 16 },
   item: { marginBottom: 10 },
   itemName: { fontSize: 15, marginBottom: 6 },
+  // The system's pick, framed — the top block of the match hierarchy.
+  matchBox: { borderWidth: 1, borderRadius: 12, padding: 10 },
   per100Label: { fontSize: 11, marginBottom: 2 },
   per100Value: { fontSize: 13, marginBottom: 2 },
   detailBox: { marginTop: 6, gap: 3 },
