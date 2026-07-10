@@ -1,5 +1,6 @@
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useTranslation } from 'react-i18next';
 import { Platform, useColorScheme } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -64,6 +65,11 @@ export default function RootLayout() {
     >
     <DatabaseProvider>
       <SafeAreaProvider>
+        {/* The app never set a status-bar style, so Android release builds kept
+            LIGHT system icons over the light cream background — clock/battery
+            were unreadable (device feedback 2026-07-10). `auto` binds the icon
+            color to the color scheme, matching the theme in both variants. */}
+        <StatusBar style="auto" />
         <LegalGate>
         <Onboarding>
         <Stack screenOptions={headerOptions}>
@@ -75,7 +81,7 @@ export default function RootLayout() {
           <Stack.Screen name="food/[id]" options={{ title: t('food.entryTitle') }} />
           <Stack.Screen name="weight/index" options={{ title: t('weight.title') }} />
           <Stack.Screen name="body-setup" options={{ title: t('bodySetup.title') }} />
-          <Stack.Screen name="steps/index" options={{ title: t('steps.title') }} />
+          <Stack.Screen name="activity/index" options={{ title: t('activity.title') }} />
           <Stack.Screen name="mood/index" options={{ title: t('mood.title') }} />
           <Stack.Screen name="diary/index" options={{ title: t('diary.listTitle') }} />
           <Stack.Screen name="diary/new" options={{ title: t('diary.newTitle') }} />

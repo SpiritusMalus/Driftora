@@ -16,6 +16,10 @@ export const foodEntries = sqliteTable('food_entries', {
   // entries whose foods carried no micro data have none. Powers the daily
   // micro roll-up (todayMicroTotals) without touching per-item rows.
   micros: text('micros'),
+  // The USER-CHOSEN meal of day (chips on the log/edit screens). Nullable: old
+  // entries and paths with no picker (one-tap «Повторить») store none and the
+  // day view falls back to the keyword/clock heuristic in insights/mealType.
+  meal: text('meal', { enum: ['breakfast', 'lunch', 'snack', 'dinner'] }),
 });
 
 /// The LLM breakdown of a food entry into individual items.

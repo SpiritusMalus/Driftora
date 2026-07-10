@@ -36,7 +36,7 @@ export default function MoreScreen() {
       iconBg: amberTile,
       title: t('more.sections.steps'),
       subtitle: t('more.subtitles.steps'),
-      onPress: () => router.push('/steps'),
+      onPress: () => router.push('/activity'),
     },
     {
       key: 'weight',

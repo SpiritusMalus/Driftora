@@ -46,7 +46,6 @@ export const en = {
   home: {
     title: 'Today',
     greeting: 'One honest read on how moving shapes how you feel.',
-    comingSoon: 'Coming soon',
     emptyHint: 'Nothing here yet — entries will appear once you start.',
     gentleNorm: 'You don\'t have to log every day — a skipped day won\'t break your progress.',
     sections: {
@@ -61,7 +60,14 @@ export const en = {
     steps: {
       unit: 'steps',
       placeholder: 'Steps today',
+      // Empty state: the input sits right below, so it's an invitation — the
+      // old "Coming soon" read as "doesn't work".
+      noneYet: 'none yet today — type them below',
       earnedEstimate: '{{steps}} steps today ≈ {{kcal}} kcal above resting.',
+    },
+    activity: {
+      // Workout line in the activity widget — the counted (75%) budget share.
+      workoutsLine: 'Workouts: +{{kcal}} kcal to the budget',
     },
     // Compare today to the user's own normal (personal step baseline). Tone is
     // curious and supportive — never a target, never "you're behind".
@@ -85,6 +91,7 @@ export const en = {
       signalNoun: { steps: 'a steps reading', sleep: 'a sleep reading', protein: 'a protein reading' },
     },
     sleep: {
+      noData: 'no data',
       meaning: {
         unknown: 'no sleep data yet',
         very_short: 'under 6 hours — a short night; one won\'t undo you',
@@ -115,7 +122,7 @@ export const en = {
       mood: 'Mood check-in',
       moodCta: 'One tap — how are you right now?',
       moodValue: 'Last: {{value}}/10',
-      steps: 'Steps today',
+      steps: 'Activity today',
       sleep: 'Last night\'s sleep',
       diary: 'Thought diary',
       diaryCount: '{{count}} entries — your richer mental input',
@@ -134,7 +141,10 @@ export const en = {
       mind: 'Mind · mood',
     },
     foodBar: { placeholder: 'Tell or type what you ate…' },
-    food: { title: 'Food today' },
+    food: {
+      title: 'Food today',
+      movementHint: '+ steps and workouts raise the budget',
+    },
     weight: {
       placeholder: 'Weight today',
       save: 'Save',
@@ -304,7 +314,7 @@ export const en = {
     intro: 'Everything else lives here, off the daily screen.',
     sections: {
       food: 'Food log',
-      steps: 'Steps',
+      steps: 'Activity',
       weight: 'Weight',
       wins: 'Wins',
       review: 'Weekly review',
@@ -313,7 +323,7 @@ export const en = {
     },
     subtitles: {
       food: 'Calories and protein, when you want them',
-      steps: 'Enter by hand or from Health',
+      steps: 'Steps and workouts — by hand or from Health',
       weight: 'One optional signal',
       wins: 'Small things that went well',
       review: 'You vs your past self',
@@ -598,6 +608,12 @@ export const en = {
       device: 'From Health',
     },
   },
+  // "Activity" screen — steps + workouts, all the movement that feeds the day budget.
+  activity: {
+    title: 'Activity',
+    stepsSection: 'Steps',
+    historySection: 'Step history',
+  },
   mood: {
     title: 'Mood',
     prompt: 'How are you right now?',
@@ -636,6 +652,8 @@ export const en = {
       workoutsPart: 'workouts +{{kcal}}',
       minPart: 'not below {{kcal}}',
       forecastNote: 'Today’s steps aren’t logged yet — the budget stands on your usual count. Enter your steps and it firms up.',
+      noMovement: 'This is the no-movement budget: steps and workouts add calories on top.',
+      noMovementCta: 'add movement',
       how: 'how is the budget computed?',
     },
     parseIssue: {
@@ -657,6 +675,8 @@ export const en = {
       snack: 'Snack',
       dinner: 'Dinner',
     },
+    // Meal chips on the log/edit screens: the clock only suggests, the user decides.
+    mealPick: { label: 'Meal' },
     parse: 'Parse',
     parsing: 'Parsing…',
     voice: '🎤 Say it',
@@ -761,7 +781,7 @@ export const en = {
       history: 'from your log',
     },
     micros: {
-      title: 'Vitamins & minerals today',
+      title: 'Vitamins & minerals',
       count: 'measured: {{n}}',
       none: 'no data',
       coverage: 'Counted from {{withData}} of {{total}} meals today.',

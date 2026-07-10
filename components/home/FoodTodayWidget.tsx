@@ -14,6 +14,7 @@ export function FoodTodayWidget({
   kcal,
   targetKcal,
   targetApprox = false,
+  movementHint,
   prot,
   targetProt,
   fat,
@@ -27,6 +28,10 @@ export function FoodTodayWidget({
   /// True when the target stands on FORECAST steps (median of recent days,
   /// today's not entered yet) — rendered as «≈N» so it never reads as a fact.
   targetApprox?: boolean;
+  /// Optional «+ шаги и тренировки увеличат бюджет» line — Home passes it while
+  /// no movement is logged yet, so the resting number never reads as the day's
+  /// ceiling (device feedback 2026-07-10). Null hides it.
+  movementHint?: string | null;
   prot: number;
   targetProt: number;
   fat: number;
@@ -62,6 +67,9 @@ export function FoodTodayWidget({
           <FillBar value={kcal} min={targetKcal} thickness={8} />
         </View>
       ) : null}
+      {movementHint ? (
+        <Text style={[styles.movementHint, { color: theme.subtle }, theme.font.body]}>{movementHint}</Text>
+      ) : null}
 
       <View style={styles.macros}>
         {macros.map((m) => (
@@ -83,6 +91,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 15 },
   kcal: { fontSize: 22, marginTop: 8 },
   kcalBar: { marginTop: 8 },
+  movementHint: { fontSize: 12, marginTop: 6, lineHeight: 17 },
   macros: { flexDirection: 'row', gap: 12, marginTop: 12 },
   macro: { flex: 1, gap: 6 },
   macroLabel: { fontSize: 11 },

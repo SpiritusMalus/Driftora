@@ -66,4 +66,29 @@ describe('groupEntriesByMeal', () => {
     expect(groups[0].type).toBe('breakfast');
     expect(groups[0].entries.map((e) => e.id)).toEqual([10, 11]);
   });
+
+  it('a stored user-picked meal beats both the clock and a keyword', () => {
+    const entries = [
+      // 11:41 would be «обед» by the clock — the user filed it as завтрак
+      // (the exact device complaint this feature answers).
+      { id: 1, rawText: 'адреналин раш', ts: new Date(2026, 5, 30, 11, 41), meal: 'breakfast' as const },
+      // Even a typed «обед…» loses to an explicit later re-file.
+      { id: 2, rawText: 'обед: борщ', ts: at(13), meal: 'dinner' as const },
+    ];
+    const groups = groupEntriesByMeal(entries);
+    expect(groups.map((g) => g.type)).toEqual(['breakfast', 'dinner']);
+    expect(groups[0].entries.map((e) => e.id)).toEqual([1]);
+    expect(groups[1].entries.map((e) => e.id)).toEqual([2]);
+  });
+
+  it('entries without a stored meal (old rows, repeats) keep the heuristic', () => {
+    const entries = [
+      { id: 1, rawText: 'борщ', ts: at(13), meal: null },
+      { id: 2, rawText: 'борщ', ts: at(13) },
+    ];
+    const groups = groupEntriesByMeal(entries);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].type).toBe('lunch');
+    expect(groups[0].entries.map((e) => e.id)).toEqual([1, 2]);
+  });
 });

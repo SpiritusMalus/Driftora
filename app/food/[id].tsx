@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { MealChips } from '@/components/food/MealChips';
 import { Card } from '@/components/ui/Card';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
@@ -18,6 +19,7 @@ import {
 } from '@/lib/core/db/food';
 import type { FoodEntry } from '@/lib/core/db/schema';
 import { ensureSettings } from '@/lib/core/db/settings';
+import { mealTypeForEntry, type MealType } from '@/lib/core/insights/mealType';
 import type { MealDraft, NutritionAlternative, NutritionItem, Region } from '@/lib/core/services/foodParser';
 import { getFoodParser, resolveRegion } from '@/lib/core/services/foodParserProvider';
 import { removeDraftItem, withItemGrams, withItemReplacement } from '@/lib/core/services/mealDraft';
@@ -48,6 +50,10 @@ export default function FoodEntryScreen() {
   const [entry, setEntry] = useState<FoodEntry | null>(null);
   const [draft, setDraft] = useState<MealDraft | null>(null);
   const [rawText, setRawText] = useState('');
+  // Meal-of-day chips: start from the stored pick; old rows without one show
+  // the same keyword/clock guess the day list uses, so what's edited here
+  // matches what the user saw there.
+  const [meal, setMeal] = useState<MealType | null>(null);
   const [region, setRegion] = useState<Region>('RU');
   const [aiConsent, setAiConsent] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -67,6 +73,7 @@ export default function FoodEntryScreen() {
       const d = draftFromStoredEntry(r, detail.items);
       setEntry(detail.entry);
       setRawText(detail.entry.rawText);
+      setMeal(detail.entry.meal ?? mealTypeForEntry(detail.entry.rawText, detail.entry.ts));
       setDraft(d);
       setRegion(r);
       setAiConsent(settings.aiFoodParseConsent);
@@ -98,7 +105,7 @@ export default function FoodEntryScreen() {
     if (!db || !draft || !entry) return;
     setBusy(true);
     try {
-      await updateFoodEntry(db, entryId, { rawText: rawText.trim(), source: entry.source, draft });
+      await updateFoodEntry(db, entryId, { rawText: rawText.trim(), source: entry.source, draft, meal });
       router.back();
     } catch {
       setBusy(false);
@@ -177,6 +184,14 @@ export default function FoodEntryScreen() {
         {t('food.total')}: {draft.totals.kcal} {t('units.kcal')} · {t('macros.protein')} {draft.totals.prot}{' '}
         {t('units.g')}
       </Text>
+
+      {/* Re-file the entry under another meal — fixes the clock's wrong guess
+          (a late breakfast the day list had filed under «Обед»). */}
+      {meal != null ? (
+        <View style={styles.mealChips}>
+          <MealChips value={meal} onChange={setMeal} />
+        </View>
+      ) : null}
 
       <PrimaryButton label={t('food.update')} onPress={onUpdate} disabled={busy} style={styles.update} />
       <Pressable
@@ -349,6 +364,7 @@ const styles = StyleSheet.create({
   resultRow: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 },
   resultName: { fontSize: 14 },
   total: { fontSize: 15, marginTop: 16 },
+  mealChips: { marginTop: 14 },
   update: { marginTop: 16 },
   repeatBtn: { borderWidth: 1.5, borderRadius: 999, paddingVertical: 12, alignItems: 'center', marginTop: 10 },
   deleteBtn: { borderWidth: 1.5, borderRadius: 999, paddingVertical: 12, alignItems: 'center', marginTop: 10 },

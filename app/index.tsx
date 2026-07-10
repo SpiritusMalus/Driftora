@@ -268,14 +268,17 @@ export default function HomeScreen() {
     stepsBaselineKind != null && stepsBaselineKind !== 'forming'
       ? t(`home.baseline.${stepsBaselineKind}`)
       : stepsMeaning;
+  // No steps yet is an INVITATION, not a locked feature — the input sits right
+  // below, so the old «Скоро» placeholder read as "doesn't work" (device
+  // feedback 2026-07-10). Sleep stays passive → an honest «нет данных».
   const stepsSubtitle =
     steps == null || stepsMeaningLine == null
-      ? t('home.comingSoon')
+      ? t('home.steps.noneYet')
       : `${formatSteps(steps)} — ${stepsMeaningLine}`;
 
   const sleepSubtitle =
     sleepMin == null
-      ? t('home.comingSoon')
+      ? t('home.sleep.noData')
       : `${sleepHours(sleepMin)} ${t('units.h')} — ${t(`home.sleep.meaning.${sleepBand(sleepMin)}`)}`;
 
   // «92.4 кг — 3 дн. назад» or a gentle weekly-cadence CTA before the first log.
@@ -363,6 +366,18 @@ export default function HomeScreen() {
   // profile incomplete or no weigh-in yet) Home points at the body-setup
   // wizard. Disappears for good once the profile + weight exist.
   const setupNeeded = db != null && settings != null && dayBase == null;
+
+  // While no movement is logged, the food widget's target is the RESTING budget
+  // — say so explicitly, or the low number reads as the day's ceiling (device
+  // feedback: «не понял, что тренировки забустят»).
+  const movementHint =
+    hasGoal && dayBase != null && earnedAdd === 0 ? t('home.food.movementHint') : null;
+  // The activity widget speaks for BOTH feeders: once a workout is logged, show
+  // its counted share alongside the steps line.
+  const workoutLine =
+    workoutRawKcal > 0
+      ? t('home.activity.workoutsLine', { kcal: Math.round(Math.max(0, workoutRawKcal) * EATBACK_FRACTION) })
+      : null;
 
   // Value ladder for the no-goal user: once a WEIGHT is logged, today's steps get
   // an honest «≈ N ккал» estimate — walking becomes a real number without needing
@@ -491,6 +506,7 @@ export default function HomeScreen() {
           kcal={totals.kcal}
           targetKcal={foodTargetKcal}
           targetApprox={foodTargetApprox}
+          movementHint={movementHint}
           prot={totals.proteinG}
           targetProt={hasGoal ? (dayBase?.prot ?? settings!.targetProteinG) : 0}
           fat={totals.fatG}
@@ -500,7 +516,13 @@ export default function HomeScreen() {
           onPress={() => router.push('/food')}
         />
         <WeightWidget db={db} subtitle={weightSubtitle} onSaved={reload} />
-        <StepsWidget db={db} subtitle={stepsSubtitle} estimateLine={stepsEstimateLine} onSaved={reload} />
+        <StepsWidget
+          db={db}
+          subtitle={stepsSubtitle}
+          estimateLine={stepsEstimateLine}
+          workoutLine={workoutLine}
+          onSaved={reload}
+        />
         <ListGroup rows={[diaryRow]} />
 
         {streakWeeks > 0 ? (
