@@ -90,7 +90,6 @@ export const en = {
       signalNoun: { steps: 'a steps reading', sleep: 'a sleep reading', protein: 'a protein reading' },
     },
     sleep: {
-      noData: 'no data',
       meaning: {
         unknown: 'no sleep data yet',
         very_short: 'under 6 hours — a short night; one won\'t undo you',
@@ -115,6 +114,7 @@ export const en = {
     },
     feeders: {
       mood: 'Mood check-in',
+      mind: 'Mood & diary',
       moodCta: 'One tap — how are you right now?',
       moodValue: 'Last: {{value}}/10',
       steps: 'Activity today',
@@ -612,7 +612,7 @@ export const en = {
     historySection: 'Step history',
   },
   mood: {
-    title: 'Mood',
+    title: 'Mood & diary',
     prompt: 'How are you right now?',
     scale: '0 — very low, 10 — great. One tap, no explanation needed.',
     empty: 'No mood check-ins yet.',
