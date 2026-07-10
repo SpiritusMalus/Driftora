@@ -45,17 +45,7 @@ export const en = {
   },
   home: {
     title: 'Today',
-    emptyHint: 'Nothing here yet — entries will appear once you start.',
     inlineAdd: 'Log it',
-    sections: {
-      nutrition: 'Nutrition',
-      steps: 'Steps',
-      diary: 'Thought diary',
-      wins: 'Wins',
-      bodyMind: 'Body & mood',
-      weight: 'Weight',
-      mood: 'Mood',
-    },
     steps: {
       unit: 'steps',
       placeholder: 'Steps today',
@@ -113,7 +103,6 @@ export const en = {
       returning4: 'Back together. No need to catch up — just note how you are right now.',
     },
     feeders: {
-      mood: 'Mood check-in',
       mind: 'Mood & diary',
       moodCta: 'One tap — how are you right now?',
       moodValue: 'Last: {{value}}/10',
@@ -129,7 +118,6 @@ export const en = {
       weightDaysAgo: '{{kg}} kg — {{days}} d ago',
     },
     moreLink: 'More',
-    moodNow: { title: 'How are you right now?', hint: 'one tap · 0–10' },
     bodyMindCol: {
       body: 'Body · steps',
       bodySignal: { steps: 'Body · steps', sleep: 'Body · sleep', protein: 'Body · protein' },
@@ -617,7 +605,6 @@ export const en = {
     scale: '0 — very low, 10 — great. One tap, no explanation needed.',
     empty: 'No mood check-ins yet.',
     dbUnavailable: 'Mood is available in a device dev build.',
-    cta: 'Log mood',
   },
   food: {
     title: 'Add food',
