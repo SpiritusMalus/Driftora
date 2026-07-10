@@ -13,7 +13,6 @@ import { Card } from '@/components/ui/Card';
 import { FoodBar } from '@/components/ui/FoodBar';
 import { ListGroup, type RowSpec } from '@/components/ui/ListGroup';
 import { MoodScale } from '@/components/ui/MoodScale';
-import { SectionHeader } from '@/components/ui/SectionHeader';
 import { selfInitiatedLogDays } from '@/lib/core/db/activity';
 import { hasAnyWinOnDay, runAutoWins } from '@/lib/core/db/autoWins';
 import { bestBodyMindFromDb } from '@/lib/core/db/bodyMind';
@@ -312,18 +311,6 @@ export default function HomeScreen() {
     subtitle: sleepSubtitle,
   };
 
-  // Rotate the feeder section header across a few warm variants — stable within
-  // a day (day-of-year seed), so Home feels alive without changing mid-session.
-  const feederHeader = pickVariant(
-    [
-      t('home.feeders.header'),
-      t('home.feeders.header2'),
-      t('home.feeders.header3'),
-      t('home.feeders.header4'),
-    ],
-    dayOfYear(),
-  );
-
   // A target/КБЖУ is shown only when it was DELIBERATELY set — the untouched
   // 2000/120/70/200 defaults are not a goal (mirrors the food-day card, which
   // hides the goal otherwise). Without one, the widget shows just what was eaten.
@@ -421,11 +408,11 @@ export default function HomeScreen() {
         ]}
         contentInsetAdjustmentBehavior="automatic"
       >
-        <Text style={[styles.greeting, { color: theme.subtle }, theme.font.body]}>
-          {t('home.greeting')}
-        </Text>
-
-        {summary ? (
+        {/* Noise cleanup 2026-07-10 («много шума, непонятно куда жмать»): the
+            greeting tagline and the empty-day summary are gone — a fresh day
+            opens straight on the food card. The summary line returns only once
+            it has something REAL to say (steps/mood/win/welcome-back). */}
+        {summary && summary.key !== 'empty' ? (
           <Text style={[styles.daySummary, { color: theme.text }, theme.font.bodyMedium]}>
             {t(`home.daySummary.${summary.key}`, {
               steps: summary.steps != null ? formatSteps(summary.steps) : '',
@@ -473,9 +460,8 @@ export default function HomeScreen() {
         ) : null}
 
         {/* FOOD FIRST (device feedback 2026-07-10: «почему еда третьей строчкой»)
-            — the daily-use widgets open the screen; the Body↔Mind insight and
-            the mood check-in live in their own explained section below. */}
-        <SectionHeader>{feederHeader}</SectionHeader>
+            — the daily-use widgets open the screen with no header above them;
+            the Body↔Mind insight (with the mood scale inside) closes it. */}
         <FoodTodayWidget
           kcal={totals.kcal}
           targetKcal={foodTargetKcal}
@@ -497,14 +483,9 @@ export default function HomeScreen() {
           workoutLine={workoutLine}
           onSaved={reload}
         />
-        <ListGroup rows={[diaryRow]} />
-
-        <SectionHeader>{t('home.sections.bodyMind')}</SectionHeader>
-        {/* «При чём тут настроение?» — say the deal out loud: one tap a day
-            buys the honest movement↔mood insight above it. */}
-        <Text style={[styles.bodyMindWhy, { color: theme.subtle }, theme.font.body]}>
-          {t('home.bodyMindWhy')}
-        </Text>
+        {/* ONE Body↔Mind card: the insight and the mood check-in that feeds it
+            (the old separate mood card duplicated the section title and added a
+            second input zone — «много шума»). */}
         <View style={styles.hero}>
           <BodyMindCard
             eyebrow={hero.eyebrow}
@@ -517,29 +498,29 @@ export default function HomeScreen() {
             bodyIcon={bodyColIcon}
             mindLabel={t('home.bodyMindCol.mind')}
             mindValue={moodValue != null ? `${moodValue}/10` : '—'}
+            footer={
+              <>
+                <View style={styles.moodHead}>
+                  <Text style={[styles.moodTitle, { color: theme.text }, theme.font.bodySemiBold]}>
+                    {t('home.moodNow.title')}
+                  </Text>
+                  <Text style={[styles.moodHint, { color: theme.subtle }, theme.font.body]}>
+                    {t('home.moodNow.hint')}
+                  </Text>
+                </View>
+                <View style={{ marginTop: 12 }}>
+                  <MoodScale selected={moodValue} onPick={onPickMood} disabled={db == null} />
+                </View>
+              </>
+            }
           />
         </View>
-
-        <Card style={styles.moodCard}>
-          <View style={styles.moodHead}>
-            <Text style={[styles.moodTitle, { color: theme.text }, theme.font.bodySemiBold]}>
-              {t('home.moodNow.title')}
-            </Text>
-            <Text style={[styles.moodHint, { color: theme.subtle }, theme.font.body]}>
-              {t('home.moodNow.hint')}
-            </Text>
-          </View>
-          <View style={{ marginTop: 14 }}>
-            <MoodScale selected={moodValue} onPick={onPickMood} disabled={db == null} />
-          </View>
-        </Card>
 
         {streakWeeks > 0 ? (
           <Text style={[styles.northStar, { color: theme.accent }, theme.font.bodyMedium]}>
             {t('home.northStar', { weeks: streakWeeks })}
           </Text>
         ) : null}
-        <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('home.gentleNorm')}</Text>
 
         {/* Sleep pinned to the very bottom (passive display; by request). */}
         <View style={styles.sleepBottom}>
@@ -605,17 +586,13 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   androidContent: { paddingHorizontal: 18, paddingTop: 4, paddingBottom: 96 },
   iosContent: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 96 },
-  greeting: { fontSize: 14, lineHeight: 20, marginBottom: 2 },
-  daySummary: { fontSize: 15, lineHeight: 21, marginTop: 8 },
+  daySummary: { fontSize: 15, lineHeight: 21, marginTop: 8, marginBottom: 10 },
   hero: { marginTop: 14 },
-  moodCard: { marginTop: 14 },
-  bodyMindWhy: { fontSize: 12, lineHeight: 17, marginTop: 2 },
   moodHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   moodTitle: { fontSize: 15 },
   moodHint: { fontSize: 12 },
   northStar: { fontSize: 12, textAlign: 'center', marginTop: 22 },
   sleepBottom: { marginTop: 22 },
-  hint: { fontSize: 12, textAlign: 'center', marginTop: 10, lineHeight: 17 },
   footer: { position: 'absolute', left: 0, right: 0 },
   footerAndroid: { paddingHorizontal: 18 },
   footerIOS: { paddingHorizontal: 16 },

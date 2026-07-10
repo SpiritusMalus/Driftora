@@ -45,9 +45,8 @@ export const en = {
   },
   home: {
     title: 'Today',
-    greeting: 'One honest read on how moving shapes how you feel.',
     emptyHint: 'Nothing here yet — entries will appear once you start.',
-    gentleNorm: 'You don\'t have to log every day — a skipped day won\'t break your progress.',
+    inlineAdd: 'Log it',
     sections: {
       nutrition: 'Nutrition',
       steps: 'Steps',
@@ -60,9 +59,9 @@ export const en = {
     steps: {
       unit: 'steps',
       placeholder: 'Steps today',
-      // Empty state: the input sits right below, so it's an invitation — the
-      // old "Coming soon" read as "doesn't work".
-      noneYet: 'none yet today — type them below',
+      // Empty state: an invitation (the field unfolds via «+») — the old
+      // "Coming soon" read as "doesn't work".
+      noneYet: 'none yet today',
       earnedEstimate: '{{steps}} steps today ≈ {{kcal}} kcal above resting.',
     },
     activity: {
@@ -115,10 +114,6 @@ export const en = {
       returning4: 'Back together. No need to catch up — just note how you are right now.',
     },
     feeders: {
-      header: 'Feed your insight',
-      header2: 'What will you add today?',
-      header3: 'Every check-in feeds your insight',
-      header4: 'Share a little — see the day clearer',
       mood: 'Mood check-in',
       moodCta: 'One tap — how are you right now?',
       moodValue: 'Last: {{value}}/10',
@@ -134,8 +129,6 @@ export const en = {
       weightDaysAgo: '{{kg}} kg — {{days}} d ago',
     },
     moreLink: 'More',
-    bodyMindWhy:
-      'One mood check-in a day — and the app can honestly show how steps, sleep and protein relate to how you feel.',
     moodNow: { title: 'How are you right now?', hint: 'one tap · 0–10' },
     bodyMindCol: {
       body: 'Body · steps',

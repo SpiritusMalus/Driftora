@@ -25,6 +25,7 @@ export function BodyMindCard({
   bodyIcon = 'walk-outline',
   mindLabel,
   mindValue,
+  footer,
 }: {
   eyebrow: string;
   accent?: string;
@@ -38,6 +39,10 @@ export function BodyMindCard({
   bodyIcon?: React.ComponentProps<typeof Ionicons>['name'];
   mindLabel: string;
   mindValue: string;
+  /// Optional action area at the card's bottom — Home puts the one-tap mood
+  /// scale here so the check-in lives INSIDE the insight it feeds (one card
+  /// instead of two; the «куда жмать» noise cleanup, 2026-07-10).
+  footer?: ReactNode;
 }) {
   const theme = useTheme();
 
@@ -92,6 +97,7 @@ export function BodyMindCard({
       {caption ? (
         <Text style={[styles.caption, { color: theme.subtle }, theme.font.body]}>{caption}</Text>
       ) : null}
+      {footer ? <View style={styles.footer}>{footer}</View> : null}
     </>
   );
 
@@ -163,4 +169,5 @@ const styles = StyleSheet.create({
   headline: { fontSize: 19, lineHeight: 26, letterSpacing: -0.19, marginTop: 22 },
   basis: { fontSize: 13, marginTop: 14 },
   caption: { fontSize: 13, marginTop: 6, lineHeight: 19 },
+  footer: { marginTop: 16 },
 });

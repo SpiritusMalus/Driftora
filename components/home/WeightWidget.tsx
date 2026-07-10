@@ -17,10 +17,10 @@ function toNumber(v: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-/// Home widget: log today's weight inline (no need to open the full screen). The
-/// header row opens the full «Вес» screen (trend, history, profile, КБЖУ plan).
-/// The daily КБЖУ lives in the food widget above this one, so it isn't repeated
-/// here. `onSaved` refreshes Home after a save.
+/// Home widget: today's weight as ONE calm row — the value in the subtitle, a
+/// [+] that unfolds the inline input on demand (folded again after a save), and
+/// the row itself opening the full «Вес» screen. The always-open field + big
+/// «Сохранить» were part of the «много шума» complaint (2026-07-10).
 export function WeightWidget({
   db,
   subtitle,
@@ -33,6 +33,7 @@ export function WeightWidget({
   const { t } = useTranslation();
   const theme = useTheme();
   const router = useRouter();
+  const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -45,6 +46,7 @@ export function WeightWidget({
     try {
       await upsertWeight(db, new Date(), kg);
       setText('');
+      setOpen(false);
       await onSaved();
     } finally {
       setSaving(false);
@@ -53,41 +55,60 @@ export function WeightWidget({
 
   return (
     <Card style={styles.card}>
-      <Pressable onPress={() => router.push('/weight')} style={styles.head} hitSlop={4}>
-        <Ionicons name="scale-outline" size={18} color={theme.accent} />
-        <View style={styles.headText}>
-          <Text style={[styles.title, { color: theme.text }, theme.font.bodySemiBold]}>{t('home.feeders.weight')}</Text>
-          <Text style={[styles.subtitle, { color: theme.subtle }, theme.font.body]} numberOfLines={1}>
-            {subtitle}
-          </Text>
-        </View>
-        <Ionicons name="chevron-forward" size={16} color={theme.tertiary} />
-      </Pressable>
-
-      <View style={styles.inputRow}>
-        <TextField
-          value={text}
-          onChangeText={setText}
-          keyboardType="numeric"
-          placeholder={t('home.weight.placeholder')}
-          style={styles.input}
-        />
-        <Text style={[styles.unit, { color: theme.subtle }, theme.font.body]}>{t('weight.unit')}</Text>
+      <View style={styles.head}>
+        <Pressable onPress={() => router.push('/weight')} style={styles.headMain} hitSlop={4}>
+          <Ionicons name="scale-outline" size={18} color={theme.accent} />
+          <View style={styles.headText}>
+            <Text style={[styles.title, { color: theme.text }, theme.font.bodySemiBold]}>{t('home.feeders.weight')}</Text>
+            <Text style={[styles.subtitle, { color: theme.subtle }, theme.font.body]} numberOfLines={1}>
+              {subtitle}
+            </Text>
+          </View>
+        </Pressable>
         <Pressable
-          onPress={() => void save()}
-          disabled={!valid || saving}
+          onPress={() => setOpen((v) => !v)}
+          hitSlop={8}
           accessibilityRole="button"
-          accessibilityLabel={t('home.weight.save')}
+          accessibilityLabel={t('home.inlineAdd')}
           style={({ pressed }) => [
-            styles.saveBtn,
-            { backgroundColor: theme.primary, opacity: !valid || saving ? 0.5 : pressed ? 0.7 : 1 },
+            styles.plusBtn,
+            { borderColor: theme.separator, backgroundColor: theme.card, opacity: pressed ? 0.6 : 1 },
           ]}
         >
-          <Text style={[styles.saveText, { color: theme.onPrimary }, theme.font.bodySemiBold]}>
-            {saving ? t('home.weight.saving') : t('home.weight.save')}
-          </Text>
+          <Ionicons name={open ? 'remove' : 'add'} size={18} color={theme.primary} />
+        </Pressable>
+        <Pressable onPress={() => router.push('/weight')} hitSlop={8}>
+          <Ionicons name="chevron-forward" size={16} color={theme.tertiary} />
         </Pressable>
       </View>
+
+      {open ? (
+        <View style={styles.inputRow}>
+          <TextField
+            value={text}
+            onChangeText={setText}
+            keyboardType="numeric"
+            autoFocus
+            placeholder={t('home.weight.placeholder')}
+            style={styles.input}
+          />
+          <Text style={[styles.unit, { color: theme.subtle }, theme.font.body]}>{t('weight.unit')}</Text>
+          <Pressable
+            onPress={() => void save()}
+            disabled={!valid || saving}
+            accessibilityRole="button"
+            accessibilityLabel={t('home.weight.save')}
+            style={({ pressed }) => [
+              styles.saveBtn,
+              { backgroundColor: theme.primary, opacity: !valid || saving ? 0.5 : pressed ? 0.7 : 1 },
+            ]}
+          >
+            <Text style={[styles.saveText, { color: theme.onPrimary }, theme.font.bodySemiBold]}>
+              {saving ? t('home.weight.saving') : t('home.weight.save')}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
     </Card>
   );
 }
@@ -95,7 +116,9 @@ export function WeightWidget({
 const styles = StyleSheet.create({
   card: { marginBottom: 12 },
   head: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  headMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
   headText: { flex: 1 },
+  plusBtn: { width: 32, height: 32, borderRadius: 16, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   title: { fontSize: 15 },
   subtitle: { fontSize: 13, marginTop: 1 },
   inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 },
