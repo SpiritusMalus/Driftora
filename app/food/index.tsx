@@ -2,19 +2,26 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card } from '@/components/ui/Card';
 import { FillBar } from '@/components/ui/FillBar';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
-import { WorkoutSection } from '@/components/WorkoutSection';
 import { dayBudgetKcal, EATBACK_FRACTION, restingPlan, stepsEarnedKcal } from '@/lib/core/insights/bodyMetrics';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
-import { listEntriesForDay, repeatFoodEntry, todayMacroTotals, todayMicroTotals, type MicroTotals } from '@/lib/core/db/food';
+import {
+  deleteFoodEntry,
+  listEntriesForDay,
+  repeatFoodEntry,
+  todayMacroTotals,
+  todayMicroTotals,
+  type MicroTotals,
+} from '@/lib/core/db/food';
 import { ensureSettings } from '@/lib/core/db/settings';
 import { getStepsRow, typicalSteps } from '@/lib/core/db/steps';
 import { latestWeight } from '@/lib/core/db/weight';
+import { todayWorkoutKcal } from '@/lib/core/db/workouts';
 import { dailyMicroNorms, type MicroRow } from '@/lib/core/insights/microNutrients';
 import { groupEntriesByMeal } from '@/lib/core/insights/mealType';
 import type { FoodEntry } from '@/lib/core/db/schema';
@@ -53,7 +60,7 @@ export default function FoodDayScreen() {
   const [sex, setSex] = useState<'' | Sex>('');
   const [openMicros, setOpenMicros] = useState(false);
   // RAW calories burned in today's logged workouts (before the eat-back share) —
-  // fed up from WorkoutSection so the day card can show the hybrid target.
+  // read straight from the DB; the workout log itself lives on «Активность» now.
   const [workoutRawKcal, setWorkoutRawKcal] = useState(0);
   // «Base + earned»: today's step count and the kcal it EARNED (added on top of
   // the deficit base). Shown as a transparent «база + шаги + тренировки» sum.
@@ -75,7 +82,7 @@ export default function FoodDayScreen() {
 
   const reload = useCallback(async () => {
     if (!db) return;
-    const [list, tot, mic, settings, stepsRow, usualSteps, weightRow] = await Promise.all([
+    const [list, tot, mic, settings, stepsRow, usualSteps, weightRow, workoutKcal] = await Promise.all([
       listEntriesForDay(db),
       todayMacroTotals(db),
       todayMicroTotals(db),
@@ -83,11 +90,13 @@ export default function FoodDayScreen() {
       getStepsRow(db),
       typicalSteps(db),
       latestWeight(db),
+      todayWorkoutKcal(db),
     ]);
     setEntries(list);
     setTotals(tot);
     setMicros(mic);
     setSex(settings.sex);
+    setWorkoutRawKcal(workoutKcal);
     // «Base + earned» budget: the goal card shows a RESTING base (maintenance at
     // the sedentary factor, goal-adjusted) and adds today's earned activity — steps
     // and workouts — ON TOP, transparently. So more movement always raises the day,
@@ -166,6 +175,26 @@ export default function FoodDayScreen() {
     ackTimer.current = setTimeout(() => setRepeatAck(null), 2500);
   }
 
+  /// Quick ✕ on a day row — an accidental quick-pick/repeat shouldn't take a
+  /// trip into the detail screen to undo. Same confirm as the detail delete:
+  /// one habitual tap must not silently erase data.
+  function onDelete(id: number) {
+    Alert.alert(t('food.deleteTitle'), t('food.deleteConfirm'), [
+      { text: t('food.deleteCancel'), style: 'cancel' },
+      {
+        text: t('food.delete'),
+        style: 'destructive',
+        onPress: () => {
+          if (!db) return;
+          void (async () => {
+            await deleteFoodEntry(db, id);
+            await reload();
+          })();
+        },
+      },
+    ]);
+  }
+
   return (
     <Screen>
       <PrimaryButton label={t('food.add')} onPress={() => router.push('/food/log')} style={styles.add} />
@@ -185,8 +214,6 @@ export default function FoodDayScreen() {
         />
       ) : null}
 
-      {db != null ? <WorkoutSection db={db} onChange={setWorkoutRawKcal} /> : null}
-
       {db != null && entries != null && entries.length > 0 && micros != null ? (
         <MicroDay
           micros={micros}
@@ -205,9 +232,16 @@ export default function FoodDayScreen() {
         <View style={styles.list}>
           {groupEntriesByMeal(entries).map((group) => (
             <View key={group.type} style={styles.group}>
-              <Text style={[styles.mealHead, { color: theme.subtle }, theme.font.bodySemiBold]}>
-                {t(`food.meal.${group.type}`)}
-              </Text>
+              {/* A real section header — meal name + the meal's kcal sum — so the
+                  day visibly splits into завтрак/обед/ужин (device feedback). */}
+              <View style={[styles.mealHeadRow, { borderBottomColor: theme.separator }]}>
+                <Text style={[styles.mealHead, { color: theme.text }, theme.font.bodySemiBold]}>
+                  {t(`food.meal.${group.type}`)}
+                </Text>
+                <Text style={[styles.mealSum, { color: theme.subtle }, theme.font.body]}>
+                  {Math.round(group.entries.reduce((sum, e) => sum + e.kcal, 0))} {t('units.kcal')}
+                </Text>
+              </View>
               {group.entries.map((e) => (
                 <Card key={e.id} style={styles.row} onPress={() => router.push(`/food/${e.id}`)}>
                   <View style={styles.rowHead}>
@@ -223,6 +257,15 @@ export default function FoodDayScreen() {
                       style={({ pressed }) => [styles.repeatBtn, { opacity: pressed ? 0.5 : 1 }]}
                     >
                       <Ionicons name="repeat-outline" size={18} color={theme.primary} />
+                    </Pressable>
+                    <Pressable
+                      onPress={() => onDelete(e.id)}
+                      hitSlop={10}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('food.delete')}
+                      style={({ pressed }) => [styles.repeatBtn, { opacity: pressed ? 0.5 : 1 }]}
+                    >
+                      <Ionicons name="close" size={18} color={theme.tertiary} />
                     </Pressable>
                   </View>
                   <Text style={[styles.rowMacros, { color: theme.subtle }, theme.font.body]}>
@@ -274,12 +317,18 @@ function DayProgress({
   // A forecast only makes the target «≈» when it actually moves the number.
   const approx = stepsForecast && stepsAdd > 0;
   const onPlan = kcalEaten <= target;
-  // The visible breakdown: «база N · шаги +N · тренировки +N [· не ниже N]».
+  // The visible breakdown: «покой N · шаги +N · тренировки +N [· не ниже N]».
   const parts = [t('food.day.restBase', { kcal: goal.baseKcal })];
   if (stepsAdd > 0)
     parts.push(t(stepsForecast ? 'food.day.stepsForecastPart' : 'food.day.stepsPart', { kcal: stepsAdd, steps }));
   if (workoutAdd > 0) parts.push(t('food.day.workoutsPart', { kcal: workoutAdd }));
   if (minBinds) parts.push(t('food.day.minPart', { kcal: goal.minDayKcal }));
+  // Device feedback 2026-07-10: «не понял, почему цифра такая низкая». With no
+  // movement logged yet the breakdown used to hide — exactly when the "steps
+  // and workouts raise this number" explanation is needed most. Now the sum is
+  // always visible and a zero-movement day gets the explicit line (tappable —
+  // it leads to «Активность», where both feeders live).
+  const noMovementYet = stepsAdd === 0 && workoutAdd === 0;
   const macros = [
     { label: t('macros.protein'), eaten: Math.round(totals.proteinG), target: goal.prot },
     { label: t('macros.fat'), eaten: Math.round(totals.fatG), target: goal.fat },
@@ -301,8 +350,14 @@ function DayProgress({
             {t(approx ? 'food.day.kcalApprox' : 'food.day.kcal', { eaten: kcalEaten, target })}
           </Text>
           <Bar value={kcalEaten} max={target} color={theme.primary} track={theme.fill} height={8} />
-          {stepsAdd > 0 || workoutAdd > 0 || minBinds ? (
-            <Text style={[styles.dayWorkout, { color: theme.subtle }, theme.font.body]}>{parts.join(' · ')}</Text>
+          <Text style={[styles.dayWorkout, { color: theme.subtle }, theme.font.body]}>{parts.join(' · ')}</Text>
+          {noMovementYet ? (
+            <Pressable onPress={() => router.push('/activity')} hitSlop={6}>
+              <Text style={[styles.dayWorkout, { color: theme.subtle }, theme.font.body]}>
+                {t('food.day.noMovement')}{' '}
+                <Text style={[styles.dayMoveLink, { color: theme.primary }]}>{t('food.day.noMovementCta')}</Text>
+              </Text>
+            </Pressable>
           ) : null}
           {approx ? (
             <Text style={[styles.dayWorkout, { color: theme.subtle }, theme.font.body]}>
@@ -355,8 +410,17 @@ function MicroDay({
   return (
     <Card style={styles.dayCard}>
       <Pressable onPress={onToggle} style={styles.microHead} hitSlop={6}>
-        <Text style={[styles.dayTitle, { color: theme.text }, theme.font.bodySemiBold]}>{t('food.micros.title')}</Text>
-        <Text style={[styles.microSummary, { color: theme.subtle }, theme.font.body]}>{summary}</Text>
+        {/* Title shrinks, counter never wraps — «измерено: 8» used to fold into a
+            per-letter column when the long title ate the row (device screenshot). */}
+        <Text
+          style={[styles.dayTitle, styles.microTitle, { color: theme.text }, theme.font.bodySemiBold]}
+          numberOfLines={1}
+        >
+          {t('food.micros.title')}
+        </Text>
+        <Text style={[styles.microSummary, { color: theme.subtle }, theme.font.body]} numberOfLines={1}>
+          {summary}
+        </Text>
         <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={16} color={theme.tertiary} />
       </Pressable>
       {open ? (
@@ -454,7 +518,17 @@ const styles = StyleSheet.create({
   hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
   list: { gap: 22 },
   group: { gap: 10 },
-  mealHead: { fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 2 },
+  mealHeadRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: 8,
+    borderBottomWidth: 1,
+    paddingBottom: 6,
+    marginBottom: 2,
+  },
+  mealHead: { fontSize: 14, textTransform: 'uppercase', letterSpacing: 0.6 },
+  mealSum: { fontSize: 12 },
   row: {},
   rowHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
   rowText: { fontSize: 15, flex: 1 },
@@ -467,13 +541,18 @@ const styles = StyleSheet.create({
   dayChip: { fontSize: 12 },
   dayKcal: { fontSize: 14, marginBottom: 6 },
   dayWorkout: { fontSize: 12, marginTop: 6, lineHeight: 17 },
+  dayMoveLink: { textDecorationLine: 'underline' },
   dayHowLink: { fontSize: 12, marginTop: 6, textDecorationLine: 'underline' },
   macroRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
   macroCol: { flex: 1 },
   macroLabel: { fontSize: 11, marginBottom: 4 },
   barTrack: { overflow: 'hidden', width: '100%' },
   microHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  microSummary: { fontSize: 13, flex: 1, textAlign: 'right' },
+  // The TITLE flexes/truncates; the counter keeps its intrinsic width so
+  // «измерено: N» is always whole (it used to get squeezed into a letter
+  // column by the greedy title).
+  microTitle: { flex: 1 },
+  microSummary: { fontSize: 13 },
   microBody: { marginTop: 12 },
   microGroup: { marginTop: 10 },
   microGroupHeading: { fontSize: 12, marginBottom: 4 },

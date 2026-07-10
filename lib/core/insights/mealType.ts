@@ -1,8 +1,11 @@
 /**
- * Meal-of-day classification for the food day list. Two signals, keyword first:
- *  1) an explicit word the user typed (завтрак / обед / ужин / полдник, and the
- *     English equivalents) wins — it's their stated intent, even at an odd hour;
- *  2) otherwise the entry's clock time decides, reusing the soft windows from
+ * Meal-of-day classification for the food day list. Three signals, strongest
+ * first:
+ *  1) the meal the user PICKED on the log/edit screen (stored on the entry) —
+ *     their explicit call, the clock can't overrule a late breakfast;
+ *  2) an explicit word they typed (завтрак / обед / ужин / полдник, and the
+ *     English equivalents) — stated intent, even at an odd hour;
+ *  3) otherwise the entry's clock time decides, reusing the soft windows from
  *     [mealPromptKeyForHour] so the input placeholder and the list agree.
  *
  * Pure: no DB, no i18n — the UI localizes the returned [MealType] under
@@ -57,11 +60,15 @@ export interface MealGroup<E> {
  * Buckets day entries into meal groups in [MEAL_ORDER], preserving each input's
  * order within its group (callers pass newest-first → it stays newest-first).
  * Empty meals are omitted, so the list only renders sections that have food.
+ * An entry's STORED meal (user-picked chips) wins; entries without one (old
+ * rows, «Повторить» copies) fall back to the keyword/clock heuristic.
  */
-export function groupEntriesByMeal<E extends { rawText: string; ts: Date }>(entries: E[]): MealGroup<E>[] {
+export function groupEntriesByMeal<E extends { rawText: string; ts: Date; meal?: MealType | null }>(
+  entries: E[],
+): MealGroup<E>[] {
   const buckets = new Map<MealType, E[]>();
   for (const e of entries) {
-    const type = mealTypeForEntry(e.rawText, e.ts);
+    const type = e.meal ?? mealTypeForEntry(e.rawText, e.ts);
     const arr = buckets.get(type);
     if (arr) arr.push(e);
     else buckets.set(type, [e]);

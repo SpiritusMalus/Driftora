@@ -298,8 +298,9 @@ describe('workoutKcal (MET × kg × hours)', () => {
   });
 
   it('strength and HIIT carry the +10% afterburn (EPOC); steady cardio does not', () => {
-    // strength: 5.0 × 80 × 1 h = 400 session → 440 with the afterburn
-    expect(workoutKcal('strength', 60, 80)).toBe(440);
+    // strength: 3.5 × 80 × 1 h = 280 session → 308 with the afterburn
+    // (3.5 = Compendium 02050, the rest-inclusive gym session — see WORKOUT_MET)
+    expect(workoutKcal('strength', 60, 80)).toBe(308);
     // hiit: 8.0 × 80 × 0.5 h = 320 → 352
     expect(workoutKcal('hiit', 30, 80)).toBe(352);
     // walk stays session-only: 4.3 × 130 × 1 h = 559
@@ -323,8 +324,9 @@ describe('sets-based strength logging (no stopwatch needed)', () => {
   });
 
   it('a 12-set gym session lands on a plausible burn for 80 kg', () => {
-    // 12 × 3 min = 36 min → 5.0 × 80 × 0.6 = 240 session → 264 with afterburn
-    expect(workoutKcal('strength', setsToMinutes(12), 80)).toBe(264);
+    // 12 × 3 min = 36 min → 3.5 × 80 × 0.6 = 168 session → 185 with afterburn —
+    // the band HR-trackers report for a half-hour of lifting at this weight.
+    expect(workoutKcal('strength', setsToMinutes(12), 80)).toBe(185);
   });
 });
 
@@ -345,8 +347,8 @@ describe('metForSpeed + speed-aware workoutKcal', () => {
 
   it('a faster run burns more than the fixed moderate MET, a slower run less', () => {
     const fixed = workoutKcal('run', 30, 130); // 637 at the 9.8 MET default
-    expect(workoutKcal('run', 30, 130, 12)).toBeGreaterThan(fixed); // ~12.4 MET
-    expect(workoutKcal('run', 30, 130, 8)).toBeLessThan(fixed); // ~8.6 MET
+    expect(workoutKcal('run', 30, 130, 12)).toBeGreaterThan(fixed); // ~11.4 MET
+    expect(workoutKcal('run', 30, 130, 8)).toBeLessThan(fixed); // 8.3 MET
   });
 
   it('ignores a pace on a non-speed type (uses fixed MET)', () => {
@@ -358,6 +360,33 @@ describe('metForSpeed + speed-aware workoutKcal', () => {
     expect(met).not.toBeNull();
     expect(Number.isFinite(met as number)).toBe(true);
     expect(met as number).toBeLessThan(30);
+  });
+
+  // Accuracy audit 2026-07-10: pace-aware METs must sit ON the Compendium
+  // anchors, not the ACSM treadmill equations (which underestimated fast
+  // walking by ~40% and made a typed pace DROP below the untyped default).
+  it('walking METs match the Compendium anchors, brisk pace = the fixed default', () => {
+    expect(metForSpeed('walk', 4.8)).toBeCloseTo(3.5, 5); // 3.0 mph
+    expect(metForSpeed('walk', 5.6)).toBeCloseTo(4.3, 5); // brisk — SAME as no-pace walk
+    expect(metForSpeed('walk', 7.2)).toBeCloseTo(7.0, 5); // fast walking, ACSM gave ~4.4
+    expect(metForSpeed('walk', 8.0)).toBeCloseTo(8.3, 5);
+    // Between anchors: linear (6.8 sits halfway between 5.0 and 7.0).
+    expect(metForSpeed('walk', 6.8)).toBeCloseTo(6.0, 5);
+    // Typing an honest pace never lowers a brisk default anymore.
+    expect(workoutKcal('walk', 60, 100, 5.6)).toBe(workoutKcal('walk', 60, 100));
+  });
+
+  it('running METs match the Compendium anchors', () => {
+    expect(metForSpeed('run', 8.0)).toBeCloseTo(8.3, 5);
+    expect(metForSpeed('run', 9.7)).toBeCloseTo(9.8, 5);
+    expect(metForSpeed('run', 12.9)).toBeCloseTo(11.8, 5); // ACSM gave ~13.3
+    expect(metForSpeed('run', 5)).toBeCloseTo(6.0, 5); // below the table → slowest anchor
+  });
+
+  it('cycling fit passes through the Compendium bucket midpoints', () => {
+    expect(metForSpeed('cycle', 20)).toBeCloseTo(8.0, 5); // 19–22 km/h moderate
+    expect(metForSpeed('cycle', 24)).toBeCloseTo(10.0, 5); // 22.5–25.6 vigorous
+    expect(metForSpeed('cycle', 10)).toBeCloseTo(4.0, 5); // leisure floor
   });
 });
 

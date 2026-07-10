@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS food_entries (
   fat_g REAL NOT NULL DEFAULT 0,
   carb_g REAL NOT NULL DEFAULT 0,
   confirmed INTEGER NOT NULL DEFAULT 0,
-  micros TEXT
+  micros TEXT,
+  meal TEXT
 );
 CREATE TABLE IF NOT EXISTS food_items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -193,6 +194,10 @@ export const MIGRATIONS: string[] = [
   // 2026-07-09: set count for strength workouts logged «подходами» (minutes
   // then hold the ~3-min-per-set estimate). Null for time-based entries.
   `ALTER TABLE workouts ADD COLUMN sets INTEGER`,
+  // 2026-07-10: user-chosen meal of day (завтрак/обед/полдник/ужин) — the clock
+  // heuristic mislabeled a late breakfast as «обед» (device feedback). Null =
+  // not chosen; the day view keeps the keyword/clock fallback for old rows.
+  `ALTER TABLE food_entries ADD COLUMN meal TEXT`,
 ];
 
 /// Runs each CREATE statement through [run], then the idempotent [MIGRATIONS].

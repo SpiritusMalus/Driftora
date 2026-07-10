@@ -163,6 +163,20 @@ class AndroidHealthService implements HealthService {
   async stepsForDay(day: Date): Promise<number | null> {
     const start = startOfDay(day);
     const end = new Date(start.getTime() + DAY_MS);
+    // Prefer the AGGREGATE API: Health Connect dedups overlapping sources there
+    // (phone + watch both writing Steps would double-count in a raw-record sum).
+    if (await this.ensure()) {
+      try {
+        const res = await this.hc.aggregateRecord({
+          recordType: 'Steps',
+          timeRangeFilter: { operator: 'between', startTime: start.toISOString(), endTime: end.toISOString() },
+        });
+        const total = Number(res?.COUNT_TOTAL ?? 0);
+        if (total > 0) return Math.round(total);
+      } catch {
+        // Fall through to the raw-record sum below.
+      }
+    }
     return this.readSum('Steps', start, end, (r) => Number((r as { count?: number }).count ?? 0));
   }
 

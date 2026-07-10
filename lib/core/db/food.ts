@@ -12,6 +12,7 @@ import type {
 } from '../services/foodParser';
 import { displayItemName } from '../services/foodChoice';
 import { recomputeDraft } from '../services/mealDraft';
+import type { MealType } from '../insights/mealType';
 import { foodEntries, foodItems, type FoodEntry, type FoodItem } from './schema';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -94,6 +95,9 @@ export async function saveParsedEntry(
     source: 'voice' | 'text' | 'photo';
     draft: MealDraft;
     ts?: Date;
+    /// User-picked meal of day (chips on the log screen). Null/omitted = not
+    /// chosen; the day view falls back to the keyword/clock heuristic.
+    meal?: MealType | null;
   },
 ): Promise<number> {
   const ts = opts.ts ?? new Date();
@@ -110,6 +114,7 @@ export async function saveParsedEntry(
       carbG: d.totals.carb,
       confirmed: true,
       micros: encodeMicros(d.totals),
+      meal: opts.meal ?? null,
     })
     .returning({ id: foodEntries.id });
 
@@ -166,7 +171,15 @@ export async function getFoodEntry(db: AnyDb, id: number): Promise<FoodEntryDeta
 export async function updateFoodEntry(
   db: AnyDb,
   id: number,
-  opts: { rawText: string; source: 'voice' | 'text' | 'photo'; draft: MealDraft; ts?: Date },
+  opts: {
+    rawText: string;
+    source: 'voice' | 'text' | 'photo';
+    draft: MealDraft;
+    ts?: Date;
+    /// Meal of day: a MealType re-files the entry, explicit null clears the
+    /// choice (back to the heuristic), omitted leaves the stored value alone.
+    meal?: MealType | null;
+  },
 ): Promise<void> {
   const d = opts.draft;
   await db
@@ -181,6 +194,7 @@ export async function updateFoodEntry(
       confirmed: true,
       micros: encodeMicros(d.totals),
       ...(opts.ts ? { ts: opts.ts } : {}),
+      ...(opts.meal !== undefined ? { meal: opts.meal } : {}),
     })
     .where(eq(foodEntries.id, id));
   // Replace the item set as a unit. Delete explicitly (not relying on the FK
@@ -218,6 +232,10 @@ export async function repeatFoodEntry(db: AnyDb, id: number, ts: Date = new Date
       // The re-logged meal is the same food — carry its micro totals forward so
       // «Повторить» counts toward the day's micronutrients like the original.
       micros: e.micros,
+      // Deliberately NOT copied: the copy happens at a new time of day, so its
+      // meal is re-derived from the new clock by the day view (breakfast eggs
+      // repeated at 20:00 belong to ужин, not to the original's завтрак).
+      meal: null,
     })
     .returning({ id: foodEntries.id });
   const newId = inserted[0].id as number;

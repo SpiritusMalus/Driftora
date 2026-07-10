@@ -5,6 +5,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { useTranslation } from 'react-i18next';
 
 import { ConsentModal } from '@/components/consent/ConsentModal';
+import { MealChips } from '@/components/food/MealChips';
 import { Card } from '@/components/ui/Card';
 import { FillBar } from '@/components/ui/FillBar';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
@@ -36,6 +37,7 @@ import {
 import { deleteTempFile } from '@/lib/core/services/tempFiles';
 import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
 import { mealPromptKeyForHour } from '@/lib/core/insights/mealPrompt';
+import { mealTypeForEntry, type MealType } from '@/lib/core/insights/mealType';
 import { proteinInsight } from '@/lib/core/insights/proteinInsight';
 import { pickVariant } from '@/lib/core/insights/variant';
 import { varietyInsight } from '@/lib/core/insights/varietyInsight';
@@ -78,6 +80,10 @@ export default function FoodLogScreen() {
   const [parsing, setParsing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState<MealDraft | null>(null);
+  // Meal-of-day chips: the clock (or a typed «завтрак…») preselects, the user's
+  // tap decides — their pick is stored with the entry so a late breakfast never
+  // gets filed under «Обед» by the clock (device feedback 2026-07-10).
+  const [meal, setMeal] = useState<MealType | null>(null);
   // Today's protein-so-far + personal target, for the honest "what it means"
   // line shown once a meal is parsed (the meaning-rules library).
   const [proteinTarget, setProteinTarget] = useState(0);
@@ -551,13 +557,18 @@ export default function FoodLogScreen() {
     setSavedAck(null);
     setSource('text');
     setParseIssue(null);
+    setMeal(null);
   }
+
+  // Effective meal-of-day: the user's tap wins; until they touch the chips the
+  // preselect is honest intent — a typed «завтрак…» keyword first, else the clock.
+  const mealChoice: MealType = meal ?? mealTypeForEntry(text, new Date());
 
   async function onSave() {
     if (!draft || !db) return;
     setSaving(true);
     try {
-      await saveParsedEntry(db, { rawText: text, source, draft });
+      await saveParsedEntry(db, { rawText: text, source, draft, meal: mealChoice });
       // Personal food journal (layer 2): remember this food → per-100g so the
       // same name resolves to it next time, on-device only. We remember:
       //   • anything the user explicitly chose/edited (userChosen), OR
@@ -846,6 +857,10 @@ export default function FoodLogScreen() {
             ) : null}
           </Card>
 
+          {/* Which meal this entry files under — stored with the save so the
+              day view groups by the user's word, not the clock's guess. */}
+          <MealChips value={mealChoice} onChange={setMeal} />
+
           {/* «Пауза» promises "цели выключены" — honour it here too, not only
               on Home (the banner alone doesn't stop this line from nagging). */}
           {proteinTarget > 0 && !paused ? (
@@ -1123,11 +1138,13 @@ function ItemCard({
            let the user supply real per-100g numbers below. */
         <Text style={[styles.notInDb, { color: theme.subtle }, theme.font.body]}>{t('food.notInDb')}</Text>
       ) : (
-        <>
-          {/* Per-100g composition — EXACT (DB) or user-entered (manual), with
-              the matched row's own name when it differs from the logged one. */}
+        /* THE SYSTEM'S PICK as one bounded block (device feedback 2026-07-10:
+           «всё в одном блоке — мешанина»): what matched, its per-100g and the
+           honesty notes live inside the frame; the similar-match blocks sit
+           collapsed below it. */
+        <View style={[styles.matchBox, { borderColor: theme.primary }]}>
           <Text style={[styles.per100Label, { color: theme.subtle }, theme.font.body]}>
-            {t('food.per100')} · {t(`food.source.${item.per100.source}`)}
+            {t('food.matchedPick')} · {t('food.per100')} · {t(`food.source.${item.per100.source}`)}
           </Text>
           <Text style={[styles.per100Value, { color: theme.text }, theme.font.body]}>
             {hideCalories
@@ -1159,16 +1176,18 @@ function ItemCard({
               </Text>
             </View>
           ) : null}
-        </>
+        </View>
       )}
 
-      {/* "не то?" — switch to another DB match. Shown only when the source
-          returned runners-up; opens proactively on a low-confidence auto-pick. */}
+      {/* Similar matches — collapsed count-labeled group of clickable blocks;
+          opens proactively on a low-confidence auto-pick or a referee flag. */}
       {!isMiss && alternatives.length > 0 ? (
         <View style={styles.altWrap}>
           <Pressable onPress={() => setShowAlts((s) => !s)} hitSlop={6}>
             <Text style={[styles.altToggle, { color: theme.primary }, theme.font.body]}>
-              {showAlts ? t('food.alternatives.hide') : t('food.alternatives.prompt')}
+              {showAlts
+                ? t('food.alternatives.hide')
+                : t('food.alternatives.promptCount', { count: alternatives.length })}
             </Text>
           </Pressable>
           {showAlts ? (
@@ -1396,6 +1415,8 @@ const styles = StyleSheet.create({
   results: { marginTop: 16 },
   item: { marginBottom: 10 },
   itemName: { fontSize: 15, marginBottom: 6 },
+  // The system's pick, framed — the top block of the match hierarchy.
+  matchBox: { borderWidth: 1, borderRadius: 12, padding: 10 },
   per100Label: { fontSize: 11, marginBottom: 2 },
   per100Value: { fontSize: 13, marginBottom: 2 },
   detailBox: { marginTop: 6, gap: 3 },

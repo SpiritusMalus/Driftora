@@ -9,6 +9,7 @@ import {
   repeatFoodEntry,
   saveParsedEntry,
   todayMacroTotals,
+  updateFoodEntry,
 } from '@/lib/core/db/food';
 import * as schema from '@/lib/core/db/schema';
 import type { MealDraft } from '@/lib/core/services/foodParser';
@@ -148,6 +149,38 @@ describe('food logging (parse → save → totals)', () => {
 
     expect(await repeatFoodEntry(db, 999)).toBeNull();
     expect(await listEntriesForDay(db)).toHaveLength(0);
+
+    sqlite.close();
+  });
+
+  it('stores the user-picked meal; a repeat copy deliberately drops it', async () => {
+    const { sqlite, db } = makeDb();
+    await applySchema((stmt) => sqlite.exec(stmt));
+
+    const day = new Date(2020, 0, 1, 12, 0, 0);
+    const morning = new Date(2020, 0, 1, 11, 41, 0); // the «поздний завтрак» case
+    const draft = fillMacros(await new StubFoodParser().parse('банан', 'US'));
+    const id = await saveParsedEntry(db, {
+      rawText: 'банан',
+      source: 'text',
+      draft,
+      ts: morning,
+      meal: 'breakfast',
+    });
+    expect((await getFoodEntry(db, id))!.entry.meal).toBe('breakfast');
+    // Without a pick nothing is stored — the day view keeps its clock fallback.
+    const noPickId = await saveParsedEntry(db, { rawText: 'кофе', source: 'text', draft, ts: morning });
+    expect((await getFoodEntry(db, noPickId))!.entry.meal).toBeNull();
+    // The repeat happens at a NEW time of day → its meal is re-derived from the
+    // clock by the day view, not inherited from the original's завтрак.
+    const copyId = await repeatFoodEntry(db, id, day);
+    expect((await getFoodEntry(db, copyId!))!.entry.meal).toBeNull();
+
+    // Re-filing via update: обед → ужин sticks; an omitted meal leaves it alone.
+    await updateFoodEntry(db, id, { rawText: 'банан', source: 'text', draft, meal: 'dinner' });
+    expect((await getFoodEntry(db, id))!.entry.meal).toBe('dinner');
+    await updateFoodEntry(db, id, { rawText: 'банан', source: 'text', draft });
+    expect((await getFoodEntry(db, id))!.entry.meal).toBe('dinner');
 
     sqlite.close();
   });

@@ -18,13 +18,15 @@ function toSteps(v: string): number {
   return Number.isFinite(n) && n >= 0 ? n : -1;
 }
 
-/// Home widget: type today's steps inline (a manual entry is sticky — the passive
-/// OS sync never overwrites it). The header row still opens the full «Шаги» screen
-/// (history + Health Connect). `onSaved` refreshes Home after a save.
+/// Home widget: today's ACTIVITY — type steps inline (a manual entry is sticky —
+/// the passive OS sync never overwrites it); the header row opens the full
+/// «Активность» screen (steps history + Health Connect + the workout log).
+/// `onSaved` refreshes Home after a save.
 export function StepsWidget({
   db,
   subtitle,
   estimateLine,
+  workoutLine,
   onSaved,
 }: {
   db: Db;
@@ -32,6 +34,9 @@ export function StepsWidget({
   /// Optional «сегодня N шагов ≈ M ккал» line — shown only on the value-ladder
   /// rung where a weight is logged but no goal is set yet (see Home). Null hides it.
   estimateLine?: string | null;
+  /// Optional «тренировки: +N ккал» line once a workout is logged today — the
+  /// widget speaks for the whole activity layer, not steps alone. Null hides it.
+  workoutLine?: string | null;
   onSaved: () => void | Promise<void>;
 }) {
   const { t } = useTranslation();
@@ -57,7 +62,7 @@ export function StepsWidget({
 
   return (
     <Card style={styles.card}>
-      <Pressable onPress={() => router.push('/steps')} style={styles.head} hitSlop={4}>
+      <Pressable onPress={() => router.push('/activity')} style={styles.head} hitSlop={4}>
         <Ionicons name="walk-outline" size={18} color={theme.accent} />
         <View style={styles.headText}>
           <Text style={[styles.title, { color: theme.text }, theme.font.bodySemiBold]}>{t('home.feeders.steps')}</Text>
@@ -93,6 +98,9 @@ export function StepsWidget({
         </Pressable>
       </View>
 
+      {workoutLine ? (
+        <Text style={[styles.estimate, { color: theme.subtle }, theme.font.body]}>{workoutLine}</Text>
+      ) : null}
       {estimateLine ? (
         <Text style={[styles.estimate, { color: theme.subtle }, theme.font.body]}>{estimateLine}</Text>
       ) : null}

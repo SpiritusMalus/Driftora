@@ -50,6 +50,9 @@ export function WorkoutSection({ db, onChange }: { db: Db; onChange?: (rawKcal: 
   const theme = useTheme();
   const [rows, setRows] = useState<WorkoutRow[]>([]);
   const [weightKg, setWeightKg] = useState(70);
+  // Whether a real weigh-in backs the kcal math. Without one we fall back to
+  // 70 kg — say so instead of silently mis-scaling a 100 kg user by 30%.
+  const [hasWeight, setHasWeight] = useState(true);
   const [type, setType] = useState<WorkoutType>('walk');
   const [minutes, setMinutes] = useState('');
   // Strength is logged in SETS («время не нужно») — a separate field so a
@@ -97,7 +100,9 @@ export function WorkoutSection({ db, onChange }: { db: Db; onChange?: (rawKcal: 
     if (!db) return;
     const [list, w] = await Promise.all([listWorkoutsForDay(db), latestWeight(db)]);
     setRows(list);
-    if (w && w.weightKg > 0) setWeightKg(w.weightKg);
+    const weighed = w != null && w.weightKg > 0;
+    if (weighed) setWeightKg(w.weightKg);
+    setHasWeight(weighed);
     onChange?.(list.reduce((s, r) => s + Number(r.kcal), 0));
   }, [db, onChange]);
 
@@ -328,6 +333,11 @@ export function WorkoutSection({ db, onChange }: { db: Db; onChange?: (rawKcal: 
           {budgetAck ? (
             <Text style={[styles.budgetAck, { color: theme.accent }, theme.font.bodyMedium]}>{budgetAck}</Text>
           ) : null}
+          {/* Two clearly separate processes (device feedback 2026-07-10): exact
+              manual entry first, the AI paths boxed apart below. */}
+          <Text style={[styles.blockHead, { color: theme.subtle }, theme.font.bodySemiBold]}>
+            {t('workouts.exactHead')}
+          </Text>
           <View style={styles.chips}>
             {WORKOUT_TYPES.map((w) => {
               const active = type === w;
@@ -410,10 +420,16 @@ export function WorkoutSection({ db, onChange }: { db: Db; onChange?: (rawKcal: 
             </View>
           ) : null}
 
+          {!hasWeight ? (
+            <Text style={[styles.setsHint, { color: theme.tertiary }, theme.font.body]}>
+              {t('workouts.weightFallback', { kg: weightKg })}
+            </Text>
+          ) : null}
+
           {AI_CONFIGURED ? (
-            <View style={styles.describeBlock}>
-              <Text style={[styles.describeLabel, { color: theme.subtle }, theme.font.body]}>
-                {t('workouts.describeLabel')}
+            <View style={[styles.describeBlock, { borderColor: theme.separator }]}>
+              <Text style={[styles.blockHead, { color: theme.subtle }, theme.font.bodySemiBold]}>
+                {t('workouts.aiHead')}
               </Text>
               <TextField
                 value={describe}
@@ -559,8 +575,8 @@ const styles = StyleSheet.create({
   speedOptional: { fontSize: 12, flex: 1, lineHeight: 16 },
   addBtn: { marginLeft: 'auto', paddingVertical: 9, paddingHorizontal: 16, borderRadius: 12 },
   addBtnText: { fontSize: 14 },
-  describeBlock: { marginTop: 16, gap: 8 },
-  describeLabel: { fontSize: 13 },
+  blockHead: { fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 10 },
+  describeBlock: { marginTop: 16, gap: 8, borderWidth: 1, borderRadius: 12, padding: 12 },
   describeInput: { minHeight: 64 },
   describeActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   describeBtn: { alignSelf: 'flex-start', paddingVertical: 9, paddingHorizontal: 16, borderRadius: 12 },
