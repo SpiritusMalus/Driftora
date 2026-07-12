@@ -30,6 +30,7 @@ import { personalBaseline, type PersonalBaseline } from '@/lib/core/insights/bas
 import { daySummary, daysSince, type DaySummary } from '@/lib/core/insights/daySummary';
 import { dayOfYear, pickVariant } from '@/lib/core/insights/variant';
 import { stepInsight } from '@/lib/core/insights/stepInsight';
+import { useAppActiveEffect } from '@/lib/core/services/appActive';
 import { getHealthService } from '@/lib/core/services/healthProvider';
 import { getNotificationService } from '@/lib/core/services/notificationProvider';
 import { buildDailyReminders, rescheduleReminders } from '@/lib/core/services/reminders';
@@ -186,6 +187,11 @@ export default function HomeScreen() {
       void reload();
     }, [reload]),
   );
+
+  // Unlocking the phone hours later must re-read the device steps: the budget
+  // and the steps row otherwise stay at the morning count until some in-app
+  // navigation happens to re-focus this screen.
+  useAppActiveEffect(() => void reload());
 
   async function onResume() {
     if (!db) return;

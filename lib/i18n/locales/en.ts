@@ -2,7 +2,7 @@ export const en = {
   // Shown by the top-level crash net when a screen throws during render.
   errorBoundary: {
     title: 'Something went wrong',
-    body: 'The screen ran into an unexpected problem. Your data is safe on this device. Try again.',
+    body: 'Something broke on this screen. Your data is safe. Try again.',
     retry: 'Try again',
   },
   // First-launch offer gate (GENERAL consent: Terms + Privacy). Kept separate
@@ -23,7 +23,7 @@ export const en = {
   consent: {
     ai: {
       title: 'Send this meal for recognition?',
-      body: 'To identify the foods, your input — text, photo, or voice — is sent via our server to OpenRouter (OpenRouter, Inc., servers in the USA), which performs the AI recognition. Calories and macros usually come from the built-in database; when a food is in no database at all, a rough AI estimate is used (marked “≈ AI estimate”). Your diary, mood and weight are not sent. Share only the dish — no extra words or other people’s data. This is a cross-border data transfer; you can withdraw consent in Settings.',
+      body: 'Your food description — text, photo or voice — goes for recognition to OpenRouter (OpenRouter, Inc., USA) via our server. Calories and macros come from the food database; when a food is in no database, a rough AI estimate marked “≈” fills in. Your diary, mood and weight are never sent. Write about the food only — no extra personal details. This is a cross-border data transfer; you can withdraw consent in Settings.',
       accept: 'Send',
       decline: "Don't send",
       declineCaption: 'Text is counted from the built-in table — rougher. Photos and voice can’t be parsed without AI.',
@@ -36,7 +36,7 @@ export const en = {
     },
     workout: {
       title: 'Parse this workout with AI?',
-      body: 'To parse the description, your input — text, voice, or a screenshot — is sent via our server to OpenRouter (OpenRouter, Inc., servers in the USA), which identifies the activity type and duration. Calories are usually computed by the app from your weight; for a tracker screenshot, the figure printed on it is logged. Your diary, mood and weight are not sent. Write about the workout only. This is a cross-border data transfer; you can withdraw consent in Settings.',
+      body: 'Your workout description — text, voice or a screenshot — goes to OpenRouter (OpenRouter, Inc., USA) via our server to identify the activity type and duration. Calories are computed by the app from your weight; for a tracker screenshot, the printed figure is logged. Your diary, mood and weight are never sent. Write about the workout only. This is a cross-border data transfer; you can withdraw consent in Settings.',
       accept: 'Parse',
       decline: "Don't send",
       declineCaption: 'You can still add a workout with the buttons — they work offline.',
@@ -118,7 +118,7 @@ export const en = {
     // gesture sticks.
     swipeCoach: {
       title: 'Mood & diary — swipe left',
-      body: 'It\'s a gesture now: swipe left anywhere on the Home screen to open mood and the thought diary.',
+      body: 'Swipe left anywhere on the Home screen to open mood and the thought diary.',
       try: 'Try it right now',
       later: 'Later',
     },
@@ -130,7 +130,7 @@ export const en = {
     foodBar: { placeholder: 'Log food' },
     food: {
       title: 'Food today',
-      movementHint: '+ steps and workouts raise the budget',
+      movementHint: 'This is before activity — steps and workouts refine the budget',
     },
     weight: {
       placeholder: 'Weight today',
@@ -161,11 +161,11 @@ export const en = {
     },
     privacy: {
       title: 'Your data stays yours',
-      body: 'Everything lives on your device in an encrypted database. Your diary and mood never leave it. Backup is optional and end-to-end encrypted. To survive a lost phone, make an encrypted backup (Settings → Backup); the key comes back via your Apple/Google account or your recovery phrase.',
+      body: 'Everything lives on your phone in an encrypted database; your diary and mood never leave it. To survive a lost phone, make a backup in Settings — it is encrypted too.',
     },
     feed: {
       title: 'A minute a day is enough',
-      body: 'Log food by text, voice or photo. Mood is one tap on the Mood & diary screen (swipe left from Home). Steps and sleep come in on their own once you allow access to your phone’s health data.',
+      body: 'Log food by text, voice or photo. Mood is one tap — the screen opens with a left swipe from Home. Steps and sleep come in on their own once you allow access to health data.',
     },
   },
   // Body-setup wizard: one question per screen, everything saved by the single
@@ -201,7 +201,7 @@ export const en = {
     },
     bodyFat: {
       title: 'Body fat %',
-      hint: 'Optional. If you know it (smart scale, DEXA) the target gets more precise — computed from lean mass, not total weight. Don’t know it? Just skip.',
+      hint: 'Optional. If you know your body fat %, the target gets more precise — computed from lean mass. Don’t know it? Just skip.',
       placeholder: 'e.g. 25',
       invalid: 'Realistic range: 3–70%. Leave empty if unsure.',
       skip: 'Don’t know — skip',
@@ -273,23 +273,23 @@ export const en = {
     intro: 'Short and honest: where the app’s numbers come from, how accurate they are, and how to improve them.',
     norm: {
       title: 'Your daily target',
-      body: 'The foundation is resting metabolism (BMR): what the body burns at complete rest. We use the Mifflin–St Jeor formula (sex, height, weight, age) — or, when a measured body-fat % is set, Katch–McArdle from lean mass: more honest for a non-average body composition.\n\nThen the goal. Losing — minus 10–25% of maintenance (you pick the pace), gaining — plus 5–15%, maintaining — no shift. The plan never drops below the healthy minimum (BMR and the clinical floor).\n\nProtein 1.6–1.8 g/kg (at a high BMI — from the goal or “working” weight: fat mass needs none), fat ~30% of calories, carbs the remainder, fiber 14 g per 1000 kcal.',
+      body: 'The foundation is resting metabolism: what the body burns at complete rest. We compute it from sex, height, weight and age (Mifflin–St Jeor), or from lean mass when your body-fat % is set (Katch–McArdle) — that’s more precise.\n\nThen the goal: losing — minus 10–25% of maintenance (you pick the pace), gaining — plus 5–15%, maintaining — no shift. The plan never drops below the healthy minimum.\n\nProtein — 1.6–1.8 g per kg (at a high BMI — from the goal weight), fat — about 30% of calories, carbs — the rest, fiber — 14 g per 1000 kcal.',
     },
     budget: {
       title: 'The day’s budget: base + steps + workouts',
-      body: 'The plan’s number is a day with no movement at all (a sedentary 1.2 on BMR). All movement adds on top the same day:\n\n· steps above ~3,000 (the first ~3,000 are already inside the sedentary base) — about 0.0005 kcal per step per kg;\n· workouts — 75% of their burn (why not 100% — below).\n\nThe “base · steps · workouts” line on Food shows the sum transparently. Move more — eat more, while your chosen pace stays intact.',
+      body: 'The plan’s base is a day with no movement at all. All movement adds on top the same day:\n\n· steps above ~3,000 — the first ~3,000 are already inside the sedentary base;\n· workouts — 75% of their burn (why not 100% — below).\n\nThe sum shows on Food as the “base · steps · workouts” line. Move more — eat more, your chosen pace stays intact.',
     },
     food: {
       title: 'Where food numbers come from',
-      body: 'Sources: if a full nutrition label is readable on a package photo, we take it (“from the label”) — more exact than any lookup; otherwise verified databases (the Russian table, USDA, Open Food Facts, FatSecret); when no database has the food — a rough AI estimate (“≈ AI estimate”).\n\nHonest accuracy: even with “exact” databases a real plate differs by ±10–20% (variety, cooking, portion size); an AI estimate is rougher, up to ±30%. If the match is wrong — “not it?” and manual search are always one tap away.',
+      body: 'Where the numbers come from: a full nutrition label on a package photo (“from the label”) — the most exact; otherwise food databases (the Russian table, USDA, Open Food Facts, FatSecret); when no database has the food — a rough AI estimate marked “≈”.\n\nHonest accuracy: even with databases a real plate differs by ±10–20%; an AI estimate — up to ±30%. Wrong match — “not it?” and manual search are always one tap away.',
     },
     workouts: {
       title: 'Workouts and the afterburn',
-      body: 'Burn = MET × weight × time. MET is an averaged “cost” of the activity from the Compendium of Physical Activities; for walking, running and cycling your pace (km/h) refines it. Strength is logged in sets: ≈3 minutes per set (work + rest) — no stopwatch needed.\n\nStrength and HIIT get an afterburn (EPOC) of ≈ +10%: for 24–48 hours after the session the body keeps spending on fiber repair and protein synthesis. Studies put it at 6–15% of the session — tens of kcal, not hundreds, and we promise no more.\n\nOnly 75% of the estimate enters the budget: formulas systematically overstate by ~25%, and undercounting is more honest than eating phantom calories. A tracker screenshot with a printed calorie figure is saved as-is (“from tracker”, no MET recount and no afterburn), but it enters the budget under the same 75% rule. Overall workout accuracy is ±20–25%.',
+      body: 'Burn = the activity’s “cost” (MET from a research compendium) × weight × time. For walking, running and cycling your pace refines it. Strength is logged in sets — ≈3 minutes per set, no stopwatch needed.\n\nStrength and HIIT get +10% for the afterburn: for a day or two after the session the body keeps spending on recovery. Tens of kcal, not hundreds.\n\nOnly 75% of the estimate enters the budget — formulas overstate, and undercounting is more honest. A tracker screenshot’s calories are saved as-is (“from tracker”); the budget takes the same 75%. Overall accuracy ±20–25%.',
     },
     boost: {
       title: 'How to raise your target',
-      body: 'The target is a base, not a ceiling. Every workout and every step above ~3,000 adds calories to the budget the same day — you see it immediately in the budget line on Food: log a workout, eat more.\n\nLong-term, muscle raises the target: it burns energy even at rest. Gaining muscle (surplus + strength training) grows the base over time — the app picks that up through your measured body-fat %.',
+      body: 'The target is a base, not a ceiling. Every workout and every step above ~3,000 adds calories the same day: log a workout, eat more.\n\nLong-term, muscle raises the target — it burns energy even at rest. Gaining muscle grows the base over time; the app picks that up through your body-fat %.',
     },
     honesty: {
       title: 'About accuracy — honestly',
@@ -302,6 +302,7 @@ export const en = {
     sections: {
       food: 'Food today',
       steps: 'Activity',
+      workouts: 'Workouts',
       weight: 'Weight',
       mind: 'Mood & diary',
       wins: 'Wins',
@@ -311,7 +312,8 @@ export const en = {
     },
     subtitles: {
       food: 'The day’s entries and totals',
-      steps: 'Steps and workouts — by hand or automatically',
+      steps: 'Steps — by hand or automatically',
+      workouts: 'Log a workout — the calories join your budget',
       weight: 'Weigh-ins and your nutrition plan',
       mind: 'Mood scale and thought diary',
       wins: 'What has already gone well',
@@ -385,15 +387,17 @@ export const en = {
     // Voice note & fitness-tracker screenshot.
     voiceStart: 'Dictate the workout',
     voiceStop: 'Stop recording',
-    voiceRecording: 'Recording… tap ■ when done.',
+    voiceRecording: 'Recording — tap ■ to finish.',
     voiceFailed: 'Couldn’t record. Try again or type it instead.',
-    voiceUnavailable: 'Microphone unavailable. Check the permission or type it instead.',
+    voiceUnavailable: 'No microphone access. Allow it in your phone settings, or type it instead.',
+    micBusy: 'Couldn’t start the microphone — another app may be using it. Try again or type it instead.',
+    voiceSilent: 'The recording came out silent — the microphone delivered no sound. Check it in your phone settings and try again, or type it instead.',
     screenshot: 'Workout screenshot',
     photoFailed: 'Couldn’t open the image. Try another screenshot.',
     fromTracker: 'from tracker',
     trackerAdded: 'Logged from your tracker: {{kcal}} kcal.',
     budgetAck: '✓ Workout logged: +{{kcal}} kcal added to today’s budget.',
-    note: 'Burn is estimated from type and duration (MET × weight); strength — from sets (≈3 min each). Strength and HIIT get an afterburn (EPOC) of ≈ +10% — the body keeps spending on recovery for 24–48 h after the session. For walking, running and cycling you can add your pace (km/h) for a sharper estimate. You can describe the workout in words or by voice — AI splits it into types and volume, and the app computes the calories (a «≈» number is a rough AI estimate for unusual activities). A fitness-tracker screenshot: when it shows a calorie figure, we log exactly that («from tracker»). Formulas overstate by ~25%, so only 75% is added to the day’s target. Adjust by how you feel and your weight trend.',
+    note: 'Burn is an estimate from type and duration; strength — from sets; strength and HIIT get +10% for the afterburn. Only 75% enters the budget — formulas usually overstate. A tracker screenshot’s calories are saved as-is (“from tracker”). Details — in “How it works”.',
     type: {
       walk: 'Walking',
       run: 'Running',
@@ -488,15 +492,15 @@ export const en = {
       protBasis: {
         goal: 'Protein is computed from your goal weight of {{kg}} kg: enough for muscle — fat mass needs none.',
         adjusted:
-          'Protein is based on a "working" weight of {{kg}} kg, not your full weight — this is NOT your weight but a calculation basis: fat mass barely uses protein, so the full weight would over-prescribe. Set a goal weight to base it on that instead.',
+          'Protein is computed from a “working” weight of {{kg}} kg — a calculation basis, not your weight: fat mass barely needs protein. Set a goal weight to base it on that instead.',
       },
       bmrLine:
-        'Resting metabolism (BMR) ≈ {{kcal}} kcal — what your body burns at complete rest, {{method}}. This is the number a doctor or calculator would name; the day’s base sits above it because even a sedentary day burns more.',
+        'Resting metabolism ≈ {{kcal}} kcal — what your body burns at complete rest, {{method}}. The day’s base sits above it: even a sedentary day burns more.',
       bmrMethod: {
         katch: 'computed from body composition (Katch–McArdle, lean mass)',
         mifflin: 'computed with the Mifflin–St Jeor formula',
       },
-      maintenanceLine: 'Maintenance ≈ {{maintenance}} kcal — what it takes to HOLD your current weight (this is NOT your target).',
+      maintenanceLine: 'Maintenance ≈ {{maintenance}} kcal — what it takes to hold your current weight. Not your target.',
       deltaLine: {
         lose: 'Your target {{kcal}} kcal is {{pct}}% below maintenance: a calm deficit to lose without stress.',
         gain: 'Your target {{kcal}} kcal is {{pct}}% above maintenance: a small surplus to gain.',
@@ -505,7 +509,7 @@ export const en = {
       etaWeeks: 'To your goal of {{goal}} kg ≈ {{n}} wk at this pace.',
       etaMonths: 'To your goal of {{goal}} kg ≈ {{n}} mo at this pace.',
       floored:
-        'On a day with no movement the target won’t drop below {{kcal}} kcal — the healthy minimum. Steps and workouts add to the base, so on days you move the chosen pace applies in full.',
+        'The target won’t drop below {{kcal}} kcal — the healthy minimum. Steps and workouts add on top.',
       apply: 'Make this my daily target',
       applied: 'Already your daily target ✓',
       appliedTick: 'Goal updated ✓',
@@ -515,7 +519,7 @@ export const en = {
       setupCta: 'Set up my body',
       assumedAge: 'Age isn’t set — this plan is an estimate. Add your birth year in “Body parameters” below to firm up the numbers.',
       note:
-        'The Mifflin–St Jeor formula estimates the “average” person: real needs differ. Start from these numbers and adjust by your weight trend and how you feel. You set the deficit by pace: gentle −10%, standard −15% (−20% at BMI ≥ 30), fast −25%; the gain surplus: lean +5%, standard +10%, fast +15% · protein 1.6–1.8 g/kg · fat 30% of calories · carbs the remainder.',
+        'Formulas estimate the “average” person — real needs differ. Start from these numbers and adjust by your weight trend and how you feel. The full math lives on the “How it works” page.',
       why: 'Why these numbers',
       whyHide: 'Hide explanation',
     },
@@ -530,7 +534,7 @@ export const en = {
       adequateNote: '* adequate-intake guide — there is no firm RDA for this nutrient.',
       source: 'Norms: US IOM / National Academies, adults 19–50; close to WHO guidance.',
       disclaimer:
-        'Averages for a healthy adult. Pregnancy, illness, medication and age change your needs — when in doubt ask a doctor, not an app.',
+        'Reference values for a healthy adult. Pregnancy, illness, medication and age change your needs — when in doubt, ask a doctor.',
       name: {
         a: 'Vitamin A',
         d: 'Vitamin D',
@@ -579,11 +583,11 @@ export const en = {
       needHeight: 'Add your height under “Body parameters” — BMI is computed from height and the latest weight.',
       needWeight: 'Log a weight above — BMI is computed from height and the latest weight.',
       disclaimer:
-        'BMI was invented by the statistician Quetelet in the 1800s to describe populations on average, not to assess an individual. The formula cannot tell muscle from fat — for athletic people it overstates “excess” weight. A reference point, not a verdict.',
+        'BMI cannot tell muscle from fat and describes the “average” person, not you. A reference point, not a verdict.',
     },
     targets: {
       savedTick: 'Saved ✓',
-      note: 'Changes save themselves. These targets show up on the Food screen — the daily total is compared against them (hidden while you are on a break).',
+      note: 'Saves itself. These targets show up on Food; hidden while you are on a break.',
     },
     formula: {
       sex: 'Sex',
@@ -610,7 +614,7 @@ export const en = {
       denied: 'Access not granted. Allow step reading in Health / Health Connect — or keep entering by hand.',
       unavailable: 'Health / Health Connect isn’t available on this device. Enter steps by hand.',
       update_required: 'Health Connect needs an update before it can grant access. Update it and try again.',
-      unsupported: 'Automatic step reading isn’t built into this build. Enter steps by hand.',
+      unsupported: 'Automatic step counting isn’t available in this version of the app. Enter steps by hand.',
       installAction: 'Open Health Connect in Google Play',
     },
     source: {
@@ -660,14 +664,15 @@ export const en = {
       workoutsPart: 'workouts +{{kcal}}',
       minPart: 'not below {{kcal}}',
       forecastNote: 'Today’s steps aren’t logged yet — the budget stands on your usual count. Enter your steps and it firms up.',
-      noMovement: 'This is the no-movement budget: steps and workouts add calories on top.',
+      noMovement: 'These are calories without activity. Steps and workouts help compute the precise number.',
+      stepsBelowBase: 'Steps today — {{steps}}: the first ~3000 are already in the base; the budget grows above that.',
       noMovementCta: 'add movement',
       how: 'how is the budget computed?',
     },
     parseIssue: {
-      offline: 'The server didn’t answer, so this was counted from the built-in table — rougher numbers than usual. Try again once you’re back online.',
-      offlineEmpty: 'The server didn’t answer, and the built-in table doesn’t know this food. Check your connection and try again.',
-      offlineMedia: 'Photos and voice can’t be parsed without the internet, and the server didn’t answer. Check your connection and try again — or describe the food in words.',
+      offline: 'Looks like there’s no internet — this was counted from the built-in table, rougher numbers than usual. Try again once you’re back online.',
+      offlineEmpty: 'Looks like there’s no internet, and the built-in table doesn’t know this food. Try again once you’re back online.',
+      offlineMedia: 'Looks like there’s no internet. Photos and voice need a connection — try later, or describe the food in words.',
       failed: 'Couldn’t parse this. Check your connection and try again.',
     },
     entryGone: 'This entry has already been deleted.',
@@ -705,9 +710,13 @@ export const en = {
       aborted: 'Recognition stopped. What you said is kept — carry on.',
       unknown: 'Couldn’t recognize it. What you said is kept — finish by typing.',
       unavailable: 'Voice input isn’t available on this device. Typing works too.',
+      // Permission granted, but the recorder wouldn't start (mic busy/OS hiccup).
+      'mic-failed': 'Couldn’t start the microphone — another app may be using it. Try again.',
+      // The clip recorded, but it's silence: mic muted in the system or held.
+      silent: 'The recording came out silent — the microphone delivered no sound. Check it isn’t turned off in your phone settings or held by another app, and try again.',
     },
     voiceNote: '🎙 Record a voice note',
-    voiceRecording: '● Recording… tap to send',
+    voiceRecording: '● Tap to finish recording',
     voiceProcessing: 'Processing your clip…',
     photo: '📷 Camera',
     photoLibrary: '🖼 From gallery',
@@ -764,9 +773,9 @@ export const en = {
     notInDb: 'This food isn’t in the database, so no numbers are filled in. Enter its calories and macros per 100 g — from the label, say — or find a close match manually.',
     // Honest note: label numbers are for the DRY product vs. a cooked-dish weight.
     dryBasis:
-      'These numbers are for the DRY product (the label). If you weighed the cooked dish with its water, the calories and macros are overstated — by roughly 3×. Enter the dry weight, or use "search manually" to find a "cooked/ready" match. We never quietly rewrite the numbers.',
+      'These numbers are for the dry product. If the weight is for the cooked dish, calories are overstated roughly 3×. Enter the dry weight, or search manually for a “cooked” match. We never rewrite the numbers.',
     refereeMismatch:
-      'This may be the wrong product: the database figures are far from what’s expected for this dish. Check the options below — an AI estimate is included. We never rewrite the numbers ourselves.',
+      'This looks like the wrong product: the figures are far from what’s expected for this dish. Pick an option below — an AI estimate is included.',
     // Vitamins & minerals for the whole dish, as a share of the daily norm (bars).
     microsDish: {
       show: 'Vitamins & minerals for this dish',
@@ -794,10 +803,10 @@ export const en = {
       none: 'no data',
       coverage: 'Counted from {{withData}} of {{total}} meals today.',
       coverageNote:
-        'Foods whose source reports no micronutrients (many Russian dishes) aren’t included — so read this as “at least this much”.',
+        'Some foods carry no micronutrient data — they aren’t included. Read this as “at least this much”.',
       needSex: 'Set your sex on the Weight screen — iron and several vitamin norms differ for men and women.',
       empty:
-        'Nothing to show yet: today’s foods carry no micronutrient data. USDA-sourced foods (English names, brands) do; most Russian dishes don’t yet.',
+        'Today’s foods carry no micronutrient data — common for many local dishes. Log foods with data and the bars appear.',
       ofNorm: '{{pct}}% of norm',
       normsHint: 'The dark tick is the daily norm, the amber tick the safe upper limit. The full norm table is on the Weight screen.',
     },
@@ -805,7 +814,7 @@ export const en = {
       show: 'Full composition',
       hide: 'Hide composition',
       basis: 'Per {{grams}} g, as reported by the source. Fields the DB lacks are simply absent — we never invent zeros.',
-      totalsNote: 'Summed over the items whose source reports these fields — some don’t, so read it as “at least this much”.',
+      totalsNote: 'Summed only over items with data — read it as “at least this much”.',
       label: {
         fiber: 'Fiber',
         sugar: 'Sugar',
@@ -959,30 +968,30 @@ export const en = {
     reminderAdd: 'Time (HH:mm)',
     reminderAddBtn: 'Add',
     reminderRemove: 'Remove reminder {{time}}',
-    remindersNote: 'Fire on a device with notification permission (Expo Go may be limited). A break turns them off.',
+    remindersNote: 'Fire when the app is allowed to send notifications. A break turns them off.',
     nextReminder: 'Next: {{when}}',
     contextualNudges: 'Smart movement nudges (optional)',
-    contextualNudgesNote: 'If you’re moving less than usual during the day, the app gently suggests a short walk — care, not a command. Computed on your phone, nothing leaves it; at most once a day. Off by default; a break turns them off.',
+    contextualNudgesNote: 'If you’re moving less than usual, the app gently suggests a short walk. At most once a day, computed on your phone. A break turns them off.',
     today: 'today',
     tomorrow: 'tomorrow',
     flags: 'Privacy & mode',
-    privacyLine: 'Your data stays only on the phone, in an encrypted database. Only food and workout parsing (text, photo or voice) leaves it → OpenRouter, USA. Diary, mood and weight never do.',
+    privacyLine: 'Your data stays only on the phone, in an encrypted database. The one thing that goes online is food and workout parsing (text, photo or voice) — to OpenRouter, USA. Diary, mood and weight never do.',
     aiToggle: 'AI food recognition',
     aiOff: 'Off. Text is counted from the built-in table; photos and voice aren’t recognized. Turn on to parse food and workouts via OpenRouter (USA).',
     aiOn: 'On. Food and workout descriptions, photos and voice go to OpenRouter (USA). Turn off to keep text-only counting from the built-in table.',
     hideCalories: 'Hide calories (focus on protein and habits)',
     llmDiaryAssist: 'Gentle diary hints (optional, off by default). Computed on the phone, nothing is sent anywhere.',
     showPopulationStats: 'Step reference comparison (optional)',
-    showPopulationStatsNote: 'Shows your step average next to evidence reference points — not a leaderboard. Off by default: comparing to others can demotivate.',
+    showPopulationStatsNote: 'Shows your step average next to research reference points — not a leaderboard. Off by default: comparison doesn’t help everyone.',
     regionTitle: 'Nutrition region',
     region_auto: 'Auto',
     region_RU: 'Russia',
     region_US: 'USA',
     regionNote: 'Which nutrition database parses your food. “Auto” follows the device language.',
     storage: 'Storage',
-    storageEncrypted: 'Encrypted (op-sqlite + SQLCipher)',
-    storageUnencrypted: 'Not encrypted (expo-sqlite fallback)',
-    storageUnencryptedNote: 'The native op-sqlite module is unavailable, so data sits in an unencrypted database. This is expected in Expo Go / web; a native build should read “Encrypted”.',
+    storageEncrypted: 'Encrypted',
+    storageUnencrypted: 'Not encrypted',
+    storageUnencryptedNote: 'Encrypted storage didn’t start on this device, so data sits in a plain database for now. The installed app should read “Encrypted” here; this usually happens only in a test run.',
     save: 'Save',
     saving: 'Saving…',
     saved: 'Saved ✓',
@@ -1033,7 +1042,7 @@ export const en = {
       approaching: 'Your average is {{avg}} steps/day — close to the ~7,000 reference where benefit grows fastest (~{{gap}} more a day).',
       beneficial: 'Your average is {{avg}} steps/day — already in the zone of clear benefit for heart, brain and stress.',
       ample: 'Your average is {{avg}} steps/day — more than enough by the evidence. More is not necessarily “better”.',
-      source: '“10,000” is marketing, not a medical threshold. Reference: ~7,000/day and lower risk, Lancet Public Health 2025. Comparing to your past self matters more than to others.',
+      source: '“10,000” is marketing, not medicine: the research reference is about 7,000 a day (Lancet, 2025). Compare yourself with yourself.',
     },
     metrics: {
       steps: 'Steps (avg/day)',
@@ -1097,7 +1106,7 @@ export const en = {
       exportKeyFile: 'Save key-file',
       exportAgain: 'Save key-file again',
       exportHint:
-        'You can also save a separate key-file (JSON) to a password manager or Files — a power-user alternative to the phrase.',
+        'You can also save a key-file to a password manager or Files — a power-user alternative to the phrase.',
       savedAck: 'I have written down the recovery phrase somewhere safe',
       confirmLabel: 'Confirm: enter the requested groups',
       groupN: 'Group {{n}}',
@@ -1120,7 +1129,7 @@ export const en = {
     keyFile: {
       title: 'Key-file (advanced)',
       explainer:
-        'A key-file is a copy of your key as JSON. Save it as an alternative to the phrase, or import it to move your key to a new device without typing the phrase. Anyone who gets this file can decrypt your backups — keep it like a password.',
+        'A key-file is a copy of your key. Save it as a fallback instead of the phrase, or import it on a new device. Anyone who gets this file can decrypt your backups — keep it like a password.',
       exportCta: 'Export key-file',
       importCta: 'Import key-file',
       shareTitle: 'Save your key-file',

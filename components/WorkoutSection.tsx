@@ -25,9 +25,15 @@ import {
   WORKOUT_TYPES,
   type WorkoutType,
 } from '@/lib/core/insights/bodyMetrics';
-import { isAudioRecordingAvailable, startRecording, type ActiveRecording } from '@/lib/core/services/audioRecorder';
+import {
+  isAudioRecordingAvailable,
+  isSilentRecording,
+  startRecording,
+  type ActiveRecording,
+} from '@/lib/core/services/audioRecorder';
 import type { AudioInput, PhotoInput } from '@/lib/core/services/foodParser';
 import { capturePhoto, isPhotoCaptureAvailable } from '@/lib/core/services/photoProvider';
+import { deleteTempFile } from '@/lib/core/services/tempFiles';
 import {
   getWorkoutParser,
   isWorkoutParserConfigured,
@@ -44,8 +50,17 @@ type Db = any;
 /// «Тренировки сегодня» — log a workout (type + minutes → kcal via MET, computed
 /// from the latest weight) and see the day's burn. Reports the RAW burned kcal up
 /// to the parent so the food day can show the eat-back-adjusted target (hybrid).
-/// Collapsed by default; never nags — purely additive to the day.
-export function WorkoutSection({ db, onChange }: { db: Db; onChange?: (rawKcal: number) => void }) {
+/// Collapsed by default ([initiallyOpen] unfolds it for direct entries, e.g. the
+/// «Тренировки» menu row); never nags — purely additive to the day.
+export function WorkoutSection({
+  db,
+  onChange,
+  initiallyOpen = false,
+}: {
+  db: Db;
+  onChange?: (rawKcal: number) => void;
+  initiallyOpen?: boolean;
+}) {
   const { t } = useTranslation();
   const theme = useTheme();
   const [rows, setRows] = useState<WorkoutRow[]>([]);
@@ -59,7 +74,7 @@ export function WorkoutSection({ db, onChange }: { db: Db; onChange?: (rawKcal: 
   // half-typed minute count survives switching chips back and forth.
   const [sets, setSets] = useState('');
   const [speed, setSpeed] = useState('');
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initiallyOpen);
   // Free-text parse path.
   const [describe, setDescribe] = useState('');
   const [parsing, setParsing] = useState(false);
@@ -226,16 +241,24 @@ export function WorkoutSection({ db, onChange }: { db: Db; onChange?: (rawKcal: 
         setParseNote(t('workouts.voiceFailed'));
         return;
       }
+      // A silent clip means the mic delivered nothing (muted in the system /
+      // held by another app) — say so instead of parsing silence.
+      if (isSilentRecording(rec.peakLevel())) {
+        deleteTempFile(clip.uri);
+        setParseNote(t('workouts.voiceSilent'));
+        return;
+      }
       await withConsent((c) => runVoiceParse(clip, c));
       return;
     }
     setParseNote(null);
-    const rec = await startRecording();
-    if (!rec) {
-      setParseNote(t('workouts.voiceUnavailable'));
+    const started = await startRecording();
+    if (started.error) {
+      // Denied and "granted but wouldn't start" need different advice.
+      setParseNote(t(started.error === 'denied' ? 'workouts.voiceUnavailable' : 'workouts.micBusy'));
       return;
     }
-    setRecording(rec);
+    setRecording(started.recording);
   }
 
   async function runVoiceParse(clip: AudioInput, consentNow: boolean) {
@@ -246,6 +269,10 @@ export function WorkoutSection({ db, onChange }: { db: Db; onChange?: (rawKcal: 
       await saveParsed(parser ? await parser.parseAudio(clip) : []);
     } finally {
       setParsing(false);
+      // The recorded m4a was only ever needed for the upload — clean it up on
+      // every path so the cache doesn't grow a file per voice note (mirrors
+      // the food log's cleanup).
+      deleteTempFile(clip.uri);
     }
   }
 
@@ -293,6 +320,8 @@ export function WorkoutSection({ db, onChange }: { db: Db; onChange?: (rawKcal: 
       await saveParsed(parsed.workouts);
     } finally {
       setParsing(false);
+      // Same cleanup as the voice path, for the downscaled screenshot JPEG.
+      deleteTempFile(photo.uri);
     }
   }
 
