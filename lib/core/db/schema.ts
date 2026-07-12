@@ -186,6 +186,13 @@ export const appSettings = sqliteTable('app_settings', {
   // (Body↔Mind + privacy + how to feed the card) is dismissed; returning users
   // never see it again. Additive UX flag, no consent meaning.
   onboardingSeen: integer('onboarding_seen', { mode: 'boolean' }).notNull().default(false),
+  // Shown-once interactive coach for the «mind lives behind a left swipe»
+  // gesture (the Home mood row was removed 2026-07-12). True once the user
+  // performed the swipe in the coach — or explicitly postponed it.
+  moodSwipeCoachSeen: integer('mood_swipe_coach_seen', { mode: 'boolean' }).notNull().default(false),
+  // How many times the mood screen was actually opened BY the swipe. The
+  // subtle Home hint stays until this reaches 3, then retires for good.
+  moodSwipeOpens: integer('mood_swipe_opens').notNull().default(0),
   // "Take a break" — mutes auto-wins and target pressure without losing data.
   paused: integer('paused', { mode: 'boolean' }).notNull().default(false),
   // Opt-in (default off): gentle context (JITAI) nudges — e.g. "behind your

@@ -108,6 +108,8 @@ CREATE TABLE IF NOT EXISTS app_settings (
   hide_calories INTEGER NOT NULL DEFAULT 0,
   llm_diary_assist INTEGER NOT NULL DEFAULT 0,
   onboarding_seen INTEGER NOT NULL DEFAULT 0,
+  mood_swipe_coach_seen INTEGER NOT NULL DEFAULT 0,
+  mood_swipe_opens INTEGER NOT NULL DEFAULT 0,
   paused INTEGER NOT NULL DEFAULT 0,
   contextual_nudges INTEGER NOT NULL DEFAULT 0,
   show_population_stats INTEGER NOT NULL DEFAULT 0,
@@ -198,6 +200,11 @@ export const MIGRATIONS: string[] = [
   // heuristic mislabeled a late breakfast as «обед» (device feedback). Null =
   // not chosen; the day view keeps the keyword/clock fallback for old rows.
   `ALTER TABLE food_entries ADD COLUMN meal TEXT`,
+  // 2026-07-12: the Home mood row became a left-swipe gesture. Shown-once
+  // interactive coach flag + how many times the swipe actually opened the mood
+  // screen (the subtle Home hint retires after 3).
+  `ALTER TABLE app_settings ADD COLUMN mood_swipe_coach_seen INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE app_settings ADD COLUMN mood_swipe_opens INTEGER NOT NULL DEFAULT 0`,
 ];
 
 /// Runs each CREATE statement through [run], then the idempotent [MIGRATIONS].

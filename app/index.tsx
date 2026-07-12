@@ -1,23 +1,23 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FoodTodayWidget } from '@/components/home/FoodTodayWidget';
 import { StepsWidget } from '@/components/home/StepsWidget';
+import { SwipeCoach } from '@/components/home/SwipeCoach';
 import { WeightWidget } from '@/components/home/WeightWidget';
 import { Card } from '@/components/ui/Card';
 import { FoodBar } from '@/components/ui/FoodBar';
-import { ListGroup, type RowSpec } from '@/components/ui/ListGroup';
 import { selfInitiatedLogDays } from '@/lib/core/db/activity';
 import { hasAnyWinOnDay, runAutoWins } from '@/lib/core/db/autoWins';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { todayMacroTotals } from '@/lib/core/db/food';
 import type { AppSettings } from '@/lib/core/db/schema';
 import { latestMood } from '@/lib/core/db/mood';
-import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
+import { ensureSettings, parseReminderTimes, updateSettings } from '@/lib/core/db/settings';
 import { syncDaySleep } from '@/lib/core/db/sleep';
 import { dayKey, listStepsDays, syncDaySteps, typicalSteps } from '@/lib/core/db/steps';
 import { weekReview } from '@/lib/core/db/weekReview';
@@ -29,14 +29,19 @@ import { daySummary, daysSince, type DaySummary } from '@/lib/core/insights/dayS
 import { dayOfYear, pickVariant } from '@/lib/core/insights/variant';
 import { stepInsight } from '@/lib/core/insights/stepInsight';
 import { getHealthService } from '@/lib/core/services/healthProvider';
+import { getNotificationService } from '@/lib/core/services/notificationProvider';
+import { buildDailyReminders, rescheduleReminders } from '@/lib/core/services/reminders';
 import { useTheme } from '@/lib/theme/theme';
 
 /// Home is the BODY-tracking surface (device feedback 2026-07-10: «разделить
 /// тренировки и психику»): food, weight, activity — the things fed daily. The
 /// whole mind side (mood scale, the Body↔Mind insight, the thought diary, the
-/// sleep signal) lives on the mood screen, reachable through one calm row here.
-/// Home still runs the passive steps/sleep sync so those signals keep flowing
-/// into the insight regardless of which screen shows them.
+/// sleep signal) lives on the mood screen, opened by a LEFT SWIPE anywhere on
+/// Home (device feedback 2026-07-12: the mood row was the last non-body card
+/// here). A one-time interactive coach teaches the gesture, a subtle caption
+/// keeps reminding until it sticks (3 swipe-opens), and «Разделы» keeps a
+/// plain tappable path. Home still runs the passive steps/sleep sync so those
+/// signals keep flowing into the insight regardless of which screen shows them.
 export default function HomeScreen() {
   const { t } = useTranslation();
   const theme = useTheme();
@@ -55,7 +60,6 @@ export default function HomeScreen() {
   const [stepsBaselineKind, setStepsBaselineKind] =
     useState<PersonalBaseline['kind'] | null>(null);
   const [summary, setSummary] = useState<DaySummary | null>(null);
-  const [moodValue, setMoodValue] = useState<number | null>(null);
   const [streakWeeks, setStreakWeeks] = useState(0);
   const [paused, setPaused] = useState(false);
   const [weightRow, setWeightRow] = useState<{ weightKg: number; date: string } | null>(null);
@@ -66,6 +70,8 @@ export default function HomeScreen() {
   // Raw workout burn today — for the food widget's movement-adjusted target
   // (steps are already loaded above; both feed the same eat-back layer).
   const [workoutRawKcal, setWorkoutRawKcal] = useState(0);
+  // One /mood push per left-swipe gesture — releases when Home regains focus.
+  const swipeNavLock = useRef(false);
 
   const reload = useCallback(async () => {
         if (!db) return;
@@ -145,12 +151,17 @@ export default function HomeScreen() {
         const daysGap = daysSince(lastActivity);
         setSteps(stepCount);
         setUsualSteps(await typicalSteps(db));
-        setStepsMeaning(stepCount == null ? null : stepInsight(stepCount, settingsRow.stepsGoal));
+        // A break promises «цели выключены» — feed an unreachable goal so the
+        // insight can never say «личная цель достигнута» under the pause banner.
+        setStepsMeaning(
+          stepCount == null
+            ? null
+            : stepInsight(stepCount, settingsRow.paused ? Number.MAX_SAFE_INTEGER : settingsRow.stepsGoal),
+        );
         setStepsBaselineKind(stepsBaseline ? stepsBaseline.kind : null);
         setTotals({ kcal: tot.kcal, proteinG: tot.proteinG, fatG: tot.fatG, carbG: tot.carbG });
         setSettings(settingsRow);
         setWorkoutRawKcal(workoutKcal);
-        setMoodValue(moodRow ? moodRow.value : null);
         setStreakWeeks(review.streakWeeks);
         setPaused(settingsRow.paused);
         setWeightRow(weightLatest ? { weightKg: weightLatest.weightKg, date: weightLatest.date } : null);
@@ -169,14 +180,36 @@ export default function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      swipeNavLock.current = false;
       void reload();
     }, [reload]),
   );
 
   async function onResume() {
     if (!db) return;
-    await updateSettings(db, { paused: false });
+    const s = await updateSettings(db, { paused: false });
     setPaused(false);
+    // Refresh the full row too — hasGoal and the coach read settings.paused,
+    // and the stale object kept the food target hidden until the next focus.
+    setSettings(s);
+    // The break also cancelled the OS reminders (the settings screen clears
+    // them on save while paused). «Вернуться к целям» must bring them back —
+    // otherwise they stay dead until a random settings re-save. Contextual
+    // nudges are deliberately not planned here: they are recomputed from the
+    // moment's context on each settings save. Best-effort, like that screen.
+    try {
+      const service = getNotificationService();
+      await service.initialize();
+      const specs = buildDailyReminders(
+        parseReminderTimes(s.reminderTimes),
+        { title: t('notifications.reminderTitle'), body: t('notifications.reminderBody') },
+        false,
+      );
+      if (specs.length > 0) await service.requestPermissions();
+      await rescheduleReminders(service, specs);
+    } catch (e) {
+      console.warn('reminder rescheduling on resume failed', e);
+    }
   }
 
   // Personalize the steps line once there's enough history: speak to the user's
@@ -205,18 +238,45 @@ export default function HomeScreen() {
     return t('home.feeders.weightDaysAgo', { kg, days });
   })();
 
-  // The whole MIND side behind one calm row: mood scale, the Body↔Mind insight,
+  // The whole MIND side behind a LEFT SWIPE: mood scale, the Body↔Mind insight,
   // the thought diary and the sleep signal live on the mood screen («разделить
-  // тренировки и психику», 2026-07-10). Subtitle = today's check-in, or a CTA.
-  const mindRow: RowSpec = {
-    key: 'mind',
-    icon: 'happy-outline',
-    tint: theme.primary,
-    iconBg: theme.scheme === 'light' ? '#FBE2D9' : '#3A241B',
-    title: t('home.feeders.mind'),
-    subtitle: moodValue != null ? t('home.feeders.moodValue', { value: moodValue }) : t('home.feeders.moodCta'),
-    onPress: () => router.push('/mood'),
-  };
+  // тренировки и психику», 2026-07-10; the row itself retired 2026-07-12 —
+  // «убрать настроение с главной, открывать свайпом»). One push per gesture:
+  // the lock releases when Home regains focus (see useFocusEffect above).
+  const openMoodBySwipe = useCallback(() => {
+    if (swipeNavLock.current) return;
+    swipeNavLock.current = true;
+    router.push('/mood');
+    // Count successful swipe-opens while the caption hint still teaches; after
+    // three the hint retires for good, so no further writes are needed.
+    if (db != null && settings != null && settings.moodSwipeOpens < 3) {
+      void updateSettings(db, { moodSwipeOpens: settings.moodSwipeOpens + 1 }).then(setSettings);
+    }
+  }, [db, settings, router]);
+  // One-time interactive coach (existing installs see it on the first open
+  // after the update; fresh installs right after onboarding). The caption hint
+  // below the cards keeps whispering the gesture until it stuck — three real
+  // swipe-opens — then Home goes quiet; «Разделы» keeps the tappable path.
+  const coachVisible = db != null && settings != null && !settings.moodSwipeCoachSeen;
+  const swipeHintVisible = !coachVisible && settings != null && settings.moodSwipeOpens < 3;
+  // The PanResponder is created once; route the trigger and the coach state
+  // through refs so the predicates never go stale. Claim only decisively
+  // horizontal-left drags (capture phase, before the vertical ScrollView takes
+  // over): ≥28 px left AND clearly flatter than vertical — diagonal scrolls
+  // stay scrolls. While the coach overlay is up, the ROOT must not claim —
+  // capture runs parent-first, and stealing the swipe here would open /mood
+  // without ever marking the coach as passed.
+  const swipeRef = useRef(openMoodBySwipe);
+  swipeRef.current = openMoodBySwipe;
+  const coachActiveRef = useRef(false);
+  coachActiveRef.current = coachVisible;
+  const homePan = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) => swipeLeft(g.dx, g.dy) && !coachActiveRef.current,
+      onMoveShouldSetPanResponderCapture: (_, g) => swipeLeft(g.dx, g.dy) && !coachActiveRef.current,
+      onPanResponderGrant: () => swipeRef.current(),
+    }),
+  ).current;
 
   // A target/КБЖУ is shown only when it was DELIBERATELY set — the untouched
   // 2000/120/70/200 defaults are not a goal (mirrors the food-day card, which
@@ -286,7 +346,7 @@ export default function HomeScreen() {
       : null;
 
   return (
-    <View style={[styles.fill, { backgroundColor: theme.background }]}>
+    <View style={[styles.fill, { backgroundColor: theme.background }]} {...homePan.panHandlers}>
       <Stack.Screen
         options={{
           headerRight: () => (
@@ -390,7 +450,23 @@ export default function HomeScreen() {
           workoutLine={workoutLine}
           onSaved={reload}
         />
-        <ListGroup rows={[mindRow]} />
+        {/* Whispered affordance for the left swipe — tappable too (some will
+            tap the words; screen readers get a plain button). Retires after
+            the gesture stuck: three real swipe-opens. */}
+        {swipeHintVisible ? (
+          <Pressable
+            onPress={() => router.push('/mood')}
+            hitSlop={6}
+            accessibilityRole="button"
+            accessibilityLabel={t('home.swipeHint')}
+            style={({ pressed }) => [styles.swipeHintWrap, { opacity: pressed ? 0.5 : 1 }]}
+          >
+            <Ionicons name="chevron-back" size={13} color={theme.subtle} />
+            <Text style={[styles.swipeHint, { color: theme.subtle }, theme.font.body]}>
+              {t('home.swipeHint')}
+            </Text>
+          </Pressable>
+        ) : null}
 
         {streakWeeks > 0 ? (
           <Text style={[styles.northStar, { color: theme.accent }, theme.font.bodyMedium]}>
@@ -415,10 +491,33 @@ export default function HomeScreen() {
           onPressMic={() => router.push(`/food/log?voice=${Date.now()}`)}
         />
       </View>
+
+      {coachVisible ? (
+        <SwipeCoach
+          onSwiped={() => {
+            // Push first (the payoff of the gesture), persist behind it. The
+            // coach swipe is swipe-open №1, so the caption hint needs two more.
+            router.push('/mood');
+            void updateSettings(db, {
+              moodSwipeCoachSeen: true,
+              moodSwipeOpens: settings.moodSwipeOpens + 1,
+            }).then(setSettings);
+          }}
+          onLater={() => {
+            void updateSettings(db, { moodSwipeCoachSeen: true }).then(setSettings);
+          }}
+        />
+      ) : null}
     </View>
   );
 }
 
+
+/// Decisively horizontal-left drag: ≥28 px leftward and clearly flatter than
+/// vertical, so diagonal scroll attempts stay with the ScrollView.
+function swipeLeft(dx: number, dy: number): boolean {
+  return dx < -28 && Math.abs(dx) > Math.abs(dy) * 1.75;
+}
 
 /// Thin-space thousands so "6 240" reads like the mockup.
 function formatSteps(n: number): string {
@@ -439,6 +538,14 @@ const styles = StyleSheet.create({
   androidContent: { paddingHorizontal: 18, paddingTop: 4, paddingBottom: 96 },
   iosContent: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 96 },
   daySummary: { fontSize: 15, lineHeight: 21, marginTop: 8, marginBottom: 10 },
+  swipeHintWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 14,
+    paddingVertical: 6,
+  },
+  swipeHint: { fontSize: 13 },
   northStar: { fontSize: 12, textAlign: 'center', marginTop: 22 },
   footer: { position: 'absolute', left: 0, right: 0 },
   footerAndroid: { paddingHorizontal: 18 },

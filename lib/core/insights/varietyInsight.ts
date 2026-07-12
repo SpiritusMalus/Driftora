@@ -23,14 +23,14 @@ export function varietyBand(distinctItems: number): VarietyBand {
 
 /// One warm, body-neutral sentence about today's variety. ED rule: never "eat
 /// more / less", never a target, never calories — variety is framed as a kind
-/// thing for the body, explicitly "important more than any numbers".
+/// thing for the body, framed as care for the body, not a number.
 export function varietyInsight(distinctItems: number): string {
   switch (varietyBand(distinctItems)) {
     case 'none':
       return 'Разнообразие в еде — мягкая забота о теле. Впереди целый день.';
     case 'some':
-      return 'Уже есть из чего собрать день. Разные продукты — это польза для тела, без всяких цифр.';
+      return 'Уже есть из чего собрать день. Разные продукты — сами по себе забота о теле.';
     case 'varied':
-      return 'Сегодня в рационе несколько разных продуктов — телу это нравится. Разнообразие важнее любых цифр.';
+      return 'Сегодня в рационе несколько разных продуктов — хорошая опора для организма.';
   }
 }

@@ -275,15 +275,18 @@ export function WorkoutSection({ db, onChange }: { db: Db; onChange?: (rawKcal: 
         const single = parsed.workouts.length === 1 ? parsed.workouts[0] : null;
         const minutes =
           parsed.device_minutes ?? parsed.workouts.reduce((s, w) => s + Math.max(0, w.minutes), 0);
-        await addTrackerWorkout(db, {
+        // The toast and the budget ack must speak the STORED number: the db
+        // clamps an OCR misread to a sane band, and «записываем ровно его
+        // цифру» would otherwise show a kcal that was never saved.
+        const storedKcal = await addTrackerWorkout(db, {
           kcal: parsed.device_kcal,
           minutes,
           type: single?.type ?? 'other',
           label: names ? `${names} · ${t('workouts.fromTracker')}` : t('workouts.fromTracker'),
           sets: single?.sets ?? null,
         });
-        setParseNote(t('workouts.trackerAdded', { kcal: parsed.device_kcal }));
-        ackBudget(parsed.device_kcal);
+        setParseNote(t('workouts.trackerAdded', { kcal: storedKcal }));
+        ackBudget(storedKcal);
         await reload();
         return;
       }

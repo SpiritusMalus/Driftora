@@ -1,5 +1,4 @@
 export const en = {
-  appTitle: 'Driftora',
   // Shown by the top-level crash net when a screen throws during render.
   errorBoundary: {
     title: 'Something went wrong',
@@ -24,10 +23,10 @@ export const en = {
   consent: {
     ai: {
       title: 'Send this meal for recognition?',
-      body: 'To identify the foods, your input — text, photo, or voice — is sent via our server to OpenRouter (OpenRouter, Inc., servers in the USA), which performs the AI recognition. Calories and macros are computed by the built-in database, not the AI. Your diary, mood and weight are not sent. Share only the dish — no extra words or other people’s data. This is a cross-border data transfer; you can withdraw consent in Settings.',
+      body: 'To identify the foods, your input — text, photo, or voice — is sent via our server to OpenRouter (OpenRouter, Inc., servers in the USA), which performs the AI recognition. Calories and macros usually come from the built-in database; when a food is in no database at all, a rough AI estimate is used (marked “≈ AI estimate”). Your diary, mood and weight are not sent. Share only the dish — no extra words or other people’s data. This is a cross-border data transfer; you can withdraw consent in Settings.',
       accept: 'Send',
       decline: "Don't send",
-      declineCaption: "You'll keep the offline estimate from the built-in database.",
+      declineCaption: 'Text is counted from the built-in table — rougher. Photos and voice can’t be parsed without AI.',
     },
     photo: {
       title: 'This photo goes to OpenRouter (USA)',
@@ -37,7 +36,7 @@ export const en = {
     },
     workout: {
       title: 'Parse this workout with AI?',
-      body: 'To parse the description, your text is sent via our server to OpenRouter (OpenRouter, Inc., servers in the USA), which identifies the activity type and duration. Calories are computed by the app from your weight, not the AI. Your diary, mood and weight are not sent. Write about the workout only. This is a cross-border data transfer; you can withdraw consent in Settings.',
+      body: 'To parse the description, your input — text, voice, or a screenshot — is sent via our server to OpenRouter (OpenRouter, Inc., servers in the USA), which identifies the activity type and duration. Calories are usually computed by the app from your weight; for a tracker screenshot, the figure printed on it is logged. Your diary, mood and weight are not sent. Write about the workout only. This is a cross-border data transfer; you can withdraw consent in Settings.',
       accept: 'Parse',
       decline: "Don't send",
       declineCaption: 'You can still add a workout with the buttons — they work offline.',
@@ -47,11 +46,10 @@ export const en = {
     title: 'Today',
     inlineAdd: 'Log it',
     steps: {
-      unit: 'steps',
       placeholder: 'Steps today',
       // Empty state: an invitation (the field unfolds via «+») — the old
       // "Coming soon" read as "doesn't work".
-      noneYet: 'none yet today',
+      noneYet: 'nothing logged yet',
       earnedEstimate: '{{steps}} steps today ≈ {{kcal}} kcal above resting.',
     },
     activity: {
@@ -103,23 +101,29 @@ export const en = {
       returning4: 'Back together. No need to catch up — just note how you are right now.',
     },
     feeders: {
-      mind: 'Mood & diary',
-      moodCta: 'One tap — how are you right now?',
-      moodValue: 'Last: {{value}}/10',
       steps: 'Activity today',
       sleep: 'Last night\'s sleep',
       diary: 'Thought diary',
-      diaryCount: '{{count}} entries — your richer mental input',
-      diaryCta: 'A deeper note feeds the insight too',
+      diaryCount: '{{count}} entries',
+      diaryCta: 'Walk a worrying thought through steps',
       weight: 'Weight',
       weightCta: 'Once a week is enough',
       weightToday: '{{kg}} kg — today',
       weightYesterday: '{{kg}} kg — yesterday',
       weightDaysAgo: '{{kg}} kg — {{days}} d ago',
     },
-    moreLink: 'More',
+    moreLink: 'Sections',
+    // The mind side opens by a left swipe (the Home mood row retired
+    // 2026-07-12): a one-time interactive coach + a fading caption until the
+    // gesture sticks.
+    swipeCoach: {
+      title: 'Mood & diary — swipe left',
+      body: 'It\'s a gesture now: swipe left anywhere on the Home screen to open mood and the thought diary.',
+      try: 'Try it right now',
+      later: 'Later',
+    },
+    swipeHint: 'Mood & diary — swipe left',
     bodyMindCol: {
-      body: 'Body · steps',
       bodySignal: { steps: 'Body · steps', sleep: 'Body · sleep', protein: 'Body · protein' },
       mind: 'Mind · mood',
     },
@@ -133,7 +137,7 @@ export const en = {
       save: 'Save',
       saving: 'Saving…',
     },
-    northStar: 'Showing up {{weeks}} weeks running.',
+    northStar: 'Streak: {{weeks}} weeks running.',
     paused: {
       title: 'You are on a break',
       body: 'Goals and auto-wins are off. Your data is safe — pick it back up whenever you are ready.',
@@ -160,8 +164,8 @@ export const en = {
       body: 'Everything lives on your device in an encrypted database. Your diary and mood never leave it. Backup is optional and end-to-end encrypted. To survive a lost phone, make an encrypted backup (Settings → Backup); the key comes back via your Apple/Google account or your recovery phrase.',
     },
     feed: {
-      title: 'One tap a day is enough',
-      body: 'Check in your mood with one tap — Driftora pulls steps and sleep from Health. In a few days your personal pattern shows up here.',
+      title: 'A minute a day is enough',
+      body: 'Log food by text, voice or photo. Mood is one tap on the Mood & diary screen (swipe left from Home). Steps and sleep come in on their own once you allow access to your phone’s health data.',
     },
   },
   // Body-setup wizard: one question per screen, everything saved by the single
@@ -254,7 +258,7 @@ export const en = {
         maintain: 'For maintenance the target equals that expenditure.',
       },
       boostTitle: 'How to raise the target',
-      boost: 'The base is a day with no movement at all. Steps above ~3,000 and workouts add to the budget the same day: move more — eat more. You’ll see the “rest · steps · workouts” line on Food.',
+      boost: 'The base is a day with no movement at all. Steps above ~3,000 and workouts add to the budget the same day: move more — eat more. You’ll see the “base · steps · workouts” line on Food.',
       gainNote: 'A surplus builds muscle only together with strength training. Without it, the extra calories become fat.',
       applied: 'Saved as your daily goal ✓ — progress shows on Food.',
       edit: 'You can change this anytime: Weight → Body parameters → Edit.',
@@ -277,11 +281,11 @@ export const en = {
     },
     food: {
       title: 'Where food numbers come from',
-      body: 'Source order: verified databases (the Russian table, USDA, Open Food Facts, FatSecret) → the nutrition label read from a package photo (“from the label”) → a rough AI estimate (“≈ AI estimate”) when no database has the food.\n\nHonest accuracy: even with “exact” databases a real plate differs by ±10–20% (variety, cooking, portion size); an AI estimate is rougher, up to ±30%. If the match is wrong — “not it?” and manual search are always one tap away.',
+      body: 'Sources: if a full nutrition label is readable on a package photo, we take it (“from the label”) — more exact than any lookup; otherwise verified databases (the Russian table, USDA, Open Food Facts, FatSecret); when no database has the food — a rough AI estimate (“≈ AI estimate”).\n\nHonest accuracy: even with “exact” databases a real plate differs by ±10–20% (variety, cooking, portion size); an AI estimate is rougher, up to ±30%. If the match is wrong — “not it?” and manual search are always one tap away.',
     },
     workouts: {
       title: 'Workouts and the afterburn',
-      body: 'Burn = MET × weight × time. MET is an averaged “cost” of the activity from the Compendium of Physical Activities; for walking, running and cycling your pace (km/h) refines it. Strength is logged in sets: ≈3 minutes per set (work + rest) — no stopwatch needed.\n\nStrength and HIIT get an afterburn (EPOC) of ≈ +10%: for 24–48 hours after the session the body keeps spending on fiber repair and protein synthesis. Studies put it at 6–15% of the session — tens of kcal, not hundreds, and we promise no more.\n\nOnly 75% of the estimate enters the budget: formulas systematically overstate by ~25%, and undercounting is more honest than eating phantom calories. The exception is a tracker screenshot with a printed calorie figure: we log exactly that number (“from tracker”). Overall workout accuracy is ±20–25%.',
+      body: 'Burn = MET × weight × time. MET is an averaged “cost” of the activity from the Compendium of Physical Activities; for walking, running and cycling your pace (km/h) refines it. Strength is logged in sets: ≈3 minutes per set (work + rest) — no stopwatch needed.\n\nStrength and HIIT get an afterburn (EPOC) of ≈ +10%: for 24–48 hours after the session the body keeps spending on fiber repair and protein synthesis. Studies put it at 6–15% of the session — tens of kcal, not hundreds, and we promise no more.\n\nOnly 75% of the estimate enters the budget: formulas systematically overstate by ~25%, and undercounting is more honest than eating phantom calories. A tracker screenshot with a printed calorie figure is saved as-is (“from tracker”, no MET recount and no afterburn), but it enters the budget under the same 75% rule. Overall workout accuracy is ±20–25%.',
     },
     boost: {
       title: 'How to raise your target',
@@ -293,23 +297,25 @@ export const en = {
     },
   },
   more: {
-    title: 'More',
-    intro: 'Everything else lives here, off the daily screen.',
+    title: 'Sections',
+    intro: 'Every part of the app in one place.',
     sections: {
-      food: 'Food log',
+      food: 'Food today',
       steps: 'Activity',
       weight: 'Weight',
+      mind: 'Mood & diary',
       wins: 'Wins',
       review: 'Weekly review',
       settings: 'Settings',
       how: 'How it works',
     },
     subtitles: {
-      food: 'Calories and protein, when you want them',
-      steps: 'Steps and workouts — by hand or from Health',
-      weight: 'One optional signal',
-      wins: 'Small things that went well',
-      review: 'You vs your past self',
+      food: 'The day’s entries and totals',
+      steps: 'Steps and workouts — by hand or automatically',
+      weight: 'Weigh-ins and your nutrition plan',
+      mind: 'Also opens with a left swipe on Home',
+      wins: 'What has already gone well',
+      review: 'This week compared with last',
       settings: 'Privacy, targets, break',
       how: 'Where the numbers come from and how accurate they are',
     },
@@ -370,20 +376,10 @@ export const en = {
   },
   macros: { protein: 'Protein', fat: 'Fat', carbs: 'Carbs' },
   bodyMind: {
-    link: {
-      moreStepsBetterMood:
-        'On days you move more, your mood averages {{gap}} higher out of 10. This is an association, not a cause.',
-      moreStepsWorseMood:
-        'On days with fewer steps, your mood averages {{gap}} higher out of 10. This is an association, not a cause.',
-    },
-    noLink: 'No clear link between steps and mood yet — and that is okay.',
     // Hero variants: the big sentence carries the direction; the "association,
     // not a cause" framing moves to the hero caption (home.hero.caption).
     hero: {
       accent: '+{{gap}}',
-      moreStepsBetterMood: 'On the days you move more, your mood runs about {{gap}} higher out of 10.',
-      moreStepsWorseMood: 'On the days you move less, your mood runs about {{gap}} higher out of 10.',
-      noLink: 'No clear link between your steps and your mood yet — and that is honest.',
       // v2 — the hero speaks about the strongest honest signal (steps/sleep/protein).
       signal: {
         steps: {
@@ -415,7 +411,6 @@ export const en = {
     empty: 'No weight entries yet. Weighing in is optional — no pressure.',
     note: 'Weight is just one signal, and it naturally fluctuates day to day.',
     dbUnavailable: 'Weight is available in a device dev build.',
-    cta: 'Log weight',
     trend: {
       steady: 'Over {{days}} days your weight held steady (±{{abs}} kg).',
       down: 'Over {{days}} days your weight is down {{abs}} kg.',
@@ -445,9 +440,9 @@ export const en = {
         fast: 'Fast',
       },
       intro: {
-        lose: 'You weigh {{kg}} kg. To lose weight calmly — about −{{pace}} kg a week, no crash dieting — you need:',
+        lose: 'You weigh {{kg}} kg. To lose about {{pace}} kg a week, you need:',
         maintain: 'You weigh {{kg}} kg. To hold this weight you need about:',
-        gain: 'You weigh {{kg}} kg. For a gradual gain — about +{{pace}} kg a week — you need:',
+        gain: 'You weigh {{kg}} kg. To gain about {{pace}} kg a week, you need:',
       },
       kcalPerDay: '≈ {{kcal}} kcal a day',
       restNote: 'This is the base — a day with no movement at all. Your steps and workouts add to it on the Food screen.',
@@ -475,8 +470,8 @@ export const en = {
       etaMonths: 'To your goal of {{goal}} kg ≈ {{n}} mo at this pace.',
       floored:
         'On a day with no movement the target won’t drop below {{kcal}} kcal — the healthy minimum. Steps and workouts add to the base, so on days you move the chosen pace applies in full.',
-      apply: 'Make this the diary goal',
-      applied: 'Already your diary goal ✓',
+      apply: 'Make this my daily target',
+      applied: 'Already your daily target ✓',
       appliedTick: 'Goal updated ✓',
       recalc: 'The plan recalculates itself after every new weigh-in.',
       needWeight: 'Log a weight above — the plan is computed from it.',
@@ -552,45 +547,39 @@ export const en = {
     },
     targets: {
       savedTick: 'Saved ✓',
-      note: 'Changes save themselves. These targets show up on the Food screen — the daily total is compared against them.',
+      note: 'Changes save themselves. These targets show up on the Food screen — the daily total is compared against them (hidden while you are on a break).',
     },
     formula: {
       sex: 'Sex',
       male: 'Male',
       female: 'Female',
       birthYear: 'Birth year',
-      activity: 'Activity',
-      activityLevel: { sedentary: 'Sedentary', light: 'Light', moderate: 'Moderate', high: 'High' },
-      activityNote: 'No activity level needed anymore: the daily budget is transparent — the base (your formula metabolism, a no-movement day) plus your steps and workouts for the day, which are added on the Food screen. More movement — more you can eat; movement only ever adds, never subtracts.',
       bodyFat: 'Body fat %',
-      bodyFatHint: 'e.g. 20',
-      bodyFatNote: 'Optional. If you know your measured body-fat % (smart scale, calipers, DEXA), we base metabolism on body composition (Katch–McArdle): at the same weight, more muscle = higher burn. A 120 kg athlete and a 120 kg couch-sitter get different numbers. Leave blank or guessed — we keep the standard formula, which is more honest.',
     },
   },
   steps: {
-    title: 'Steps',
     placeholder: 'Steps today',
     unit: 'steps',
     save: 'Save',
     saving: 'Saving…',
     note: 'A number you enter by hand always wins — the automatic count never overwrites it.',
-    empty: 'No step entries yet. Enter a number by hand or connect Health below.',
+    empty: 'No step entries yet. Enter a number by hand or connect automatic counting.',
     dbUnavailable: 'Steps are available in a device dev build.',
     auto: {
       title: 'Automatic count',
-      explainer: 'Connect Health and Driftora reads your daily step count for you. Read-only access to steps and sleep; the data stays on your device and is never sent anywhere.',
-      connect: 'Connect Health',
+      explainer: 'Connect Health Connect (Apple Health on iPhone) and Driftora reads your daily step count for you. Read-only access to steps and sleep; the data stays on your device and is never sent anywhere.',
+      connect: 'Connect',
       connecting: 'Connecting…',
       connected: 'Connected. Your daily steps will be counted automatically.',
       denied: 'Access not granted. Allow step reading in Health / Health Connect — or keep entering by hand.',
       unavailable: 'Health / Health Connect isn’t available on this device. Enter steps by hand.',
       update_required: 'Health Connect needs an update before it can grant access. Update it and try again.',
-      unsupported: 'Health reading isn’t built into this build. Enter steps by hand.',
+      unsupported: 'Automatic step reading isn’t built into this build. Enter steps by hand.',
       installAction: 'Open Health Connect in Google Play',
     },
     source: {
       manual: 'Entered by hand',
-      device: 'From Health',
+      device: 'Automatic',
     },
   },
   // "Activity" screen — steps + workouts, all the movement that feeds the day budget.
@@ -614,7 +603,6 @@ export const en = {
     entryTitle: 'Entry',
     entryLabel: 'What it was',
     update: 'Save changes',
-    edit: 'Edit',
     delete: 'Delete entry',
     deleteTitle: 'Delete this entry?',
     deleteConfirm: 'The entry and its items will be removed from this device. This cannot be undone.',
@@ -641,11 +629,12 @@ export const en = {
       how: 'how is the budget computed?',
     },
     parseIssue: {
-      offline: 'The server didn’t answer — parsed offline, without AI, so the numbers are rougher. You can try again.',
-      failed: 'Couldn’t parse this. Check your connection and try again — your text is still here.',
+      offline: 'The server didn’t answer, so this was counted from the built-in table — rougher numbers than usual. Try again once you’re back online.',
+      offlineEmpty: 'The server didn’t answer, and the built-in table doesn’t know this food. Check your connection and try again.',
+      offlineMedia: 'Photos and voice can’t be parsed without the internet, and the server didn’t answer. Check your connection and try again — or describe the food in words.',
+      failed: 'Couldn’t parse this. Check your connection and try again.',
     },
     entryGone: 'This entry has already been deleted.',
-    inputPlaceholder: 'What did you eat? e.g. three-egg omelette and coffee with milk',
     prompt: {
       morning: 'What was breakfast?',
       midday: 'What was lunch?',
@@ -687,10 +676,9 @@ export const en = {
     photo: '📷 Camera',
     photoLibrary: '🖼 From gallery',
     photoError: 'Couldn’t process that photo. Try another one, or type the meal instead.',
-    photoAnalyzing: 'Reading the photo…',
     save: 'Save',
     saving: 'Saving…',
-    clear: 'Clear and go back',
+    clear: 'Start over',
     savedWarm1: 'Logged. Noticing what you eat is already self-care',
     savedWarm2: 'Noted. Thanks for keeping track',
     savedWarm3: 'Saved. A small step is care too',
@@ -699,12 +687,9 @@ export const en = {
     total: 'Whole-dish total',
     hideCalories: 'Hide calories — keep protein only',
     showCalories: 'Show calories and macros',
-    name: 'Name',
-    stubNote: 'Offline estimate (stub) for now. AI parsing comes later.',
     needHelp: 'Could not recognize it. Add more detail.',
     // Switch to another DB match when the wrong food was picked.
     alternatives: {
-      prompt: 'Not it? Pick another food',
       promptCount: 'Similar matches ({{count}})',
       hide: 'Hide options',
     },
@@ -728,18 +713,19 @@ export const en = {
     per100: 'per 100 g',
     approx: '≈ approx',
     disclaimer:
-      'Per-100g composition is from the database. The whole-dish total is approximate (portion estimated). Confirm the weight for accuracy.',
+      'Per-100 g figures come from the database. Until the weight is confirmed, the dish total is approximate.',
     grams: 'Weight',
-    gramsHint: 'Confirm the weight to make the total exact.',
     // Editing a single dish inside a saved entry.
     removeItem: 'Remove dish',
     replaceItem: 'Replace with another',
     // The user never named a weight — say honestly this is our guess.
-    gramsEstimated: '≈ you didn’t name a weight — a typical portion was assumed. Confirm it for accuracy.',
+    gramsEstimated: '≈ the weight is our guess at a typical portion. Adjust it if you know better.',
     // Cooking method — neutral, never "healthier/worse".
     estimateNote: 'Items not in our database aren’t counted in the total. Enter their macros to include them.',
+    // Every item missed the DB: one plain line instead of a zero «Total» card.
+    totalAllMisses: 'No total yet — this food isn’t in the database. Enter its macros above or find a close match manually.',
     aiEstimateNote: 'Some numbers are a rough AI estimate (not in our database). They’re counted in the total — adjust the weight or enter macros for accuracy.',
-    notInDb: "Not in our database. Enter the per-100 g macros and calories yourself — we won't make numbers up for you.",
+    notInDb: 'This food isn’t in the database, so no numbers are filled in. Enter its calories and macros per 100 g — from the label, say — or find a close match manually.',
     // Honest note: label numbers are for the DRY product vs. a cooked-dish weight.
     dryBasis:
       'These numbers are for the DRY product (the label). If you weighed the cooked dish with its water, the calories and macros are overstated — by roughly 3×. Enter the dry weight, or use "search manually" to find a "cooked/ready" match. We never quietly rewrite the numbers.',
@@ -777,7 +763,6 @@ export const en = {
       empty:
         'Nothing to show yet: today’s foods carry no micronutrient data. USDA-sourced foods (English names, brands) do; most Russian dishes don’t yet.',
       ofNorm: '{{pct}}% of norm',
-      overLimit: 'above the upper limit',
       normsHint: 'The dark tick is the daily norm, the amber tick the safe upper limit. The full norm table is on the Weight screen.',
     },
     detail: {
@@ -829,8 +814,6 @@ export const en = {
     save: 'Save',
     saving: 'Saving…',
     progress: 'Step {{current}} of {{total}}',
-    count: 'Entries',
-    cta: 'Record a thought',
     moodShort: 'Mood',
     fields: {
       moodBefore: 'Mood right now, before the record (0–10)',
@@ -874,7 +857,6 @@ export const en = {
     },
     emotion: {
       name: 'Emotion',
-      intensity: 'Intensity',
       scale: 'Emotion intensity — from 0 to 100.',
       add: 'Add',
       remove: 'Remove emotion {{name}}',
@@ -948,12 +930,12 @@ export const en = {
     today: 'today',
     tomorrow: 'tomorrow',
     flags: 'Privacy & mode',
-    privacyLine: 'Your data stays only on the phone, in an encrypted database. Only the food parse (text or photo) leaves it → OpenRouter, USA. Diary, mood and weight never do.',
+    privacyLine: 'Your data stays only on the phone, in an encrypted database. Only food and workout parsing (text, photo or voice) leaves it → OpenRouter, USA. Diary, mood and weight never do.',
     aiToggle: 'AI food recognition',
-    aiOff: 'Off — the app works offline. Turn on to recognize food from text or a photo via OpenRouter (USA).',
-    aiOn: 'On. Food text and photos are sent to OpenRouter (USA). Turn off to return to offline estimates.',
+    aiOff: 'Off. Text is counted from the built-in table; photos and voice aren’t recognized. Turn on to parse food and workouts via OpenRouter (USA).',
+    aiOn: 'On. Food and workout descriptions, photos and voice go to OpenRouter (USA). Turn off to keep text-only counting from the built-in table.',
     hideCalories: 'Hide calories (focus on protein and habits)',
-    llmDiaryAssist: 'AI help in the diary (optional, off by default)',
+    llmDiaryAssist: 'Gentle diary hints (optional, off by default). Computed on the phone, nothing is sent anywhere.',
     showPopulationStats: 'Step reference comparison (optional)',
     showPopulationStatsNote: 'Shows your step average next to evidence reference points — not a leaderboard. Off by default: comparing to others can demotivate.',
     regionTitle: 'Nutrition region',
@@ -987,8 +969,6 @@ export const en = {
     add: 'Add a win',
     addPlaceholder: 'What went well? e.g. walked 8,000 steps',
     empty: 'No wins yet — mark your first one, however small.',
-    count: 'Wins',
-    cta: 'Mark a win',
     share: 'Share',
     dbUnavailable: 'Wins are available in a device dev build.',
     auto: {
@@ -1004,7 +984,6 @@ export const en = {
   },
   review: {
     title: 'Weekly review',
-    homeSubtitle: 'You vs your past self',
     dbUnavailable: 'The review is available in a device dev build.',
     northStar: 'You logged on {{days}} days this week.',
     streak: 'Streak: {{weeks}} weeks running',
@@ -1024,7 +1003,7 @@ export const en = {
       steps: 'Steps (avg/day)',
       protein: 'Protein (avg/day)',
       kcal: 'Calories (avg/day)',
-      foodDays: 'Days with a food log',
+      foodDays: 'Days with food entries',
       diary: 'Diary entries',
       wins: 'Wins',
     },
