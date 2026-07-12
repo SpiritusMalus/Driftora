@@ -94,9 +94,15 @@ export default function FoodLogScreen() {
   const [varietyCount, setVarietyCount] = useState(0);
   // «Пауза» mutes ALL target pressure — including the protein line below.
   const [paused, setPaused] = useState(false);
-  // Honest parse status: 'offline' = the server didn't answer and the offline
-  // stub filled in (degraded numbers, no AI); 'failed' = the parse itself threw.
-  const [parseIssue, setParseIssue] = useState<'offline' | 'failed' | null>(null);
+  // Honest parse status, ONE message per outcome (the old code stacked
+  // «разобрано офлайн» over «не удалось распознать» — contradictory, device
+  // feedback 2026-07-12): 'offline' = server silent, the offline table still
+  // produced items (rougher numbers); 'offlineEmpty' = server silent AND the
+  // offline table knows nothing of this text; 'offlineMedia' = photo/voice
+  // can't be parsed offline at all; 'failed' = the parse itself threw locally.
+  const [parseIssue, setParseIssue] = useState<
+    'offline' | 'offlineEmpty' | 'offlineMedia' | 'failed' | null
+  >(null);
   const [savedAck, setSavedAck] = useState<string | null>(null);
   const saveSeedRef = useRef(0);
   const [hideCalories, setHideCalories] = useState(false);
@@ -332,8 +338,11 @@ export default function FoodLogScreen() {
   /// After any parse: surface HOW the draft was produced. `offline_fallback`
   /// means the user expected the online parser and silently got the stub — say
   /// so instead of passing degraded numbers off as an AI parse. Only flagged
-  /// when online was actually expected (AI configured + consented).
-  function acceptDraft(parsed: MealDraft, consentNow: boolean) {
+  /// when online was actually expected (AI configured + consented). ONE message
+  /// per outcome: photo/voice can't be parsed offline at all, and an empty
+  /// offline text parse explains itself — the generic «не удалось распознать»
+  /// hint stays out of the way then (it used to stack contradictorily).
+  function acceptDraft(parsed: MealDraft, consentNow: boolean, kind: 'text' | 'photo' | 'audio') {
     setFreshDraft(parsed);
     // Voice/photo parses arrive with an EMPTY input field: echo what was
     // understood («борщ, хлеб, сметана») as editable text — the recognition
@@ -344,14 +353,23 @@ export default function FoodLogScreen() {
       const understood = parsed.items.map((it) => it.name_ru).join(', ');
       setText((prev) => (prev.trim().length === 0 ? understood : prev));
     }
-    setParseIssue(AI_CONFIGURED && consentNow && parsed.flags.offline_fallback ? 'offline' : null);
+    const offline = AI_CONFIGURED && consentNow && parsed.flags.offline_fallback;
+    setParseIssue(
+      !offline
+        ? null
+        : kind !== 'text'
+          ? 'offlineMedia'
+          : parsed.items.length === 0
+            ? 'offlineEmpty'
+            : 'offline',
+    );
   }
 
   async function runTextParse(consentNow: boolean) {
     setParsing(true);
     setParseIssue(null);
     try {
-      acceptDraft(await applyMemory(await getFoodParser(consentNow).parse(text, region)), consentNow);
+      acceptDraft(await applyMemory(await getFoodParser(consentNow).parse(text, region)), consentNow, 'text');
     } catch {
       // A throw here is not the network (that falls back inside the parser) —
       // it's something local (db read). Still: never fail into silence.
@@ -365,7 +383,7 @@ export default function FoodLogScreen() {
     setParsing(true);
     setParseIssue(null);
     try {
-      acceptDraft(await applyMemory(await getFoodParser(consentNow).parsePhoto(photo, region)), consentNow);
+      acceptDraft(await applyMemory(await getFoodParser(consentNow).parsePhoto(photo, region)), consentNow, 'photo');
     } catch {
       setParseIssue('failed');
     } finally {
@@ -381,7 +399,7 @@ export default function FoodLogScreen() {
     setParsing(true);
     setParseIssue(null);
     try {
-      acceptDraft(await applyMemory(await getFoodParser(consentNow).parseAudio(audio, region)), consentNow);
+      acceptDraft(await applyMemory(await getFoodParser(consentNow).parseAudio(audio, region)), consentNow, 'audio');
     } catch {
       setParseIssue('failed');
     } finally {
@@ -420,6 +438,11 @@ export default function FoodLogScreen() {
       setVoiceError(t('food.voiceError.not-allowed'));
       return false;
     }
+    // The clip replaces whatever was being described before — clear the input
+    // (photo-echo or stale text) so the parse echoes THIS note's foods. Done
+    // only once recording actually started; a denied mic loses nothing.
+    setText('');
+    setParseIssue(null);
     recRef.current = rec;
     setMeterLevels([]);
     // Live amplitude → rolling buffer for the waveform. No-op when the build has
@@ -464,6 +487,15 @@ export default function FoodLogScreen() {
       setPhotoError(t('food.photoError'));
       return;
     }
+    // A new shot is a NEW attempt: clear the previous parse AND the input —
+    // the echoed text of photo №1 used to survive into photo №2's draft and
+    // become its (wrong) name (device feedback 2026-07-12: «инпут не
+    // чистится»). Cleared only after a photo actually arrived, so cancelling
+    // the picker loses nothing.
+    setFreshDraft(null);
+    setText('');
+    setMeal(null);
+    setParseIssue(null);
     const photo = result.photo;
     setSource('photo');
     if (AI_CONFIGURED && needsAiConsent({ aiFoodParseConsent: aiConsent, aiFoodParseConsentVersion: aiConsentVersion })) {
@@ -720,7 +752,7 @@ export default function FoodLogScreen() {
           filled in) or that the parse broke — the button above IS the retry. */}
       {parseIssue ? (
         <Text style={[styles.parseIssue, { color: theme.subtle }, theme.font.body]}>
-          {t(parseIssue === 'offline' ? 'food.parseIssue.offline' : 'food.parseIssue.failed')}
+          {t(`food.parseIssue.${parseIssue}`)}
         </Text>
       ) : null}
 
@@ -804,7 +836,11 @@ export default function FoodLogScreen() {
       {draft == null ? (
         <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('food.empty')}</Text>
       ) : draft.items.length === 0 ? (
-        <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('food.needHelp')}</Text>
+        // An offline outcome already explained the empty result above — a
+        // second «не удалось распознать» under it read as gibberish.
+        parseIssue == null ? (
+          <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('food.needHelp')}</Text>
+        ) : null
       ) : (
         <View style={styles.results}>
           {draft.items.map((item, i) => (
@@ -821,6 +857,15 @@ export default function FoodLogScreen() {
             />
           ))}
 
+          {draft.items.every((it) => it.per100.source === 'estimate') ? (
+            /* Every item is a DB miss → the total would be a fabricated row of
+               zeros wearing an «≈» badge («зачем-то выдал болванки», device
+               feedback 2026-07-12). One plain sentence instead; the real total
+               card returns as soon as anything actually counts. */
+            <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>
+              {t('food.totalAllMisses')}
+            </Text>
+          ) : (
           <Card style={[styles.totalCard, { borderColor: theme.separator }]}>
             <View style={styles.totalHead}>
               <Text style={[styles.totalLabel, { color: theme.text }, theme.font.bodySemiBold]}>{t('food.total')}</Text>
@@ -856,6 +901,7 @@ export default function FoodLogScreen() {
               <Text style={[styles.disclaimer, { color: theme.subtle }, theme.font.body]}>{t('food.aiEstimateNote')}</Text>
             ) : null}
           </Card>
+          )}
 
           {/* Which meal this entry files under — stored with the save so the
               day view groups by the user's word, not the clock's guess. */}
@@ -1377,7 +1423,9 @@ function ManualMacros({
                 push({ kcal, prot, fat, carb, [f.key]: v });
               }}
               keyboardType="numeric"
-              placeholder="0"
+              // An em-dash, not «0»: four zeros in a row read as pre-filled
+              // data («болванки»), while a dash reads as awaiting input.
+              placeholder="—"
               style={styles.manualInput}
             />
           </View>

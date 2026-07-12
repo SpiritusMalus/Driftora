@@ -301,9 +301,9 @@ export const en = {
   },
   more: {
     title: 'Sections',
-    intro: 'Every part of the app lives here, off the daily screen.',
+    intro: 'Every part of the app in one place.',
     sections: {
-      food: 'Food log',
+      food: 'Food today',
       steps: 'Activity',
       weight: 'Weight',
       mind: 'Mood & diary',
@@ -313,12 +313,12 @@ export const en = {
       how: 'How it works',
     },
     subtitles: {
-      food: 'Calories and protein, when you want them',
+      food: 'The day’s entries and totals',
       steps: 'Steps and workouts — by hand or from Health',
-      weight: 'One optional signal',
+      weight: 'Weigh-ins and your nutrition plan',
       mind: 'Also opens with a left swipe on Home',
-      wins: 'Small things that went well',
-      review: 'You vs your past self',
+      wins: 'What has already gone well',
+      review: 'This week compared with last',
       settings: 'Privacy, targets, break',
       how: 'Where the numbers come from and how accurate they are',
     },
@@ -650,7 +650,9 @@ export const en = {
       how: 'how is the budget computed?',
     },
     parseIssue: {
-      offline: 'The server didn’t answer — parsed offline, without AI, so the numbers are rougher. You can try again.',
+      offline: 'The server didn’t answer, so this was counted from the built-in table — rougher numbers than usual. Try again once you’re back online.',
+      offlineEmpty: 'The server didn’t answer, and the built-in table doesn’t know this food. Check your connection and try again.',
+      offlineMedia: 'Photos and voice can’t be parsed without the internet, and the server didn’t answer. Check your connection and try again — or describe the food in words.',
       failed: 'Couldn’t parse this. Check your connection and try again — your text is still here.',
     },
     entryGone: 'This entry has already been deleted.',
@@ -744,11 +746,13 @@ export const en = {
     removeItem: 'Remove dish',
     replaceItem: 'Replace with another',
     // The user never named a weight — say honestly this is our guess.
-    gramsEstimated: '≈ you didn’t name a weight — a typical portion was assumed. Confirm it for accuracy.',
+    gramsEstimated: '≈ the weight is our guess at a typical portion. Adjust it if you know better.',
     // Cooking method — neutral, never "healthier/worse".
     estimateNote: 'Items not in our database aren’t counted in the total. Enter their macros to include them.',
+    // Every item missed the DB: one plain line instead of a zero «Total» card.
+    totalAllMisses: 'No total yet — this food isn’t in the database. Enter its macros above or find a close match manually.',
     aiEstimateNote: 'Some numbers are a rough AI estimate (not in our database). They’re counted in the total — adjust the weight or enter macros for accuracy.',
-    notInDb: "Not in our database. Enter the per-100 g macros and calories yourself — we won't make numbers up for you.",
+    notInDb: 'This food isn’t in the database, so no numbers are filled in. Enter its calories and macros per 100 g — from the label, say — or find a close match manually.',
     // Honest note: label numbers are for the DRY product vs. a cooked-dish weight.
     dryBasis:
       'These numbers are for the DRY product (the label). If you weighed the cooked dish with its water, the calories and macros are overstated — by roughly 3×. Enter the dry weight, or use "search manually" to find a "cooked/ready" match. We never quietly rewrite the numbers.',
@@ -1013,7 +1017,6 @@ export const en = {
   },
   review: {
     title: 'Weekly review',
-    homeSubtitle: 'You vs your past self',
     dbUnavailable: 'The review is available in a device dev build.',
     northStar: 'You logged on {{days}} days this week.',
     streak: 'Streak: {{weeks}} weeks running',
@@ -1033,7 +1036,7 @@ export const en = {
       steps: 'Steps (avg/day)',
       protein: 'Protein (avg/day)',
       kcal: 'Calories (avg/day)',
-      foodDays: 'Days with a food log',
+      foodDays: 'Days with food entries',
       diary: 'Diary entries',
       wins: 'Wins',
     },
