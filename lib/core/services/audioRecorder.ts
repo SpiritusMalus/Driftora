@@ -30,7 +30,21 @@ export interface ActiveRecording {
   /// No-op (returns a no-op unsubscribe) when metering isn't available, so the
   /// caller never has to guard — recording still works, there are just no bars.
   onMeter(cb: (level: number) => void): () => void;
+  /// Loudest normalized level observed over the whole session, or null when
+  /// this build delivered no metering at all. Lets the caller tell a clip of
+  /// pure silence (muted/held mic) from one the model simply couldn't parse.
+  peakLevel(): number | null;
 }
+
+/// Why recording didn't start: 'denied' = mic permission refused; 'failed' =
+/// permission is GRANTED but the recorder wouldn't start (mic held by another
+/// app, post-permission-dialog race). The UI must not blame permissions for
+/// the latter — «разрешил доступ, а звук не ловился» (device feedback).
+export type StartRecordingError = 'denied' | 'failed';
+
+export type StartRecordingResult =
+  | { recording: ActiveRecording; error?: undefined }
+  | { recording?: undefined; error: StartRecordingError };
 
 /// Map expo-av's dB metering (negative, ~-160..0) onto a 0..1 amplitude. Floor
 /// at -60 dB so ambient quiet maps to ~0 and a normal voice fills the bar. Pure
@@ -41,6 +55,17 @@ export function normalizeMeterDb(db: number): number {
   if (db <= FLOOR) return 0;
   if (db >= 0) return 1;
   return (db - FLOOR) / -FLOOR;
+}
+
+/// A whole-clip peak below this means the mic delivered no real signal — a
+/// system privacy mute or a mic held by another app. A working mic in a quiet
+/// room still floats well above (-50 dB ≈ 0.17); true digital silence pins to
+/// 0 (≤ -60 dB). A null peak (no metering on this build) never counts.
+const SILENT_PEAK = 0.02;
+
+/// True when a finished clip is effectively silence (see [SILENT_PEAK]).
+export function isSilentRecording(peak: number | null): boolean {
+  return peak != null && peak < SILENT_PEAK;
 }
 
 /// Whether voice-note recording is even possible in this build (native module
@@ -64,81 +89,128 @@ export async function requestAudioPermission(): Promise<boolean> {
   }
 }
 
-/// Start recording. Returns null if permission is denied or the module is
-/// missing, so the caller can fall back without a crash.
-export async function startRecording(): Promise<ActiveRecording | null> {
+/// Start recording. Distinguishes a permission denial from a start failure
+/// (see [StartRecordingError]) and retries a failed start once: the permission
+/// dialog pauses the app, and starting the recorder in the same breath is a
+/// known transient failure — one short-delay retry turns "broken on the very
+/// first use" into "works".
+export async function startRecording(): Promise<StartRecordingResult> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let Audio: any;
   try {
-    const Audio = audioModule();
-    if (!(await requestAudioPermission())) return null;
-    await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
-    const recording = new Audio.Recording();
-    // Clone HIGH_QUALITY with metering on so status updates carry `metering` (dB),
-    // which feeds the live waveform. Falls back to the bare preset if cloning
-    // throws for any reason — recording must never depend on metering.
-    let options = Audio.RecordingOptionsPresets.HIGH_QUALITY;
-    try {
-      options = { ...options, isMeteringEnabled: true };
-    } catch {
-      /* keep the preset */
-    }
-    await recording.prepareToRecordAsync(options);
-
-    // Fan out metering samples to subscribers. We poll status at a steady cadence
-    // and read `metering` (dB) when present; subscribers get a normalized 0..1.
-    const meterCbs = new Set<(level: number) => void>();
-    try {
-      recording.setProgressUpdateInterval(80);
-      recording.setOnRecordingStatusUpdate((status: { metering?: number }) => {
-        if (status == null || typeof status.metering !== 'number') return;
-        const level = normalizeMeterDb(status.metering);
-        for (const cb of meterCbs) cb(level);
-      });
-    } catch {
-      /* no metering on this build — onMeter stays a no-op */
-    }
-    await recording.startAsync();
-
-    let done = false;
-    const teardown = async () => {
-      try {
-        await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
-      } catch {
-        /* best-effort */
-      }
-    };
-    return {
-      async stop(): Promise<AudioInput | null> {
-        if (done) return null;
-        done = true;
-        meterCbs.clear();
-        try {
-          await recording.stopAndUnloadAsync();
-          const uri = recording.getURI();
-          await teardown();
-          return uri ? { uri, mimeType: 'audio/m4a' } : null;
-        } catch {
-          await teardown();
-          return null;
-        }
-      },
-      async cancel(): Promise<void> {
-        if (done) return;
-        done = true;
-        meterCbs.clear();
-        try {
-          await recording.stopAndUnloadAsync();
-        } catch {
-          /* ignore */
-        }
-        await teardown();
-      },
-      onMeter(cb: (level: number) => void): () => void {
-        if (done) return () => {};
-        meterCbs.add(cb);
-        return () => meterCbs.delete(cb);
-      },
-    };
+    Audio = audioModule();
   } catch {
-    return null;
+    return { error: 'failed' };
   }
+  if (!(await requestAudioPermission())) return { error: 'denied' };
+  try {
+    return { recording: await begin(Audio) };
+  } catch {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    try {
+      return { recording: await begin(Audio) };
+    } catch {
+      return { error: 'failed' };
+    }
+  }
+}
+
+/// One prepare→start attempt. Throws on failure — AFTER unloading the
+/// half-built recorder: the platform allows a single prepared recorder at a
+/// time, so a leaked one would doom the retry and every later attempt.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function begin(Audio: any): Promise<ActiveRecording> {
+  await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+  const recording = new Audio.Recording();
+  // Clone HIGH_QUALITY with metering on so status updates carry `metering` (dB),
+  // which feeds the live waveform. Falls back to the bare preset if cloning
+  // throws for any reason — recording must never depend on metering.
+  let options = Audio.RecordingOptionsPresets.HIGH_QUALITY;
+  try {
+    options = { ...options, isMeteringEnabled: true };
+  } catch {
+    /* keep the preset */
+  }
+  try {
+    await recording.prepareToRecordAsync(options);
+  } catch (e) {
+    try {
+      await recording.stopAndUnloadAsync();
+    } catch {
+      /* ignore */
+    }
+    throw e;
+  }
+
+  // Fan out metering samples to subscribers. We poll status at a steady cadence
+  // and read `metering` (dB) when present; subscribers get a normalized 0..1.
+  // The session-wide peak is tracked here too — the silence check must not
+  // depend on anyone having subscribed to the waveform.
+  const meterCbs = new Set<(level: number) => void>();
+  let peak: number | null = null;
+  try {
+    recording.setProgressUpdateInterval(80);
+    recording.setOnRecordingStatusUpdate((status: { metering?: number }) => {
+      if (status == null || typeof status.metering !== 'number') return;
+      const level = normalizeMeterDb(status.metering);
+      if (peak == null || level > peak) peak = level;
+      for (const cb of meterCbs) cb(level);
+    });
+  } catch {
+    /* no metering on this build — onMeter stays a no-op, peak stays null */
+  }
+  try {
+    await recording.startAsync();
+  } catch (e) {
+    try {
+      await recording.stopAndUnloadAsync();
+    } catch {
+      /* ignore */
+    }
+    throw e;
+  }
+
+  let done = false;
+  const teardown = async () => {
+    try {
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+    } catch {
+      /* best-effort */
+    }
+  };
+  return {
+    async stop(): Promise<AudioInput | null> {
+      if (done) return null;
+      done = true;
+      meterCbs.clear();
+      try {
+        await recording.stopAndUnloadAsync();
+        const uri = recording.getURI();
+        await teardown();
+        return uri ? { uri, mimeType: 'audio/m4a' } : null;
+      } catch {
+        await teardown();
+        return null;
+      }
+    },
+    async cancel(): Promise<void> {
+      if (done) return;
+      done = true;
+      meterCbs.clear();
+      try {
+        await recording.stopAndUnloadAsync();
+      } catch {
+        /* ignore */
+      }
+      await teardown();
+    },
+    onMeter(cb: (level: number) => void): () => void {
+      if (done) return () => {};
+      meterCbs.add(cb);
+      return () => meterCbs.delete(cb);
+    },
+    peakLevel(): number | null {
+      return peak;
+    },
+  };
 }

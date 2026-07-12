@@ -26,8 +26,9 @@ import { sleepBand, sleepHours } from '@/lib/core/insights/sleepInsight';
 import { useTheme } from '@/lib/theme/theme';
 
 /// The MIND side of the app in one place («разделить тренировки и психику»,
-/// device feedback 2026-07-10): the one-tap mood check-in, the Body↔Mind
-/// insight it feeds, the thought diary, the sleep signal (only once real data
+/// device feedback 2026-07-10): the Body↔Mind insight (the movement⟷mood
+/// "bridge") on top, the one-tap mood check-in that FEEDS it just below
+/// (2026-07-12), the thought diary, the sleep signal (only once real data
 /// exists — sleep is passive and many users never track it), and the check-in
 /// history. Opened by a LEFT swipe on Home; a RIGHT swipe here goes back —
 /// the two screens are peer day panes (body ⟷ mind), so this one carries the
@@ -204,16 +205,10 @@ export default function MoodScreen() {
         }}
       />
     <Screen>
-      <Text style={[styles.prompt, { color: theme.text }, theme.font.bodySemiBold]}>
-        {t('mood.prompt')}
-      </Text>
-      <View style={styles.scaleWrap}>
-        <MoodScale selected={selected} onPick={onPick} disabled={db == null || saving} variant="grid" />
-      </View>
-      <Text style={[styles.scale, { color: theme.subtle }, theme.font.body]}>{t('mood.scale')}</Text>
-
-      {/* The insight this check-in feeds — moved off Home with the rest of the
-          mind side, honesty states intact. */}
+      {/* The Body↔Mind insight — the "bridge" between movement and mood — leads
+          the screen now, with the mood check-in that FEEDS it just below (device
+          feedback 2026-07-12: «настроение ниже основной таблички-мостика»). All
+          honesty states intact. */}
       <View style={styles.hero}>
         <BodyMindCard
           eyebrow={hero.eyebrow}
@@ -228,6 +223,14 @@ export default function MoodScreen() {
           mindValue={selected != null ? `${selected}/10` : '—'}
         />
       </View>
+
+      <Text style={[styles.prompt, { color: theme.text }, theme.font.bodySemiBold]}>
+        {t('mood.prompt')}
+      </Text>
+      <View style={styles.scaleWrap}>
+        <MoodScale selected={selected} onPick={onPick} disabled={db == null || saving} variant="grid" />
+      </View>
+      <Text style={[styles.scale, { color: theme.subtle }, theme.font.body]}>{t('mood.scale')}</Text>
 
       <View style={styles.rows}>
         <ListGroup rows={sleepRow ? [diaryRow, sleepRow] : [diaryRow]} />
@@ -285,10 +288,10 @@ const SIGNAL_ICON: Record<BodyMindSignal, 'walk-outline' | 'moon-outline' | 'nut
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  prompt: { fontSize: 17, marginTop: 4 },
+  prompt: { fontSize: 17, marginTop: 22 },
   scaleWrap: { marginTop: 14 },
   scale: { fontSize: 12, marginTop: 12, lineHeight: 17 },
-  hero: { marginTop: 18 },
+  hero: { marginTop: 4 },
   rows: { marginTop: 16 },
   hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
   history: { marginTop: 16 },

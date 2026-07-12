@@ -1,4 +1,4 @@
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -13,6 +13,7 @@ import { TextField } from '@/components/ui/TextField';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import type { StepsRow } from '@/lib/core/db/schema';
 import { listStepsDays, setManualSteps, syncDaySteps } from '@/lib/core/db/steps';
+import { useAppActiveEffect } from '@/lib/core/services/appActive';
 import { getHealthService } from '@/lib/core/services/healthProvider';
 import { useTheme } from '@/lib/theme/theme';
 
@@ -39,25 +40,44 @@ export default function ActivityScreen() {
   const { t } = useTranslation();
   const theme = useTheme();
   const db = useDatabase();
+  // «Разделы» → «Тренировки» deep-links here with ?workouts=1 so the workout
+  // card arrives already unfolded — a collapsed one-liner read as «тренировок
+  // тут нет» (device feedback 2026-07-12).
+  const { workouts } = useLocalSearchParams<{ workouts?: string }>();
 
   const [items, setItems] = useState<StepsRow[] | null>(null);
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
   const [health, setHealth] = useState<HealthState>('idle');
 
+  // Pull today's device count BEFORE listing, so the history's top row is the
+  // live number, not whatever some earlier screen happened to store (a manual
+  // entry stays sticky inside syncDaySteps).
+  const reloadSteps = useCallback(async () => {
+    if (!db) return null;
+    await syncDaySteps(db, getHealthService());
+    return listStepsDays(db, 30);
+  }, [db]);
+
   useFocusEffect(
     useCallback(() => {
       let active = true;
-      void (async () => {
-        if (!db) return;
-        const list = await listStepsDays(db, 30);
-        if (active) setItems(list);
-      })();
+      void reloadSteps().then((list) => {
+        if (active && list) setItems(list);
+      });
       return () => {
         active = false;
       };
-    }, [db]),
+    }, [reloadSteps]),
   );
+
+  // Re-sync on returning from the background too — the OS count keeps moving
+  // while the app sleeps.
+  useAppActiveEffect(() => {
+    void reloadSteps().then((list) => {
+      if (list) setItems(list);
+    });
+  });
 
   async function onSave() {
     const steps = toSteps(text);
@@ -94,8 +114,8 @@ export default function ActivityScreen() {
         setHealth('denied');
         return;
       }
-      await syncDaySteps(db, svc);
-      setItems(await listStepsDays(db, 30));
+      const list = await reloadSteps();
+      if (list) setItems(list);
       setHealth('connected');
     } catch {
       setHealth('unavailable');
@@ -152,7 +172,7 @@ export default function ActivityScreen() {
 
       {/* The workout log — the other half of «заработанное движением». Its card
           carries its own title, so no extra section header above it. */}
-      {db != null ? <WorkoutSection db={db} /> : null}
+      {db != null ? <WorkoutSection db={db} initiallyOpen={workouts != null} /> : null}
 
       <SectionHeader>{t('steps.auto.title')}</SectionHeader>
       <Card style={styles.autoCard}>

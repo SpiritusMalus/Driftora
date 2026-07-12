@@ -28,8 +28,8 @@ export function FoodTodayWidget({
   /// True when the target stands on FORECAST steps (median of recent days,
   /// today's not entered yet) — rendered as «≈N» so it never reads as a fact.
   targetApprox?: boolean;
-  /// Optional «+ шаги и тренировки увеличат бюджет» line — Home passes it while
-  /// no movement is logged yet, so the resting number never reads as the day's
+  /// Optional «это без учёта активности…» line — Home passes it while no
+  /// movement is logged yet, so the resting number never reads as the day's
   /// ceiling (device feedback 2026-07-10). Null hides it.
   movementHint?: string | null;
   prot: number;

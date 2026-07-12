@@ -43,6 +43,7 @@ import { pickVariant } from '@/lib/core/insights/variant';
 import { varietyInsight } from '@/lib/core/insights/varietyInsight';
 import {
   isAudioRecordingAvailable,
+  isSilentRecording,
   startRecording,
   type ActiveRecording,
 } from '@/lib/core/services/audioRecorder';
@@ -426,18 +427,33 @@ export default function FoodLogScreen() {
       setRecording(false);
       setMeterLevels([]);
       const audio = rec ? await rec.stop() : null;
-      if (audio) await onAudio(audio);
+      if (audio) {
+        // A whole-clip peak at digital silence = the mic delivered nothing
+        // (system privacy mute / held by another app). Say so instead of
+        // sending silence to the model and answering «не удалось распознать»
+        // («разрешил доступ, но звук не ловился», device feedback 2026-07-12).
+        if (rec != null && isSilentRecording(rec.peakLevel())) {
+          deleteTempFile(audio.uri);
+          setVoiceError(t('food.voiceError.silent'));
+        } else {
+          await onAudio(audio);
+        }
+      }
       return false;
     }
     setFreshDraft(null);
     setVoiceError(null);
-    const rec = await startRecording();
-    if (!rec) {
-      // Permission denied / module missing. A mic tap that silently does
-      // nothing reads as "сломано" — say what happened and what to do.
-      setVoiceError(t('food.voiceError.not-allowed'));
+    const started = await startRecording();
+    if (started.error) {
+      // A mic tap that silently does nothing reads as "сломано" — and denied
+      // vs "granted but wouldn't start" are DIFFERENT problems: the old single
+      // «нет доступа» message blamed permissions for a busy mic.
+      setVoiceError(
+        t(started.error === 'denied' ? 'food.voiceError.not-allowed' : 'food.voiceError.mic-failed'),
+      );
       return false;
     }
+    const rec = started.recording;
     // The clip replaces whatever was being described before — clear the input
     // (photo-echo or stale text) so the parse echoes THIS note's foods. Done
     // only once recording actually started; a denied mic loses nothing.
@@ -834,7 +850,12 @@ export default function FoodLogScreen() {
       ) : null}
 
       {draft == null ? (
-        <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('food.empty')}</Text>
+        // The «опишите и нажмите Разобрать» invitation is for the IDLE state
+        // only — while a parse/recording/dictation runs it read as a second,
+        // contradictory instruction (device feedback 2026-07-12).
+        parsing || recording || listening ? null : (
+          <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('food.empty')}</Text>
+        )
       ) : draft.items.length === 0 ? (
         // An offline outcome already explained the empty result above — a
         // second «не удалось распознать» under it read as gibberish.

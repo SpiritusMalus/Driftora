@@ -19,9 +19,11 @@ import {
   type MicroTotals,
 } from '@/lib/core/db/food';
 import { ensureSettings } from '@/lib/core/db/settings';
-import { getStepsRow, typicalSteps } from '@/lib/core/db/steps';
+import { syncDaySteps, typicalSteps } from '@/lib/core/db/steps';
 import { latestWeight } from '@/lib/core/db/weight';
 import { todayWorkoutKcal } from '@/lib/core/db/workouts';
+import { useAppActiveEffect } from '@/lib/core/services/appActive';
+import { getHealthService } from '@/lib/core/services/healthProvider';
 import { dailyMicroNorms, type MicroRow } from '@/lib/core/insights/microNutrients';
 import { groupEntriesByMeal } from '@/lib/core/insights/mealType';
 import type { FoodEntry } from '@/lib/core/db/schema';
@@ -82,12 +84,16 @@ export default function FoodDayScreen() {
 
   const reload = useCallback(async () => {
     if (!db) return;
-    const [list, tot, mic, settings, stepsRow, usualSteps, weightRow, workoutKcal] = await Promise.all([
+    // Steps are SYNCED here, not just read: this screen is where the budget
+    // lives, and the stored row only refreshed on a Home focus — with the
+    // automatic count (Health Connect) the number went stale for hours and the
+    // budget «не менялся». A manual entry stays sticky inside syncDaySteps.
+    const [list, tot, mic, settings, todaySteps, usualSteps, weightRow, workoutKcal] = await Promise.all([
       listEntriesForDay(db),
       todayMacroTotals(db),
       todayMicroTotals(db),
       ensureSettings(db),
-      getStepsRow(db),
+      syncDaySteps(db, getHealthService()),
       typicalSteps(db),
       latestWeight(db),
       todayWorkoutKcal(db),
@@ -117,10 +123,9 @@ export default function FoodDayScreen() {
       settings.deficitTempo,
     );
     const goalActive = settings.targetsSetAt != null && !settings.paused;
-    // Morning-planning honesty: before today's steps are entered the budget
-    // stands on the median of your recent recorded days («как обычно»), marked
-    // as a forecast — the entered fact replaces it the moment it exists.
-    const todaySteps = stepsRow != null ? Number(stepsRow.steps) : null;
+    // Morning-planning honesty: before today's steps exist the budget stands
+    // on the median of your recent recorded days («как обычно»), marked as a
+    // forecast — the synced/entered fact replaces it the moment it exists.
     const effectiveSteps = todaySteps ?? usualSteps ?? 0;
     setStepsToday(effectiveSteps);
     setStepsForecast(todaySteps == null && usualSteps != null);
@@ -164,6 +169,11 @@ export default function FoodDayScreen() {
       };
     }, [reload]),
   );
+
+  // Returning from the background must refresh the budget too — focus effects
+  // only re-fire on in-app navigation, and this screen is often the one the
+  // app resumes on.
+  useAppActiveEffect(() => void reload());
 
   async function onRepeat(id: number) {
     if (!db) return;
@@ -329,6 +339,11 @@ function DayProgress({
   // always visible and a zero-movement day gets the explicit line (tappable —
   // it leads to «Активность», where both feeders live).
   const noMovementYet = stepsAdd === 0 && workoutAdd === 0;
+  // Automatic steps ARE flowing but sit under the ~3000 already covered by the
+  // base — without saying so, «шаги подключились, а калории не меняются»
+  // (device feedback 2026-07-12). Real counts only: a forecast below the
+  // baseline stays on the generic no-movement line.
+  const stepsBelowBase = noMovementYet && steps > 0 && !stepsForecast;
   const macros = [
     { label: t('macros.protein'), eaten: Math.round(totals.proteinG), target: goal.prot },
     { label: t('macros.fat'), eaten: Math.round(totals.fatG), target: goal.fat },
@@ -352,9 +367,9 @@ function DayProgress({
           <Bar value={kcalEaten} max={target} color={theme.primary} track={theme.fill} height={8} />
           <Text style={[styles.dayWorkout, { color: theme.subtle }, theme.font.body]}>{parts.join(' · ')}</Text>
           {noMovementYet ? (
-            <Pressable onPress={() => router.push('/activity')} hitSlop={6}>
+            <Pressable onPress={() => router.push('/activity?workouts=1')} hitSlop={6}>
               <Text style={[styles.dayWorkout, { color: theme.subtle }, theme.font.body]}>
-                {t('food.day.noMovement')}{' '}
+                {stepsBelowBase ? t('food.day.stepsBelowBase', { steps }) : t('food.day.noMovement')}{' '}
                 <Text style={[styles.dayMoveLink, { color: theme.primary }]}>{t('food.day.noMovementCta')}</Text>
               </Text>
             </Pressable>
