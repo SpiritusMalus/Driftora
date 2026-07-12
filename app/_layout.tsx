@@ -74,6 +74,9 @@ export default function RootLayout() {
         <Onboarding>
         <Stack screenOptions={headerOptions}>
           <Stack.Screen name="index" options={{ title: t('home.title') }} />
+          {/* Day history behind the tappable «Сегодня ⌄» title (both day panes). */}
+          <Stack.Screen name="history/index" options={{ title: t('history.title') }} />
+          <Stack.Screen name="history/[date]" options={{ title: t('history.title') }} />
           <Stack.Screen name="more/index" options={{ title: t('more.title') }} />
           <Stack.Screen name="more/how-it-works" options={{ title: t('howItWorks.title') }} />
           <Stack.Screen name="food/index" options={{ title: t('food.todayTitle') }} />
