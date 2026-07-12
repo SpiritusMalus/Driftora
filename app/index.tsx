@@ -10,7 +10,9 @@ import { StepsWidget } from '@/components/home/StepsWidget';
 import { SwipeCoach } from '@/components/home/SwipeCoach';
 import { WeightWidget } from '@/components/home/WeightWidget';
 import { Card } from '@/components/ui/Card';
+import { DayTitleLink } from '@/components/ui/DayTitleLink';
 import { FoodBar } from '@/components/ui/FoodBar';
+import { HeaderSectionsLink } from '@/components/ui/HeaderSectionsLink';
 import { selfInitiatedLogDays } from '@/lib/core/db/activity';
 import { hasAnyWinOnDay, runAutoWins } from '@/lib/core/db/autoWins';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
@@ -349,22 +351,10 @@ export default function HomeScreen() {
     <View style={[styles.fill, { backgroundColor: theme.background }]} {...homePan.panHandlers}>
       <Stack.Screen
         options={{
-          headerRight: () => (
-            <Pressable
-              onPress={() => router.push('/more')}
-              hitSlop={8}
-              style={({ pressed }) => ({
-                opacity: pressed ? 0.5 : 1,
-                flexDirection: 'row',
-                alignItems: 'center',
-              })}
-            >
-              <Text style={[{ color: theme.primary, fontSize: 16, marginRight: 2 }, theme.font.bodySemiBold]}>
-                {t('home.moreLink')}
-              </Text>
-              <Ionicons name="chevron-forward" size={16} color={theme.primary} />
-            </Pressable>
-          ),
+          // The title IS the day switcher: «Сегодня ⌄» opens the day history
+          // («выбрать прошлый день и посмотреть логи еды и настроения»).
+          headerTitle: () => <DayTitleLink label={t('home.title')} />,
+          headerRight: () => <HeaderSectionsLink />,
         }}
       />
       <ScrollView

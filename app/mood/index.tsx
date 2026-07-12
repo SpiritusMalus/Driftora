@@ -1,9 +1,11 @@
-import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { Stack, useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { StyleSheet, Text, View } from 'react-native';
+import { PanResponder, StyleSheet, Text, View } from 'react-native';
 
 import { BodyMindCard } from '@/components/ui/BodyMindCard';
+import { DayTitleLink } from '@/components/ui/DayTitleLink';
+import { HeaderSectionsLink } from '@/components/ui/HeaderSectionsLink';
 import { ListGroup, type RowSpec } from '@/components/ui/ListGroup';
 import { MoodScale } from '@/components/ui/MoodScale';
 import { Screen } from '@/components/ui/Screen';
@@ -27,7 +29,11 @@ import { useTheme } from '@/lib/theme/theme';
 /// device feedback 2026-07-10): the one-tap mood check-in, the Body↔Mind
 /// insight it feeds, the thought diary, the sleep signal (only once real data
 /// exists — sleep is passive and many users never track it), and the check-in
-/// history. Home links here through a single calm row.
+/// history. Opened by a LEFT swipe on Home; a RIGHT swipe here goes back —
+/// the two screens are peer day panes (body ⟷ mind), so this one carries the
+/// same header as Home: the tappable «Сегодня ⌄» day title and «Разделы»
+/// (device feedback 2026-07-12: «мы меняем фокус с еды на дух — вход в
+/// разделы должен быть»).
 export default function MoodScreen() {
   const { t } = useTranslation();
   const theme = useTheme();
@@ -43,8 +49,28 @@ export default function MoodScreen() {
   const [proteinG, setProteinG] = useState(0);
   const [diaryCount, setDiaryCount] = useState(0);
 
+  // Mirror of Home's swipe-left: a decisive RIGHT swipe anywhere goes back to
+  // the body pane. One navigation per gesture; the lock re-arms on focus.
+  const swipeNavLock = useRef(false);
+  const goBack = useCallback(() => {
+    if (swipeNavLock.current) return;
+    swipeNavLock.current = true;
+    if (router.canGoBack()) router.back();
+    else router.replace('/');
+  }, [router]);
+  const goBackRef = useRef(goBack);
+  goBackRef.current = goBack;
+  const backPan = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) => swipeRight(g.dx, g.dy),
+      onMoveShouldSetPanResponderCapture: (_, g) => swipeRight(g.dx, g.dy),
+      onPanResponderGrant: () => goBackRef.current(),
+    }),
+  ).current;
+
   useFocusEffect(
     useCallback(() => {
+      swipeNavLock.current = false;
       let active = true;
       void (async () => {
         if (!db) return;
@@ -167,6 +193,16 @@ export default function MoodScreen() {
   }));
 
   return (
+    <View style={styles.fill} {...backPan.panHandlers}>
+      <Stack.Screen
+        options={{
+          // Same top as Home: the swipe switches the day's FOCUS (body → mind),
+          // not the day — so the tappable day title and the «Разделы» entry
+          // travel with it.
+          headerTitle: () => <DayTitleLink label={t('home.title')} />,
+          headerRight: () => <HeaderSectionsLink />,
+        }}
+      />
     <Screen>
       <Text style={[styles.prompt, { color: theme.text }, theme.font.bodySemiBold]}>
         {t('mood.prompt')}
@@ -207,7 +243,14 @@ export default function MoodScreen() {
         </View>
       )}
     </Screen>
+    </View>
   );
+}
+
+/// Decisively horizontal-right drag — mirror of Home's swipeLeft: ≥28 px
+/// rightward and clearly flatter than vertical, so scrolls stay scrolls.
+function swipeRight(dx: number, dy: number): boolean {
+  return dx > 28 && Math.abs(dx) > Math.abs(dy) * 1.75;
 }
 
 function formatDate(d: Date): string {
@@ -241,6 +284,7 @@ const SIGNAL_ICON: Record<BodyMindSignal, 'walk-outline' | 'moon-outline' | 'nut
 };
 
 const styles = StyleSheet.create({
+  fill: { flex: 1 },
   prompt: { fontSize: 17, marginTop: 4 },
   scaleWrap: { marginTop: 14 },
   scale: { fontSize: 12, marginTop: 12, lineHeight: 17 },

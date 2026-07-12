@@ -523,3 +523,39 @@ export async function listEntriesForDay(
     .where(and(gte(foodEntries.ts, start), lt(foodEntries.ts, end)))
     .orderBy(desc(foodEntries.ts))) as FoodEntry[];
 }
+
+/// Per-day macro totals for the last [days] local calendar days, today
+/// included — one range query grouped by day key. Powers the day-history list
+/// («выбрать прошлый день и посмотреть логи»): a day absent from the map had
+/// no food entries at all.
+export async function macroTotalsByDay(
+  db: AnyDb,
+  days: number,
+  now: Date = new Date(),
+): Promise<Map<string, MacroTotals>> {
+  const { end } = dayBounds(now);
+  const start = new Date(end);
+  start.setDate(start.getDate() - days);
+  const rows: FoodEntry[] = await db
+    .select()
+    .from(foodEntries)
+    .where(and(gte(foodEntries.ts, start), lt(foodEntries.ts, end)));
+  const byDay = new Map<string, MacroTotals>();
+  for (const r of rows) {
+    const key = localDayKey(new Date(r.ts));
+    const acc = byDay.get(key) ?? { ...zeroTotals };
+    acc.kcal += r.kcal;
+    acc.proteinG += r.proteinG;
+    acc.fatG += r.fatG;
+    acc.carbG += r.carbG;
+    byDay.set(key, acc);
+  }
+  return byDay;
+}
+
+/// Local 'YYYY-MM-DD' of a date — mirrors steps.dayKey without coupling the
+/// food module to the steps module.
+function localDayKey(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}

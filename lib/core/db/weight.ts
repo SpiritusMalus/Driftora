@@ -1,4 +1,4 @@
-import { desc } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
 import { weights, type WeightRow } from './schema';
@@ -22,6 +22,16 @@ export async function upsertWeight(
     .insert(weights)
     .values({ date, weightKg, ts })
     .onConflictDoUpdate({ target: weights.date, set: { weightKg, ts } });
+}
+
+/// The weigh-in stored for one 'YYYY-MM-DD' day, or null — the day-history view.
+export async function getWeightForDay(
+  db: AnyDb,
+  day: Date | string,
+): Promise<WeightRow | null> {
+  const date = typeof day === 'string' ? day : dayKey(day);
+  const rows = (await db.select().from(weights).where(eq(weights.date, date))) as WeightRow[];
+  return rows.length > 0 ? rows[0] : null;
 }
 
 /// The most recently dated weight, or null if none logged.
