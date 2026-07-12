@@ -17,7 +17,7 @@ import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { todayMacroTotals } from '@/lib/core/db/food';
 import type { AppSettings } from '@/lib/core/db/schema';
 import { latestMood } from '@/lib/core/db/mood';
-import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
+import { ensureSettings, parseReminderTimes, updateSettings } from '@/lib/core/db/settings';
 import { syncDaySleep } from '@/lib/core/db/sleep';
 import { dayKey, listStepsDays, syncDaySteps, typicalSteps } from '@/lib/core/db/steps';
 import { weekReview } from '@/lib/core/db/weekReview';
@@ -29,6 +29,8 @@ import { daySummary, daysSince, type DaySummary } from '@/lib/core/insights/dayS
 import { dayOfYear, pickVariant } from '@/lib/core/insights/variant';
 import { stepInsight } from '@/lib/core/insights/stepInsight';
 import { getHealthService } from '@/lib/core/services/healthProvider';
+import { getNotificationService } from '@/lib/core/services/notificationProvider';
+import { buildDailyReminders, rescheduleReminders } from '@/lib/core/services/reminders';
 import { useTheme } from '@/lib/theme/theme';
 
 /// Home is the BODY-tracking surface (device feedback 2026-07-10: «разделить
@@ -149,7 +151,13 @@ export default function HomeScreen() {
         const daysGap = daysSince(lastActivity);
         setSteps(stepCount);
         setUsualSteps(await typicalSteps(db));
-        setStepsMeaning(stepCount == null ? null : stepInsight(stepCount, settingsRow.stepsGoal));
+        // A break promises «цели выключены» — feed an unreachable goal so the
+        // insight can never say «личная цель достигнута» under the pause banner.
+        setStepsMeaning(
+          stepCount == null
+            ? null
+            : stepInsight(stepCount, settingsRow.paused ? Number.MAX_SAFE_INTEGER : settingsRow.stepsGoal),
+        );
         setStepsBaselineKind(stepsBaseline ? stepsBaseline.kind : null);
         setTotals({ kcal: tot.kcal, proteinG: tot.proteinG, fatG: tot.fatG, carbG: tot.carbG });
         setSettings(settingsRow);
@@ -179,8 +187,29 @@ export default function HomeScreen() {
 
   async function onResume() {
     if (!db) return;
-    await updateSettings(db, { paused: false });
+    const s = await updateSettings(db, { paused: false });
     setPaused(false);
+    // Refresh the full row too — hasGoal and the coach read settings.paused,
+    // and the stale object kept the food target hidden until the next focus.
+    setSettings(s);
+    // The break also cancelled the OS reminders (the settings screen clears
+    // them on save while paused). «Вернуться к целям» must bring them back —
+    // otherwise they stay dead until a random settings re-save. Contextual
+    // nudges are deliberately not planned here: they are recomputed from the
+    // moment's context on each settings save. Best-effort, like that screen.
+    try {
+      const service = getNotificationService();
+      await service.initialize();
+      const specs = buildDailyReminders(
+        parseReminderTimes(s.reminderTimes),
+        { title: t('notifications.reminderTitle'), body: t('notifications.reminderBody') },
+        false,
+      );
+      if (specs.length > 0) await service.requestPermissions();
+      await rescheduleReminders(service, specs);
+    } catch (e) {
+      console.warn('reminder rescheduling on resume failed', e);
+    }
   }
 
   // Personalize the steps line once there's enough history: speak to the user's
