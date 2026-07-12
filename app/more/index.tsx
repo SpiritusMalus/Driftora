@@ -48,6 +48,18 @@ export default function MoreScreen() {
       onPress: () => router.push('/weight'),
     },
     {
+      // The mind side's PLAIN tappable path — on Home it's a left swipe
+      // (2026-07-12), and a gesture alone must never be the only door
+      // (screen readers, forgotten gestures).
+      key: 'mind',
+      icon: 'happy-outline',
+      tint: theme.primary,
+      iconBg: coralTile,
+      title: t('more.sections.mind'),
+      subtitle: t('more.subtitles.mind'),
+      onPress: () => router.push('/mood'),
+    },
+    {
       key: 'wins',
       icon: 'trophy-outline',
       tint: theme.primary,

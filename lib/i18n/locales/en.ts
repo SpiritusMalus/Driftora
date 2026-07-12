@@ -103,9 +103,6 @@ export const en = {
       returning4: 'Back together. No need to catch up — just note how you are right now.',
     },
     feeders: {
-      mind: 'Mood & diary',
-      moodCta: 'One tap — how are you right now?',
-      moodValue: 'Last: {{value}}/10',
       steps: 'Activity today',
       sleep: 'Last night\'s sleep',
       diary: 'Thought diary',
@@ -117,7 +114,17 @@ export const en = {
       weightYesterday: '{{kg}} kg — yesterday',
       weightDaysAgo: '{{kg}} kg — {{days}} d ago',
     },
-    moreLink: 'More',
+    moreLink: 'Sections',
+    // The mind side opens by a left swipe (the Home mood row retired
+    // 2026-07-12): a one-time interactive coach + a fading caption until the
+    // gesture sticks.
+    swipeCoach: {
+      title: 'Mood & diary — swipe left',
+      body: 'It\'s a gesture now: swipe left anywhere on the Home screen to open mood, the thought diary and sleep.',
+      try: 'Try it right now',
+      later: 'Later',
+    },
+    swipeHint: 'Mood & diary — swipe left',
     bodyMindCol: {
       body: 'Body · steps',
       bodySignal: { steps: 'Body · steps', sleep: 'Body · sleep', protein: 'Body · protein' },
@@ -293,12 +300,13 @@ export const en = {
     },
   },
   more: {
-    title: 'More',
-    intro: 'Everything else lives here, off the daily screen.',
+    title: 'Sections',
+    intro: 'Every part of the app lives here, off the daily screen.',
     sections: {
       food: 'Food log',
       steps: 'Activity',
       weight: 'Weight',
+      mind: 'Mood & diary',
       wins: 'Wins',
       review: 'Weekly review',
       settings: 'Settings',
@@ -308,6 +316,7 @@ export const en = {
       food: 'Calories and protein, when you want them',
       steps: 'Steps and workouts — by hand or from Health',
       weight: 'One optional signal',
+      mind: 'Also opens with a left swipe on Home',
       wins: 'Small things that went well',
       review: 'You vs your past self',
       settings: 'Privacy, targets, break',

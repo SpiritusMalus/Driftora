@@ -45,6 +45,10 @@ export interface SettingsPatch {
   hideCalories?: boolean;
   llmDiaryAssist?: boolean;
   onboardingSeen?: boolean;
+  // Left-swipe-to-mood teaching state: shown-once coach + successful swipe-open
+  // count (the Home hint hides once it reaches 3).
+  moodSwipeCoachSeen?: boolean;
+  moodSwipeOpens?: number;
   paused?: boolean;
   contextualNudges?: boolean;
   showPopulationStats?: boolean;
@@ -89,6 +93,8 @@ export async function updateSettings(
   if (patch.hideCalories != null) set.hideCalories = patch.hideCalories;
   if (patch.llmDiaryAssist != null) set.llmDiaryAssist = patch.llmDiaryAssist;
   if (patch.onboardingSeen != null) set.onboardingSeen = patch.onboardingSeen;
+  if (patch.moodSwipeCoachSeen != null) set.moodSwipeCoachSeen = patch.moodSwipeCoachSeen;
+  if (patch.moodSwipeOpens != null) set.moodSwipeOpens = patch.moodSwipeOpens;
   if (patch.paused != null) set.paused = patch.paused;
   if (patch.contextualNudges != null) set.contextualNudges = patch.contextualNudges;
   if (patch.showPopulationStats != null) set.showPopulationStats = patch.showPopulationStats;
