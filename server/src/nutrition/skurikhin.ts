@@ -21,8 +21,15 @@ interface IndexEntry {
   entry: SkurikhinEntry;
 }
 
-/** Below this phrase relevance a row is noise, not a candidate. */
-const MIN_SCORE = 0.5;
+/**
+ * Below this phrase relevance a row is noise, not a candidate. Just above the
+ * 0.5 "half the query honoured" floor: a two-word query with one word matched
+ * against a two-word key (e.g. «сыр легкий» → «сыр российский») scores exactly
+ * 0.5 and is dropped, so a lone matched word no longer drags in generic rows;
+ * legit partials («куриная грудка отварная» → «куриная грудка» ≈ 0.77, «борщ»
+ * → «борщ с мясом» ≈ 0.8) and single-typo hits (0.6) stay well clear.
+ */
+const MIN_SCORE = 0.55;
 
 /** Ranked candidates the manual picker gets from this table. */
 const MAX_CANDIDATES = 5;

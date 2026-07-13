@@ -14,6 +14,8 @@ import {
 } from './llm.js';
 import { metrics } from './metrics.js';
 import { Resolver } from './nutrition/resolver.js';
+import { hasCyrillic, uncoveredQueryWords } from './nutrition/ruSearch.js';
+import { normalizeRu } from './nutrition/skurikhin.js';
 import { buildMealDraft, buildProviders } from './orchestrator.js';
 import { buildLimiters, type RateLimits, resolveLimits } from './rateLimit.js';
 import {
@@ -258,15 +260,28 @@ export function createApp(
       return;
     }
     const candidates = await resolver.search(query, region).catch(() => []);
-    // When the DBs return NOTHING and the client holds AI consent (`ai: true`),
-    // fall back to an LLM per-100g estimate so «Найти вручную» is never a dead
-    // end — the long-tail/branded products the RU DBs miss still get a usable,
-    // honestly-flagged («≈», source ai_estimate) row the user can accept or edit.
-    if (candidates.length === 0 && body.ai === true) {
-      const est = await aiSearchEstimate(query, region).catch(() => null);
-      if (est) {
-        res.json({ candidates: [est] });
-        return;
+    // When the client holds AI consent (`ai: true`), fall back to an LLM
+    // per-100g estimate in two cases, so «Найти вручную» honours the WHOLE query:
+    //   (a) the DBs return NOTHING — the long-tail/branded product they miss;
+    //   (b) a multi-word RU query has a content word NO candidate matched —
+    //       «сыр лёгкий» surfacing only generic cheeses means «лёгкий» was
+    //       ignored; the base can't invent a "light cheese" row, only the model.
+    // The estimate is honestly flagged («≈», source ai_estimate) and, on (b),
+    // prepended so the qualifier the user typed leads instead of a dead word.
+    if (body.ai === true) {
+      const uncovered =
+        candidates.length > 0 && hasCyrillic(query)
+          ? uncoveredQueryWords(
+              normalizeRu(query),
+              candidates.map((c) => normalizeRu(c.name)),
+            )
+          : [];
+      if (candidates.length === 0 || uncovered.length > 0) {
+        const est = await aiSearchEstimate(query, region).catch(() => null);
+        if (est) {
+          res.json({ candidates: [est, ...candidates] });
+          return;
+        }
       }
     }
     res.json({ candidates });

@@ -66,6 +66,21 @@ test('miss returns null (chain moves on)', async () => {
   assert.equal(r, null);
 });
 
+test('an unhonoured qualifier no longer drags in a generic row', async () => {
+  const p = new SkurikhinProvider([
+    { name: 'сыр российский', aliases: [], per100: { kcal: 364, prot: 23, fat: 30, carb: 0, minerals: {} } },
+    { name: 'сыр лёгкий', aliases: [], per100: { kcal: 260, prot: 31, fat: 15, carb: 0, minerals: {} } },
+  ]);
+  // «сыр лёгкий» must NOT surface «сыр российский» (a lone «сыр» hit is 0.5,
+  // below the floor); the row that honours «лёгкий» is the only candidate.
+  const list = await p.searchMany!('сыр лёгкий', 'RU');
+  assert.equal(list.length, 1);
+  assert.equal(list[0]!.name, 'сыр лёгкий');
+  // Plain «сыр» still finds both — one shared word covers a one-word query.
+  const plain = await p.searchMany!('сыр', 'RU');
+  assert.equal(plain.length, 2);
+});
+
 test('падеж: «борща» still finds борщ', async () => {
   const r = await provider.search('борща', 'RU');
   assert.ok(r);

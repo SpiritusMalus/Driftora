@@ -76,10 +76,11 @@ export function tokenScore(q: string, k: string): number {
 /**
  * 0..1 relevance of a normalized key phrase for a normalized query phrase.
  * Each query token takes its best match among the key tokens; the blend
- * weighs "did we honour what the user typed" (query coverage, 0.6) over
- * "how much of the key is accounted for" (key coverage, 0.4) — so «борщ с
- * мясом» still finds «борщ», and plain «борщ» ranks «борщ» above «борщ с
- * мясом».
+ * weighs "did we honour what the user typed" (query coverage, 0.7) over
+ * "how much of the key is accounted for" (key coverage, 0.3) — so «борщ с
+ * мясом» still finds «борщ», plain «борщ» ranks «борщ» above «борщ с мясом»,
+ * and an unhonoured qualifier costs more: «сыр лёгкий» → «сыр российский»
+ * lands at exactly the 0.5 floor, so a small MIN_SCORE margin drops it.
  */
 export function phraseScore(query: string, key: string): number {
   const qt = query.split(' ').filter(Boolean);
@@ -103,5 +104,26 @@ export function phraseScore(query: string, key: string): number {
   }
   const queryCover = querySum / qt.length;
   const keyCover = keyBest.reduce((a, b) => a + b, 0) / kt.length;
-  return 0.6 * queryCover + 0.4 * keyCover;
+  return 0.7 * queryCover + 0.3 * keyCover;
+}
+
+/**
+ * The query's CONTENT words (≥ 3 chars — skips stopwords «с»/«и»/«на») that no
+ * candidate key even loosely matches: the qualifiers the DB silently dropped,
+ * e.g. «легкий» in «сыр легкий» when the base holds only generic cheeses.
+ * Inputs must be normalized. "Loosely matched" = tokenScore ≥ 0.5 (a stem /
+ * prefix / one-typo hit); below that the word landed nowhere. Lets the caller
+ * notice «второе слово ушло в никуда» and offer an honest AI estimate.
+ */
+export function uncoveredQueryWords(query: string, keys: string[]): string[] {
+  const qt = query.split(' ').filter((w) => w.length >= 3);
+  const keyTokens = keys.flatMap((k) => k.split(' ').filter(Boolean));
+  return qt.filter((q) => {
+    let best = 0;
+    for (const k of keyTokens) {
+      const s = tokenScore(q, k);
+      if (s > best) best = s;
+    }
+    return best < 0.5;
+  });
 }
