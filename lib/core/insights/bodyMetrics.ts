@@ -234,6 +234,28 @@ export function supportsSets(type: WorkoutType): boolean {
   return SET_WORKOUT_TYPES.includes(type);
 }
 
+/// Effort level for strength — the one lever that actually moves resistance-work
+/// energy (a heavy squat set and a light isolation set are NOT the same 3.5 MET;
+/// device feedback 2026-07-13: «силовые занижены»). Only strength offers it; the
+/// UI shows a chip. Absent → the fixed moderate [WORKOUT_MET].strength (3.5).
+export type StrengthIntensity = 'light' | 'moderate' | 'heavy';
+export const STRENGTH_INTENSITIES: readonly StrengthIntensity[] = ['light', 'moderate', 'heavy'];
+
+/// MET per strength effort, Compendium 2011 resistance-training entries:
+/// light/general 3.5 (02054, 8–15 reps varied) · moderate 5.0 (between) · heavy
+/// 6.0 (02050, squats/deadlift high intensity). All already average work + rest,
+/// so they compose with the sets→minutes estimate the same way 3.5 did.
+const STRENGTH_MET: Record<StrengthIntensity, number> = {
+  light: 3.5,
+  moderate: 5.0,
+  heavy: 6.0,
+};
+
+/// Whether [type] supports an effort chip (strength only, for now).
+export function supportsIntensity(type: WorkoutType): boolean {
+  return type === 'strength';
+}
+
 /// Average whole minutes ONE strength set occupies including the inter-set rest
 /// (~30–60 s of work + ~2 min rest). The Compendium's weights MET already
 /// averages work with rest, so sets × this feeds the same MET model honestly.
@@ -269,17 +291,21 @@ export function kcalFromMet(met: number, minutes: number, weightKg: number): num
 }
 
 /// Calories burned by one workout: MET × kg × hours plus the type's afterburn
-/// ([EPOC_BONUS]), whole kcal. If a pace (km/h) is given for a speed-capable
-/// type it refines the MET; otherwise the fixed moderate MET is used.
+/// ([EPOC_BONUS]), whole kcal. If a pace (km/h) is given for a speed-capable type
+/// it refines the MET; for strength an effort level ([intensity]) picks the MET;
+/// otherwise the fixed moderate MET is used.
 export function workoutKcal(
   type: WorkoutType,
   minutes: number,
   weightKg: number,
   speedKmh?: number | null,
+  intensity?: StrengthIntensity | null,
 ): number {
   const fixed = WORKOUT_MET[type];
   if (fixed == null) return 0;
-  const met = (speedKmh != null ? metForSpeed(type, speedKmh) : null) ?? fixed;
+  const paced = speedKmh != null ? metForSpeed(type, speedKmh) : null;
+  const byEffort = type === 'strength' && intensity != null ? STRENGTH_MET[intensity] : null;
+  const met = paced ?? byEffort ?? fixed;
   const session = kcalFromMet(met, minutes, weightKg);
   return Math.round(session * (1 + (EPOC_BONUS[type] ?? 0)));
 }
@@ -328,16 +354,18 @@ export function stepsEarnedKcal(steps: number, weightKg: number): number {
   return Math.round(extra * KCAL_PER_STEP_PER_KG * kg);
 }
 
-/// The day's assembled eating target under «база + заработал»: the tempo's
-/// deficit base plus today's earned activity (steps above the baseline + the
-/// workout eat-back), never below the healthy day-minimum. The minimum guards
-/// the WHOLE day's intake, not the base alone: earned kcal fill the
-/// base→minimum gap first, so the chosen deficit actually happens on days you
-/// move (a per-base floor made «стандартный» и «быстрый» identical — the
-/// deficit maths always lands below BMR at the sedentary factor), and only a
-/// zero-movement day rests exactly at the minimum.
+/// The day's assembled eating target under «база + заработал»: the deficit base
+/// (floored at the healthy day-minimum) plus today's earned activity (steps above
+/// the baseline + the workout eat-back) ON TOP. Earned movement ALWAYS adds to
+/// the number — it never first «pays back» a deficit that the clinical floor was
+/// already overriding (device feedback 2026-07-13: «2170 без шагов и с 4000
+/// шагами — так же»; the old `max(base+earned, min)` absorbed earned kcal into
+/// the base→floor gap, so on a heavy profile whose deficit sits below the floor
+/// small step counts moved nothing). Trade-off: two tempos that BOTH sit below
+/// the floor now share the same active-day budget (they already shared the
+/// couch-day one) — honest, since a deficit steeper than the floor can't happen.
 export function dayBudgetKcal(baseKcal: number, minDayKcal: number, earnedKcal: number): number {
-  return Math.max(baseKcal + Math.max(0, earnedKcal), minDayKcal);
+  return Math.max(baseKcal, minDayKcal) + Math.max(0, earnedKcal);
 }
 
 export interface MacroTargets {

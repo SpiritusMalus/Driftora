@@ -55,7 +55,8 @@ CREATE TABLE IF NOT EXISTS workouts (
   kcal REAL NOT NULL DEFAULT 0,
   speed_kmh REAL,
   label TEXT,
-  sets INTEGER
+  sets INTEGER,
+  intensity TEXT
 );
 CREATE TABLE IF NOT EXISTS weights (
   date TEXT PRIMARY KEY,
@@ -205,6 +206,10 @@ export const MIGRATIONS: string[] = [
   // screen (the subtle Home hint retires after 3).
   `ALTER TABLE app_settings ADD COLUMN mood_swipe_coach_seen INTEGER NOT NULL DEFAULT 0`,
   `ALTER TABLE app_settings ADD COLUMN mood_swipe_opens INTEGER NOT NULL DEFAULT 0`,
+  // 2026-07-13: strength effort level ('light'|'moderate'|'heavy') → the MET used
+  // at log time (device feedback: flat 3.5 MET undershot heavy lifting). Null for
+  // non-strength and old rows (their kcal is already frozen).
+  `ALTER TABLE workouts ADD COLUMN intensity TEXT`,
 ];
 
 /// Runs each CREATE statement through [run], then the idempotent [MIGRATIONS].

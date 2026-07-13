@@ -337,10 +337,14 @@ export const SKURIKHIN_TABLE: SkurikhinEntry[] = [
     per100: { kcal: 350, prot: 6.2, fat: 34.4, carb: 5.5, minerals: { na: 314, k: 132, ca: 97, mg: 9, fe: 0.1, zn: 0.5 }, vitamins: { a: 308, e: 0.86, b1: 0.02, b2: 0.23, b6: 0.06, b9: 9, b12: 0.22 } } },
   { name: 'сыр фета', aliases: ['фета', 'брынза'], source: 'usda',
     per100: { kcal: 265, prot: 14.2, fat: 21.5, carb: 3.9, minerals: { na: 1139, k: 62, ca: 493, mg: 19, fe: 0.7, zn: 2.9 }, vitamins: { a: 125, d: 0.4, e: 0.18, b1: 0.15, b2: 0.84, b6: 0.42, b9: 32, b12: 1.69 } } },
-  { name: 'творог 2%', aliases: ['творог'], source: 'usda',
-    per100: { kcal: 81, prot: 10.5, fat: 2.3, carb: 4.8, minerals: { na: 308, k: 125, ca: 111, mg: 9, fe: 0.1, zn: 0.5 }, vitamins: { a: 68, e: 0.08, b1: 0.02, b2: 0.25, b6: 0.06, b9: 8, b12: 0.47 } } },
-  { name: 'творог обезжиренный', aliases: ['творог нежирный'], source: 'usda',
-    per100: { kcal: 72, prot: 10.3, fat: 0.3, carb: 6.7, minerals: { na: 372, k: 137, ca: 86, mg: 11, fe: 0.2, zn: 0.5 }, vitamins: { a: 2, e: 0.01, b1: 0.02, b2: 0.23, b6: 0.02, b9: 9, b12: 0.46 } } },
+  // Russian творог, NOT US cottage cheese: the USDA row (81 kcal / 10.5 g prot)
+  // undercounted protein by ~1.5× and over-salted it. Values from the Простоквашино
+  // package + FatSecret + Скурихин (2% = 99/17/2/3.3, all internally consistent);
+  // source now honestly 'skurikhin'. Device feedback 2026-07-13.
+  { name: 'творог 2%', aliases: ['творог'], source: 'skurikhin',
+    per100: { kcal: 99, prot: 17, fat: 2, carb: 3.3, minerals: { na: 41, k: 125, ca: 111, mg: 9, fe: 0.1, zn: 0.5 }, vitamins: { a: 68, e: 0.08, b1: 0.02, b2: 0.25, b6: 0.06, b9: 8, b12: 0.47 } } },
+  { name: 'творог обезжиренный', aliases: ['творог нежирный'], source: 'skurikhin',
+    per100: { kcal: 88, prot: 18, fat: 0.6, carb: 1.8, minerals: { na: 44, k: 137, ca: 120, mg: 11, fe: 0.2, zn: 0.5 }, vitamins: { a: 2, e: 0.01, b1: 0.02, b2: 0.23, b6: 0.02, b9: 9, b12: 0.46 } } },
   { name: 'томатная паста', aliases: ['томатная паста'], source: 'usda',
     per100: { kcal: 82, prot: 4.3, fat: 0.5, carb: 18.9, minerals: { na: 59, k: 1014, ca: 36, mg: 42, fe: 3, zn: 0.6 }, vitamins: { a: 76, e: 4.3, c: 21.9, b1: 0.06, b2: 0.15, b6: 0.22, b9: 12 } } },
   { name: 'топлёное масло', aliases: ['топлёное масло', 'масло гхи'], source: 'usda',

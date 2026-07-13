@@ -37,8 +37,11 @@ test('sample new entries resolve with sane values', async () => {
   assert.equal(banana!.per100.minerals.k, 358);
 
   const curd = await provider.search('творог', 'RU'); // alias of "творог 2%"
-  assert.ok(curd!.per100.prot >= 10);
-  assert.equal(curd!.per100.source, 'usda');
+  // Russian творог, not US cottage cheese: protein ~17 g and honestly attributed
+  // to the Скурихин/RU table (was a mis-sourced 10.5 g USDA row).
+  assert.ok(curd!.per100.prot >= 16);
+  assert.equal(curd!.per100.kcal, 99);
+  assert.equal(curd!.per100.source, 'skurikhin');
 });
 
 test('word-overlap fallback: "куриная грудка отварная" still matches', async () => {

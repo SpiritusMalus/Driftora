@@ -282,7 +282,7 @@ export const en = {
     },
     budget: {
       title: 'The day’s budget: base + steps + workouts',
-      body: 'The plan’s base is a day with no movement at all. All movement adds on top the same day:\n\n· steps above ~3,000 — the first ~3,000 are already inside the sedentary base;\n· workouts — 75% of their burn (why not 100% — below).\n\nThe sum shows on Food as the “base · steps · workouts” line. Move more — eat more, your chosen pace stays intact.',
+      body: 'The plan’s base is a day with no movement at all (and never below the healthy minimum). All movement adds on top the same day:\n\n· steps above ~3,000 — the first ~3,000 are already inside the sedentary base;\n· workouts — 75% of their burn (why not 100% — below).\n\nThe sum shows on Food as the “resting · steps · workouts” line. Move more — eat more: any movement raises the budget on top of the minimum right away.',
     },
     food: {
       title: 'Where food numbers come from',
@@ -290,7 +290,7 @@ export const en = {
     },
     workouts: {
       title: 'Workouts and the afterburn',
-      body: 'Burn = the activity’s “cost” (MET from a research compendium) × weight × time. For walking, running and cycling your pace refines it. Strength is logged in sets — ≈3 minutes per set, no stopwatch needed.\n\nStrength and HIIT get +10% for the afterburn: for a day or two after the session the body keeps spending on recovery. Tens of kcal, not hundreds.\n\nOnly 75% of the estimate enters the budget — formulas overstate, and undercounting is more honest. A tracker screenshot’s calories are saved as-is (“from tracker”); the budget takes the same 75%. Overall accuracy ±20–25%.',
+      body: 'Burn = the activity’s “cost” (MET from a research compendium) × weight × time. For walking, running and cycling your pace refines it. Strength is logged in sets — ≈3 minutes per set, no stopwatch needed; and the effort you pick (light/moderate/hard) shifts the “cost” — heavy lifting burns more.\n\nStrength and HIIT get +10% for the afterburn: for a day or two after the session the body keeps spending on recovery. Tens of kcal, not hundreds.\n\nOnly 75% of the estimate enters the budget — formulas overstate, and undercounting is more honest. Have exact numbers from a watch? Enter the kcal by hand (“from tracker”) or via a screenshot — saved as-is, the budget takes the same 75%. Overall estimate accuracy ±20–25%.',
     },
     boost: {
       title: 'How to raise your target',
@@ -380,6 +380,21 @@ export const en = {
     setsUnit: 'sets',
     setsCount: '{{count}} sets',
     setsHint: 'No timing needed: we assume ≈3 min per set (work + rest) and add an afterburn of ≈ +10%.',
+    // Strength effort → MET (light 3.5 · moderate 5.0 · heavy 6.0). The flat 3.5
+    // undershot heavy lifting (device feedback).
+    intensity: {
+      label: 'Effort',
+      light: 'Light',
+      moderate: 'Moderate',
+      heavy: 'Hard',
+    },
+    // «By tracker» — the optional import: kcal straight off a watch/tracker, kept
+    // verbatim (no MET, no afterburn), marked «by tracker».
+    tracker: {
+      head: 'Or enter kcal from your watch',
+      kcalPlaceholder: 'e.g. 300',
+      hint: 'A tracker number is kept as-is, with no recalculation.',
+    },
     add: 'Add',
     remove: 'Remove',
     exactHead: 'Enter exactly',
