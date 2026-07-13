@@ -147,7 +147,7 @@ test('POST /food/search: empty DB + ai:true → an honest ai_estimate candidate 
         },
       ]);
     }
-    if (url.includes('openfoodfacts')) return json({ hits: [] });
+    if (url.includes('openfoodfacts')) return json({ products: [] });
     if (url.includes('api.nal.usda.gov')) return json({ foods: [] });
     throw new Error(`unexpected fetch: ${url}`);
   }) as typeof fetch;
@@ -172,7 +172,7 @@ test('POST /food/search: empty DB WITHOUT ai consent → stays empty, LLM never 
     const url = typeof input === 'string' ? input : input.toString();
     if (url.includes('127.0.0.1')) return realFetch(input as never, init);
     if (url.includes('openrouter.ai')) throw new Error('LLM must NOT be called without ai consent');
-    if (url.includes('openfoodfacts')) return json({ hits: [] });
+    if (url.includes('openfoodfacts')) return json({ products: [] });
     if (url.includes('api.nal.usda.gov')) return json({ foods: [] });
     throw new Error(`unexpected fetch: ${url}`);
   }) as typeof fetch;

@@ -6,13 +6,13 @@ import { rankByName, scoreToConfidence } from './scoring.js';
 const PRODUCT_URL = 'https://world.openfoodfacts.org/api/v2/product';
 
 /**
- * OFF's dedicated search service (search-a-licious). The legacy
- * `cgi/search.pl` endpoint is being retired and intermittently 503s.
+ * OFF free-text search. The newer `search.openfoodfacts.org` (search-a-licious)
+ * service is down for us — it 502s on every query (verified 2026-07-13) — so we
+ * use the classic `cgi/search.pl`, which is alive and IS where the branded RU
+ * long tail lives («Сыр Тысяча Озёр Лёгкий», сырки, йогурты). It is slow (~5 s)
+ * and needs `action=process&json=1`; results come back under `products`.
  */
-const SEARCH_URL = 'https://search.openfoodfacts.org/search';
-
-/** Query language hint for the search index (RU names vs EN names). */
-const SEARCH_LANGS: Record<Region, string> = { RU: 'ru', US: 'en' };
+const SEARCH_URL = 'https://world.openfoodfacts.org/cgi/search.pl';
 
 /** OFF etiquette: identify the app on every request. */
 const USER_AGENT = 'Driftora/1.0 (food-parse; support@family-pie.ru)';
@@ -20,7 +20,9 @@ const USER_AGENT = 'Driftora/1.0 (food-parse; support@family-pie.ru)';
 /** Crowd-sourced rows never outrank a curated/USDA hit on confidence alone. */
 const MAX_SEARCH_CONFIDENCE = 0.85;
 
-const SEARCH_TIMEOUT_MS = 5000;
+// cgi/search.pl regularly takes ~5 s; give it room but never hold a parse
+// hostage forever — a timeout just yields an empty list and the chain moves on.
+const SEARCH_TIMEOUT_MS = 8000;
 const SEARCH_PAGE_SIZE = 10;
 
 /** OFF stores per-100g nutriments; minerals are in grams → convert to mg. */
@@ -142,8 +144,10 @@ export class OpenFoodFactsProvider implements NutritionProvider {
     }
 
     const url = new URL(SEARCH_URL);
-    url.searchParams.set('q', trimmed);
-    url.searchParams.set('langs', SEARCH_LANGS[region] ?? SEARCH_LANGS.US);
+    url.searchParams.set('search_terms', trimmed);
+    url.searchParams.set('search_simple', '1');
+    url.searchParams.set('action', 'process'); // classic API runs the search only with this
+    url.searchParams.set('json', '1');
     url.searchParams.set('page_size', String(SEARCH_PAGE_SIZE));
     url.searchParams.set('fields', 'product_name,product_name_ru,nutriments');
 
@@ -160,8 +164,8 @@ export class OpenFoodFactsProvider implements NutritionProvider {
     }
     if (!res.ok) return [];
 
-    const data = (await res.json().catch(() => null)) as { hits?: OffSearchProduct[] } | null;
-    const products = data?.hits ?? [];
+    const data = (await res.json().catch(() => null)) as { products?: OffSearchProduct[] } | null;
+    const products = data?.products ?? [];
 
     const usable = products.flatMap((p) => {
       const nutriments = p.nutriments;
