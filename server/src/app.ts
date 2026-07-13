@@ -139,6 +139,29 @@ async function aiSearchEstimate(query: string, region: Region): Promise<Nutritio
   return { name: items[0]?.name_ru || query, per100 };
 }
 
+/**
+ * Manual-search fallback for a FULL DB miss (long-tail / branded names the
+ * Cyrillic free-text search can't reach: «сыр тысяча озёр лёгкий»). Unlike
+ * `aiSearchEstimate`, which reads only the model's own `estimate` field, this
+ * runs the identified item through the SAME resolve pipeline the parse path
+ * uses — so USDA-by-`name_en` («light cheese» → 264 kcal) resolves it even
+ * though the raw Cyrillic query never touches an English-only source. Returns
+ * the primary match (its source honestly attributed) or null when even that
+ * lands on the coarse `estimate` placeholder — a real dead end, keep it empty.
+ */
+async function aiSearchResolve(
+  resolver: Resolver,
+  query: string,
+  region: Region,
+): Promise<NutritionAlternative | null> {
+  const items = await identifyFromText(query, region);
+  const item = items[0];
+  if (!item) return null;
+  const resolved = await resolver.resolveItem(item, region);
+  if (resolved.per100.source === 'estimate') return null; // coarse 150/5/5/20 = still a miss
+  return { name: resolved.name_ru || resolved.matched_name || query, per100: resolved.per100 };
+}
+
 /** Options for `createApp` (mirrors the injectable-resolver pattern). */
 export interface CreateAppOptions {
   /** Override per-IP rate limits (tests set tiny, deterministic caps). */
@@ -260,23 +283,29 @@ export function createApp(
       return;
     }
     const candidates = await resolver.search(query, region).catch(() => []);
-    // When the client holds AI consent (`ai: true`), fall back to an LLM
-    // per-100g estimate in two cases, so «Найти вручную» honours the WHOLE query:
-    //   (a) the DBs return NOTHING — the long-tail/branded product they miss;
-    //   (b) a multi-word RU query has a content word NO candidate matched —
-    //       «сыр лёгкий» surfacing only generic cheeses means «лёгкий» was
-    //       ignored; the base can't invent a "light cheese" row, only the model.
-    // The estimate is honestly flagged («≈», source ai_estimate) and, on (b),
-    // prepended so the qualifier the user typed leads instead of a dead word.
+    // When the client holds AI consent (`ai: true`), «Найти вручную» honours the
+    // WHOLE query instead of dead-ending, in two shapes:
     if (body.ai === true) {
-      const uncovered =
-        candidates.length > 0 && hasCyrillic(query)
-          ? uncoveredQueryWords(
-              normalizeRu(query),
-              candidates.map((c) => normalizeRu(c.name)),
-            )
-          : [];
-      if (candidates.length === 0 || uncovered.length > 0) {
+      // (a) The DBs returned NOTHING — a long-tail / branded name the Cyrillic
+      //     free-text search can't reach. Run the FULL resolve pipeline (the
+      //     parse path's twin: USDA-by-name_en, then the model's own estimate)
+      //     so «сыр тысяча озёр лёгкий» yields a row, not an empty list.
+      if (candidates.length === 0) {
+        const hit = await aiSearchResolve(resolver, query, region).catch(() => null);
+        res.json({ candidates: hit ? [hit] : [] });
+        return;
+      }
+      // (b) The DBs had rows but a content word matched NOTHING («сыр лёгкий»
+      //     surfaces only generic cheeses → «лёгкий» was ignored). Prepend the
+      //     model's OWN estimate for what the user typed — a re-lookup would
+      //     just return the same generic cheese, not a light one.
+      const uncovered = hasCyrillic(query)
+        ? uncoveredQueryWords(
+            normalizeRu(query),
+            candidates.map((c) => normalizeRu(c.name)),
+          )
+        : [];
+      if (uncovered.length > 0) {
         const est = await aiSearchEstimate(query, region).catch(() => null);
         if (est) {
           res.json({ candidates: [est, ...candidates] });

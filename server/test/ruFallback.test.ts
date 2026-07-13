@@ -98,10 +98,10 @@ interface OffProductRow {
   nutriments?: Record<string, number | string>;
 }
 
-function offFetchStub(hits: OffProductRow[], onUrl?: (url: string) => void): typeof fetch {
+function offFetchStub(products: OffProductRow[], onUrl?: (url: string) => void): typeof fetch {
   return (async (input: string | URL | Request) => {
     onUrl?.(String(input));
-    return new Response(JSON.stringify({ hits }), { headers: { 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify({ products }), { headers: { 'Content-Type': 'application/json' } });
   }) as typeof fetch;
 }
 
@@ -125,8 +125,8 @@ test('OFF search: RU region asks for RU names and drops incomplete rows', async 
   const off = new OpenFoodFactsProvider();
   const results = await off.searchMany('сырок глазированный', 'RU');
 
-  assert.ok(requested.startsWith('https://search.openfoodfacts.org/search'));
-  assert.ok(requested.includes('langs=ru'));
+  assert.ok(requested.startsWith('https://world.openfoodfacts.org/cgi/search.pl'));
+  assert.ok(requested.includes('search_terms='));
   assert.equal(results.length, 1);
   assert.equal(results[0]!.name, 'Сырок глазированный');
   assert.equal(results[0]!.per100.kcal, 407);

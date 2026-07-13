@@ -96,9 +96,9 @@ test('POST /food/search RU merges curated + OFF brands; USDA skipped for Cyrilli
     const url = typeof input === 'string' ? input : input.toString();
     if (url.includes('127.0.0.1')) return realFetch(input as never, init);
     if (url.includes('api.nal.usda.gov')) throw new Error('USDA must not be queried with Cyrillic text');
-    if (url.includes('search.openfoodfacts.org')) {
+    if (url.includes('openfoodfacts.org/cgi/search.pl')) {
       return json({
-        hits: [
+        products: [
           {
             product_name_ru: 'Борщ «Бабушкин» готовый',
             nutriments: {
@@ -135,7 +135,7 @@ test('POST /food/search tolerates a typo («гретчка»)', async () => {
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString();
     if (url.includes('127.0.0.1')) return realFetch(input as never, init);
-    if (url.includes('search.openfoodfacts.org')) return json({ hits: [] });
+    if (url.includes('openfoodfacts.org/cgi/search.pl')) return json({ products: [] });
     throw new Error(`unexpected fetch in test: ${url}`);
   }) as typeof fetch;
 
