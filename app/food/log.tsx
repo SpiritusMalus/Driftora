@@ -1338,8 +1338,8 @@ function ItemCard({
                 </Text>
                 <Text style={[styles.altMacros, { color: theme.subtle }, theme.font.body]}>
                   {hideCalories
-                    ? `${t('macros.protein')} ${alt.per100.prot}`
-                    : `${alt.per100.kcal} ${t('units.kcal')} · ${t('macros.protein')} ${alt.per100.prot}`}
+                    ? `${t('macros.protein')} ${alt.per100.prot} · ${t(`food.source.${alt.per100.source}`)}`
+                    : `${alt.per100.kcal} ${t('units.kcal')} · ${t('macros.protein')} ${alt.per100.prot} · ${t(`food.source.${alt.per100.source}`)}`}
                 </Text>
               </Pressable>
             ))}

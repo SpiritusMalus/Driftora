@@ -34,7 +34,9 @@ describe('HttpFoodParser.searchFoods', () => {
     const out = await parser.searchFoods('творог', 'RU');
 
     expect(url).toBe('https://api.example.com/food/search');
-    expect(body).toEqual({ query: 'творог', region: 'RU' });
+    // `ai: true` rides along: reaching the online parser already implies AI
+    // consent, so the server may add an ai_estimate row on an empty DB result.
+    expect(body).toEqual({ query: 'творог', region: 'RU', ai: true });
     expect(out.map((a) => a.per100.kcal)).toEqual([121, 159]);
   });
 

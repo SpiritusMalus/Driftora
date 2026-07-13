@@ -47,8 +47,25 @@ test('parsePer100: accepts a Per 100g row, attributes the fatsecret source', () 
   assert.equal(per100.carb, 22.84);
 });
 
-test('parsePer100: rejects per-serving rows (unknown gram basis)', () => {
+test('parsePer100: rejects a per-serving row with NO recoverable gram basis', () => {
   assert.equal(parsePer100('Per 1 cup - Calories: 200kcal | Fat: 1g'), null);
+  assert.equal(parsePer100('Per 2 tbsp - Calories: 60kcal | Fat: 4g', 'Tvorog'), null);
+});
+
+test('parsePer100: scales a per-serving row when grams are in the description', () => {
+  // "Per 1 serving (58 g)" → ×(100/58) to 100 g.
+  const p = parsePer100('Per 1 bar (58 g) - Calories: 250kcal | Fat: 12g | Carbs: 32g | Protein: 4g');
+  assert.ok(p);
+  assert.equal(p.kcal, Math.round(250 * 100 / 58)); // 431
+  assert.equal(p.prot, Math.round(4 * 100 / 58 * 100) / 100); // 6.9
+});
+
+test('parsePer100: recovers grams from the food NAME (oz) for brand rows', () => {
+  // Snickers-style: grams live in the name "(1.86 oz)", not the description.
+  const p = parsePer100('Per 1 bar - Calories: 250kcal | Fat: 12g | Carbs: 32g | Protein: 4g', 'Snickers Bar (1.86 oz)');
+  assert.ok(p);
+  const grams = 1.86 * 28.3495; // ≈52.7
+  assert.equal(p.kcal, Math.round(250 * 100 / grams)); // ≈474
 });
 
 test('disabled without credentials — never touches the network', async () => {
