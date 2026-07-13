@@ -331,7 +331,8 @@ function ItemEditor({
                 {alt.name}
               </Text>
               <Text style={[styles.itemMacros, { color: theme.subtle }, theme.font.body]}>
-                {alt.per100.kcal} {t('units.kcal')} · {t('macros.protein')} {alt.per100.prot}
+                {alt.per100.kcal} {t('units.kcal')} · {t('macros.protein')} {alt.per100.prot} ·{' '}
+                {t(`food.source.${alt.per100.source}`)}
               </Text>
             </Pressable>
           ))}

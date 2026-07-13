@@ -124,6 +124,70 @@ test('unknown food (USDA miss) → per100.source estimate + has_estimate, no cra
   }
 });
 
+function postTo(base: string, path: string, body: unknown): Promise<Response> {
+  return realFetch(`${base}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+test('POST /food/search: empty DB + ai:true → an honest ai_estimate candidate (never a dead end)', async () => {
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input.toString();
+    if (url.includes('127.0.0.1')) return realFetch(input as never, init);
+    if (url.includes('openrouter.ai')) {
+      return llmReply([
+        {
+          name_ru: 'загадочный батончик',
+          name_en: 'mystery bar',
+          est_grams: 60,
+          confidence: 0.6,
+          estimate: { kcal_100g: 350, prot_100g: 30, fat_100g: 10, carb_100g: 40 },
+        },
+      ]);
+    }
+    if (url.includes('openfoodfacts')) return json({ hits: [] });
+    if (url.includes('api.nal.usda.gov')) return json({ foods: [] });
+    throw new Error(`unexpected fetch: ${url}`);
+  }) as typeof fetch;
+
+  const { base, stop } = await startApp();
+  try {
+    // Cyrillic RU query the curated table misses → DB empty → AI fallback fires.
+    const res = await postTo(base, '/food/search', { query: 'загадочный батончик', region: 'RU', ai: true });
+    assert.equal(res.status, 200);
+    const data = (await res.json()) as { candidates: any[] };
+    assert.equal(data.candidates.length, 1);
+    assert.equal(data.candidates[0].per100.source, 'ai_estimate');
+    assert.equal(data.candidates[0].per100.kcal, 350);
+    assert.equal(data.candidates[0].per100.prot, 30);
+  } finally {
+    await stop();
+  }
+});
+
+test('POST /food/search: empty DB WITHOUT ai consent → stays empty, LLM never called', async () => {
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input.toString();
+    if (url.includes('127.0.0.1')) return realFetch(input as never, init);
+    if (url.includes('openrouter.ai')) throw new Error('LLM must NOT be called without ai consent');
+    if (url.includes('openfoodfacts')) return json({ hits: [] });
+    if (url.includes('api.nal.usda.gov')) return json({ foods: [] });
+    throw new Error(`unexpected fetch: ${url}`);
+  }) as typeof fetch;
+
+  const { base, stop } = await startApp();
+  try {
+    const res = await postTo(base, '/food/search', { query: 'загадочный батончик', region: 'RU' });
+    assert.equal(res.status, 200);
+    const data = (await res.json()) as { candidates: any[] };
+    assert.equal(data.candidates.length, 0);
+  } finally {
+    await stop();
+  }
+});
+
 test('region RU → served by the RU table, USDA API never queried', async () => {
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString();

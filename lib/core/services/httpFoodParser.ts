@@ -143,7 +143,10 @@ export class HttpFoodParser implements FoodParser {
       const res = await fetch(this.searchEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...this.authHeaders },
-        body: JSON.stringify({ query, region }),
+        // `ai: true` — reaching THIS (online) parser already means AI consent was
+        // granted (getFoodParser returns the offline stub otherwise), so the
+        // server may add an ai_estimate row when the DBs come up empty.
+        body: JSON.stringify({ query, region, ai: true }),
         signal: controller.signal,
       });
       if (!res.ok) return this.fallback.searchFoods(query, region);

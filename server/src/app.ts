@@ -16,7 +16,14 @@ import { metrics } from './metrics.js';
 import { Resolver } from './nutrition/resolver.js';
 import { buildMealDraft, buildProviders } from './orchestrator.js';
 import { buildLimiters, type RateLimits, resolveLimits } from './rateLimit.js';
-import { emptyMealDraft, type IdentifiedItem, type MealDraft, type Region } from './types.js';
+import {
+  coercePer100,
+  emptyMealDraft,
+  type IdentifiedItem,
+  type MealDraft,
+  type NutritionAlternative,
+  type Region,
+} from './types.js';
 
 const APP_TOKEN = process.env.APP_TOKEN || '';
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '';
@@ -98,6 +105,36 @@ function requireToken(req: Request, res: Response, next: NextFunction): void {
 /** region from the request body, falling back to the server default. */
 function regionOf(body: { region?: unknown }): Region {
   return body.region === 'RU' || body.region === 'US' ? body.region : defaultRegion();
+}
+
+/**
+ * Manual-search AI fallback: identify the typed name and turn the model's OWN
+ * per-100g estimate into a single honest `ai_estimate` candidate. Only complete
+ * estimates (kcal + all three macros) become a row — a partial guess would read
+ * as fact. Returns null on any gap, so the caller just shows the empty DB result.
+ * The number still comes from the model's estimate field, never invented here
+ * (THE HONESTY RULE) — and the source tag makes the client render it with «≈».
+ */
+async function aiSearchEstimate(query: string, region: Region): Promise<NutritionAlternative | null> {
+  const items = await identifyFromText(query, region);
+  const est = items[0]?.estimate;
+  if (
+    !est ||
+    est.kcal_100g === undefined ||
+    est.prot_100g === undefined ||
+    est.fat_100g === undefined ||
+    est.carb_100g === undefined
+  ) {
+    return null;
+  }
+  const per100 = coercePer100({
+    source: 'ai_estimate',
+    kcal: est.kcal_100g,
+    prot: est.prot_100g,
+    fat: est.fat_100g,
+    carb: est.carb_100g,
+  });
+  return { name: items[0]?.name_ru || query, per100 };
 }
 
 /** Options for `createApp` (mirrors the injectable-resolver pattern). */
@@ -209,7 +246,7 @@ export function createApp(
   // layer 4). Returns ranked candidates ({ candidates: NutritionAlternative[] }),
   // never a stack trace. Reuses the text daily cap (it hits the same providers).
   app.post('/food/search', requireToken, limiters.textDaily, async (req: Request, res: Response) => {
-    const body = (req.body ?? {}) as { query?: unknown; region?: unknown };
+    const body = (req.body ?? {}) as { query?: unknown; region?: unknown; ai?: unknown };
     const query = typeof body.query === 'string' ? body.query.trim() : '';
     const region = regionOf(body);
     if (query.length === 0) {
@@ -221,6 +258,17 @@ export function createApp(
       return;
     }
     const candidates = await resolver.search(query, region).catch(() => []);
+    // When the DBs return NOTHING and the client holds AI consent (`ai: true`),
+    // fall back to an LLM per-100g estimate so «Найти вручную» is never a dead
+    // end — the long-tail/branded products the RU DBs miss still get a usable,
+    // honestly-flagged («≈», source ai_estimate) row the user can accept or edit.
+    if (candidates.length === 0 && body.ai === true) {
+      const est = await aiSearchEstimate(query, region).catch(() => null);
+      if (est) {
+        res.json({ candidates: [est] });
+        return;
+      }
+    }
     res.json({ candidates });
   });
 
