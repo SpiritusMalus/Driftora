@@ -39,16 +39,15 @@ export default function MoreScreen() {
       onPress: () => router.push('/activity'),
     },
     {
-      // Workouts by NAME («вытащить тренировки в отдельную менюшку», device
-      // feedback 2026-07-12). Same screen as activity, but the deep-link opens
-      // the workout card unfolded — the collapsed one-liner hid it.
+      // Workouts on their OWN screen now («из шагов убрать раздел тренировки»,
+      // device feedback 2026-07-12) — no longer a deep-link into the steps screen.
       key: 'workouts',
       icon: 'barbell-outline',
       tint: theme.accent,
       iconBg: amberTile,
       title: t('more.sections.workouts'),
       subtitle: t('more.subtitles.workouts'),
-      onPress: () => router.push('/activity?workouts=1'),
+      onPress: () => router.push('/workout'),
     },
     {
       key: 'weight',

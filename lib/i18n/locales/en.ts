@@ -101,7 +101,12 @@ export const en = {
       returning4: 'Back together. No need to catch up — just note how you are right now.',
     },
     feeders: {
-      steps: 'Activity today',
+      steps: 'Steps today',
+      // Workouts as their own Home row (they used to be a subline inside the
+      // activity widget). Opens the workouts screen.
+      workouts: 'Workouts',
+      workoutsCta: 'Log a workout',
+      workoutsToday: '+{{kcal}} kcal to today\'s budget',
       sleep: 'Last night\'s sleep',
       diary: 'Thought diary',
       diaryCount: '{{count}} entries',
@@ -301,7 +306,7 @@ export const en = {
     intro: 'Every part of the app in one place.',
     sections: {
       food: 'Food today',
-      steps: 'Activity',
+      steps: 'Steps',
       workouts: 'Workouts',
       weight: 'Weight',
       mind: 'Mood & diary',
@@ -360,6 +365,8 @@ export const en = {
   },
   units: { kcal: 'kcal', g: 'g', h: 'h' },
   workouts: {
+    // Header title for the standalone workouts screen.
+    screenTitle: 'Workouts',
     title: 'Workouts today',
     summaryEmpty: 'none — add one',
     summary: '−{{kcal}} kcal · {{counted}} counted',
@@ -624,7 +631,7 @@ export const en = {
   },
   // "Activity" screen — steps + workouts, all the movement that feeds the day budget.
   activity: {
-    title: 'Activity',
+    title: 'Steps',
     stepsSection: 'Steps',
     historySection: 'Step history',
   },

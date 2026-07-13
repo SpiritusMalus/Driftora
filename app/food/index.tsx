@@ -367,7 +367,7 @@ function DayProgress({
           <Bar value={kcalEaten} max={target} color={theme.primary} track={theme.fill} height={8} />
           <Text style={[styles.dayWorkout, { color: theme.subtle }, theme.font.body]}>{parts.join(' · ')}</Text>
           {noMovementYet ? (
-            <Pressable onPress={() => router.push('/activity?workouts=1')} hitSlop={6}>
+            <Pressable onPress={() => router.push('/workout')} hitSlop={6}>
               <Text style={[styles.dayWorkout, { color: theme.subtle }, theme.font.body]}>
                 {stepsBelowBase ? t('food.day.stepsBelowBase', { steps }) : t('food.day.noMovement')}{' '}
                 <Text style={[styles.dayMoveLink, { color: theme.primary }]}>{t('food.day.noMovementCta')}</Text>

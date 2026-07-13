@@ -18,17 +18,16 @@ function toSteps(v: string): number {
   return Number.isFinite(n) && n >= 0 ? n : -1;
 }
 
-/// Home widget: today's ACTIVITY as ONE calm row — steps/workouts in the
-/// subtitle, a [+] that unfolds the inline steps input on demand (folded again
-/// after a save; a manual entry is sticky — the passive OS sync never
-/// overwrites it), and the row itself opening the full «Активность» screen
-/// (steps history + Health Connect + the workout log). `onSaved` refreshes
+/// Home widget: today's STEPS as ONE calm row — the count in the subtitle, a
+/// [+] that unfolds the inline steps input on demand (folded again after a save;
+/// a manual entry is sticky — the passive OS sync never overwrites it), and the
+/// row itself opening the «Шаги» screen (steps history + Health Connect).
+/// Workouts have their own Home row now ([WorkoutWidget]). `onSaved` refreshes
 /// Home after a save.
 export function StepsWidget({
   db,
   subtitle,
   estimateLine,
-  workoutLine,
   onSaved,
 }: {
   db: Db;
@@ -36,9 +35,6 @@ export function StepsWidget({
   /// Optional «сегодня N шагов ≈ M ккал» line — shown only on the value-ladder
   /// rung where a weight is logged but no goal is set yet (see Home). Null hides it.
   estimateLine?: string | null;
-  /// Optional «тренировки: +N ккал» line once a workout is logged today — the
-  /// widget speaks for the whole activity layer, not steps alone. Null hides it.
-  workoutLine?: string | null;
   onSaved: () => void | Promise<void>;
 }) {
   const { t } = useTranslation();
@@ -121,9 +117,6 @@ export function StepsWidget({
         </View>
       ) : null}
 
-      {workoutLine ? (
-        <Text style={[styles.estimate, { color: theme.subtle }, theme.font.body]}>{workoutLine}</Text>
-      ) : null}
       {estimateLine ? (
         <Text style={[styles.estimate, { color: theme.subtle }, theme.font.body]}>{estimateLine}</Text>
       ) : null}
