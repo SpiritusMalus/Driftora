@@ -20,9 +20,12 @@ import {
 import {
   EATBACK_FRACTION,
   setsToMinutes,
+  STRENGTH_INTENSITIES,
+  supportsIntensity,
   supportsSets,
   supportsSpeed,
   WORKOUT_TYPES,
+  type StrengthIntensity,
   type WorkoutType,
 } from '@/lib/core/insights/bodyMetrics';
 import {
@@ -74,6 +77,12 @@ export function WorkoutSection({
   // half-typed minute count survives switching chips back and forth.
   const [sets, setSets] = useState('');
   const [speed, setSpeed] = useState('');
+  // Strength effort → MET (light/moderate/heavy). Defaults to «средняя»: a typical
+  // gym session, not the light-isolation floor the flat 3.5 used to assume.
+  const [intensity, setIntensity] = useState<StrengthIntensity>('moderate');
+  // «По часам»: a measured kcal number typed straight off a watch/tracker — stored
+  // verbatim (no MET, no EPOC), the standalone model's optional import path.
+  const [trackerKcal, setTrackerKcal] = useState('');
   const [open, setOpen] = useState(initiallyOpen);
   // Free-text parse path.
   const [describe, setDescribe] = useState('');
@@ -153,10 +162,11 @@ export function WorkoutSection({
     if (!db) return;
     if (supportsSets(type)) {
       // Strength: sets → estimated minutes (~3 min each incl. rest); no stopwatch.
+      // Effort level picks the MET (light/moderate/heavy).
       const n = Number(sets.replace(',', '.'));
       const min = setsToMinutes(n);
       if (!(min > 0)) return;
-      ackBudget(await addWorkout(db, type, min, weightKg, null, new Date(), Math.round(n)));
+      ackBudget(await addWorkout(db, type, min, weightKg, null, new Date(), Math.round(n), intensity));
       setSets('');
     } else {
       const min = Number(minutes.replace(',', '.'));
@@ -167,6 +177,20 @@ export function WorkoutSection({
       setMinutes('');
       setSpeed('');
     }
+    await reload();
+  }
+
+  /// «По часам»: log a measured kcal number typed straight off a tracker/watch.
+  /// Stored verbatim via [addTrackerWorkout] — no MET, no EPOC (the device already
+  /// measured the whole session) — and marked «по трекеру», like the screenshot path.
+  async function addTracker() {
+    if (!db) return;
+    const kcal = Number(trackerKcal.replace(',', '.'));
+    if (!(Number.isFinite(kcal) && kcal > 0)) return;
+    ackBudget(
+      await addTrackerWorkout(db, { kcal, minutes: 0, type: 'other', label: t('workouts.fromTracker') }),
+    );
+    setTrackerKcal('');
     await reload();
   }
 
@@ -430,6 +454,39 @@ export function WorkoutSection({
             </Pressable>
           </View>
 
+          {supportsIntensity(type) ? (
+            <View style={styles.intensityRow}>
+              <Text style={[styles.intensityLabel, { color: theme.subtle }, theme.font.body]}>
+                {t('workouts.intensity.label')}
+              </Text>
+              <View style={styles.intensityChips}>
+                {STRENGTH_INTENSITIES.map((lv) => {
+                  const active = intensity === lv;
+                  return (
+                    <Pressable
+                      key={lv}
+                      onPress={() => setIntensity(lv)}
+                      style={({ pressed }) => [
+                        styles.effortChip,
+                        {
+                          backgroundColor: active ? theme.primary : theme.card,
+                          borderColor: active ? theme.primary : theme.separator,
+                          opacity: pressed ? 0.7 : 1,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[styles.effortChipText, { color: active ? theme.onPrimary : theme.text }, theme.font.body]}
+                      >
+                        {t(`workouts.intensity.${lv}`)}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          ) : null}
+
           {supportsSets(type) ? (
             <Text style={[styles.setsHint, { color: theme.tertiary }, theme.font.body]}>
               {t('workouts.setsHint')}
@@ -457,6 +514,45 @@ export function WorkoutSection({
               {t('workouts.weightFallback', { kg: weightKg })}
             </Text>
           ) : null}
+
+          {/* «По часам» — the optional import path: a measured kcal number from a
+              watch/tracker, stored verbatim (no MET/EPOC), marked «по трекеру». The
+              app stays standalone; this just lets a measured number in. */}
+          <View style={[styles.trackerBlock, { borderColor: theme.separator }]}>
+            <Text style={[styles.blockHead, { color: theme.subtle }, theme.font.bodySemiBold]}>
+              {t('workouts.tracker.head')}
+            </Text>
+            <View style={styles.addRow}>
+              <TextField
+                value={trackerKcal}
+                onChangeText={setTrackerKcal}
+                keyboardType="numeric"
+                placeholder={t('workouts.tracker.kcalPlaceholder')}
+                style={styles.minInput}
+              />
+              <Text style={[styles.unit, { color: theme.subtle }, theme.font.body]}>{t('units.kcal')}</Text>
+              <Pressable
+                onPress={() => void addTracker()}
+                disabled={!(Number(trackerKcal.replace(',', '.')) > 0)}
+                accessibilityRole="button"
+                accessibilityLabel={t('workouts.add')}
+                style={({ pressed }) => [
+                  styles.addBtn,
+                  {
+                    backgroundColor: theme.primary,
+                    opacity: !(Number(trackerKcal.replace(',', '.')) > 0) ? 0.5 : pressed ? 0.7 : 1,
+                  },
+                ]}
+              >
+                <Text style={[styles.addBtnText, { color: theme.onPrimary }, theme.font.bodySemiBold]}>
+                  {t('workouts.add')}
+                </Text>
+              </Pressable>
+            </View>
+            <Text style={[styles.setsHint, { color: theme.tertiary }, theme.font.body]}>
+              {t('workouts.tracker.hint')}
+            </Text>
+          </View>
 
           {AI_CONFIGURED ? (
             <View style={[styles.describeBlock, { borderColor: theme.separator }]}>
@@ -548,11 +644,15 @@ export function WorkoutSection({
               {rows.map((r) => (
                 <View key={r.id} style={styles.item}>
                   <Text style={[styles.itemName, { color: theme.text }, theme.font.body]} numberOfLines={1}>
-                    {r.label ? r.label : t(`workouts.type.${r.type}`)} ·{' '}
-                    {r.sets != null && r.sets > 0
-                      ? t('workouts.setsCount', { count: r.sets })
-                      : `${r.minutes} ${t('workouts.min')}`}
-                    {r.speedKmh ? ` · ${Math.round(r.speedKmh * 10) / 10} ${t('workouts.kmh')}` : ''}
+                    {(() => {
+                      const parts = [r.label ? r.label : t(`workouts.type.${r.type}`)];
+                      if (r.sets != null && r.sets > 0) parts.push(t('workouts.setsCount', { count: r.sets }));
+                      // Skip a «0 мин» tail: a «по часам» entry has kcal but no duration.
+                      else if (r.minutes > 0) parts.push(`${r.minutes} ${t('workouts.min')}`);
+                      if (r.speedKmh) parts.push(`${Math.round(r.speedKmh * 10) / 10} ${t('workouts.kmh')}`);
+                      if (r.intensity) parts.push(t(`workouts.intensity.${r.intensity}`));
+                      return parts.join(' · ');
+                    })()}
                   </Text>
                   <Text style={[styles.itemKcal, { color: theme.subtle }, theme.font.body]}>
                     {r.type === 'other' ? '≈ ' : ''}
@@ -599,6 +699,12 @@ const styles = StyleSheet.create({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { paddingVertical: 7, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1 },
   chipText: { fontSize: 13 },
+  intensityRow: { marginTop: 12, gap: 8 },
+  intensityLabel: { fontSize: 12 },
+  intensityChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  effortChip: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1 },
+  effortChipText: { fontSize: 13 },
+  trackerBlock: { marginTop: 16, gap: 8, borderWidth: 1, borderRadius: 12, padding: 12 },
   addRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 },
   speedRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
   setsHint: { fontSize: 12, lineHeight: 16, marginTop: 6 },

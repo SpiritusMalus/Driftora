@@ -1,7 +1,13 @@
 import { desc, eq } from 'drizzle-orm';
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
-import { kcalFromMet, workoutKcal, WORKOUT_TYPES, type WorkoutType } from '../insights/bodyMetrics';
+import {
+  kcalFromMet,
+  workoutKcal,
+  WORKOUT_TYPES,
+  type StrengthIntensity,
+  type WorkoutType,
+} from '../insights/bodyMetrics';
 import { workouts, type WorkoutRow } from './schema';
 import { dayKey } from './steps';
 
@@ -24,8 +30,9 @@ export async function addWorkout(
   speedKmh: number | null = null,
   when: Date = new Date(),
   sets: number | null = null,
+  intensity: StrengthIntensity | null = null,
 ): Promise<number> {
-  const kcal = workoutKcal(type, minutes, weightKg, speedKmh);
+  const kcal = workoutKcal(type, minutes, weightKg, speedKmh, intensity);
   await db.insert(workouts).values({
     ts: when,
     date: dayKey(when),
@@ -34,6 +41,8 @@ export async function addWorkout(
     kcal,
     speedKmh: speedKmh != null && speedKmh > 0 ? speedKmh : null,
     sets: sets != null && sets > 0 ? Math.round(sets) : null,
+    // Effort is a strength-only lever; store it only where it shaped the MET.
+    intensity: type === 'strength' && intensity != null ? intensity : null,
   });
   return kcal;
 }

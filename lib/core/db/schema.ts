@@ -78,6 +78,10 @@ export const workouts = sqliteTable('workouts', {
   // Set count for strength entries logged «подходами» (no stopwatch needed);
   // minutes then hold the ~3-min-per-set estimate. Null for time-based entries.
   sets: integer('sets'),
+  // Effort level for strength ('light'|'moderate'|'heavy') → the MET used at log
+  // time. Null for non-strength and for parsed/tracker entries (fixed MET / a
+  // measured number). See [StrengthIntensity] in bodyMetrics.
+  intensity: text('intensity'),
 });
 export type WorkoutRow = typeof workouts.$inferSelect;
 

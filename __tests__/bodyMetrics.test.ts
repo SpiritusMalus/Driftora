@@ -16,6 +16,7 @@ import {
   suggestActivityLevel,
   suggestPlan,
   suggestTargets,
+  supportsIntensity,
   supportsSets,
   supportsSpeed,
   validBodyFatPct,
@@ -330,6 +331,30 @@ describe('sets-based strength logging (no stopwatch needed)', () => {
   });
 });
 
+describe('strength effort → MET (light/moderate/heavy)', () => {
+  it('offers an effort chip for strength only', () => {
+    expect(supportsIntensity('strength')).toBe(true);
+    expect(supportsIntensity('run')).toBe(false);
+    expect(supportsIntensity('hiit')).toBe(false);
+  });
+
+  it('effort picks the MET; heavy lifting no longer reads as a light 3.5 session', () => {
+    const min = setsToMinutes(12); // 36 min
+    // light 3.5 (= the old flat default), moderate 5.0, heavy 6.0 — each × 80 kg ×
+    // 0.6 h, then +10% afterburn.
+    expect(workoutKcal('strength', min, 80, null, 'light')).toBe(185); // 168 → 185
+    expect(workoutKcal('strength', min, 80, null, 'moderate')).toBe(264); // 240 → 264
+    expect(workoutKcal('strength', min, 80, null, 'heavy')).toBe(317); // 288 → 317
+    // No effort passed → the fixed moderate MET (3.5), unchanged from before.
+    expect(workoutKcal('strength', min, 80)).toBe(185);
+  });
+
+  it('effort is a strength-only lever — ignored for other types', () => {
+    // A pace-less run keeps its fixed 9.8 MET regardless of an effort argument.
+    expect(workoutKcal('run', 30, 130, null, 'heavy')).toBe(workoutKcal('run', 30, 130));
+  });
+});
+
 describe('metForSpeed + speed-aware workoutKcal', () => {
   it('only walk/run/cycle support a pace', () => {
     expect(supportsSpeed('walk')).toBe(true);
@@ -501,11 +526,11 @@ describe('restingPlan (the «база» — sedentary regardless of stored level
   });
 });
 
-describe('dayBudgetKcal (the day-level minimum: earned movement re-opens the deficit)', () => {
-  it('adds earned kcal to the base and floors the SUM, not the base', () => {
-    expect(dayBudgetKcal(2080, 2170, 455)).toBe(2535); // gap filled, deficit intact
+describe('dayBudgetKcal (earned movement adds on top of the floored base)', () => {
+  it('floors the base at the day-minimum, then adds earned kcal ON TOP', () => {
+    expect(dayBudgetKcal(2080, 2170, 455)).toBe(2625); // base under floor → floor + earned
     expect(dayBudgetKcal(2080, 2170, 0)).toBe(2170); // couch day rests at the minimum
-    expect(dayBudgetKcal(2080, 2170, 50)).toBe(2170); // small movement still under the min
+    expect(dayBudgetKcal(2080, 2170, 50)).toBe(2220); // ANY movement now raises the number
     expect(dayBudgetKcal(2340, 2170, 100)).toBe(2440); // base above min: plain sum
   });
 
@@ -535,7 +560,7 @@ describe('130 kg / 36 % fat / 10k steps — matches the by-hand clinical numbers
     expect(rest.kcal + earned).toBe(3055);
   });
 
-  it('deficit tempos produce DIFFERENT day budgets once movement is counted', () => {
+  it('earned movement adds on top of the floor; sub-floor tempos share the active-day budget', () => {
     const earned = stepsEarnedKcal(10_000, 130);
     const soft = restingPlan(profile, 130, 'lose', NOW, 0, 'soft')!;
     const standard = restingPlan(profile, 130, 'lose', NOW, 0, 'standard')!;
@@ -546,14 +571,18 @@ describe('130 kg / 36 % fat / 10k steps — matches the by-hand clinical numbers
     expect(fast.floored).toBe(true);
     expect(standard.kcal).toBe(2170);
     expect(standard.minDayKcal).toBe(2170);
-    // …but the bases differ, and the day-level floor lets movement re-open the
-    // chosen deficit — the tempo lever works again (it used to collapse to one
-    // number for every obese user: the old per-base floor made 2625 for all).
+    // …the bases still differ, but earned movement now adds ON TOP of the floored
+    // base instead of first paying back a deficit the floor already overrides —
+    // so ANY walking moves the number (device feedback 2026-07-13: «2170 без шагов
+    // и с 4000 шагами — так же»). Soft sits above the floor and keeps its own
+    // base; standard & fast both floor to 2170 and so share the active-day budget
+    // (they already shared the couch-day one — a steeper deficit than the clinical
+    // floor simply cannot happen).
     expect(soft.baseKcal).toBe(2340);
     expect(standard.baseKcal).toBe(2080);
     expect(fast.baseKcal).toBe(1950);
     const budgets = [soft, standard, fast].map((p) => dayBudgetKcal(p.baseKcal, p.minDayKcal, earned));
-    expect(budgets).toEqual([2795, 2535, 2405]);
+    expect(budgets).toEqual([2795, 2625, 2625]);
     // A zero-movement day still never dips below the healthy minimum.
     expect(dayBudgetKcal(fast.baseKcal, fast.minDayKcal, 0)).toBe(2170);
   });

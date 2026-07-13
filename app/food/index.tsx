@@ -323,16 +323,20 @@ function DayProgress({
   const stepsAdd = Math.max(0, stepsEarned);
   const workoutAdd = Math.round(Math.max(0, workoutKcalRaw) * EATBACK_FRACTION);
   const target = dayBudgetKcal(goal.baseKcal, goal.minDayKcal, stepsAdd + workoutAdd);
-  const minBinds = goal.baseKcal + stepsAdd + workoutAdd < goal.minDayKcal;
+  // The resting number the day starts from: the deficit base, floored at the
+  // healthy day-minimum. Earned movement is shown adding ON TOP of it, so the
+  // «покой N · шаги +N» sum always matches the target and any walking moves the
+  // number (device feedback 2026-07-13: earned kcal no longer vanish into the
+  // base→floor gap).
+  const restingShown = Math.max(goal.baseKcal, goal.minDayKcal);
   // A forecast only makes the target «≈» when it actually moves the number.
   const approx = stepsForecast && stepsAdd > 0;
   const onPlan = kcalEaten <= target;
-  // The visible breakdown: «покой N · шаги +N · тренировки +N [· не ниже N]».
-  const parts = [t('food.day.restBase', { kcal: goal.baseKcal })];
+  // The visible breakdown: «покой N · шаги +N · тренировки +N».
+  const parts = [t('food.day.restBase', { kcal: restingShown })];
   if (stepsAdd > 0)
     parts.push(t(stepsForecast ? 'food.day.stepsForecastPart' : 'food.day.stepsPart', { kcal: stepsAdd, steps }));
   if (workoutAdd > 0) parts.push(t('food.day.workoutsPart', { kcal: workoutAdd }));
-  if (minBinds) parts.push(t('food.day.minPart', { kcal: goal.minDayKcal }));
   // Device feedback 2026-07-10: «не понял, почему цифра такая низкая». With no
   // movement logged yet the breakdown used to hide — exactly when the "steps
   // and workouts raise this number" explanation is needed most. Now the sum is
