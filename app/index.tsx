@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FoodTodayWidget } from '@/components/home/FoodTodayWidget';
 import { StepsWidget } from '@/components/home/StepsWidget';
+import { WorkoutWidget } from '@/components/home/WorkoutWidget';
 import { SwipeCoach } from '@/components/home/SwipeCoach';
 import { WeightWidget } from '@/components/home/WeightWidget';
 import { Card } from '@/components/ui/Card';
@@ -334,13 +335,6 @@ export default function HomeScreen() {
   // feedback: «не понял, что тренировки забустят»).
   const movementHint =
     hasGoal && dayBase != null && earnedAdd === 0 ? t('home.food.movementHint') : null;
-  // The activity widget speaks for BOTH feeders: once a workout is logged, show
-  // its counted share alongside the steps line.
-  const workoutLine =
-    workoutRawKcal > 0
-      ? t('home.activity.workoutsLine', { kcal: Math.round(Math.max(0, workoutRawKcal) * EATBACK_FRACTION) })
-      : null;
-
   // Value ladder for the no-goal user: once a WEIGHT is logged, today's steps get
   // an honest «≈ N ккал» estimate — walking becomes a real number without needing
   // the full profile/goal. Suppressed once a goal is active (the food budget's
@@ -443,9 +437,9 @@ export default function HomeScreen() {
           db={db}
           subtitle={stepsSubtitle}
           estimateLine={stepsEstimateLine}
-          workoutLine={workoutLine}
           onSaved={reload}
         />
+        <WorkoutWidget countedKcal={Math.round(Math.max(0, workoutRawKcal) * EATBACK_FRACTION)} />
         {/* Whispered affordance for the left swipe — tappable too (some will
             tap the words; screen readers get a plain button). Retires after
             the gesture stuck: three real swipe-opens. */}

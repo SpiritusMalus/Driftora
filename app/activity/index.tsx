@@ -1,9 +1,8 @@
-import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { WorkoutSection } from '@/components/WorkoutSection';
 import { Card } from '@/components/ui/Card';
 import { ListGroup, type RowSpec } from '@/components/ui/ListGroup';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
@@ -30,20 +29,16 @@ type HealthState =
 /// update the provider when `availability()` reports it's missing/outdated.
 const HEALTH_CONNECT_PKG = 'com.google.android.apps.healthdata';
 
-/// «Активность» — everything that feeds the day budget on top of rest, in one
-/// place: steps (typed by hand or read from the OS health store) and the
-/// workout log (moved here from the food day — «разные же вещи», device
-/// feedback 2026-07-10). A manual steps entry is sticky — the passive OS sync
-/// never overwrites it (source 'manual'), so a typed number is never silently
-/// replaced.
+/// «Шаги» — the step count that feeds the day budget: typed by hand or read
+/// from the OS health store, plus the recent history and the Health Connect
+/// hookup. Workouts used to share this screen but now live on their own
+/// «Тренировки» screen («из шагов убрать раздел тренировки», device feedback
+/// 2026-07-12). A manual steps entry is sticky — the passive OS sync never
+/// overwrites it (source 'manual'), so a typed number is never silently replaced.
 export default function ActivityScreen() {
   const { t } = useTranslation();
   const theme = useTheme();
   const db = useDatabase();
-  // «Разделы» → «Тренировки» deep-links here with ?workouts=1 so the workout
-  // card arrives already unfolded — a collapsed one-liner read as «тренировок
-  // тут нет» (device feedback 2026-07-12).
-  const { workouts } = useLocalSearchParams<{ workouts?: string }>();
 
   const [items, setItems] = useState<StepsRow[] | null>(null);
   const [text, setText] = useState('');
@@ -169,10 +164,6 @@ export default function ActivityScreen() {
       />
 
       <Text style={[styles.note, { color: theme.subtle }, theme.font.body]}>{t('steps.note')}</Text>
-
-      {/* The workout log — the other half of «заработанное движением». Its card
-          carries its own title, so no extra section header above it. */}
-      {db != null ? <WorkoutSection db={db} initiallyOpen={workouts != null} /> : null}
 
       <SectionHeader>{t('steps.auto.title')}</SectionHeader>
       <Card style={styles.autoCard}>

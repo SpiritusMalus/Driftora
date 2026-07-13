@@ -85,6 +85,7 @@ export default function RootLayout() {
           <Stack.Screen name="weight/index" options={{ title: t('weight.title') }} />
           <Stack.Screen name="body-setup" options={{ title: t('bodySetup.title') }} />
           <Stack.Screen name="activity/index" options={{ title: t('activity.title') }} />
+          <Stack.Screen name="workout/index" options={{ title: t('workouts.screenTitle') }} />
           {/* Mood opens by a LEFT SWIPE on Home — slide-from-right on both
               platforms so the screen visually follows the finger's direction. */}
           <Stack.Screen
