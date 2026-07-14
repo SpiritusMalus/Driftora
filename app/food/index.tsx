@@ -279,9 +279,9 @@ export default function FoodDayScreen() {
                     </Pressable>
                   </View>
                   <Text style={[styles.rowMacros, { color: theme.subtle }, theme.font.body]}>
-                    {Math.round(e.kcal)} {t('units.kcal')} · {t('macros.protein')} {Math.round(e.proteinG)}{' '}
-                    {t('units.g')} · {t('macros.fat')} {Math.round(e.fatG)} {t('units.g')} · {t('macros.carbs')}{' '}
-                    {Math.round(e.carbG)} {t('units.g')}
+                    {Math.round(e.kcal)} {t('units.kcal')} · {t('macros.protShort')} {Math.round(e.proteinG)} ·{' '}
+                    {t('macros.fatShort')} {Math.round(e.fatG)} · {t('macros.carbShort')} {Math.round(e.carbG)}{' '}
+                    {t('units.g')}
                   </Text>
                 </Card>
               ))}
@@ -332,6 +332,10 @@ function DayProgress({
   // A forecast only makes the target «≈» when it actually moves the number.
   const approx = stepsForecast && stepsAdd > 0;
   const onPlan = kcalEaten <= target;
+  // Hero figure: what's still left of the budget, or — when over — how much
+  // above plan. Both stay non-negative; the label switches, never a red number.
+  const remaining = Math.max(0, target - kcalEaten);
+  const overBy = Math.max(0, kcalEaten - target);
   // The visible breakdown: «покой N · шаги +N · тренировки +N».
   const parts = [t('food.day.restBase', { kcal: restingShown })];
   if (stepsAdd > 0)
@@ -356,19 +360,32 @@ function DayProgress({
   return (
     <Card style={styles.dayCard}>
       <View style={styles.dayHead}>
-        <Text style={[styles.dayTitle, { color: theme.text }, theme.font.bodySemiBold]}>{t('food.day.title')}</Text>
-        {goal.hideCalories ? null : onPlan ? (
+        <Text style={[styles.dayEyebrow, { color: theme.labelCaps }, theme.font.bodySemiBold]}>
+          {t('food.day.title')}
+        </Text>
+        {goal.hideCalories || !onPlan ? null : (
           <Text style={[styles.dayChip, { color: theme.accent }, theme.font.bodyMedium]}>{t('food.day.onPlan')}</Text>
-        ) : (
-          <Text style={[styles.dayChip, { color: theme.subtle }, theme.font.body]}>{t('food.day.over')}</Text>
         )}
       </View>
       {goal.hideCalories ? null : (
         <>
-          <Text style={[styles.dayKcal, { color: theme.text }, theme.font.bodyMedium]}>
+          {/* Hero: the answer to «сколько ещё можно» — big and first. Over-plan
+              stays calm (no red): the amber accent, «сверх плана» as the label. */}
+          <View style={styles.dayHeroRow}>
+            <Text style={[styles.dayHeroNum, { color: onPlan ? theme.text : theme.accent }, theme.font.heading]}>
+              {onPlan ? remaining : overBy}
+            </Text>
+            <Text style={[styles.dayHeroLabel, { color: theme.subtle }, theme.font.body]}>
+              {t(onPlan ? 'food.day.left' : 'food.day.overBy')}
+            </Text>
+          </View>
+          <Bar value={kcalEaten} max={target} color={theme.primary} track={theme.fill} height={10} />
+          {/* Demoted to a quiet second line: съедено/цель (≈ when the steps are a
+              forecast — the one place the ≈ lives now), then the transparent
+              «база · шаги · тренировки» breakdown. */}
+          <Text style={[styles.daySecondary, { color: theme.subtle }, theme.font.body]}>
             {t(approx ? 'food.day.kcalApprox' : 'food.day.kcal', { eaten: kcalEaten, target })}
           </Text>
-          <Bar value={kcalEaten} max={target} color={theme.primary} track={theme.fill} height={8} />
           <Text style={[styles.dayWorkout, { color: theme.subtle }, theme.font.body]}>{parts.join(' · ')}</Text>
           {noMovementYet ? (
             <Pressable onPress={() => router.push('/workout')} hitSlop={6}>
@@ -377,11 +394,6 @@ function DayProgress({
                 <Text style={[styles.dayMoveLink, { color: theme.primary }]}>{t('food.day.noMovementCta')}</Text>
               </Text>
             </Pressable>
-          ) : null}
-          {approx ? (
-            <Text style={[styles.dayWorkout, { color: theme.subtle }, theme.font.body]}>
-              {t('food.day.forecastNote')}
-            </Text>
           ) : null}
           <Pressable onPress={() => router.push('/more/how-it-works')} hitSlop={6}>
             <Text style={[styles.dayHowLink, { color: theme.tertiary }, theme.font.body]}>{t('food.day.how')}</Text>
@@ -392,7 +404,7 @@ function DayProgress({
         {macros.map((m) => (
           <View key={m.label} style={styles.macroCol}>
             <Text style={[styles.macroLabel, { color: theme.subtle }, theme.font.body]}>
-              {m.label} {m.eaten}/{m.target}
+              {m.label} <Text style={{ color: theme.text }}>{m.eaten}</Text>/{m.target}
             </Text>
             <Bar value={m.eaten} max={m.target} color={theme.accent} track={theme.fill} height={5} />
           </View>
@@ -555,16 +567,23 @@ const styles = StyleSheet.create({
   repeatBtn: { marginLeft: 2 },
   rowMacros: { fontSize: 13, marginTop: 4, lineHeight: 19 },
   dayCard: { marginBottom: 16 },
-  dayHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
+  dayHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
   dayTitle: { fontSize: 15 },
+  // Small caps eyebrow above the hero number (was the 15px card title that
+  // out-shouted the figure it sat over).
+  dayEyebrow: { fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.6 },
   dayChip: { fontSize: 12 },
-  dayKcal: { fontSize: 14, marginBottom: 6 },
+  // The day's hero: the remaining/over figure, large, with a quiet unit label.
+  dayHeroRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: 8 },
+  dayHeroNum: { fontSize: 32, lineHeight: 36 },
+  dayHeroLabel: { fontSize: 13 },
+  daySecondary: { fontSize: 13, marginTop: 8 },
   dayWorkout: { fontSize: 12, marginTop: 6, lineHeight: 17 },
   dayMoveLink: { textDecorationLine: 'underline' },
   dayHowLink: { fontSize: 12, marginTop: 6, textDecorationLine: 'underline' },
   macroRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
   macroCol: { flex: 1 },
-  macroLabel: { fontSize: 11, marginBottom: 4 },
+  macroLabel: { fontSize: 12, marginBottom: 4 },
   barTrack: { overflow: 'hidden', width: '100%' },
   microHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   // The TITLE flexes/truncates; the counter keeps its intrinsic width so
