@@ -650,11 +650,20 @@ export const en = {
       device: 'Automatic',
     },
   },
-  // "Activity" screen — steps + workouts, all the movement that feeds the day budget.
+  // "Steps" screen: today's count is the hero, automatic counting (Health Connect)
+  // is the primary path, manual entry is folded away as a fallback. Workouts have
+  // their own screen now.
   activity: {
     title: 'Steps',
-    stepsSection: 'Steps',
-    historySection: 'Step history',
+    today: 'steps today',
+    // Screen is open but there's no automatic or manual number for today yet.
+    noneToday: 'No steps logged for today yet — connect automatic counting or enter them by hand.',
+    // Honest «steps → budget» payoff, right on the screen that owns steps.
+    earned: '≈ {{kcal}} kcal above resting from steps',
+    inBase: 'The first ~3,000 are already in the base — the budget grows above that',
+    autoConnected: 'Automatic counting is on — your daily steps are read for you',
+    manualAdd: 'Enter by hand',
+    historySection: 'History',
   },
   mood: {
     title: 'Mood & diary',
