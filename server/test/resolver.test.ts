@@ -271,8 +271,8 @@ test('relevance filter: a name-DISSIMILAR DB row (skyr → apple) is rejected, n
   assert.equal(r.per100.prot, 11); // the correct skyr protein, not apple's 0.3
 });
 
-test('graded query (молоко 1.8%) whose match dropped the grade → AI estimate offered, confidence demoted', async () => {
-  // A loose crowd hit that carries the WRONG grade («1%») for an «1.8%» query.
+test('graded query (молоко 1.8%) whose DB grade differs → AI estimate becomes PRIMARY, DB row an alternative', async () => {
+  // The DB only carries a DIFFERENT grade («1%») for an «1.8%» query.
   const gradeStub: import('../src/nutrition/provider.js').NutritionProvider = {
     name: 'skurikhin',
     regions: ['RU'],
@@ -295,12 +295,12 @@ test('graded query (молоко 1.8%) whose match dropped the grade → AI esti
     }),
     'RU',
   );
-  // DB number stays primary, but confidence is knocked down so the client opens the picker…
-  assert.equal(r.per100.kcal, 42);
-  assert.ok(r.confidence <= 0.3);
-  // …and the model's estimate for the ACTUAL grade leads the alternatives.
+  // The AI estimate for the REQUESTED grade is now the primary (flagged «≈»)…
+  assert.equal(r.per100.source, 'ai_estimate');
+  assert.equal(r.per100.kcal, 44);
+  // …and the real-but-wrong-grade DB row is the fallback alternative.
   assert.ok(r.alternatives && r.alternatives.length >= 1);
-  assert.equal(r.alternatives[0].name, 'молоко 1.8%');
-  assert.equal(r.alternatives[0].per100.source, 'ai_estimate');
-  assert.equal(r.alternatives[0].per100.kcal, 44);
+  assert.equal(r.alternatives[0].name, 'молоко 1%');
+  assert.equal(r.alternatives[0].per100.source, 'openfoodfacts');
+  assert.equal(r.alternatives[0].per100.kcal, 42);
 });

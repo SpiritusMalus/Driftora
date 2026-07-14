@@ -386,18 +386,39 @@ export class Resolver {
     // curated finished-dish row already describes the cooked state.
     const dryBasis = !prepared && looksDryBasis([item.name_ru, item.name_en, found.name], found.per100);
 
+    const graded = /\d/.test(item.name_ru);
+
+    // WRONG GRADE → AI ESTIMATE IS PRIMARY. The user named a specific grade
+    // (молоко 1.8%) but the DB only has a DIFFERENT one (молоко 3.2%) — defaulting
+    // to the wrong-grade number reads as «почему 3.2%?». The model's estimate IS
+    // the requested grade, so make IT the primary (honestly flagged «≈ оценка ИИ»)
+    // and keep the real-but-wrong-grade DB row as a one-tap alternative below.
+    if (graded && aiFull && unhonoredGrade(item.name_ru, found.name)) {
+      return {
+        name_ru: item.name_ru,
+        name_en: item.name_en,
+        grams,
+        grams_source: 'estimated',
+        confidence: item.confidence,
+        per100: aiFull,
+        scaled: scaleToGrams(aiFull, grams),
+        approximate: true,
+        ...(prepared ? { prepared: true } : {}),
+        alternatives: [{ name: found.name ?? item.name_ru, per100: found.per100 }, ...found.alternatives].slice(
+          0,
+          MAX_ALTERNATIVES,
+        ),
+      };
+    }
+
     // DB HIT → the DB is authoritative, but the REFEREE cross-checks it against
     // the model's expectation. A gross divergence (skyr's protein 0.3 vs ~11)
     // means the match is probably the wrong food: keep the DB number primary but
     // drop confidence (client surfaces the picker) and offer the AI estimate as
     // a one-tap alternative. We never let the model silently overwrite the DB.
-    // GRADE CHECK: the user named a grade (молоко 1.8%, сыр 30%) but the DB match
-    // either dropped it or is only a loose crowd hit (<0.9) — the base rarely has
-    // the exact graded variant. Offer the model's estimate for the SPECIFIC grade
-    // so the user can pick it; the client opens the picker on any AI alternative.
-    const graded = /\d/.test(item.name_ru);
-    const gradeSuspect =
-      !!aiFull && graded && (unhonoredGrade(item.name_ru, found.name) || found.matchConfidence < 0.9);
+    // GRADE CHECK (grade HONORED but loose): a graded query that landed on a
+    // crowd hit (<0.9) — offer the model's clean estimate as an alternative too.
+    const gradeSuspect = !!aiFull && graded && found.matchConfidence < 0.9;
     const suspect = (aiFull ? estimateMismatch(found.per100, item.estimate!) : false) || gradeSuspect;
     const confidence = suspect
       ? REFEREE_DEMOTED_CONFIDENCE
