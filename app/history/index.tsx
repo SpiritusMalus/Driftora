@@ -1,7 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { StyleSheet, Text } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { ListGroup, type RowSpec } from '@/components/ui/ListGroup';
 import { Screen } from '@/components/ui/Screen';
@@ -54,8 +54,12 @@ export default function HistoryScreen() {
           const key = localDayKey(new Date(m.ts));
           if (!moodByDay.has(key)) moodByDay.set(key, m.value);
         }
-        const weightDays = new Set(weightRows.map((w) => w.date));
-        const stepsDays = new Set(stepsRows.map((s) => s.date));
+        // Actual values, not just presence — the row surfaces steps/weight when
+        // there's no food so a movement-only day stops reading as «пусто».
+        const stepsByDay = new Map<string, number>();
+        for (const s of stepsRows) if (!stepsByDay.has(s.date)) stepsByDay.set(s.date, Number(s.steps));
+        const weightByDay = new Map<string, number>();
+        for (const w of weightRows) if (!weightByDay.has(w.date)) weightByDay.set(w.date, w.weightKg);
 
         const specs: RowSpec[] = [];
         for (let i = 0; i < WINDOW_DAYS; i++) {
@@ -63,24 +67,38 @@ export default function HistoryScreen() {
           const key = localDayKey(d);
           const food = foodByDay.get(key);
           const mood = moodByDay.get(key);
-          const hasAny =
-            food != null || mood != null || weightDays.has(key) || stepsDays.has(key);
+          const stepsN = stepsByDay.get(key);
+          const weightN = weightByDay.get(key);
+          const hasAny = food != null || mood != null || weightN != null || stepsN != null;
           // Empty days are skipped (a month of «—» rows is noise), but today
           // always shows — it's the anchor the user came from.
           if (!hasAny && i !== 0) continue;
+          // Subtitle honesty: food headline first; otherwise what WAS logged
+          // (steps · weight); mood alone rides the pill, so no «noFood» there.
+          let subtitle: string | undefined;
+          if (food) {
+            subtitle = settings.hideCalories
+              ? `${t('macros.protein')} ${Math.round(food.proteinG)} ${t('units.g')}`
+              : `${Math.round(food.kcal)} ${t('units.kcal')} · ${t('macros.protein')} ${Math.round(food.proteinG)} ${t('units.g')}`;
+          } else {
+            const parts: string[] = [];
+            if (stepsN != null) parts.push(`${formatSteps(stepsN)} ${t('steps.unit')}`);
+            if (weightN != null) parts.push(`${weightN.toFixed(1)} ${t('weight.unit')}`);
+            subtitle = parts.length > 0 ? parts.join(' · ') : mood != null ? undefined : t('history.noFood');
+          }
           specs.push({
             key,
             title: formatDayTitle(key, t, now),
-            subtitle: food
-              ? settings.hideCalories
-                ? `${t('macros.protein')} ${Math.round(food.proteinG)} ${t('units.g')}`
-                : `${Math.round(food.kcal)} ${t('units.kcal')} · ${t('macros.protein')} ${Math.round(food.proteinG)} ${t('units.g')}`
-              : t('history.noFood'),
+            subtitle,
+            // Neutral mood pill — draws the eye when scanning the month without
+            // judging the value (coral is a brand accent, never «плохо»).
             right:
               mood != null ? (
-                <Text style={[styles.mood, { color: theme.text }, theme.font.bodyBold]}>
-                  {mood}/10
-                </Text>
+                <View style={[styles.moodPill, { backgroundColor: theme.fill }]}>
+                  <Text style={[styles.moodPillText, { color: theme.text }, theme.font.bodySemiBold]}>
+                    {mood}/10
+                  </Text>
+                </View>
               ) : undefined,
             onPress: () => router.push(`/history/${key}`),
           });
@@ -95,9 +113,6 @@ export default function HistoryScreen() {
 
   return (
     <Screen>
-      <Text style={[styles.intro, { color: theme.subtle }, theme.font.body]}>
-        {t('history.intro')}
-      </Text>
       {db == null ? (
         <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>
           {t('history.dbUnavailable')}
@@ -113,8 +128,13 @@ export default function HistoryScreen() {
   );
 }
 
+/// Thin-space thousands so "6 240" reads like the steps widget (mirrors [date]).
+function formatSteps(n: number): string {
+  return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+}
+
 const styles = StyleSheet.create({
-  intro: { fontSize: 14, lineHeight: 20, marginBottom: 14, marginHorizontal: 4 },
   hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
-  mood: { fontSize: 16 },
+  moodPill: { borderRadius: 8, paddingHorizontal: 9, paddingVertical: 3 },
+  moodPillText: { fontSize: 13 },
 });

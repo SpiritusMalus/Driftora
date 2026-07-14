@@ -94,36 +94,16 @@ export default function HistoryDayScreen() {
     ),
   }));
 
-  const bodyRows: RowSpec[] = [
-    ...(weightKg != null
-      ? [
-          {
-            key: 'weight',
-            title: t('history.weightRow'),
-            right: (
-              <Text style={[styles.rowValue, { color: theme.text }, theme.font.bodyMedium]}>
-                {weightKg.toFixed(1)} {t('weight.unit')}
-              </Text>
-            ),
-          },
-        ]
-      : []),
-    ...(steps != null
-      ? [
-          {
-            key: 'steps',
-            title: t('history.stepsRow'),
-            right: (
-              <Text style={[styles.rowValue, { color: theme.text }, theme.font.bodyMedium]}>
-                {formatSteps(steps)}
-              </Text>
-            ),
-          },
-        ]
-      : []),
-  ];
+  // Body facts fold into one quiet line («Вес 72.3 кг · Шаги 8 420») instead of
+  // a two-row card — they're context, not the day's headline.
+  const bodyParts: string[] = [];
+  if (weightKg != null)
+    bodyParts.push(`${t('history.weightRow')} ${weightKg.toFixed(1)} ${t('weight.unit')}`);
+  if (steps != null) bodyParts.push(`${t('history.stepsRow')} ${formatSteps(steps)}`);
+  const bodyLine = bodyParts.length > 0 ? bodyParts.join(' · ') : null;
 
-  const emptyDay = loaded && entries.length === 0 && moods.length === 0 && bodyRows.length === 0;
+  const hasFood = entries.length > 0;
+  const emptyDay = loaded && entries.length === 0 && moods.length === 0 && bodyLine == null;
 
   return (
     <Screen>
@@ -140,19 +120,30 @@ export default function HistoryDayScreen() {
         </Text>
       ) : (
         <>
-          {entries.length > 0 ? (
-            <>
-              <SectionHeader>{t('history.foodSection')}</SectionHeader>
-              <Text style={[styles.totals, { color: theme.subtle }, theme.font.body]}>
+          {hasFood ? (
+            <View style={styles.hero}>
+              <View style={styles.heroRow}>
+                <Text style={[styles.heroNum, { color: theme.heroAccent }, theme.font.heading]}>
+                  {hideCalories ? Math.round(totals.prot) : Math.round(totals.kcal)}
+                </Text>
+                <Text style={[styles.heroUnit, { color: theme.subtle }, theme.font.body]}>
+                  {hideCalories ? t('units.g') : t('units.kcal')}
+                </Text>
+              </View>
+              <Text style={[styles.heroSub, { color: theme.subtle }, theme.font.body]}>
                 {hideCalories
-                  ? t('history.foodTotalProtein', { prot: Math.round(totals.prot) })
-                  : t('history.foodTotal', {
-                      kcal: Math.round(totals.kcal),
+                  ? t('macros.protein')
+                  : t('history.macrosLine', {
                       prot: Math.round(totals.prot),
                       fat: Math.round(totals.fat),
                       carb: Math.round(totals.carb),
                     })}
               </Text>
+            </View>
+          ) : null}
+          {hasFood ? (
+            <>
+              <SectionHeader>{t('history.foodSection')}</SectionHeader>
               <ListGroup rows={foodRows} />
             </>
           ) : null}
@@ -162,10 +153,12 @@ export default function HistoryDayScreen() {
               <ListGroup rows={moodRows} />
             </View>
           ) : null}
-          {bodyRows.length > 0 ? (
+          {bodyLine != null ? (
             <View style={styles.section}>
               <SectionHeader>{t('history.otherSection')}</SectionHeader>
-              <ListGroup rows={bodyRows} />
+              <Text style={[styles.bodyLine, { color: theme.text }, theme.font.bodyMedium]}>
+                {bodyLine}
+              </Text>
             </View>
           ) : null}
         </>
@@ -187,7 +180,14 @@ function formatSteps(n: number): string {
 
 const styles = StyleSheet.create({
   hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
-  totals: { fontSize: 13, marginBottom: 8, marginHorizontal: 4 },
+  // Day headline: kcal (or protein) big in coral, macros riding quietly under —
+  // mirrors the «Вес»/«Шаги» heroes from the redesign wave.
+  hero: { marginTop: 8, marginBottom: 18 },
+  heroRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
+  heroNum: { fontSize: 40, lineHeight: 44 },
+  heroUnit: { fontSize: 15 },
+  heroSub: { fontSize: 13, lineHeight: 18, marginTop: 6, marginHorizontal: 4 },
   section: { marginTop: 18 },
   rowValue: { fontSize: 14 },
+  bodyLine: { fontSize: 15, lineHeight: 21, marginHorizontal: 4 },
 });
