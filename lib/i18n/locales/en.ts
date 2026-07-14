@@ -487,6 +487,8 @@ export const en = {
     savedNow: '{{kg}} kg — logged ✓',
     savedDelta: '{{kg}} kg — logged ✓ · {{delta}} kg since last time',
     lastEntry: 'Last entry: {{kg}} kg · {{date}}',
+    // Hero when there's no weight yet; the input sits right below.
+    hero: { empty: 'No weigh-ins yet. Add a weight below — the number and trend appear here.' },
     height: 'Height',
     heightUnit: 'cm',
     plan: {
