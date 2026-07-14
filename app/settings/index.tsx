@@ -6,6 +6,7 @@ import { Linking, Pressable, StyleSheet, Switch, Text, View } from 'react-native
 import { ConsentModal } from '@/components/consent/ConsentModal';
 import { LegalReader } from '@/components/legal/LegalReader';
 import { Card } from '@/components/ui/Card';
+import { ListGroup, type RowSpec } from '@/components/ui/ListGroup';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
 import { SectionHeader } from '@/components/ui/SectionHeader';
@@ -30,6 +31,15 @@ import { nextReminder } from '@/lib/core/services/reminderSchedule';
 import { type Theme, useTheme } from '@/lib/theme/theme';
 
 const TIME_RE = /^([01]?\d|2[0-3]):[0-5]\d$/;
+
+// Quick-set chips for the most-tuned number on the screen — the daily step goal.
+// The manual field stays for any other value; a chip is "active" when it equals
+// the current text. Labels are pre-spaced (Hermes has no reliable toLocaleString).
+const STEP_CHIPS: { v: string; l: string }[] = [
+  { v: '5000', l: '5 000' },
+  { v: '7000', l: '7 000' },
+  { v: '10000', l: '10 000' },
+];
 
 /// Edits the single app_settings row: macro/step targets, reminder times, and
 /// the privacy/mode flags. Reminders are stored now; firing them needs
@@ -185,6 +195,39 @@ export default function SettingsScreen() {
     // Toggle never moved to ON; consent stays false → offline stub.
   }
 
+  const encrypted = db != null && getDbDriver() === 'op-sqlite';
+  const coralTile = theme.scheme === 'light' ? '#FBE2D9' : '#3A241B';
+  const amberTile = theme.scheme === 'light' ? '#FBEFD9' : '#33261F';
+  const neutralTile = theme.scheme === 'light' ? '#EFE6E0' : '#2C2622';
+
+  // «Данные и приватность» — the scattered legal / storage / backup rows folded
+  // into one grouped list on the shared ListGroup (same workhorse as «Ещё»).
+  const dataRows: RowSpec[] = [
+    { key: 'terms', icon: 'document-text-outline', tint: theme.subtle, iconBg: neutralTile, title: t('legal.terms'), onPress: () => setReader('terms') },
+    { key: 'privacy', icon: 'shield-checkmark-outline', tint: theme.primary, iconBg: coralTile, title: t('legal.privacy'), onPress: () => setReader('privacy') },
+    // Neutral studio landing page — no purchase/steering wording (iOS-safe).
+    { key: 'site', icon: 'open-outline', tint: theme.accent, iconBg: amberTile, title: t('settings.site'), onPress: () => void Linking.openURL(SITE_URL) },
+  ];
+  if (db != null) {
+    dataRows.push({
+      key: 'storage',
+      icon: encrypted ? 'lock-closed-outline' : 'warning-outline',
+      tint: encrypted ? theme.primary : theme.accent,
+      iconBg: encrypted ? coralTile : amberTile,
+      title: encrypted ? t('settings.storageEncrypted') : t('settings.storageUnencrypted'),
+      subtitle: encrypted ? undefined : t('settings.storageUnencryptedNote'),
+    });
+  }
+  dataRows.push({
+    key: 'backup',
+    icon: 'cloud-upload-outline',
+    tint: theme.primary,
+    iconBg: coralTile,
+    title: t('backup.openRow'),
+    subtitle: t('backup.openRowNote'),
+    onPress: () => router.push('/settings/backup'),
+  });
+
   return (
     <Screen>
       {db == null ? (
@@ -193,16 +236,26 @@ export default function SettingsScreen() {
         </Text>
       ) : null}
 
-      <SectionHeader>{t('settings.breakTitle')}</SectionHeader>
+      {/* Hero — the app's privacy north-star, promoted out of an 11px note. */}
+      <View style={styles.hero}>
+        <Text style={[styles.heroLine, { color: theme.heroText }, theme.font.heading]}>
+          {t('settings.privacyHero')}
+        </Text>
+        <Text style={[styles.heroLine, { color: theme.heroAccent }, theme.font.heading]}>
+          {t('settings.privacyHeroLead')}
+        </Text>
+      </View>
+
+      <SectionHeader>{t('settings.goalsSection')}</SectionHeader>
       <ToggleRow label={t('settings.pause')} value={paused} onChange={(v) => { setPaused(v); dirty(); }} theme={theme} />
       <Note theme={theme}>{t('settings.pauseNote')}</Note>
 
-      <SectionHeader>{t('settings.targets')}</SectionHeader>
       <NumberField label={t('settings.stepsGoal')} value={stepsGoal} onChange={(v) => { setStepsGoal(v); dirty(); }} theme={theme} />
+      <StepChips value={stepsGoal} onSelect={(v) => { setStepsGoal(v); dirty(); }} theme={theme} />
       {/* КБЖУ targets live on the Weight screen now — next to BMI + the formula. */}
       <Note theme={theme}>{t('settings.targetsMoved')}</Note>
 
-      <SectionHeader>{t('settings.reminders')}</SectionHeader>
+      <Text style={[styles.groupLabel, { color: theme.subtle }, theme.font.body]}>{t('settings.reminders')}</Text>
       {reminders.map((time) => (
         <Card key={time} style={styles.timeRow} padded={false}>
           <Text style={[styles.timeText, { color: theme.text }, theme.font.bodyMedium]}>{time}</Text>
@@ -236,12 +289,17 @@ export default function SettingsScreen() {
         const pad = (n: number) => String(n).padStart(2, '0');
         const isToday = next.getDate() === new Date().getDate();
         const when = `${isToday ? t('settings.today') : t('settings.tomorrow')} ${pad(next.getHours())}:${pad(next.getMinutes())}`;
-        return <Note theme={theme}>{t('settings.nextReminder', { when })}</Note>;
+        return (
+          <Text style={[styles.nextHint, { color: theme.accent }, theme.font.bodyMedium]}>
+            {t('settings.nextReminder', { when })}
+          </Text>
+        );
       })()}
       <ToggleRow label={t('settings.contextualNudges')} value={contextualNudges} onChange={(v) => { setContextualNudges(v); dirty(); }} theme={theme} />
       <Note theme={theme}>{t('settings.contextualNudgesNote')}</Note>
 
-      <SectionHeader>{t('settings.regionTitle')}</SectionHeader>
+      <SectionHeader>{t('settings.foodSection')}</SectionHeader>
+      <Text style={[styles.groupLabel, { color: theme.subtle }, theme.font.body]}>{t('settings.regionTitle')}</Text>
       <View style={styles.segment}>
         {(['auto', 'RU', 'US'] as const).map((opt) => {
           const active = region === opt;
@@ -267,60 +325,21 @@ export default function SettingsScreen() {
       </View>
       <Note theme={theme}>{t('settings.regionNote')}</Note>
 
-      <SectionHeader>{t('settings.flags')}</SectionHeader>
-      <Note theme={theme}>{t('settings.privacyLine')}</Note>
       {/* AI food recognition — bound to aiFoodParseConsent, OFF by default.
-          Persisted immediately (consent action), not via the Save button. */}
+          Persisted immediately (consent action), not via the Save button. The
+          cross-border provider/country now lead in the hero above + the consent
+          modal, so the toggle's own status line stays short. */}
       <ToggleRow label={t('settings.aiToggle')} value={aiConsent} onChange={onToggleAi} theme={theme} />
       <Note theme={theme}>{aiConsent ? t('settings.aiOn') : t('settings.aiOff')}</Note>
+
+      <SectionHeader>{t('settings.displaySection')}</SectionHeader>
       <ToggleRow label={t('settings.hideCalories')} value={hideCalories} onChange={(v) => { setHideCalories(v); dirty(); }} theme={theme} />
       <ToggleRow label={t('settings.llmDiaryAssist')} value={llmDiaryAssist} onChange={(v) => { setLlmDiaryAssist(v); dirty(); }} theme={theme} />
       <ToggleRow label={t('settings.showPopulationStats')} value={showPopulationStats} onChange={(v) => { setShowPopulationStats(v); dirty(); }} theme={theme} />
       <Note theme={theme}>{t('settings.showPopulationStatsNote')}</Note>
 
-      <SectionHeader>{t('legal.privacy')}</SectionHeader>
-      <Card style={styles.toggleRow} padded={false} onPress={() => setReader('terms')}>
-        <Text style={[styles.toggleLabel, { color: theme.text }, theme.font.body]}>{t('legal.terms')}</Text>
-        <Text style={{ color: theme.primary, fontSize: 20 }}>›</Text>
-      </Card>
-      <Card style={styles.toggleRow} padded={false} onPress={() => setReader('privacy')}>
-        <Text style={[styles.toggleLabel, { color: theme.text }, theme.font.body]}>{t('legal.privacy')}</Text>
-        <Text style={{ color: theme.primary, fontSize: 20 }}>›</Text>
-      </Card>
-      {/* Neutral studio landing page — no purchase/steering wording (iOS-safe). */}
-      <Card style={styles.toggleRow} padded={false} onPress={() => void Linking.openURL(SITE_URL)}>
-        <Text style={[styles.toggleLabel, { color: theme.text }, theme.font.body]}>{t('settings.site')}</Text>
-        <Text style={{ color: theme.primary, fontSize: 16 }}>↗</Text>
-      </Card>
-
-      {db != null
-        ? (() => {
-            const encrypted = getDbDriver() === 'op-sqlite';
-            return (
-              <>
-                <SectionHeader>{t('settings.storage')}</SectionHeader>
-                <Card style={styles.toggleRow} padded={false}>
-                  <Text style={[styles.toggleLabel, { color: theme.text }, theme.font.body]}>
-                    {encrypted ? t('settings.storageEncrypted') : t('settings.storageUnencrypted')}
-                  </Text>
-                  <Text style={{ color: encrypted ? theme.primary : theme.subtle, fontSize: 16 }}>
-                    {encrypted ? '🔒' : '⚠️'}
-                  </Text>
-                </Card>
-                {encrypted ? null : <Note theme={theme}>{t('settings.storageUnencryptedNote')}</Note>}
-              </>
-            );
-          })()
-        : null}
-
-      <SectionHeader>{t('backup.title')}</SectionHeader>
-      <Card style={styles.toggleRow} padded={false} onPress={() => router.push('/settings/backup')}>
-        <Text style={[styles.toggleLabel, { color: theme.text }, theme.font.body]}>
-          {t('backup.openRow')}
-        </Text>
-        <Text style={{ color: theme.primary, fontSize: 20 }}>›</Text>
-      </Card>
-      <Note theme={theme}>{t('backup.openRowNote')}</Note>
+      <SectionHeader>{t('settings.dataSection')}</SectionHeader>
+      <ListGroup rows={dataRows} />
 
       <PrimaryButton
         label={saving ? t('settings.saving') : saved ? t('settings.saved') : t('settings.save')}
@@ -372,6 +391,42 @@ function NumberField({
   );
 }
 
+function StepChips({
+  value,
+  onSelect,
+  theme,
+}: {
+  value: string;
+  onSelect: (v: string) => void;
+  theme: Theme;
+}) {
+  return (
+    <View style={styles.chipRow}>
+      {STEP_CHIPS.map((chip) => {
+        const active = chip.v === value.trim();
+        return (
+          <Pressable
+            key={chip.v}
+            onPress={() => onSelect(chip.v)}
+            style={({ pressed }) => [
+              styles.chip,
+              {
+                backgroundColor: active ? theme.primary : theme.card,
+                borderColor: active ? theme.primary : theme.separator,
+                opacity: pressed ? 0.7 : 1,
+              },
+            ]}
+          >
+            <Text style={[styles.chipText, { color: active ? theme.onPrimary : theme.text }, theme.font.bodySemiBold]}>
+              {chip.l}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 function ToggleRow({
   label,
   value,
@@ -413,8 +468,15 @@ function toNumber(v: string): number {
 
 const styles = StyleSheet.create({
   hint: { fontSize: 13, textAlign: 'center', marginBottom: 12 },
+  hero: { marginTop: 4, marginBottom: 6, marginHorizontal: 4 },
+  heroLine: { fontSize: 20, lineHeight: 27 },
   field: { marginBottom: 12 },
   fieldLabel: { fontSize: 12, marginBottom: 5 },
+  groupLabel: { fontSize: 12, marginTop: 6, marginBottom: 8, marginHorizontal: 4 },
+  chipRow: { flexDirection: 'row', gap: 8, marginBottom: 4 },
+  chip: { flex: 1, borderWidth: 1.5, borderRadius: 999, paddingVertical: 9, alignItems: 'center' },
+  chipText: { fontSize: 14 },
+  nextHint: { fontSize: 12, marginTop: 8, marginHorizontal: 4 },
   timeRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
