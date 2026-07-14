@@ -787,6 +787,13 @@ export const en = {
     replaceItem: 'Replace with another',
     // The user never named a weight — say honestly this is our guess.
     gramsEstimated: '≈ the weight is our guess at a typical portion. Adjust it if you know better.',
+    gramsEstimatedShort: '≈ weight is our guess — adjust it',
+    forGrams: 'per {{grams}} g',
+    otherOption: {
+      open: 'Other option',
+      openCount: 'Other option ({{count}})',
+      hide: 'Collapse',
+    },
     // Cooking method — neutral, never "healthier/worse".
     estimateNote: 'Items not in our database aren’t counted in the total. Enter their macros to include them.',
     // Every item missed the DB: one plain line instead of a zero «Total» card.

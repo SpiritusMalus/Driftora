@@ -1155,16 +1155,11 @@ function ItemCard({
     normalizeChoiceName(item.matched_name) !== normalizeChoiceName(item.name_en)
       ? item.matched_name
       : null;
-  // The card title. After an explicit re-pick the entry takes the real DB name
-  // alone («Скир натуральный») — the user confirmed it, so the crooked input is
-  // no longer needed. Before that, we show «как ввёл (настоящее)» so a wrong
-  // auto-match is transparent without hiding what the user actually wrote.
-  const titleName =
-    item.userChosen && item.matched_name
-      ? item.matched_name
-      : matchedLabel
-        ? `${item.name_ru} (${matchedLabel})`
-        : item.name_ru;
+  // The card title = what the user logged (or the DB name after an explicit
+  // re-pick). The matched DB row, when it differs, is shown on the small grey
+  // «на 100 г» line below — not crammed into the title in parens (which read as
+  // «молоко 1.8% (молоко 3.2%)» → «почему 3.2%?»).
+  const titleName = item.userChosen && item.matched_name ? item.matched_name : item.name_ru;
   // The "per 100 g · <source>" line shows the DB row itself (the footnote's promise).
   const dbPer100 = item.per100;
   // A full DB miss: the resolver's coarse placeholder. We show NO fabricated
@@ -1178,12 +1173,15 @@ function ItemCard({
   // likely wrong-product match, e.g. «мясное рагу» → pure «Beef, stew meat»).
   // We warn and open the picker so the inflated numbers aren't taken at face value.
   const refereeFlagged = alternatives.some((a) => a.per100.source === 'ai_estimate');
-  const [showAlts, setShowAlts] = useState(item.confidence < 0.5 || refereeFlagged);
-  // Manual DB search ("найти вручную"): query field + ranked results.
-  const [searchOpen, setSearchOpen] = useState(false);
+  // ONE «Другой вариант» disclosure unifies the DB alternatives AND manual search
+  // (they both answer «take a different product»). Opens itself when the auto-pick
+  // is shaky (low confidence or a referee flag) so the choice isn't buried.
+  const [otherOpen, setOtherOpen] = useState(item.confidence < 0.5 || refereeFlagged);
   const [searchText, setSearchText] = useState('');
   const [searching, setSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<NutritionAlternative[] | null>(null);
+  const grams = Math.round(item.grams);
+  const PORTIONS = [100, 200, 250];
 
   async function runSearch() {
     const q = searchText.trim();
@@ -1196,46 +1194,68 @@ function ItemCard({
     }
   }
 
+  // The eaten total is the HERO — it's what the user is logging. Per-100g and the
+  // source drop to a small grey line; the DB match, alternatives and manual search
+  // collapse under one «Другой вариант». Honesty (source, «≈», wrong-product note)
+  // stays, only quieter.
+  const sourceInLine =
+    item.per100.source === 'ai_estimate' || item.per100.source === 'manual'
+      ? '' // already shown as the header badge — no need to repeat
+      : ` · ${t(`food.source.${item.per100.source}`)}`;
+  const per100Line = hideCalories
+    ? `${t('macros.protein')} ${dbPer100.prot} · ${t('macros.fat')} ${dbPer100.fat} · ${t('macros.carbs')} ${dbPer100.carb}`
+    : `${dbPer100.kcal} ${t('units.kcal')} · ${t('macros.protein')} ${dbPer100.prot} · ${t('macros.fat')} ${dbPer100.fat} · ${t('macros.carbs')} ${dbPer100.carb}`;
+
   return (
     <Card style={styles.item}>
-      <Text style={[styles.itemName, { color: theme.text }, theme.font.bodySemiBold]}>{titleName}</Text>
+      {/* Header: what the user logged + one estimate/manual flag (DB source is
+          quieter, on the grey line below). */}
+      <View style={styles.itemHead}>
+        <Text style={[styles.itemName, { color: theme.text }, theme.font.bodySemiBold]} numberOfLines={2}>
+          {titleName}
+        </Text>
+        {item.per100.source === 'ai_estimate' || item.per100.source === 'manual' ? (
+          <View style={[styles.badge, { borderColor: theme.primary }]}>
+            <Text style={[styles.badgeText, { color: theme.primary }, theme.font.body]}>
+              {t(`food.source.${item.per100.source}`)}
+            </Text>
+          </View>
+        ) : null}
+      </View>
 
       {isMiss ? (
-        /* DB miss → never render the placeholder macros. State it plainly and
-           let the user supply real per-100g numbers below. */
         <Text style={[styles.notInDb, { color: theme.subtle }, theme.font.body]}>{t('food.notInDb')}</Text>
       ) : (
-        /* THE SYSTEM'S PICK as one bounded block (device feedback 2026-07-10:
-           «всё в одном блоке — мешанина»): what matched, its per-100g and the
-           honesty notes live inside the frame; the similar-match blocks sit
-           collapsed below it. */
-        <View style={[styles.matchBox, { borderColor: theme.primary }]}>
-          <Text style={[styles.per100Label, { color: theme.subtle }, theme.font.body]}>
-            {t('food.matchedPick')} · {t('food.per100')} · {t(`food.source.${item.per100.source}`)}
+        <>
+          {/* HERO — the eaten amount, big and first. */}
+          <View style={styles.heroRow}>
+            <Text style={[styles.heroValue, { color: theme.text }, theme.font.bodySemiBold]}>
+              {hideCalories ? item.scaled.prot : item.scaled.kcal}
+            </Text>
+            <Text style={[styles.heroUnit, { color: theme.subtle }, theme.font.body]}>
+              {hideCalories
+                ? `${t('macros.protein').toLowerCase()} · ${t('food.forGrams', { grams })}`
+                : `${t('units.kcal')} · ${t('food.forGrams', { grams })} · ${t('macros.protein')} ${item.scaled.prot} ${t('units.g')}`}
+            </Text>
+            {item.approximate ? <ApproxBadge theme={theme} label={t('food.approx')} /> : null}
+          </View>
+
+          {/* Secondary grey line: the matched DB row + its per-100g + source. */}
+          <Text style={[styles.per100Line, { color: theme.subtle }, theme.font.body]}>
+            {matchedLabel ? `${matchedLabel} · ` : ''}
+            {t('food.per100')} {per100Line}
+            {sourceInLine}
           </Text>
-          <Text style={[styles.per100Value, { color: theme.text }, theme.font.body]}>
-            {hideCalories
-              ? `${t('macros.protein')} ${dbPer100.prot} · ${t('macros.fat')} ${dbPer100.fat} · ${t('macros.carbs')} ${dbPer100.carb}`
-              : `${dbPer100.kcal} ${t('units.kcal')} · ${t('macros.protein')} ${dbPer100.prot} · ${t('macros.fat')} ${dbPer100.fat} · ${t('macros.carbs')} ${dbPer100.carb}`}
-          </Text>
-          {/* Fiber/sugar/sat-fat + minerals, scaled to the chosen weight. */}
-          <NutrientDetail
-            values={item.scaled}
-            caption={t('food.detail.basis', { grams: Math.round(item.grams) })}
-            theme={theme}
-          />
-          {/* HONESTY: dry-product label matched against a likely-cooked weight —
-              the total overcounts ~3× (absorbed water). We say so; the user fixes
-              the weight or picks a "готовая" match. Numbers stay untouched. */}
+
+          {/* Full micro breakdown, collapsed. */}
+          <NutrientDetail values={item.scaled} caption={t('food.detail.basis', { grams })} theme={theme} />
+
+          {/* HONESTY notes — only when they apply. */}
           {item.dry_basis ? (
             <View style={[styles.dryBasisNote, { borderColor: theme.primary, backgroundColor: theme.card }]}>
-              <Text style={[styles.dryBasisText, { color: theme.text }, theme.font.body]}>
-                {t('food.dryBasis')}
-              </Text>
+              <Text style={[styles.dryBasisText, { color: theme.text }, theme.font.body]}>{t('food.dryBasis')}</Text>
             </View>
           ) : null}
-          {/* REFEREE mismatch: the DB numbers look like a wrong-product match —
-              warn plainly (the picker below is already open, AI estimate first). */}
           {refereeFlagged ? (
             <View style={[styles.dryBasisNote, { borderColor: theme.primary, backgroundColor: theme.card }]}>
               <Text style={[styles.dryBasisText, { color: theme.text }, theme.font.body]}>
@@ -1243,56 +1263,88 @@ function ItemCard({
               </Text>
             </View>
           ) : null}
-        </View>
+        </>
       )}
 
-      {/* Similar matches — collapsed count-labeled group of clickable blocks;
-          opens proactively on a low-confidence auto-pick or a referee flag. */}
-      {!isMiss && alternatives.length > 0 ? (
-        <View style={styles.altWrap}>
-          <Pressable onPress={() => setShowAlts((s) => !s)} hitSlop={6}>
-            <Text style={[styles.altToggle, { color: theme.primary }, theme.font.body]}>
-              {showAlts
-                ? t('food.alternatives.hide')
-                : t('food.alternatives.promptCount', { count: alternatives.length })}
-            </Text>
-          </Pressable>
-          {showAlts ? (
-            <View style={styles.altList}>
-              {alternatives.map((alt, j) => (
-                <Pressable
-                  key={`${alt.name}-${j}`}
-                  onPress={() => onSelectAlternative(j)}
-                  style={({ pressed }) => [
-                    styles.altRow,
-                    { borderColor: theme.separator, backgroundColor: theme.card, opacity: pressed ? 0.6 : 1 },
-                  ]}
-                >
-                  <Text style={[styles.altName, { color: theme.text }, theme.font.body]} numberOfLines={1}>
-                    {alt.name}
-                  </Text>
-                  <Text style={[styles.altMacros, { color: theme.subtle }, theme.font.body]}>
-                    {hideCalories
-                      ? `${t('macros.protein')} ${alt.per100.prot} · ${t(`food.source.${alt.per100.source}`)}`
-                      : `${alt.per100.kcal} ${t('units.kcal')} · ${t('macros.protein')} ${alt.per100.prot} · ${t(`food.source.${alt.per100.source}`)}`}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          ) : null}
-        </View>
+      {/* Manual per-100g entry — on a DB miss (enter real numbers) and over an AI
+          estimate (correct the guess → source flips to honest 'manual'). */}
+      {isMiss || item.per100.source === 'manual' || item.per100.source === 'ai_estimate' ? (
+        <ManualMacros item={item} isMiss={isMiss} theme={theme} onManualMacros={onManualMacros} />
       ) : null}
 
-      {/* "найти вручную" — search the DB and replace this item with a real
-          match. Especially useful on a miss or a wrong auto-pick. */}
+      {/* WEIGHT — the main thing users adjust. Quick-set chips + a custom field;
+          tapping either confirms the weight (the «прикидка» caption disappears). */}
+      <View style={styles.portionRow}>
+        {PORTIONS.map((p) => {
+          const active = grams === p;
+          return (
+            <Pressable
+              key={p}
+              onPress={() => onGrams(p)}
+              style={({ pressed }) => [
+                styles.portionChip,
+                {
+                  borderColor: active ? theme.primary : theme.separator,
+                  backgroundColor: theme.card,
+                  opacity: pressed ? 0.6 : 1,
+                },
+              ]}
+            >
+              <Text
+                style={[styles.portionChipText, { color: active ? theme.primary : theme.subtle }, theme.font.body]}
+              >
+                {p} {t('units.g')}
+              </Text>
+            </Pressable>
+          );
+        })}
+        <TextField
+          value={String(grams)}
+          onChangeText={(v) => onGrams(toNumber(v))}
+          keyboardType="numeric"
+          style={styles.gramsInput}
+        />
+        <Text style={[styles.gramsUnit, { color: theme.subtle }, theme.font.body]}>{t('units.g')}</Text>
+      </View>
+      {item.grams_source === 'estimated' ? (
+        <Text style={[styles.gramsEstimate, { color: theme.subtle }, theme.font.body]}>
+          {t('food.gramsEstimatedShort')}
+        </Text>
+      ) : null}
+
+      {/* ONE «Другой вариант» — DB alternatives (from the parse) AND manual search
+          in the same disclosure. Opens itself on a shaky auto-pick. */}
       <View style={styles.altWrap}>
-        <Pressable onPress={() => setSearchOpen((s) => !s)} hitSlop={6}>
+        <Pressable onPress={() => setOtherOpen((s) => !s)} hitSlop={6}>
           <Text style={[styles.altToggle, { color: theme.primary }, theme.font.body]}>
-            {searchOpen ? t('food.manualSearch.hide') : t('food.manualSearch.open')}
+            {otherOpen
+              ? t('food.otherOption.hide')
+              : alternatives.length > 0
+                ? t('food.otherOption.openCount', { count: alternatives.length })
+                : t('food.otherOption.open')}
           </Text>
         </Pressable>
-        {searchOpen ? (
+        {otherOpen ? (
           <View style={styles.altList}>
+            {alternatives.map((alt, j) => (
+              <Pressable
+                key={`a-${alt.name}-${j}`}
+                onPress={() => onSelectAlternative(j)}
+                style={({ pressed }) => [
+                  styles.altRow,
+                  { borderColor: theme.separator, backgroundColor: theme.card, opacity: pressed ? 0.6 : 1 },
+                ]}
+              >
+                <Text style={[styles.altName, { color: theme.text }, theme.font.body]} numberOfLines={1}>
+                  {alt.name}
+                </Text>
+                <Text style={[styles.altMacros, { color: theme.subtle }, theme.font.body]}>
+                  {hideCalories
+                    ? `${t('macros.protein')} ${alt.per100.prot} · ${t(`food.source.${alt.per100.source}`)}`
+                    : `${alt.per100.kcal} ${t('units.kcal')} · ${t('macros.protein')} ${alt.per100.prot} · ${t(`food.source.${alt.per100.source}`)}`}
+                </Text>
+              </Pressable>
+            ))}
             <View style={styles.searchRow}>
               <TextField
                 value={searchText}
@@ -1324,7 +1376,7 @@ function ItemCard({
                 key={`s-${alt.name}-${j}`}
                 onPress={() => {
                   onReplace(alt);
-                  setSearchOpen(false);
+                  setOtherOpen(false);
                   setSearchResults(null);
                   setSearchText('');
                 }}
@@ -1346,47 +1398,6 @@ function ItemCard({
           </View>
         ) : null}
       </View>
-
-      {/* Manual per-100g entry for a DB miss (and editing once entered). Also
-          offered over an AI estimate — the numbers are a guess, so let the user
-          correct them (which flips the source to the honest 'manual'). */}
-      {isMiss || item.per100.source === 'manual' || item.per100.source === 'ai_estimate' ? (
-        <ManualMacros item={item} isMiss={isMiss} theme={theme} onManualMacros={onManualMacros} />
-      ) : null}
-
-      {/* Confirm grams → flips the item out of "approximate". The exact weight
-          input is the whole control now (the S/M/L presets were redundant). */}
-      <View style={styles.gramsRow}>
-        <Text style={[styles.gramsLabel, { color: theme.subtle }, theme.font.body]}>{t('food.grams')}</Text>
-        <TextField
-          value={String(Math.round(item.grams))}
-          onChangeText={(v) => onGrams(toNumber(v))}
-          keyboardType="numeric"
-          style={styles.gramsInput}
-        />
-        <Text style={[styles.gramsUnit, { color: theme.subtle }, theme.font.body]}>{t('units.g')}</Text>
-      </View>
-      {/* TRANSPARENCY: the user never named a weight — this number is OUR guess
-          of a typical portion. Say so at the field itself; editing the weight
-          confirms it and the caption disappears (grams_source flips). */}
-      {item.grams_source === 'estimated' ? (
-        <Text style={[styles.gramsEstimate, { color: theme.subtle }, theme.font.body]}>
-          {t('food.gramsEstimated')}
-        </Text>
-      ) : null}
-
-      {/* Scaled component total — hidden on a DB miss (the placeholder total is
-          fabricated too); it appears once the user enters real macros. */}
-      {isMiss ? null : (
-        <View style={styles.itemTotalRow}>
-          <Text style={[styles.itemTotal, { color: theme.text }, theme.font.bodyMedium]}>
-            {hideCalories
-              ? `${t('macros.protein')} ${item.scaled.prot} ${t('units.g')}`
-              : `${item.scaled.kcal} ${t('units.kcal')} · ${t('macros.protein')} ${item.scaled.prot} ${t('units.g')}`}
-          </Text>
-          {item.approximate ? <ApproxBadge theme={theme} label={t('food.approx')} /> : null}
-        </View>
-      )}
     </Card>
   );
 }
@@ -1483,11 +1494,18 @@ const styles = StyleSheet.create({
   hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
   results: { marginTop: 16 },
   item: { marginBottom: 10 },
-  itemName: { fontSize: 15, marginBottom: 6 },
-  // The system's pick, framed — the top block of the match hierarchy.
-  matchBox: { borderWidth: 1, borderRadius: 12, padding: 10 },
-  per100Label: { fontSize: 11, marginBottom: 2 },
-  per100Value: { fontSize: 13, marginBottom: 2 },
+  itemHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 6 },
+  itemName: { fontSize: 15, flex: 1 },
+  // HERO: the eaten amount — big number + small unit, first thing in the card.
+  heroRow: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', gap: 8, marginBottom: 2 },
+  heroValue: { fontSize: 26 },
+  heroUnit: { fontSize: 13, flexShrink: 1 },
+  // Quiet secondary: matched DB row + per-100g + source.
+  per100Line: { fontSize: 12, marginBottom: 2, lineHeight: 17 },
+  // Quick-set weight chips.
+  portionRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, flexWrap: 'wrap' },
+  portionChip: { borderWidth: 1, borderRadius: 10, paddingVertical: 6, paddingHorizontal: 12 },
+  portionChipText: { fontSize: 13 },
   detailBox: { marginTop: 6, gap: 3 },
   detailRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   detailLabel: { fontSize: 12 },
@@ -1515,8 +1533,6 @@ const styles = StyleSheet.create({
   gramsInput: { width: 64, paddingVertical: 8, fontSize: 14, textAlign: 'center' },
   gramsUnit: { fontSize: 12 },
   gramsEstimate: { fontSize: 10, fontStyle: 'italic', marginTop: 2, lineHeight: 14 },
-  itemTotalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 },
-  itemTotal: { fontSize: 14 },
   totalCard: { marginTop: 4, marginBottom: 8 },
   totalHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
   totalLabel: { fontSize: 15 },
