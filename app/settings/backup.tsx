@@ -1,7 +1,7 @@
 import { Paths, File } from 'expo-file-system';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, Alert, Modal, StyleSheet, Switch, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Modal, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { decodeBase64, encodeBase64 } from 'tweetnacl-util';
 
 import { RecoverySaveGate } from '@/components/backup/RecoverySaveGate';
@@ -98,6 +98,11 @@ export default function BackupScreen() {
   // toggle (a consent action), like the food→AI consent. The actual push/pull is
   // the dev-build sync client (lib/core/sync/syncClient.ts), gated on this flag.
   const [syncEnabled, setSyncEnabled] = useState(false);
+
+  // Power-user key-file block — collapsed by default so it stops competing with
+  // the two hero actions (Create / Restore). Same accordion idiom as «Как это
+  // работает».
+  const [keyFileOpen, setKeyFileOpen] = useState(false);
 
   const working = status.kind === 'working';
 
@@ -381,12 +386,24 @@ export default function BackupScreen() {
   return (
     <Screen>
       {db == null ? (
-        <Text style={[styles.note, { color: theme.subtle }, theme.font.body]}>
-          {t('backup.dbUnavailable')}
-        </Text>
+        <Card style={styles.dbCard}>
+          <Text style={[styles.dbText, { color: theme.accent }, theme.font.bodyMedium]}>
+            {t('backup.dbUnavailable')}
+          </Text>
+        </Card>
       ) : null}
 
-      <Text style={[styles.intro, { color: theme.text }, theme.font.body]}>{t('backup.intro')}</Text>
+      {/* Hero — the privacy anchor, promoted out of the old 12px bottom note:
+          encrypted with your key, and honest that without your phrase not even we
+          can open it (folds in the former backup.intro + backup.safetyNote). */}
+      <View style={styles.hero}>
+        <Text style={[styles.heroLine, { color: theme.heroText }, theme.font.heading]}>
+          {t('backup.heroText')}
+        </Text>
+        <Text style={[styles.heroLine, { color: theme.heroAccent }, theme.font.heading]}>
+          {t('backup.heroLead')}
+        </Text>
+      </View>
 
       <SectionHeader>{t('backup.backupTitle')}</SectionHeader>
       <Note theme={theme}>{t('backup.backupExplainer')}</Note>
@@ -397,9 +414,11 @@ export default function BackupScreen() {
         style={styles.btn}
       />
 
+      {/* The "replaces all data" warning lives in the destructive confirm Alert
+          (confirmRestore), where it is actionable — not repeated as a standing
+          note here. */}
       <SectionHeader>{t('backup.restoreTitle')}</SectionHeader>
       <Note theme={theme}>{t('backup.restoreExplainer')}</Note>
-      <Note theme={theme}>{t('backup.restoreReplaceWarning')}</Note>
       <PrimaryButton
         label={status.kind === 'working' && status.op === 'restore' ? t('backup.working') : t('backup.restoreCta')}
         onPress={confirmRestore}
@@ -427,11 +446,35 @@ export default function BackupScreen() {
         </Card>
       ) : null}
 
-      {/* Power-user key-file path. */}
-      <SectionHeader>{t('recovery.keyFile.title')}</SectionHeader>
-      <Note theme={theme}>{t('recovery.keyFile.explainer')}</Note>
-      <PrimaryButton label={t('recovery.keyFile.exportCta')} onPress={onExportKeyFile} disabled={working} style={styles.btn} />
-      <PrimaryButton label={t('recovery.keyFile.importCta')} onPress={onImportKeyFile} disabled={working} style={styles.btn} />
+      {/* Power-user key-file path — collapsed by default (accordion), so the two
+          hero actions above stay the focus. Both the import (restore-ish) and the
+          export (backup-ish, also offered inside the save-gate) live here. */}
+      <Card style={styles.advCard}>
+        <Pressable
+          onPress={() => setKeyFileOpen((v) => !v)}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: keyFileOpen }}
+          style={styles.advHead}
+        >
+          <Text style={[styles.advTitle, { color: theme.text }, theme.font.bodyBold]}>
+            {t('recovery.keyFile.title')}
+          </Text>
+          <Text style={[styles.advChevron, { color: theme.subtle }]}>{keyFileOpen ? '▾' : '▸'}</Text>
+        </Pressable>
+        {keyFileOpen ? (
+          <>
+            <Text style={[styles.advBody, { color: theme.subtle }, theme.font.body]}>
+              {t('recovery.keyFile.explainer')}
+            </Text>
+            <PrimaryButton label={t('recovery.keyFile.exportCta')} onPress={onExportKeyFile} disabled={working} style={styles.btn} />
+            <PrimaryButton label={t('recovery.keyFile.importCta')} onPress={onImportKeyFile} disabled={working} style={styles.btn} />
+          </>
+        ) : (
+          <Text style={[styles.advTeaser, { color: theme.subtle }, theme.font.body]} numberOfLines={1}>
+            {t('recovery.keyFile.teaser')}
+          </Text>
+        )}
+      </Card>
 
       {/* Between-device sync — hidden until a real transport ships (SYNC_UI_ENABLED).
           When live: opt-in, OFF by default, end-to-end encrypted (server can't read). */}
@@ -455,9 +498,6 @@ export default function BackupScreen() {
           <Note theme={theme}>{t('backup.sync.limitNote')}</Note>
         </>
       ) : null}
-
-      <SectionHeader>{t('backup.safetyTitle')}</SectionHeader>
-      <Note theme={theme}>{t('backup.safetyNote')}</Note>
 
       {/* Unskippable save-gate, shown when starting a backup. */}
       <Modal visible={gatePhrase != null} animationType="slide" onRequestClose={() => !gateBusy && setGatePhrase(null)}>
@@ -551,12 +591,21 @@ function safeDelete(file: File): void {
 }
 
 const styles = StyleSheet.create({
-  intro: { fontSize: 14, lineHeight: 20, marginBottom: 8, marginHorizontal: 4 },
+  hero: { marginTop: 4, marginBottom: 14, marginHorizontal: 4 },
+  heroLine: { fontSize: 20, lineHeight: 27 },
+  dbCard: { marginBottom: 12 },
+  dbText: { fontSize: 13, lineHeight: 18 },
   note: { fontSize: 12, lineHeight: 17, marginTop: 6, marginHorizontal: 4 },
   btn: { marginTop: 12 },
   statusRow: { marginTop: 16, alignItems: 'center' },
   statusCard: { marginTop: 16, paddingHorizontal: 14, paddingVertical: 12 },
   statusText: { fontSize: 13, lineHeight: 18 },
+  advCard: { marginTop: 18 },
+  advHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  advTitle: { fontSize: 16, flex: 1, paddingRight: 12 },
+  advChevron: { fontSize: 15 },
+  advBody: { fontSize: 12, lineHeight: 17, marginTop: 8 },
+  advTeaser: { fontSize: 12, lineHeight: 17, marginTop: 4 },
   toggleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
