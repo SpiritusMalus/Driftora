@@ -270,3 +270,37 @@ test('relevance filter: a name-DISSIMILAR DB row (skyr → apple) is rejected, n
   assert.equal(r.per100.source, 'ai_estimate');
   assert.equal(r.per100.prot, 11); // the correct skyr protein, not apple's 0.3
 });
+
+test('graded query (молоко 1.8%) whose match dropped the grade → AI estimate offered, confidence demoted', async () => {
+  // A loose crowd hit that carries the WRONG grade («1%») for an «1.8%» query.
+  const gradeStub: import('../src/nutrition/provider.js').NutritionProvider = {
+    name: 'skurikhin',
+    regions: ['RU'],
+    async search() {
+      return {
+        per100: { source: 'openfoodfacts', kcal: 42, prot: 3.4, fat: 1, carb: 5, minerals: {} },
+        confidence: 0.85,
+        name: 'молоко 1%',
+      };
+    },
+  };
+  const resolver = new Resolver([gradeStub]);
+  const r = await resolver.resolveItem(
+    item({
+      name_ru: 'молоко 1.8%',
+      name_en: 'milk 1.8%',
+      est_grams: 100,
+      confidence: 0.8,
+      estimate: { kcal_100g: 44, prot_100g: 3, fat_100g: 1.8, carb_100g: 5 },
+    }),
+    'RU',
+  );
+  // DB number stays primary, but confidence is knocked down so the client opens the picker…
+  assert.equal(r.per100.kcal, 42);
+  assert.ok(r.confidence <= 0.3);
+  // …and the model's estimate for the ACTUAL grade leads the alternatives.
+  assert.ok(r.alternatives && r.alternatives.length >= 1);
+  assert.equal(r.alternatives[0].name, 'молоко 1.8%');
+  assert.equal(r.alternatives[0].per100.source, 'ai_estimate');
+  assert.equal(r.alternatives[0].per100.kcal, 44);
+});

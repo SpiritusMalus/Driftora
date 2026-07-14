@@ -5,12 +5,20 @@ import { phraseScore } from './ruSearch.js';
 import { SKURIKHIN_TABLE } from './skurikhinData.js';
 import type { SkurikhinEntry } from './skurikhinTypes.js';
 
-/** Normalize a RU food name for matching: lowercase, ё→е, strip punctuation. */
+/**
+ * Normalize a RU food name for matching: lowercase, ё→е, strip punctuation.
+ * A DECIMAL number stays ONE token («1,8»/«1.8» → «1.8») — otherwise «молоко
+ * 1.8%» split into «1»+«8» let the stray «1» match «молоко 1%», picking 1% milk
+ * for an 1.8% query. Keeping «1.8» whole makes it match only «1.8», so a wrong
+ * grade drops out of the candidates instead of masquerading as a hit.
+ */
 export function normalizeRu(name: string): string {
   return name
     .toLowerCase()
     .replace(/ё/g, 'е')
-    .replace(/[^а-я0-9\s]/g, ' ')
+    .replace(/(\d)[.,](\d)/g, '$1.$2') // «1,8» → «1.8»; keep the decimal whole
+    .replace(/[^а-я0-9.\s]/g, ' ') // strip punctuation (dots handled next)
+    .replace(/(?<!\d)\.|\.(?!\d)/g, ' ') // drop any dot NOT between two digits
     .replace(/\s+/g, ' ')
     .trim();
 }
