@@ -47,6 +47,12 @@ import { type Theme, useTheme } from '@/lib/theme/theme';
 /// Whether an online AI parser is configured for this build (env at bundle time).
 const AI_CONFIGURED = isWorkoutParserConfigured();
 
+/// The three input paths, shown one at a time via a segmented control instead of
+/// three stacked, equally-loud boxes (they used to overflow the screen). Order =
+/// primary → optional import → free-text. «ai» is hidden when unconfigured.
+const WORKOUT_MODES = ['exact', 'tracker', 'ai'] as const;
+type WorkoutMode = (typeof WORKOUT_MODES)[number];
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Db = any;
 
@@ -84,6 +90,12 @@ export function WorkoutSection({
   // verbatim (no MET, no EPOC), the standalone model's optional import path.
   const [trackerKcal, setTrackerKcal] = useState('');
   const [open, setOpen] = useState(initiallyOpen);
+  // Which input path is visible (segmented control). Defaults to the primary
+  // manual entry; «tracker»/«ai» are the optional paths.
+  const [mode, setMode] = useState<WorkoutMode>('exact');
+  // The honest burn-math note is quiet by default — one line always, the full
+  // explanation (75 %, afterburn, «по трекеру») a tap away.
+  const [noteOpen, setNoteOpen] = useState(false);
   // Free-text parse path.
   const [describe, setDescribe] = useState('');
   const [parsing, setParsing] = useState(false);
@@ -389,85 +401,50 @@ export function WorkoutSection({
           {budgetAck ? (
             <Text style={[styles.budgetAck, { color: theme.accent }, theme.font.bodyMedium]}>{budgetAck}</Text>
           ) : null}
-          {/* Two clearly separate processes (device feedback 2026-07-10): exact
-              manual entry first, the AI paths boxed apart below. */}
-          <Text style={[styles.blockHead, { color: theme.subtle }, theme.font.bodySemiBold]}>
-            {t('workouts.exactHead')}
-          </Text>
-          <View style={styles.chips}>
-            {WORKOUT_TYPES.map((w) => {
-              const active = type === w;
+          {/* One input path at a time. The segmented control replaces three
+              stacked, equally-loud boxes so the card no longer overflows the
+              screen; the three processes stay separate (device feedback
+              2026-07-10). */}
+          <View style={styles.segments}>
+            {WORKOUT_MODES.map((m) => {
+              if (m === 'ai' && !AI_CONFIGURED) return null;
+              const active = mode === m;
               return (
                 <Pressable
-                  key={w}
-                  onPress={() => setType(w)}
+                  key={m}
+                  onPress={() => setMode(m)}
+                  accessibilityRole="button"
                   style={({ pressed }) => [
-                    styles.chip,
+                    styles.segment,
                     {
-                      backgroundColor: active ? theme.primary : theme.card,
+                      // Inactive segments sit on `iconBg`, a step lighter than the
+                      // card, so the switcher reads as a filled track instead of
+                      // vanishing into the card (both share `theme.card`).
+                      backgroundColor: active ? theme.primary : theme.iconBg,
                       borderColor: active ? theme.primary : theme.separator,
                       opacity: pressed ? 0.7 : 1,
                     },
                   ]}
                 >
-                  <Text style={[styles.chipText, { color: active ? theme.onPrimary : theme.text }, theme.font.body]}>
-                    {t(`workouts.type.${w}`)}
+                  <Text style={[styles.segmentText, { color: active ? theme.onPrimary : theme.text }, theme.font.body]}>
+                    {t(`workouts.mode.${m}`)}
                   </Text>
                 </Pressable>
               );
             })}
           </View>
 
-          <View style={styles.addRow}>
-            {supportsSets(type) ? (
-              <>
-                <TextField
-                  value={sets}
-                  onChangeText={setSets}
-                  keyboardType="numeric"
-                  placeholder={t('workouts.setsPlaceholder')}
-                  style={styles.minInput}
-                />
-                <Text style={[styles.unit, { color: theme.subtle }, theme.font.body]}>{t('workouts.setsUnit')}</Text>
-              </>
-            ) : (
-              <>
-                <TextField
-                  value={minutes}
-                  onChangeText={setMinutes}
-                  keyboardType="numeric"
-                  placeholder={t('workouts.minutes')}
-                  style={styles.minInput}
-                />
-                <Text style={[styles.unit, { color: theme.subtle }, theme.font.body]}>{t('workouts.min')}</Text>
-              </>
-            )}
-            <Pressable
-              onPress={() => void add()}
-              accessibilityRole="button"
-              accessibilityLabel={t('workouts.add')}
-              style={({ pressed }) => [styles.addBtn, { backgroundColor: theme.primary, opacity: pressed ? 0.7 : 1 }]}
-            >
-              <Text style={[styles.addBtnText, { color: theme.onPrimary }, theme.font.bodySemiBold]}>
-                {t('workouts.add')}
-              </Text>
-            </Pressable>
-          </View>
-
-          {supportsIntensity(type) ? (
-            <View style={styles.intensityRow}>
-              <Text style={[styles.intensityLabel, { color: theme.subtle }, theme.font.body]}>
-                {t('workouts.intensity.label')}
-              </Text>
-              <View style={styles.intensityChips}>
-                {STRENGTH_INTENSITIES.map((lv) => {
-                  const active = intensity === lv;
+          {mode === 'exact' ? (
+            <View style={styles.modeSection}>
+              <View style={styles.chips}>
+                {WORKOUT_TYPES.map((w) => {
+                  const active = type === w;
                   return (
                     <Pressable
-                      key={lv}
-                      onPress={() => setIntensity(lv)}
+                      key={w}
+                      onPress={() => setType(w)}
                       style={({ pressed }) => [
-                        styles.effortChip,
+                        styles.chip,
                         {
                           backgroundColor: active ? theme.primary : theme.card,
                           borderColor: active ? theme.primary : theme.separator,
@@ -475,73 +452,115 @@ export function WorkoutSection({
                         },
                       ]}
                     >
-                      <Text
-                        style={[styles.effortChipText, { color: active ? theme.onPrimary : theme.text }, theme.font.body]}
-                      >
-                        {t(`workouts.intensity.${lv}`)}
+                      <Text style={[styles.chipText, { color: active ? theme.onPrimary : theme.text }, theme.font.body]}>
+                        {t(`workouts.type.${w}`)}
                       </Text>
                     </Pressable>
                   );
                 })}
               </View>
-            </View>
-          ) : null}
 
-          {supportsSets(type) ? (
-            <Text style={[styles.setsHint, { color: theme.tertiary }, theme.font.body]}>
-              {t('workouts.setsHint')}
-            </Text>
-          ) : null}
+              <View style={styles.addRow}>
+                {supportsSets(type) ? (
+                  <>
+                    <TextField
+                      value={sets}
+                      onChangeText={setSets}
+                      keyboardType="numeric"
+                      placeholder={t('workouts.setsPlaceholder')}
+                      style={styles.minInput}
+                    />
+                    <Text style={[styles.unit, { color: theme.subtle }, theme.font.body]}>{t('workouts.setsUnit')}</Text>
+                  </>
+                ) : (
+                  <>
+                    <TextField
+                      value={minutes}
+                      onChangeText={setMinutes}
+                      keyboardType="numeric"
+                      placeholder={t('workouts.minutes')}
+                      style={styles.minInput}
+                    />
+                    <Text style={[styles.unit, { color: theme.subtle }, theme.font.body]}>{t('workouts.min')}</Text>
+                  </>
+                )}
+              </View>
 
-          {supportsSpeed(type) ? (
-            <View style={styles.speedRow}>
-              <TextField
-                value={speed}
-                onChangeText={setSpeed}
-                keyboardType="numeric"
-                placeholder={t('workouts.speedHint', { n: type === 'walk' ? 5 : type === 'run' ? 10 : 20 })}
-                style={styles.minInput}
-              />
-              <Text style={[styles.unit, { color: theme.subtle }, theme.font.body]}>{t('workouts.kmh')}</Text>
-              <Text style={[styles.speedOptional, { color: theme.tertiary }, theme.font.body]} numberOfLines={2}>
-                {t('workouts.speedOptional')}
-              </Text>
-            </View>
-          ) : null}
+              {supportsIntensity(type) ? (
+                <View style={styles.intensityRow}>
+                  <Text style={[styles.intensityLabel, { color: theme.subtle }, theme.font.body]}>
+                    {t('workouts.intensity.label')}
+                  </Text>
+                  <View style={styles.intensityChips}>
+                    {STRENGTH_INTENSITIES.map((lv) => {
+                      const active = intensity === lv;
+                      return (
+                        <Pressable
+                          key={lv}
+                          onPress={() => setIntensity(lv)}
+                          style={({ pressed }) => [
+                            styles.effortChip,
+                            {
+                              backgroundColor: active ? theme.primary : theme.card,
+                              borderColor: active ? theme.primary : theme.separator,
+                              opacity: pressed ? 0.7 : 1,
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.effortChipText,
+                              { color: active ? theme.onPrimary : theme.text },
+                              theme.font.body,
+                            ]}
+                          >
+                            {t(`workouts.intensity.${lv}`)}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              ) : null}
 
-          {!hasWeight ? (
-            <Text style={[styles.setsHint, { color: theme.tertiary }, theme.font.body]}>
-              {t('workouts.weightFallback', { kg: weightKg })}
-            </Text>
-          ) : null}
+              {supportsSets(type) ? (
+                <Text style={[styles.setsHint, { color: theme.tertiary }, theme.font.body]}>
+                  {t('workouts.setsHint')}
+                </Text>
+              ) : null}
 
-          {/* «По часам» — the optional import path: a measured kcal number from a
-              watch/tracker, stored verbatim (no MET/EPOC), marked «по трекеру». The
-              app stays standalone; this just lets a measured number in. */}
-          <View style={[styles.trackerBlock, { borderColor: theme.separator }]}>
-            <Text style={[styles.blockHead, { color: theme.subtle }, theme.font.bodySemiBold]}>
-              {t('workouts.tracker.head')}
-            </Text>
-            <View style={styles.addRow}>
-              <TextField
-                value={trackerKcal}
-                onChangeText={setTrackerKcal}
-                keyboardType="numeric"
-                placeholder={t('workouts.tracker.kcalPlaceholder')}
-                style={styles.minInput}
-              />
-              <Text style={[styles.unit, { color: theme.subtle }, theme.font.body]}>{t('units.kcal')}</Text>
+              {supportsSpeed(type) ? (
+                <View style={styles.speedRow}>
+                  <TextField
+                    value={speed}
+                    onChangeText={setSpeed}
+                    keyboardType="numeric"
+                    placeholder={t('workouts.speedHint', { n: type === 'walk' ? 5 : type === 'run' ? 10 : 20 })}
+                    style={styles.minInput}
+                  />
+                  <Text style={[styles.unit, { color: theme.subtle }, theme.font.body]}>{t('workouts.kmh')}</Text>
+                  <Text style={[styles.speedOptional, { color: theme.tertiary }, theme.font.body]} numberOfLines={2}>
+                    {t('workouts.speedOptional')}
+                  </Text>
+                </View>
+              ) : null}
+
+              {!hasWeight ? (
+                <Text style={[styles.setsHint, { color: theme.tertiary }, theme.font.body]}>
+                  {t('workouts.weightFallback', { kg: weightKg })}
+                </Text>
+              ) : null}
+
+              {/* «Добавить» spans the row BELOW every input so the primary action
+                  is the last thing after minutes/sets, intensity and pace — not
+                  floating mid-card above the km/h field (device-visible fix). */}
               <Pressable
-                onPress={() => void addTracker()}
-                disabled={!(Number(trackerKcal.replace(',', '.')) > 0)}
+                onPress={() => void add()}
                 accessibilityRole="button"
                 accessibilityLabel={t('workouts.add')}
                 style={({ pressed }) => [
-                  styles.addBtn,
-                  {
-                    backgroundColor: theme.primary,
-                    opacity: !(Number(trackerKcal.replace(',', '.')) > 0) ? 0.5 : pressed ? 0.7 : 1,
-                  },
+                  styles.exactAddBtn,
+                  { backgroundColor: theme.primary, opacity: pressed ? 0.7 : 1 },
                 ]}
               >
                 <Text style={[styles.addBtnText, { color: theme.onPrimary }, theme.font.bodySemiBold]}>
@@ -549,16 +568,48 @@ export function WorkoutSection({
                 </Text>
               </Pressable>
             </View>
-            <Text style={[styles.setsHint, { color: theme.tertiary }, theme.font.body]}>
-              {t('workouts.tracker.hint')}
-            </Text>
-          </View>
+          ) : null}
 
-          {AI_CONFIGURED ? (
-            <View style={[styles.describeBlock, { borderColor: theme.separator }]}>
-              <Text style={[styles.blockHead, { color: theme.subtle }, theme.font.bodySemiBold]}>
-                {t('workouts.aiHead')}
+          {/* «По часам» — the optional import path: a measured kcal number from a
+              watch/tracker, stored verbatim (no MET/EPOC), marked «по трекеру». The
+              app stays standalone; this just lets a measured number in. */}
+          {mode === 'tracker' ? (
+            <View style={styles.modeSection}>
+              <View style={styles.addRow}>
+                <TextField
+                  value={trackerKcal}
+                  onChangeText={setTrackerKcal}
+                  keyboardType="numeric"
+                  placeholder={t('workouts.tracker.kcalPlaceholder')}
+                  style={styles.minInput}
+                />
+                <Text style={[styles.unit, { color: theme.subtle }, theme.font.body]}>{t('units.kcal')}</Text>
+                <Pressable
+                  onPress={() => void addTracker()}
+                  disabled={!(Number(trackerKcal.replace(',', '.')) > 0)}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('workouts.add')}
+                  style={({ pressed }) => [
+                    styles.addBtn,
+                    {
+                      backgroundColor: theme.primary,
+                      opacity: !(Number(trackerKcal.replace(',', '.')) > 0) ? 0.5 : pressed ? 0.7 : 1,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.addBtnText, { color: theme.onPrimary }, theme.font.bodySemiBold]}>
+                    {t('workouts.add')}
+                  </Text>
+                </Pressable>
+              </View>
+              <Text style={[styles.setsHint, { color: theme.tertiary }, theme.font.body]}>
+                {t('workouts.tracker.hint')}
               </Text>
+            </View>
+          ) : null}
+
+          {mode === 'ai' && AI_CONFIGURED ? (
+            <View style={styles.modeSection}>
               <TextField
                 value={describe}
                 onChangeText={(v) => {
@@ -671,7 +722,16 @@ export function WorkoutSection({
             </View>
           ) : null}
 
-          <Text style={[styles.note, { color: theme.subtle }, theme.font.body]}>{t('workouts.note')}</Text>
+          {/* Honest burn-math kept but quiet: one line always, the full
+              explanation (75 %, afterburn, «по трекеру») a tap away. */}
+          <Pressable onPress={() => setNoteOpen((v) => !v)} style={styles.noteHead} hitSlop={6}>
+            <Text style={[styles.noteShort, { color: theme.subtle }, theme.font.body]}>{t('workouts.noteShort')}</Text>
+            <Text style={[styles.noteToggle, { color: theme.tertiary }, theme.font.body]}>{t('workouts.noteToggle')}</Text>
+            <Ionicons name={noteOpen ? 'chevron-up' : 'chevron-down'} size={14} color={theme.tertiary} />
+          </Pressable>
+          {noteOpen ? (
+            <Text style={[styles.note, { color: theme.subtle }, theme.font.body]}>{t('workouts.note')}</Text>
+          ) : null}
         </View>
       ) : null}
 
@@ -692,6 +752,14 @@ export function WorkoutSection({
 const styles = StyleSheet.create({
   card: { marginBottom: 16 },
   head: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  segments: { flexDirection: 'row', gap: 6 },
+  segment: { flex: 1, paddingVertical: 9, borderRadius: 10, borderWidth: 1, alignItems: 'center' },
+  segmentText: { fontSize: 13 },
+  modeSection: { marginTop: 14 },
+  exactAddBtn: { marginTop: 14, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
+  noteHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12 },
+  noteShort: { fontSize: 12, lineHeight: 17, flex: 1 },
+  noteToggle: { fontSize: 12 },
   title: { fontSize: 15 },
   summary: { fontSize: 13, flex: 1, textAlign: 'right' },
   body: { marginTop: 12 },
@@ -704,7 +772,6 @@ const styles = StyleSheet.create({
   intensityChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   effortChip: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1 },
   effortChipText: { fontSize: 13 },
-  trackerBlock: { marginTop: 16, gap: 8, borderWidth: 1, borderRadius: 12, padding: 12 },
   addRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 },
   speedRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
   setsHint: { fontSize: 12, lineHeight: 16, marginTop: 6 },
@@ -713,8 +780,6 @@ const styles = StyleSheet.create({
   speedOptional: { fontSize: 12, flex: 1, lineHeight: 16 },
   addBtn: { marginLeft: 'auto', paddingVertical: 9, paddingHorizontal: 16, borderRadius: 12 },
   addBtnText: { fontSize: 14 },
-  blockHead: { fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 10 },
-  describeBlock: { marginTop: 16, gap: 8, borderWidth: 1, borderRadius: 12, padding: 12 },
   describeInput: { minHeight: 64 },
   describeActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   describeBtn: { alignSelf: 'flex-start', paddingVertical: 9, paddingHorizontal: 16, borderRadius: 12 },

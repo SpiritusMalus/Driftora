@@ -370,6 +370,8 @@ export const en = {
     title: 'Workouts today',
     summaryEmpty: 'none — add one',
     summary: '−{{kcal}} kcal · {{counted}} counted',
+    // Segmented control: one input path at a time instead of three open blocks.
+    mode: { exact: 'Exact', tracker: 'From tracker', ai: 'Describe' },
     minutes: 'e.g. 30',
     min: 'min',
     kmh: 'km/h',
@@ -379,7 +381,7 @@ export const en = {
     setsPlaceholder: 'e.g. 12',
     setsUnit: 'sets',
     setsCount: '{{count}} sets',
-    setsHint: 'No timing needed: we assume ≈3 min per set (work + rest) and add an afterburn of ≈ +10%.',
+    setsHint: 'No timing needed: we assume ≈3 min per set (work + rest) and add ≈10% — the body keeps burning after the effort too.',
     // Strength effort → MET (light 3.5 · moderate 5.0 · heavy 6.0). The flat 3.5
     // undershot heavy lifting (device feedback).
     intensity: {
@@ -419,7 +421,10 @@ export const en = {
     fromTracker: 'from tracker',
     trackerAdded: 'Logged from your tracker: {{kcal}} kcal.',
     budgetAck: '✓ Workout logged: +{{kcal}} kcal added to today’s budget.',
-    note: 'Burn is an estimate from type and duration; strength — from sets; strength and HIIT get +10% for the afterburn. Only 75% enters the budget — formulas usually overstate. A tracker screenshot’s calories are saved as-is (“from tracker”). Details — in “How it works”.',
+    // The short line is always visible; the full math is a tap away («How we count»).
+    noteShort: 'Only 75% enters the budget — formulas usually overstate.',
+    noteToggle: 'How we count',
+    note: 'Burn is an estimate from type and duration; strength — from sets. Strength and interval work get ≈10% more: the body keeps burning above rest for a while after. Only 75% enters the budget — formulas usually overstate. A tracker number is saved as-is (“from tracker”). Details — in “How it works”.',
     type: {
       walk: 'Walking',
       run: 'Running',
