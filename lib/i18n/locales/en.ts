@@ -441,7 +441,8 @@ export const en = {
       other: 'Other',
     },
   },
-  macros: { protein: 'Protein', fat: 'Fat', carbs: 'Carbs' },
+  // Full labels for axes/gauges; short P/F/C for dense list rows.
+  macros: { protein: 'Protein', fat: 'Fat', carbs: 'Carbs', protShort: 'P', fatShort: 'F', carbShort: 'C' },
   bodyMind: {
     // Hero variants: the big sentence carries the direction; the "association,
     // not a cause" framing moves to the hero caption (home.hero.caption).
@@ -683,6 +684,10 @@ export const en = {
       title: 'Today',
       kcal: '{{eaten}} of {{target}} kcal',
       kcalApprox: '{{eaten}} of ≈{{target}} kcal',
+      // Hero labels next to the big number: what's left of the budget, or —
+      // when over — how much above plan (calm, no red).
+      left: 'kcal left',
+      overBy: 'kcal over plan',
       onPlan: 'on plan ✓',
       over: 'over plan today',
       restBase: 'base {{kcal}}',
