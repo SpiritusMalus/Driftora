@@ -1,39 +1,70 @@
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { StyleSheet, Text } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card } from '@/components/ui/Card';
 import { Screen } from '@/components/ui/Screen';
 import { useTheme } from '@/lib/theme/theme';
 
 /// «Как это работает» — the honesty page: where every number in the app comes
-/// from, what its real accuracy is, and how to raise the daily budget. Static
-/// prose, no state; the content lives in i18n so both locales stay in step.
-/// Linked from «Ещё», the plan card on «Весе», the day budget on «Еде» and the
-/// body-setup result.
+/// from, what its real accuracy is, and how to raise the daily budget. A two-line
+/// hero states the north-star (every number is an estimate; the real instrument
+/// is the weight trend); the six sections are collapsible so the "quiet detail"
+/// that keeps migrating here never walls off into a long scroll. «Норма» opens
+/// first, the rest show a one-line teaser until tapped. Content lives in i18n so
+/// both locales stay in step. Linked from «Ещё», the plan card on «Весе», the day
+/// budget on «Еде» and the body-setup result.
 const SECTIONS = ['norm', 'budget', 'food', 'workouts', 'boost', 'honesty'] as const;
 
 export default function HowItWorksScreen() {
   const { t } = useTranslation();
   const theme = useTheme();
+  const [open, setOpen] = useState<Record<string, boolean>>({ norm: true });
 
   return (
     <Screen>
-      <Text style={[styles.intro, { color: theme.subtle }, theme.font.body]}>{t('howItWorks.intro')}</Text>
-      {SECTIONS.map((key) => (
-        <Card key={key} style={styles.card}>
-          <Text style={[styles.title, { color: theme.text }, theme.font.bodySemiBold]}>
-            {t(`howItWorks.${key}.title`)}
-          </Text>
-          <Text style={[styles.body, { color: theme.subtle }, theme.font.body]}>{t(`howItWorks.${key}.body`)}</Text>
-        </Card>
-      ))}
+      <View style={styles.hero}>
+        <Text style={[styles.heroLine, { color: theme.heroText }, theme.font.heading]}>{t('howItWorks.hero')}</Text>
+        <Text style={[styles.heroLine, { color: theme.heroAccent }, theme.font.heading]}>
+          {t('howItWorks.heroLead')}
+        </Text>
+      </View>
+      {SECTIONS.map((key) => {
+        const expanded = !!open[key];
+        return (
+          <Card key={key} style={styles.card}>
+            <Pressable
+              onPress={() => setOpen((o) => ({ ...o, [key]: !o[key] }))}
+              accessibilityRole="button"
+              accessibilityState={{ expanded }}
+              style={styles.head}
+            >
+              <Text style={[styles.title, { color: theme.text }, theme.font.bodyBold]}>
+                {t(`howItWorks.${key}.title`)}
+              </Text>
+              <Text style={[styles.chevron, { color: theme.subtle }]}>{expanded ? '▾' : '▸'}</Text>
+            </Pressable>
+            {expanded ? (
+              <Text style={[styles.body, { color: theme.subtle }, theme.font.body]}>{t(`howItWorks.${key}.body`)}</Text>
+            ) : (
+              <Text style={[styles.teaser, { color: theme.subtle }, theme.font.body]} numberOfLines={1}>
+                {t(`howItWorks.${key}.teaser`)}
+              </Text>
+            )}
+          </Card>
+        );
+      })}
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  intro: { fontSize: 14, lineHeight: 20, marginBottom: 14, marginHorizontal: 4 },
+  hero: { marginTop: 4, marginBottom: 18, marginHorizontal: 4 },
+  heroLine: { fontSize: 21, lineHeight: 28 },
   card: { marginBottom: 12 },
-  title: { fontSize: 15, marginBottom: 6 },
-  body: { fontSize: 13, lineHeight: 19 },
+  head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  title: { fontSize: 17, flex: 1, paddingRight: 12 },
+  chevron: { fontSize: 15 },
+  body: { fontSize: 14, lineHeight: 21, marginTop: 8 },
+  teaser: { fontSize: 14, lineHeight: 20, marginTop: 4 },
 });

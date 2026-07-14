@@ -275,30 +275,39 @@ export const en = {
   howItWorks: {
     title: 'How it works',
     linkTitle: 'How the numbers work',
-    intro: 'Short and honest: where the app’s numbers come from, how accurate they are, and how to improve them.',
+    // A hero statement instead of intro filler: the north-star of the honesty page.
+    hero: 'Every number here is an estimate.',
+    heroLead: 'The real instrument is your weight trend.',
+    // teaser — the one line shown on a collapsed card; body opens on tap.
     norm: {
       title: 'Your daily target',
+      teaser: 'Resting metabolism + your weight goal',
       body: 'The foundation is resting metabolism: what the body burns at complete rest. We compute it from sex, height, weight and age (Mifflin–St Jeor), or from lean mass when your body-fat % is set (Katch–McArdle) — that’s more precise.\n\nThen the goal: losing — minus 10–25% of maintenance (you pick the pace), gaining — plus 5–15%, maintaining — no shift. The plan never drops below the healthy minimum.\n\nProtein — 1.6–1.8 g per kg (at a high BMI — from the goal weight), fat — about 30% of calories, carbs — the rest, fiber — 14 g per 1000 kcal.',
     },
     budget: {
       title: 'The day’s budget: base + steps + workouts',
+      teaser: 'Resting + steps + workouts',
       body: 'The plan’s base is a day with no movement at all (and never below the healthy minimum). All movement adds on top the same day:\n\n· steps above ~3,000 — the first ~3,000 are already inside the sedentary base;\n· workouts — 75% of their burn (why not 100% — below).\n\nThe sum shows on Food as the “resting · steps · workouts” line. Move more — eat more: any movement raises the budget on top of the minimum right away.',
     },
     food: {
       title: 'Where food numbers come from',
+      teaser: 'From the label, databases or an AI estimate',
       body: 'Where the numbers come from: a full nutrition label on a package photo (“from the label”) — the most exact; otherwise food databases (the Russian table, USDA, Open Food Facts, FatSecret); when no database has the food — a rough AI estimate marked “≈”.\n\nHonest accuracy: even with databases a real plate differs by ±10–20%; an AI estimate — up to ±30%. Wrong match — “not it?” and manual search are always one tap away.',
     },
     workouts: {
       title: 'Workouts and the afterburn',
+      teaser: 'MET × weight × time, 75% into the budget',
       body: 'Burn = the activity’s “cost” (MET from a research compendium) × weight × time. For walking, running and cycling your pace refines it. Strength is logged in sets — ≈3 minutes per set, no stopwatch needed; and the effort you pick (light/moderate/hard) shifts the “cost” — heavy lifting burns more.\n\nStrength and HIIT get +10% for the afterburn: for a day or two after the session the body keeps spending on recovery. Tens of kcal, not hundreds.\n\nOnly 75% of the estimate enters the budget — formulas overstate, and undercounting is more honest. Have exact numbers from a watch? Enter the kcal by hand (“from tracker”) or via a screenshot — saved as-is, the budget takes the same 75%. Overall estimate accuracy ±20–25%.',
     },
     boost: {
       title: 'How to raise your target',
-      body: 'The target is a base, not a ceiling. Every workout and every step above ~3,000 adds calories the same day: log a workout, eat more.\n\nLong-term, muscle raises the target — it burns energy even at rest. Gaining muscle grows the base over time; the app picks that up through your body-fat %.',
+      teaser: 'The target is a base, not a ceiling',
+      body: 'The target is a base, not a ceiling. Move more and the budget grows the same day (how it adds up — see “The day’s budget”).\n\nLong-term, muscle raises the target: it burns energy even at rest. Gaining muscle grows the base over time — the app picks that up through your body-fat %.',
     },
     honesty: {
       title: 'About accuracy — honestly',
-      body: 'Every number here is an estimate, which is why we show them with “≈”, a source and their assumptions instead of passing them off as truth. The real instrument is your weight trend: if it moves the wrong way for 2–3 weeks, adjust the target by 5–10% and keep watching. The app is not medical advice.',
+      teaser: 'Estimates with “≈”, not the truth',
+      body: 'So next to the numbers you get “≈”, a source and the assumptions — not a promise of precision. What to do: if your weight moves the wrong way for 2–3 weeks, adjust the target by 5–10% and keep watching. The app is not medical advice.',
     },
   },
   more: {
