@@ -25,6 +25,7 @@ export function BodyMindCard({
   bodyIcon = 'walk-outline',
   mindLabel,
   mindValue,
+  compact = false,
 }: {
   eyebrow: string;
   accent?: string;
@@ -38,6 +39,12 @@ export function BodyMindCard({
   bodyIcon?: React.ComponentProps<typeof Ionicons>['name'];
   mindLabel: string;
   mindValue: string;
+  /// Compact recap for the Mind pane (/mood), where the check-in is the hero and
+  /// the bridge is only context: the two body/mind columns and the headline stay
+  /// (the motif is still on screen), but the decorative sparkline and the
+  /// "association, not cause" caption drop, so the card is shorter and no longer
+  /// duplicates Home's full hero. Defaults to false → Home is unchanged.
+  compact?: boolean;
 }) {
   const theme = useTheme();
 
@@ -71,7 +78,9 @@ export function BodyMindCard({
           <Text style={[styles.accent, { color: theme.heroAccent }, theme.font.displayHeavy]}>
             {accent ?? ' '}
           </Text>
-          <Sparkline coral={theme.primary} amber={theme.accent} />
+          {/* The sparkline is decorative (it carries no data). On the compact
+              Mind-pane recap we drop it rather than imply a real trend. */}
+          {compact ? null : <Sparkline coral={theme.primary} amber={theme.accent} />}
         </View>
         <Column
           theme={theme}
@@ -89,7 +98,7 @@ export function BodyMindCard({
       {basis ? (
         <Text style={[styles.basis, { color: theme.subtle }, theme.font.body]}>{basis}</Text>
       ) : null}
-      {caption ? (
+      {caption && !compact ? (
         <Text style={[styles.caption, { color: theme.subtle }, theme.font.body]}>{caption}</Text>
       ) : null}
     </>

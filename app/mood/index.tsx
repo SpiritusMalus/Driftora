@@ -43,6 +43,13 @@ export default function MoodScreen() {
 
   const [items, setItems] = useState<MoodRow[] | null>(null);
   const [selected, setSelected] = useState<number | null>(null);
+  // The value from a check-in made THIS visit — drives the quiet "thanks"
+  // acknowledgement. `selected` alone can't: it preloads the latest check-in
+  // (possibly days old), so an ack keyed on it would fire without a fresh tap.
+  const [ackValue, setAckValue] = useState<number | null>(null);
+  // History is a long, low-signal list; show the recent slice with a tap to
+  // expand rather than scrolling 30 near-identical rows by default.
+  const [showAllHistory, setShowAllHistory] = useState(false);
   const [saving, setSaving] = useState(false);
   const [best, setBest] = useState<SignalAssociation | null>(null);
   const [steps, setSteps] = useState<number | null>(null);
@@ -72,6 +79,7 @@ export default function MoodScreen() {
   useFocusEffect(
     useCallback(() => {
       swipeNavLock.current = false;
+      setAckValue(null);
       let active = true;
       void (async () => {
         if (!db) return;
@@ -102,6 +110,7 @@ export default function MoodScreen() {
     if (!db || saving) return;
     setSaving(true);
     setSelected(value);
+    setAckValue(value);
     try {
       await logMood(db, value);
       setItems(await listMoods(db, 30));
@@ -187,11 +196,21 @@ export default function MoodScreen() {
         }
       : null;
 
-  const historyRows: RowSpec[] = (items ?? []).map((m) => ({
+  const HISTORY_PREVIEW = 7;
+  const allMoods = items ?? [];
+  const shownMoods = showAllHistory ? allMoods : allMoods.slice(0, HISTORY_PREVIEW);
+  const historyRows: RowSpec[] = shownMoods.map((m) => ({
     key: String(m.id),
     title: formatDate(m.ts),
     right: <Text style={[styles.value, { color: theme.text }, theme.font.bodyBold]}>{m.value}/10</Text>,
   }));
+  if (!showAllHistory && allMoods.length > HISTORY_PREVIEW) {
+    historyRows.push({
+      key: 'showAll',
+      title: t('mood.showAll', { count: allMoods.length }),
+      onPress: () => setShowAllHistory(true),
+    });
+  }
 
   return (
     <View style={styles.fill} {...backPan.panHandlers}>
@@ -211,6 +230,7 @@ export default function MoodScreen() {
           honesty states intact. */}
       <View style={styles.hero}>
         <BodyMindCard
+          compact
           eyebrow={hero.eyebrow}
           accent={hero.accent}
           headline={hero.headline}
@@ -230,7 +250,17 @@ export default function MoodScreen() {
       <View style={styles.scaleWrap}>
         <MoodScale selected={selected} onPick={onPick} disabled={db == null || saving} variant="grid" />
       </View>
-      <Text style={[styles.scale, { color: theme.subtle }, theme.font.body]}>{t('mood.scale')}</Text>
+      {/* Direction anchors under the ends replace the old caption line: the
+          numbered tiles carry the scale, these carry the 0⟷10 meaning. */}
+      <View style={styles.anchors}>
+        <Text style={[styles.anchor, { color: theme.subtle }, theme.font.body]}>{t('mood.anchorLow')}</Text>
+        <Text style={[styles.anchor, { color: theme.subtle }, theme.font.body]}>{t('mood.anchorHigh')}</Text>
+      </View>
+      {ackValue != null ? (
+        <Text style={[styles.ack, { color: theme.subtle }, theme.font.body]}>
+          {t('home.daySummary.mood', { mood: ackValue })}
+        </Text>
+      ) : null}
 
       <View style={styles.rows}>
         <ListGroup rows={sleepRow ? [diaryRow, sleepRow] : [diaryRow]} />
@@ -290,7 +320,9 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   prompt: { fontSize: 17, marginTop: 22 },
   scaleWrap: { marginTop: 14 },
-  scale: { fontSize: 12, marginTop: 12, lineHeight: 17 },
+  anchors: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 },
+  anchor: { fontSize: 12 },
+  ack: { fontSize: 13, marginTop: 12, lineHeight: 18 },
   hero: { marginTop: 4 },
   rows: { marginTop: 16 },
   hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
