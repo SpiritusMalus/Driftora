@@ -1156,12 +1156,15 @@ export const en = {
     title: 'Backup',
     openRow: 'Backup & restore',
     openRowNote: 'An encrypted copy of all your data, saved to your own cloud. Helps if you lose your phone.',
-    intro: 'An encrypted copy of all your data — one file in your own cloud (iCloud, Google Drive). It saves you if you lose or change phones.',
+    // Hero — the privacy anchor (encrypted + honest that without the phrase even
+    // we can't open it). Folds in the former `intro` and `safetyNote`.
+    heroText: 'The copy is encrypted with your key.',
+    heroLead: 'Without your phrase, not even we can open it.',
     backupTitle: 'Create a backup',
-    backupExplainer: 'Your data is encrypted with this device’s key and saved as one file: the Share sheet opens — pick a cloud. Nothing is sent to our server.',
+    backupExplainer: 'The Share sheet opens — pick a cloud (iCloud, Google Drive). Nothing is sent to our server.',
     backupCta: 'Create backup',
     restoreTitle: 'Restore',
-    restoreExplainer: 'Pick a backup file you saved — it is decrypted with this device’s key and your data comes back.',
+    restoreExplainer: 'Pick a backup file you saved — your data is decrypted on this device and comes back.',
     restoreReplaceWarning: 'Warning: restoring replaces all current data on this device with the backup’s contents.',
     restoreCta: 'Restore from file',
     restoreConfirm: 'Restore',
@@ -1174,8 +1177,6 @@ export const en = {
     restoreDone: 'Your data was restored from the backup.',
     restoreError: 'Could not restore from the file. Make sure you picked a valid backup file and try again.',
     restoreWrongKey: 'This file could not be decrypted with this device’s key. A backup made on another phone can’t be restored yet (cross-device key transfer comes later).',
-    safetyTitle: 'What to know',
-    safetyNote: 'The copy is encrypted with your key. Without a saved recovery phrase or key-file, no one can decrypt it — not even us.',
     dbUnavailable: 'Backup is available in a device dev build.',
     // Phase 3: server-backed E2E sync. Off by default; honest that the data is
     // stored encrypted and the server can't read it.
@@ -1225,8 +1226,9 @@ export const en = {
     // Power-user key-file path (export/import the raw key as JSON).
     keyFile: {
       title: 'Key-file (advanced)',
+      teaser: 'The same recovery as the phrase, as a file.',
       explainer:
-        'A key-file is a copy of your key. Save it as a fallback instead of the phrase, or import it on a new device. Anyone who gets this file can decrypt your backups — keep it like a password.',
+        'A key-file is the same recovery as the phrase, just as a file. Save it instead of the phrase, or import it on a new device. Anyone who gets this file can decrypt your backups — keep it like a password.',
       exportCta: 'Export key-file',
       importCta: 'Import key-file',
       shareTitle: 'Save your key-file',
