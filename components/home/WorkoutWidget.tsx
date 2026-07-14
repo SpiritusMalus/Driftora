@@ -34,18 +34,6 @@ export function WorkoutWidget({ countedKcal }: { countedKcal: number }) {
             </Text>
           </View>
         </Pressable>
-        <Pressable
-          onPress={() => router.push('/workout')}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel={t('home.inlineAdd')}
-          style={({ pressed }) => [
-            styles.plusBtn,
-            { borderColor: theme.separator, backgroundColor: theme.card, opacity: pressed ? 0.6 : 1 },
-          ]}
-        >
-          <Ionicons name="add" size={18} color={theme.primary} />
-        </Pressable>
         <Pressable onPress={() => router.push('/workout')} hitSlop={8}>
           <Ionicons name="chevron-forward" size={16} color={theme.tertiary} />
         </Pressable>
@@ -59,7 +47,6 @@ const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   headMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
   headText: { flex: 1 },
-  plusBtn: { width: 32, height: 32, borderRadius: 16, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   title: { fontSize: 15 },
   subtitle: { fontSize: 13, marginTop: 1 },
 });

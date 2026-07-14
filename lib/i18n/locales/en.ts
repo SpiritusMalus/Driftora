@@ -50,7 +50,7 @@ export const en = {
       // Empty state: an invitation (the field unfolds via «+») — the old
       // "Coming soon" read as "doesn't work".
       noneYet: 'nothing logged yet',
-      earnedEstimate: '{{steps}} steps today ≈ {{kcal}} kcal above resting.',
+      earnedEstimate: '≈ {{kcal}} kcal above resting from steps',
     },
     activity: {
       // Workout line in the activity widget — the counted (75%) budget share.
@@ -135,7 +135,7 @@ export const en = {
     foodBar: { placeholder: 'Log food' },
     food: {
       title: 'Food today',
-      movementHint: 'This is before activity — steps and workouts refine the budget',
+      movementHint: 'Before activity — steps & workouts raise the budget',
     },
     weight: {
       placeholder: 'Weight today',

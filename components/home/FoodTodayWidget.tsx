@@ -51,13 +51,16 @@ export function FoodTodayWidget({
   return (
     <Card style={styles.card} onPress={onPress}>
       <View style={styles.head}>
-        <Text style={[styles.title, { color: theme.text }, theme.font.bodySemiBold]}>{t('home.food.title')}</Text>
+        <View style={styles.headMain}>
+          <Ionicons name="nutrition-outline" size={18} color={theme.primary} />
+          <Text style={[styles.title, { color: theme.text }, theme.font.bodySemiBold]}>{t('home.food.title')}</Text>
+        </View>
         <Ionicons name="chevron-forward" size={16} color={theme.tertiary} />
       </View>
 
-      <Text style={[styles.kcal, { color: theme.text }, theme.font.body]}>
+      <Text style={[styles.kcal, { color: theme.heroAccent }, theme.font.bodySemiBold]}>
         {Math.round(kcal)}
-        <Text style={{ color: theme.subtle }}>
+        <Text style={[{ color: theme.subtle }, theme.font.body]}>
           {' '}
           / {targetKcal > 0 ? (targetApprox ? '≈' : '') + Math.round(targetKcal) : '—'} {t('units.kcal')}
         </Text>
@@ -88,8 +91,9 @@ export function FoodTodayWidget({
 const styles = StyleSheet.create({
   card: { marginBottom: 12 },
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  headMain: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   title: { fontSize: 15 },
-  kcal: { fontSize: 22, marginTop: 8 },
+  kcal: { fontSize: 28, marginTop: 8 },
   kcalBar: { marginTop: 8 },
   movementHint: { fontSize: 12, marginTop: 6, lineHeight: 17 },
   macros: { flexDirection: 'row', gap: 12, marginTop: 12 },
