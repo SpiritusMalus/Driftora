@@ -344,7 +344,7 @@ export default function HomeScreen() {
     !hasGoal && weightRow != null ? stepsEarnedKcal(steps ?? 0, weightRow.weightKg) : 0;
   const stepsEstimateLine =
     stepsEstimateKcal > 0
-      ? t('home.steps.earnedEstimate', { kcal: stepsEstimateKcal, steps: formatSteps(steps ?? 0) })
+      ? t('home.steps.earnedEstimate', { kcal: stepsEstimateKcal })
       : null;
 
   return (
