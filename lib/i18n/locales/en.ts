@@ -723,8 +723,22 @@ export const en = {
     },
     // Meal chips on the log/edit screens: the clock only suggests, the user decides.
     mealPick: { label: 'Meal' },
-    parse: 'Parse',
-    parsing: 'Parsing…',
+    parse: 'Add up',
+    parsing: 'Adding up…',
+    // Capture-method segmented control: the text field stays; only the secondary
+    // row (mic/photo) swaps — mirrors the workout screen.
+    inputMode: {
+      text: 'Text',
+      voice: 'Voice',
+      photo: 'Photo',
+    },
+    // One quick-pick lane instead of three headers (yesterday/favorites/recent).
+    quickPick: 'Quick',
+    // Collapsed approximation caveats under the total — the «≈» badge already shows.
+    whyApprox: {
+      show: 'Why approximate',
+      hide: 'Hide',
+    },
     voice: '🎤 Say it',
     audioLevel: 'audio level',
     entryNoItems: 'No items in this entry',
@@ -761,7 +775,7 @@ export const en = {
     savedWarm3: 'Saved. A small step is care too',
     savedWarm4: 'Done. You noticed this meal — that’s the skill',
     empty: 'Describe your meal and tap “Parse”.',
-    total: 'Whole-dish total',
+    total: 'Total',
     hideCalories: 'Hide calories — keep protein only',
     showCalories: 'Show calories and macros',
     needHelp: 'Could not recognize it. Add more detail.',
