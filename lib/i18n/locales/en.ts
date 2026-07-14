@@ -249,8 +249,9 @@ export const en = {
     },
     result: {
       title: 'Your daily target',
-      kcal: '≈ {{kcal}} kcal a day',
+      perDay: 'kcal a day',
       howTitle: 'Where the number comes from',
+      howTeaser: 'Resting metabolism, your goal, and how to raise it',
       bmr: 'Resting metabolism ≈ {{kcal}} kcal — expenditure at complete rest ({{method}}).',
       method: {
         katch: 'from body composition, Katch–McArdle',

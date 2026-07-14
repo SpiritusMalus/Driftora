@@ -55,6 +55,9 @@ export default function BodySetupScreen() {
   const [tempo, setTempo] = useState<DeficitTempo>('standard');
   const [plan, setPlan] = useState<MacroPlan | null>(null);
   const [saving, setSaving] = useState(false);
+  // The result's «Откуда цифра» breakdown is collapsed by default: the hero
+  // number + «записали как цель» is the finish; the derivation is on tap.
+  const [howOpen, setHowOpen] = useState(false);
 
   // Prefill from the stored profile (edit runs); the goal is preselected only
   // when a complete profile says this is an edit, not a first setup.
@@ -313,12 +316,15 @@ export default function BodySetupScreen() {
       {step === 'result' && plan != null ? (
         <>
           <Card style={styles.card}>
-            <Text style={[styles.resultTitle, { color: theme.text }, theme.font.bodySemiBold]}>
-              {t('bodySetup.result.title')}
+            <Text style={[styles.heroLabel, { color: theme.labelCaps }, theme.font.bodyBold]}>
+              {t('bodySetup.result.title').toUpperCase()}
             </Text>
-            <Text style={[styles.resultKcal, { color: theme.text }, theme.font.bodySemiBold]}>
-              {t('bodySetup.result.kcal', { kcal: plan.kcal })}
-            </Text>
+            <View style={styles.heroRow}>
+              <Text style={[styles.heroKcal, { color: theme.heroAccent }, theme.font.heading]}>≈{plan.kcal}</Text>
+              <Text style={[styles.heroUnit, { color: theme.subtle }, theme.font.body]}>
+                {t('bodySetup.result.perDay')}
+              </Text>
+            </View>
             <View style={styles.macroRow}>
               {(
                 [
@@ -341,52 +347,67 @@ export default function BodySetupScreen() {
           </Card>
 
           <Card style={styles.card}>
-            <Text style={[styles.blockTitle, { color: theme.text }, theme.font.bodySemiBold]}>
-              {t('bodySetup.result.howTitle')}
-            </Text>
-            <Text style={[styles.note, { color: theme.subtle }, theme.font.body]}>
-              {t('bodySetup.result.bmr', {
-                kcal: plan.bmrKcal,
-                method: t(`bodySetup.result.method.${plan.bmrMethod}`),
-              })}
-            </Text>
-            <Text style={[styles.note, { color: theme.subtle }, theme.font.body]}>
-              {t('bodySetup.result.maintenance', { kcal: plan.maintenanceKcal })}
-            </Text>
-            {plan.mode !== 'maintain' && plan.maintenanceKcal > 0 ? (
-              <Text style={[styles.note, { color: theme.subtle }, theme.font.body]}>
-                {t(`bodySetup.result.delta.${plan.mode}`, {
-                  kcal: plan.kcal,
-                  pct: Math.abs(Math.round((plan.kcal / plan.maintenanceKcal - 1) * 100)),
-                })}
+            <Pressable
+              onPress={() => setHowOpen((v) => !v)}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: howOpen }}
+              style={styles.accHead}
+            >
+              <Text style={[styles.accTitle, { color: theme.text }, theme.font.bodySemiBold]}>
+                {t('bodySetup.result.howTitle')}
               </Text>
+              <Text style={[styles.chevron, { color: theme.subtle }]}>{howOpen ? '▾' : '▸'}</Text>
+            </Pressable>
+            {howOpen ? (
+              <>
+                <Text style={[styles.note, { color: theme.subtle }, theme.font.body]}>
+                  {t('bodySetup.result.bmr', {
+                    kcal: plan.bmrKcal,
+                    method: t(`bodySetup.result.method.${plan.bmrMethod}`),
+                  })}
+                </Text>
+                <Text style={[styles.note, { color: theme.subtle }, theme.font.body]}>
+                  {t('bodySetup.result.maintenance', { kcal: plan.maintenanceKcal })}
+                </Text>
+                {plan.mode !== 'maintain' && plan.maintenanceKcal > 0 ? (
+                  <Text style={[styles.note, { color: theme.subtle }, theme.font.body]}>
+                    {t(`bodySetup.result.delta.${plan.mode}`, {
+                      kcal: plan.kcal,
+                      pct: Math.abs(Math.round((plan.kcal / plan.maintenanceKcal - 1) * 100)),
+                    })}
+                  </Text>
+                ) : (
+                  <Text style={[styles.note, { color: theme.subtle }, theme.font.body]}>
+                    {t('bodySetup.result.delta.maintain')}
+                  </Text>
+                )}
+                {eta != null ? (
+                  <Text style={[styles.note, { color: theme.subtle }, theme.font.body]}>
+                    {t(eta.key, { goal: goalWeightNum, n: eta.n })}
+                  </Text>
+                ) : null}
+                {plan.floored ? (
+                  <Text style={[styles.note, { color: theme.subtle }, theme.font.body]}>
+                    {t('weight.plan.floored', { kcal: plan.minDayKcal })}
+                  </Text>
+                ) : null}
+                <Text style={[styles.boostSubTitle, { color: theme.text }, theme.font.bodySemiBold]}>
+                  {t('bodySetup.result.boostTitle')}
+                </Text>
+                <Text style={[styles.note, { color: theme.subtle }, theme.font.body]}>
+                  {t('bodySetup.result.boost')}
+                </Text>
+                {plan.mode === 'gain' ? (
+                  <Text style={[styles.note, { color: theme.subtle }, theme.font.body]}>
+                    {t('bodySetup.result.gainNote')}
+                  </Text>
+                ) : null}
+              </>
             ) : (
-              <Text style={[styles.note, { color: theme.subtle }, theme.font.body]}>
-                {t('bodySetup.result.delta.maintain')}
+              <Text style={[styles.teaser, { color: theme.subtle }, theme.font.body]} numberOfLines={1}>
+                {t('bodySetup.result.howTeaser')}
               </Text>
             )}
-            {eta != null ? (
-              <Text style={[styles.note, { color: theme.subtle }, theme.font.body]}>
-                {t(eta.key, { goal: goalWeightNum, n: eta.n })}
-              </Text>
-            ) : null}
-            {plan.floored ? (
-              <Text style={[styles.note, { color: theme.subtle }, theme.font.body]}>
-                {t('weight.plan.floored', { kcal: plan.minDayKcal })}
-              </Text>
-            ) : null}
-          </Card>
-
-          <Card style={styles.card}>
-            <Text style={[styles.blockTitle, { color: theme.text }, theme.font.bodySemiBold]}>
-              {t('bodySetup.result.boostTitle')}
-            </Text>
-            <Text style={[styles.note, { color: theme.subtle }, theme.font.body]}>{t('bodySetup.result.boost')}</Text>
-            {plan.mode === 'gain' ? (
-              <Text style={[styles.note, { color: theme.subtle }, theme.font.body]}>
-                {t('bodySetup.result.gainNote')}
-              </Text>
-            ) : null}
           </Card>
 
           <Pressable
@@ -571,14 +592,20 @@ const styles = StyleSheet.create({
   optionBody: { flex: 1 },
   optionTitle: { fontSize: 15 },
   optionDesc: { fontSize: 12, lineHeight: 17, marginTop: 3 },
-  resultTitle: { fontSize: 16 },
-  resultKcal: { fontSize: 24, marginTop: 10, marginBottom: 10 },
-  macroRow: { flexDirection: 'row', gap: 8 },
+  heroLabel: { fontSize: 12, letterSpacing: 1.44, marginBottom: 6 },
+  heroRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
+  heroKcal: { fontSize: 40, lineHeight: 44 },
+  heroUnit: { fontSize: 14 },
+  macroRow: { flexDirection: 'row', gap: 8, marginTop: 16 },
   macroTile: { flex: 1, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 4, alignItems: 'center' },
   macroLabel: { fontSize: 11 },
   macroValue: { fontSize: 15, marginTop: 2 },
   appliedLine: { fontSize: 13, marginTop: 12 },
-  blockTitle: { fontSize: 15, marginBottom: 4 },
+  accHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  accTitle: { fontSize: 15, flex: 1, paddingRight: 12 },
+  chevron: { fontSize: 15 },
+  teaser: { fontSize: 13, lineHeight: 19, marginTop: 6 },
+  boostSubTitle: { fontSize: 14, marginTop: 14 },
   note: { fontSize: 13, lineHeight: 19, marginTop: 6 },
   editHint: { fontSize: 12, lineHeight: 17, marginBottom: 12, textAlign: 'center' },
   howLink: { flexDirection: 'row', alignItems: 'center', gap: 4, alignSelf: 'center', marginBottom: 10 },
