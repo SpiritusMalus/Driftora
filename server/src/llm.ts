@@ -1,6 +1,8 @@
 import { TIMEOUT_MS } from './httpTimeout.js';
 import { metrics } from './metrics.js';
 import {
+  ESTIMATE_SEARCH_SCHEMA,
+  ESTIMATE_SEARCH_SYSTEM_PROMPT,
   IDENTIFY_PHOTO_SCHEMA,
   IDENTIFY_PHOTO_SYSTEM_PROMPT,
   IDENTIFY_SCHEMA,
@@ -10,6 +12,7 @@ import {
   PARSE_WORKOUT_SCHEMA,
   PARSE_WORKOUT_SYSTEM_PROMPT,
   userAudioInstruction,
+  userEstimateSearchInstruction,
   userInstruction,
   userPhotoInstruction,
   userWorkoutInstruction,
@@ -164,6 +167,58 @@ async function identifyWithEscalation(messages: ChatMessage[], schema: object = 
     escalated.length > base.length ||
     (escalated.length > 0 && topConfidence(escalated) > topConfidence(base));
   return better ? escalated : base;
+}
+
+/** One AI per-100g estimate for a typed food name (manual search), all fields present. */
+export interface FoodEstimate {
+  name: string;
+  kcal: number;
+  prot: number;
+  fat: number;
+  carb: number;
+}
+
+/**
+ * Manual-search AI estimate: the user typed a food name and we ALWAYS return a
+ * per-100g guess (brand- and intent-aware) shown next to the DB rows, flagged
+ * «≈ оценка ИИ». This is the sanctioned, attributed AI-estimate path — not
+ * laundered DB data — so it never refuses. Returns null only on a malformed /
+ * failed model response (the caller just omits the AI row).
+ */
+export async function estimateFoodPer100(name: string, region: Region): Promise<FoodEstimate | null> {
+  const raw = await complete(
+    [
+      { role: 'system', content: ESTIMATE_SEARCH_SYSTEM_PROMPT },
+      { role: 'user', content: userEstimateSearchInstruction(region, name) },
+    ],
+    MODEL,
+    ESTIMATE_SEARCH_SCHEMA,
+  );
+  return parseEstimate(raw, name);
+}
+
+/** Parse the estimate model's `choices[0].message.content` → FoodEstimate | null. */
+function parseEstimate(data: unknown, fallbackName: string): FoodEstimate | null {
+  const d = data as { choices?: { message?: { content?: unknown } }[] } | null;
+  const content = d?.choices?.[0]?.message?.content;
+  const text = typeof content === 'string' ? content.trim() : '';
+  if (!text) return null;
+  let payload: unknown;
+  try {
+    payload = JSON.parse(stripFences(text));
+  } catch {
+    return null;
+  }
+  const o = payload as Record<string, unknown>;
+  const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+  const kcal = num(o.kcal_100g);
+  const prot = num(o.prot_100g);
+  const fat = num(o.fat_100g);
+  const carb = num(o.carb_100g);
+  // An estimate is only useful complete — a partial guess reads as fabricated fact.
+  if (kcal === undefined || prot === undefined || fat === undefined || carb === undefined) return null;
+  const name = typeof o.name_ru === 'string' && o.name_ru.trim().length > 0 ? o.name_ru.trim() : fallbackName;
+  return { name, kcal, prot, fat, carb };
 }
 
 /** Layer 2: free-text meal → identified foods + estimated grams (no numbers). */

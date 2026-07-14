@@ -131,6 +131,50 @@ test('POST /food/search RU merges curated + OFF brands; USDA skipped for Cyrilli
   }
 });
 
+test('POST /food/search appends an AI estimate card alongside DB rows (ai:true)', async () => {
+  process.env.OPENROUTER_API_KEY = 'test-or-key';
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input.toString();
+    if (url.includes('127.0.0.1')) return realFetch(input as never, init);
+    if (url.includes('openrouter.ai')) {
+      return json({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                name_ru: 'Масло Простоквашино',
+                kcal_100g: 748,
+                prot_100g: 0.5,
+                fat_100g: 82,
+                carb_100g: 0.8,
+              }),
+            },
+          },
+        ],
+      });
+    }
+    if (url.includes('openfoodfacts.org/cgi/search.pl')) return json({ products: [] });
+    if (url.includes('api.nal.usda.gov')) throw new Error('USDA must not be queried with Cyrillic text');
+    throw new Error(`unexpected fetch in test: ${url}`);
+  }) as typeof fetch;
+
+  const { base, stop } = await startApp();
+  try {
+    const res = await post(base, '/food/search', { query: 'масло простоквашино', region: 'RU', ai: true });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { candidates: { name: string; per100: { kcal: number; source: string } }[] };
+    const ai = body.candidates.find((c) => c.per100.source === 'ai_estimate');
+    assert.ok(ai, 'a brand-aware ai_estimate card must be present alongside DB rows');
+    assert.equal(ai!.name, 'Масло Простоквашино');
+    assert.equal(ai!.per100.kcal, 748);
+    // DB rows lead, the AI card is appended last.
+    assert.equal(body.candidates[body.candidates.length - 1]!.per100.source, 'ai_estimate');
+  } finally {
+    delete process.env.OPENROUTER_API_KEY;
+    await stop();
+  }
+});
+
 test('POST /food/search tolerates a typo («гретчка»)', async () => {
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString();

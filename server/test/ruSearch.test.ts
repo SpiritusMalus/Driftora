@@ -1,14 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import {
-  hasCyrillic,
-  phraseScore,
-  stemRu,
-  tokenScore,
-  uncoveredQueryWords,
-  withinOneEdit,
-} from '../src/nutrition/ruSearch.js';
+import { hasCyrillic, phraseScore, stemRu, tokenScore, withinOneEdit } from '../src/nutrition/ruSearch.js';
 
 test('stemRu strips one inflectional ending, keeps stems ≥ 3 chars', () => {
   assert.equal(stemRu('борща'), 'борщ');
@@ -72,15 +65,6 @@ test('phraseScore: an unhonoured qualifier lands at the 0.5 floor', () => {
   assert.equal(phraseScore('сыр легкий', 'сыр российский'), 0.5);
   // Both words honoured ranks strictly above the half-match.
   assert.ok(phraseScore('сыр легкий', 'сыр легкий') > 0.5);
-});
-
-test('uncoveredQueryWords flags the qualifier no candidate matched', () => {
-  // «легкий» matched nothing → it is the ignored word; «сыр» did → not flagged.
-  assert.deepEqual(uncoveredQueryWords('сыр легкий', ['сыр российский', 'сыр моцарелла']), ['легкий']);
-  // A candidate that actually carries the qualifier covers it → nothing ignored.
-  assert.deepEqual(uncoveredQueryWords('сыр легкий', ['сыр легкий']), []);
-  // Short stopwords (< 3 chars) never count as ignored content.
-  assert.deepEqual(uncoveredQueryWords('борщ с мясом', ['борщ с мясом']), []);
 });
 
 test('hasCyrillic', () => {

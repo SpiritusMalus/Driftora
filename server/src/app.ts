@@ -4,6 +4,7 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import multer from 'multer';
 
 import {
+  estimateFoodPer100,
   identifyFromAudio,
   identifyFromPhoto,
   identifyFromText,
@@ -14,8 +15,6 @@ import {
 } from './llm.js';
 import { metrics } from './metrics.js';
 import { Resolver } from './nutrition/resolver.js';
-import { hasCyrillic, uncoveredQueryWords } from './nutrition/ruSearch.js';
-import { normalizeRu } from './nutrition/skurikhin.js';
 import { buildMealDraft, buildProviders } from './orchestrator.js';
 import { buildLimiters, type RateLimits, resolveLimits } from './rateLimit.js';
 import {
@@ -110,56 +109,24 @@ function regionOf(body: { region?: unknown }): Region {
 }
 
 /**
- * Manual-search AI fallback: identify the typed name and turn the model's OWN
- * per-100g estimate into a single honest `ai_estimate` candidate. Only complete
- * estimates (kcal + all three macros) become a row — a partial guess would read
- * as fact. Returns null on any gap, so the caller just shows the empty DB result.
- * The number still comes from the model's estimate field, never invented here
- * (THE HONESTY RULE) — and the source tag makes the client render it with «≈».
+ * Manual-search AI card: the user's typed name turned into ONE honest
+ * `ai_estimate` candidate, shown ALONGSIDE the DB rows (not just as a fallback).
+ * Uses the dedicated `estimateFoodPer100` — which always answers and reads the
+ * BRAND/intent the generic DBs can't («масло простоквашино», «сыр тысяча озёр
+ * лёгкий») — so the user sees both «по базе» and «через ИИ» and picks. The
+ * source tag makes the client render it with «≈». Null on a failed model call.
  */
-async function aiSearchEstimate(query: string, region: Region): Promise<NutritionAlternative | null> {
-  const items = await identifyFromText(query, region);
-  const est = items[0]?.estimate;
-  if (
-    !est ||
-    est.kcal_100g === undefined ||
-    est.prot_100g === undefined ||
-    est.fat_100g === undefined ||
-    est.carb_100g === undefined
-  ) {
-    return null;
-  }
+async function aiSearchCard(query: string, region: Region): Promise<NutritionAlternative | null> {
+  const est = await estimateFoodPer100(query, region);
+  if (!est) return null;
   const per100 = coercePer100({
     source: 'ai_estimate',
-    kcal: est.kcal_100g,
-    prot: est.prot_100g,
-    fat: est.fat_100g,
-    carb: est.carb_100g,
+    kcal: est.kcal,
+    prot: est.prot,
+    fat: est.fat,
+    carb: est.carb,
   });
-  return { name: items[0]?.name_ru || query, per100 };
-}
-
-/**
- * Manual-search fallback for a FULL DB miss (long-tail / branded names the
- * Cyrillic free-text search can't reach: «сыр тысяча озёр лёгкий»). Unlike
- * `aiSearchEstimate`, which reads only the model's own `estimate` field, this
- * runs the identified item through the SAME resolve pipeline the parse path
- * uses — so USDA-by-`name_en` («light cheese» → 264 kcal) resolves it even
- * though the raw Cyrillic query never touches an English-only source. Returns
- * the primary match (its source honestly attributed) or null when even that
- * lands on the coarse `estimate` placeholder — a real dead end, keep it empty.
- */
-async function aiSearchResolve(
-  resolver: Resolver,
-  query: string,
-  region: Region,
-): Promise<NutritionAlternative | null> {
-  const items = await identifyFromText(query, region);
-  const item = items[0];
-  if (!item) return null;
-  const resolved = await resolver.resolveItem(item, region);
-  if (resolved.per100.source === 'estimate') return null; // coarse 150/5/5/20 = still a miss
-  return { name: resolved.name_ru || resolved.matched_name || query, per100: resolved.per100 };
+  return { name: est.name, per100 };
 }
 
 /** Options for `createApp` (mirrors the injectable-resolver pattern). */
@@ -282,38 +249,18 @@ export function createApp(
       fail(res, 400, 'input_too_long', `Field "query" must be at most ${MAX_TEXT} characters.`);
       return;
     }
-    const candidates = await resolver.search(query, region).catch(() => []);
-    // When the client holds AI consent (`ai: true`), «Найти вручную» honours the
-    // WHOLE query instead of dead-ending, in two shapes:
-    if (body.ai === true) {
-      // (a) The DBs returned NOTHING — a long-tail / branded name the Cyrillic
-      //     free-text search can't reach. Run the FULL resolve pipeline (the
-      //     parse path's twin: USDA-by-name_en, then the model's own estimate)
-      //     so «сыр тысяча озёр лёгкий» yields a row, not an empty list.
-      if (candidates.length === 0) {
-        const hit = await aiSearchResolve(resolver, query, region).catch(() => null);
-        res.json({ candidates: hit ? [hit] : [] });
-        return;
-      }
-      // (b) The DBs had rows but a content word matched NOTHING («сыр лёгкий»
-      //     surfaces only generic cheeses → «лёгкий» was ignored). Prepend the
-      //     model's OWN estimate for what the user typed — a re-lookup would
-      //     just return the same generic cheese, not a light one.
-      const uncovered = hasCyrillic(query)
-        ? uncoveredQueryWords(
-            normalizeRu(query),
-            candidates.map((c) => normalizeRu(c.name)),
-          )
-        : [];
-      if (uncovered.length > 0) {
-        const est = await aiSearchEstimate(query, region).catch(() => null);
-        if (est) {
-          res.json({ candidates: [est, ...candidates] });
-          return;
-        }
-      }
-    }
-    res.json({ candidates });
+    // Show BOTH, always. The DB search and the AI estimate run in PARALLEL (the
+    // AI call adds no latency the ~5 s OFF search doesn't already cost), and we
+    // return the DB rows FIRST, then the AI card for what the user typed. So a
+    // branded query gets the generic DB row AND the brand-specific AI guess side
+    // by side («по базе: Масло» + «через ИИ: Масло Простоквашино»), each with its
+    // own per-100g and source tag — the user picks. The AI card needs consent
+    // (`ai: true`); without it we still return whatever the DBs found.
+    const [candidates, aiCard] = await Promise.all([
+      resolver.search(query, region).catch(() => []),
+      body.ai === true ? aiSearchCard(query, region).catch(() => null) : Promise.resolve(null),
+    ]);
+    res.json({ candidates: aiCard ? [...candidates, aiCard] : candidates });
   });
 
   // Free-text WORKOUT parse: `{ text }` → `{ workouts: ParsedWorkout[] }`. The

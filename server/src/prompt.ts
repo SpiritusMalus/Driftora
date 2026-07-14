@@ -69,6 +69,37 @@ export function userInstruction(region: Region): string {
 }
 
 /**
+ * MANUAL-SEARCH AI ESTIMATE. The user typed a food name into the search box and
+ * we show your per-100g guess ALONGSIDE the database rows, clearly flagged «≈».
+ * This is the sanctioned, attributed AI-estimate path (never laundered as DB
+ * data), so — unlike identification — you ALWAYS answer with numbers, never
+ * refuse or omit. Its whole value is interpreting BRAND and INTENT, which the
+ * generic databases can't.
+ */
+export const ESTIMATE_SEARCH_SYSTEM_PROMPT = `You estimate the nutrition of ONE food a user typed into a manual food-search box. Return your BEST per-100g figures for that food AS the user most likely means it.
+
+- ALWAYS answer — this is an explicitly-labelled estimate («≈» in the UI), so you never refuse, never omit fields, never say "unknown". Give your best guess even for an obscure or branded item.
+- Interpret INTENT and BRANDS from ANY country or cuisine — «масло простоквашино», «Nutella», «Coca-Cola Zero», «President camembert», «Barilla penne» all name a specific product; use that product's typical values. When no brand is named, use the generic food. Fix obvious typos/half-words to the food the user meant.
+- Give ALL FOUR numbers per 100 g — kcal, protein, fat, carbs — roughly self-consistent (kcal ≈ 4×protein + 9×fat + 4×carbs). Whole or one-decimal numbers are fine.
+- name_ru: a short, clean Russian name for what you estimated; KEEP the brand if the user named one.`;
+
+export const ESTIMATE_SEARCH_SCHEMA = {
+  type: 'object',
+  properties: {
+    name_ru: { type: 'string', description: 'Short clean Russian name for the estimated food; keep the brand if the user named one.' },
+    kcal_100g: { type: 'number' },
+    prot_100g: { type: 'number' },
+    fat_100g: { type: 'number' },
+    carb_100g: { type: 'number' },
+  },
+  required: ['name_ru', 'kcal_100g', 'prot_100g', 'fat_100g', 'carb_100g'],
+} as const;
+
+export function userEstimateSearchInstruction(region: Region, name: string): string {
+  return `Region: ${region}. Estimate the per-100g nutrition for this food the user typed:\n\n${name}`;
+}
+
+/**
  * PHOTO system prompt. Identification works exactly as above, PLUS one addition
  * that only makes sense for an image: reading a printed nutrition panel.
  *
