@@ -5,9 +5,10 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { useTranslation } from 'react-i18next';
 
 import { ConsentModal } from '@/components/consent/ConsentModal';
+import { ItemCard } from '@/components/food/ItemCard';
 import { MealChips } from '@/components/food/MealChips';
+import { ApproxBadge, MicroScales, NutrientDetail } from '@/components/food/nutrientViews';
 import { Card } from '@/components/ui/Card';
-import { FillBar } from '@/components/ui/FillBar';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
 import { TextField } from '@/components/ui/TextField';
@@ -32,7 +33,6 @@ import {
   applyRememberedChoices,
   displayItemName,
   lookupNameForItem,
-  normalizeChoiceName,
 } from '@/lib/core/services/foodChoice';
 import { deleteTempFile } from '@/lib/core/services/tempFiles';
 import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
@@ -47,15 +47,13 @@ import {
   startRecording,
   type ActiveRecording,
 } from '@/lib/core/services/audioRecorder';
-import type { AudioInput, MealDraft, NutrientValues, NutritionAlternative, NutritionItem, PhotoInput, Region } from '@/lib/core/services/foodParser';
-import { nutrientDetailRows } from '@/lib/core/insights/nutrientDetail';
-import { dailyMicroNorms, type MicroRow } from '@/lib/core/insights/microNutrients';
+import type { AudioInput, MealDraft, NutritionAlternative, NutritionItem, PhotoInput, Region } from '@/lib/core/services/foodParser';
 import type { Sex } from '@/lib/core/insights/bodyMetrics';
 import { getFoodParser, resolveRegion } from '@/lib/core/services/foodParserProvider';
 import { recomputeDraft, scaleToGrams, withItemAlternative, withItemGrams, withItemManualMacros, withItemReplacement } from '@/lib/core/services/mealDraft';
 import { capturePhoto, isPhotoCaptureAvailable, type PhotoSource } from '@/lib/core/services/photoProvider';
 import { getSpeechService } from '@/lib/core/services/speechProvider';
-import { type Theme, useTheme } from '@/lib/theme/theme';
+import { useTheme } from '@/lib/theme/theme';
 
 /// Whether an online AI parser is even configured for this build. Consent and
 /// the on-screen AI notice only matter when it is — otherwise everything is
@@ -153,6 +151,10 @@ export default function FoodLogScreen() {
   const meterUnsubRef = useRef<(() => void) | null>(null);
   // Origin of the current draft, so the saved entry's `source` is honest.
   const [source, setSource] = useState<'text' | 'voice' | 'photo'>('text');
+  // Which capture method the segmented control shows. The text field stays
+  // visible in every mode — it's the shared surface where voice/photo echo what
+  // they understood — so this only swaps the secondary control row (mic/photo).
+  const [inputMode, setInputMode] = useState<'text' | 'voice' | 'photo'>('text');
   // The `?voice=<token>` value we've already acted on. A fresh token (each Home
   // mic tap sends a unique one) re-triggers voice; probes resolving mid-flight
   // don't re-fire the same token. Replaces a plain boolean that couldn't tell a
@@ -195,6 +197,9 @@ export default function FoodLogScreen() {
     setFreshDraft(null);
     setVoiceError(null);
     setSource('voice');
+    // Deep-link (?voice=1) starts dictation without a segment tap — reveal the
+    // voice controls so the mic isn't live behind a hidden segment.
+    setInputMode('voice');
     setListening(true);
     await speech.listen(
       (transcript, isFinal) => {
@@ -467,6 +472,9 @@ export default function FoodLogScreen() {
       setMeterLevels((prev) => pushLevel(prev, level, 24));
     });
     setSource('voice');
+    // Same as dictation: a ?voice=1 deep-link records without a segment tap, so
+    // surface the voice controls (waveform + stop button).
+    setInputMode('voice');
     setRecording(true);
     return true;
   }
@@ -612,6 +620,30 @@ export default function FoodLogScreen() {
   // preselect is honest intent — a typed «завтрак…» keyword first, else the clock.
   const mealChoice: MealType = meal ?? mealTypeForEntry(text, new Date());
 
+  // Voice is offered when EITHER the AI voice-note recorder or on-device
+  // dictation is available; the segment only lists methods the device actually
+  // has, so it collapses to nothing when text is the only path.
+  const voiceMode = (AI_CONFIGURED && recordingAvailable) || speechAvailable;
+  const visibleModes = (['text', 'voice', 'photo'] as const).filter(
+    (m) => m === 'text' || (m === 'voice' ? voiceMode : photoAvailable),
+  );
+
+  // One «Быстро» lane instead of three stacked headers («Как вчера»/«Избранное»/
+  // «Недавнее» read as four near-identical uppercase sections). Priority
+  // yesterday → favorites → recents, deduped by the meal text so a meal eaten
+  // yesterday AND recently shows once.
+  const quickPickList = (() => {
+    const seen = new Set<string>();
+    return [...quick.yesterday, ...quick.favorites, ...quick.recents]
+      .filter((m) => {
+        const key = m.rawText.trim().toLowerCase();
+        if (key.length === 0 || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 8);
+  })();
+
   async function onSave() {
     if (!draft || !db) return;
     setSaving(true);
@@ -675,60 +707,103 @@ export default function FoodLogScreen() {
         multiline
         style={styles.input}
       />
-      {/* Voice: the AI voice-note (record → send the clip → draft) is primary when
-          an online parser is built in; otherwise the on-device STT mic fills the
-          text field. */}
-      {AI_CONFIGURED && recordingAvailable ? (
-        <>
-          {recording ? <Waveform levels={meterLevels} /> : null}
+      {/* Capture method. The text field above stays in EVERY mode (it's also
+          where voice/photo echo what they understood), so the segment only swaps
+          the secondary control row — never the input itself. A mode's segment
+          appears only once its probe confirms the device offers it; when text is
+          the only path the whole row collapses (device feedback 2026-07-12: the
+          three stacked controls overflowed the screen). Mirrors the workout
+          screen's [Точно][С трекера][Описать]. */}
+      {visibleModes.length > 1 ? (
+        <View style={styles.segments}>
+          {visibleModes.map((key) => {
+            const active = inputMode === key;
+            return (
+              <Pressable
+                key={key}
+                onPress={() => setInputMode(key)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                style={({ pressed }) => [
+                  styles.segment,
+                  {
+                    // Inactive segments sit on `iconBg`, a step off the card, so
+                    // they don't melt into it on the dark «ember» theme.
+                    backgroundColor: active ? theme.primary : theme.iconBg,
+                    borderColor: active ? theme.primary : theme.separator,
+                    opacity: pressed ? 0.7 : 1,
+                  },
+                ]}
+              >
+                <Text style={[styles.segmentText, { color: active ? theme.onPrimary : theme.text }, theme.font.body]}>
+                  {t(`food.inputMode.${key}`)}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
+
+      {/* VOICE: the AI voice-note (record → send the clip → draft) is primary
+          when an online parser is built in; otherwise the on-device STT mic
+          fills the text field. */}
+      {inputMode === 'voice' && voiceMode ? (
+        AI_CONFIGURED && recordingAvailable ? (
+          <>
+            {recording ? <Waveform levels={meterLevels} /> : null}
+            <Pressable
+              onPress={toggleRecording}
+              disabled={parsing}
+              style={({ pressed }) => [
+                styles.micButton,
+                {
+                  borderColor: recording ? theme.primary : theme.separator,
+                  backgroundColor: recording ? theme.primary : theme.card,
+                  opacity: pressed || parsing ? 0.7 : 1,
+                },
+              ]}
+            >
+              <Text style={[styles.micText, { color: recording ? theme.onPrimary : theme.primary }, theme.font.bodySemiBold]}>
+                {recording ? t('food.voiceRecording') : t('food.voiceNote')}
+              </Text>
+            </Pressable>
+            {parsing && source === 'voice' ? (
+              <View style={styles.processingRow}>
+                <ActivityIndicator size="small" color={theme.primary} />
+                <Text style={[styles.micText, { color: theme.subtle }, theme.font.body]}>
+                  {t('food.voiceProcessing')}
+                </Text>
+              </View>
+            ) : null}
+          </>
+        ) : (
           <Pressable
-            onPress={toggleRecording}
-            disabled={parsing}
+            onPress={toggleListening}
             style={({ pressed }) => [
               styles.micButton,
               {
-                borderColor: recording ? theme.primary : theme.separator,
-                backgroundColor: recording ? theme.primary : theme.card,
-                opacity: pressed || parsing ? 0.7 : 1,
+                borderColor: listening ? theme.primary : theme.separator,
+                backgroundColor: listening ? theme.primary : theme.card,
+                opacity: pressed ? 0.7 : 1,
               },
             ]}
           >
-            <Text style={[styles.micText, { color: recording ? theme.onPrimary : theme.primary }, theme.font.bodySemiBold]}>
-              {recording ? t('food.voiceRecording') : t('food.voiceNote')}
+            <Text style={[styles.micText, { color: listening ? theme.onPrimary : theme.primary }, theme.font.bodySemiBold]}>
+              {listening ? t('food.voiceListening') : t('food.voice')}
             </Text>
           </Pressable>
-          {parsing && source === 'voice' ? (
-            <View style={styles.processingRow}>
-              <ActivityIndicator size="small" color={theme.primary} />
-              <Text style={[styles.micText, { color: theme.subtle }, theme.font.body]}>
-                {t('food.voiceProcessing')}
-              </Text>
-            </View>
-          ) : null}
-        </>
-      ) : speechAvailable ? (
-        <Pressable
-          onPress={toggleListening}
-          style={({ pressed }) => [
-            styles.micButton,
-            {
-              borderColor: listening ? theme.primary : theme.separator,
-              backgroundColor: listening ? theme.primary : theme.card,
-              opacity: pressed ? 0.7 : 1,
-            },
-          ]}
-        >
-          <Text style={[styles.micText, { color: listening ? theme.onPrimary : theme.primary }, theme.font.bodySemiBold]}>
-            {listening ? t('food.voiceListening') : t('food.voice')}
-          </Text>
-        </Pressable>
+        )
       ) : null}
-      {voiceError && !listening ? (
+      {/* Show voice errors in voice mode — and also when voice is unavailable
+          entirely (no segment exists then), so the Home-mic ?voice=1 deep-link's
+          «голос недоступен» message isn't swallowed. */}
+      {voiceError && !listening && (inputMode === 'voice' || !voiceMode) ? (
         <Text style={[styles.voiceError, { color: theme.subtle }, theme.font.body]}>{voiceError}</Text>
       ) : null}
-      {photoAvailable ? (
-        // Camera and gallery side by side: a fresh shot of the plate, or a
-        // photo taken earlier — both go through the same downscale/EXIF-strip.
+
+      {/* PHOTO: a fresh shot of the plate, or one taken earlier — both go
+          through the same downscale/EXIF-strip. */}
+      {inputMode === 'photo' && photoAvailable ? (
         <View style={styles.photoRow}>
           {(
             [
@@ -756,7 +831,7 @@ export default function FoodLogScreen() {
           ))}
         </View>
       ) : null}
-      {photoError ? (
+      {inputMode === 'photo' && photoError ? (
         <Text style={[styles.voiceError, { color: theme.subtle }, theme.font.body]}>{photoError}</Text>
       ) : null}
       <PrimaryButton
@@ -780,9 +855,6 @@ export default function FoodLogScreen() {
           <View style={styles.quickGroup}>
             <Text style={[styles.quickLabel, { color: theme.subtle }, theme.font.heading]}>
               {t('food.myDiet').toUpperCase()}
-            </Text>
-            <Text style={[styles.myDietHint, { color: theme.subtle }, theme.font.body]}>
-              {t('food.myDietHint')}
             </Text>
             <View style={styles.quickWrap}>
               {myDiet.slice(0, 12).map((food, i) => (
@@ -809,43 +881,32 @@ export default function FoodLogScreen() {
         </View>
       ) : null}
 
-      {draft == null &&
-      (quick.favorites.length > 0 || quick.recents.length > 0 || quick.yesterday.length > 0) ? (
+      {draft == null && quickPickList.length > 0 ? (
         <View style={styles.quick}>
-          {(
-            [
-              { label: t('food.sameAsYesterday'), meals: quick.yesterday },
-              { label: t('food.favorites'), meals: quick.favorites },
-              { label: t('food.recent'), meals: quick.recents },
-            ] as const
-          ).map((group) =>
-            group.meals.length === 0 ? null : (
-              <View key={group.label} style={styles.quickGroup}>
-                <Text style={[styles.quickLabel, { color: theme.subtle }, theme.font.heading]}>
-                  {group.label.toUpperCase()}
-                </Text>
-                <View style={styles.quickWrap}>
-                  {group.meals.map((m, i) => (
-                    <Pressable
-                      key={i}
-                      onPress={() => onQuickPick(m)}
-                      style={({ pressed }) => [
-                        styles.chip,
-                        { backgroundColor: theme.card, borderColor: theme.separator, opacity: pressed ? 0.6 : 1 },
-                      ]}
-                    >
-                      <Text numberOfLines={1} style={[styles.chipText, { color: theme.text }, theme.font.bodySemiBold]}>
-                        {m.rawText}
-                      </Text>
-                      <Text style={[styles.chipMacro, { color: theme.subtle }, theme.font.body]}>
-                        {t('macros.protein')} {Math.round(m.proteinG)} {t('units.g')}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
-            ),
-          )}
+          <View style={styles.quickGroup}>
+            <Text style={[styles.quickLabel, { color: theme.subtle }, theme.font.heading]}>
+              {t('food.quickPick').toUpperCase()}
+            </Text>
+            <View style={styles.quickWrap}>
+              {quickPickList.map((m, i) => (
+                <Pressable
+                  key={i}
+                  onPress={() => onQuickPick(m)}
+                  style={({ pressed }) => [
+                    styles.chip,
+                    { backgroundColor: theme.card, borderColor: theme.separator, opacity: pressed ? 0.6 : 1 },
+                  ]}
+                >
+                  <Text numberOfLines={1} style={[styles.chipText, { color: theme.text }, theme.font.bodySemiBold]}>
+                    {m.rawText}
+                  </Text>
+                  <Text style={[styles.chipMacro, { color: theme.subtle }, theme.font.body]}>
+                    {t('macros.protein')} {Math.round(m.proteinG)} {t('units.g')}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
         </View>
       ) : null}
 
@@ -888,15 +949,21 @@ export default function FoodLogScreen() {
             </Text>
           ) : (
           <Card style={[styles.totalCard, { borderColor: theme.separator }]}>
-            <View style={styles.totalHead}>
-              <Text style={[styles.totalLabel, { color: theme.text }, theme.font.bodySemiBold]}>{t('food.total')}</Text>
+            <Text style={[styles.totalLabel, { color: theme.subtle }, theme.font.body]}>{t('food.total')}</Text>
+            {/* HERO — the meal's total is what lands in the diary, so it leads big
+                like each item's eaten amount (it used to be a 14px line, quieter
+                than the per-item heroes it sums). */}
+            <View style={styles.totalHeroRow}>
+              <Text style={[styles.totalValue, { color: theme.text }, theme.font.bodySemiBold]}>
+                {hideCalories ? draft.totals.prot : draft.totals.kcal}
+              </Text>
+              <Text style={[styles.totalUnit, { color: theme.subtle }, theme.font.body]}>
+                {hideCalories
+                  ? `${t('macros.protein').toLowerCase()} ${t('units.g')}`
+                  : `${t('units.kcal')} · ${t('macros.protein')} ${draft.totals.prot} ${t('units.g')} · ${t('macros.fat')} ${draft.totals.fat} · ${t('macros.carbs')} ${draft.totals.carb}`}
+              </Text>
               {draft.approximate ? <ApproxBadge theme={theme} label={t('food.approx')} /> : null}
             </View>
-            <Text style={[styles.totalValue, { color: theme.text }, theme.font.bodyMedium]}>
-              {hideCalories
-                ? `${t('macros.protein')} ${draft.totals.prot} ${t('units.g')}`
-                : `${draft.totals.kcal} ${t('units.kcal')} · ${t('macros.protein')} ${draft.totals.prot} ${t('units.g')} · ${t('macros.fat')} ${draft.totals.fat} · ${t('macros.carbs')} ${draft.totals.carb}`}
-            </Text>
             {/* Meal-level extended composition — an honest partial sum. */}
             <NutrientDetail values={draft.totals} caption={t('food.detail.totalsNote')} theme={theme} />
             {/* Vitamins & minerals for the WHOLE dish, as % of the daily norm —
@@ -912,15 +979,14 @@ export default function FoodLogScreen() {
                 {hideCalories ? t('food.showCalories') : t('food.hideCalories')}
               </Text>
             </Pressable>
-            {draft.approximate ? (
-              <Text style={[styles.disclaimer, { color: theme.subtle }, theme.font.body]}>{t('food.disclaimer')}</Text>
-            ) : null}
-            {draft.flags.has_estimate ? (
-              <Text style={[styles.disclaimer, { color: theme.subtle }, theme.font.body]}>{t('food.estimateNote')}</Text>
-            ) : null}
-            {draft.flags.has_ai_estimate ? (
-              <Text style={[styles.disclaimer, { color: theme.subtle }, theme.font.body]}>{t('food.aiEstimateNote')}</Text>
-            ) : null}
+            {/* The approximation caveats (≈ badge already says «примерно» up top)
+                collapse under one «Почему приблизительно» — honest, present, but
+                no longer three grey paragraphs stacked under the total. */}
+            <ApproxNotes
+              approximate={draft.approximate}
+              hasEstimate={!!draft.flags.has_estimate}
+              hasAiEstimate={!!draft.flags.has_ai_estimate}
+            />
           </Card>
           )}
 
@@ -982,573 +1048,84 @@ export default function FoodLogScreen() {
   );
 }
 
-function ApproxBadge({ theme, label }: { theme: Theme; label: string }) {
-  return (
-    <View style={[styles.badge, { backgroundColor: theme.card, borderColor: theme.primary }]}>
-      <Text style={[styles.badgeText, { color: theme.primary }, theme.font.bodySemiBold]}>{label}</Text>
-    </View>
-  );
-}
-
-/// Expandable extended-composition block (fiber/sugar/sat. fat + minerals) for
-/// a scaled nutrient set. Renders nothing when the source gave only КБЖУ —
-/// we never pad the list with zeros the DB didn't state (HONESTY RULE).
-function NutrientDetail({
-  values,
-  caption,
-  theme,
+/// The meal total's approximation caveats, collapsed under one tap. Honesty is
+/// preserved (the same three sentences, verbatim from i18n) but no longer three
+/// grey paragraphs stacked under the number — the «≈ примерно» badge on the hero
+/// already flags the total as an estimate; this explains why for whoever asks.
+function ApproxNotes({
+  approximate,
+  hasEstimate,
+  hasAiEstimate,
 }: {
-  values: NutrientValues;
-  caption: string;
-  theme: Theme;
+  approximate: boolean;
+  hasEstimate: boolean;
+  hasAiEstimate: boolean;
 }) {
   const { t } = useTranslation();
+  const theme = useTheme();
   const [open, setOpen] = useState(false);
-  const rows = nutrientDetailRows(values);
-  if (rows.length === 0) return null;
+  const notes = [
+    approximate ? t('food.disclaimer') : null,
+    hasEstimate ? t('food.estimateNote') : null,
+    hasAiEstimate ? t('food.aiEstimateNote') : null,
+  ].filter((n): n is string => n != null);
+  if (notes.length === 0) return null;
   return (
     <View style={styles.altWrap}>
       <Pressable onPress={() => setOpen((s) => !s)} hitSlop={6}>
         <Text style={[styles.altToggle, { color: theme.primary }, theme.font.body]}>
-          {open ? t('food.detail.hide') : t('food.detail.show')}
+          {open ? t('food.whyApprox.hide') : t('food.whyApprox.show')}
         </Text>
       </Pressable>
       {open ? (
         <View style={styles.detailBox}>
-          {rows.map((r) => (
-            <View key={r.key} style={styles.detailRow}>
-              <Text style={[styles.detailLabel, { color: theme.subtle }, theme.font.body]}>
-                {t(`food.detail.label.${r.key}`)}
-              </Text>
-              <Text style={[styles.detailValue, { color: theme.text }, theme.font.bodyMedium]}>
-                {r.value} {t(`food.detail.unit.${r.unit}`)}
-              </Text>
-            </View>
+          {notes.map((n, i) => (
+            <Text key={i} style={[styles.disclaimer, { color: theme.subtle }, theme.font.body]}>
+              {n}
+            </Text>
           ))}
-          <Text style={[styles.detailCaption, { color: theme.subtle }, theme.font.body]}>{caption}</Text>
         </View>
       ) : null}
     </View>
   );
-}
-
-/// Vitamins & minerals for a whole dish as a share of the daily norm — the same
-/// honest FillBar the day view uses, scoped to what the user is logging now. A
-/// bar appears ONLY for a micronutrient the dish actually carries (never an
-/// implied zero); collapsed by default so it doesn't crowd the total card.
-function MicroScales({
-  values,
-  sex,
-  estimated,
-  theme,
-}: {
-  values: NutrientValues;
-  sex: '' | Sex;
-  estimated: boolean;
-  theme: Theme;
-}) {
-  const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const measured = dailyMicroNorms(sex)
-    .map((row) => ({ row, intake: microIntakeOf(values, row) }))
-    .filter((x): x is { row: MicroRow; intake: number } => x.intake != null);
-  if (measured.length === 0) return null;
-  return (
-    <View style={styles.altWrap}>
-      <Pressable onPress={() => setOpen((s) => !s)} hitSlop={6}>
-        <Text style={[styles.altToggle, { color: theme.primary }, theme.font.body]}>
-          {open ? t('food.microsDish.hide') : t('food.microsDish.show')}
-        </Text>
-      </Pressable>
-      {open ? (
-        <View style={styles.detailBox}>
-          {(['vitamin', 'mineral'] as const).map((group) => {
-            const rows = measured.filter((x) => x.row.group === group);
-            if (rows.length === 0) return null;
-            return (
-              <View key={group} style={styles.microGroup}>
-                <Text style={[styles.microGroupHeading, { color: theme.subtle }, theme.font.bodySemiBold]}>
-                  {t(`weight.micros.groups.${group}`)}
-                </Text>
-                {rows.map(({ row, intake }) => {
-                  const pct = row.value > 0 ? Math.round((intake / row.value) * 100) : 0;
-                  return (
-                    <View key={row.key} style={styles.microRow}>
-                      <View style={styles.microRowHead}>
-                        <Text style={[styles.microName, { color: theme.text }, theme.font.body]}>
-                          {t(`weight.micros.name.${row.key}`)}
-                        </Text>
-                        <Text style={[styles.microVal, { color: theme.subtle }, theme.font.body]}>
-                          {fmtMicro(row, intake)} {t(`weight.micros.unit.${row.unit}`)} ·{' '}
-                          {t('food.micros.ofNorm', { pct })}
-                        </Text>
-                      </View>
-                      <FillBar value={intake} min={row.value} max={row.limit} thickness={8} />
-                    </View>
-                  );
-                })}
-              </View>
-            );
-          })}
-          {sex !== 'male' && sex !== 'female' ? (
-            <Text style={[styles.microNote, { color: theme.subtle }, theme.font.body]}>
-              {t('food.microsDish.needSex')}
-            </Text>
-          ) : null}
-          {estimated ? (
-            <Text style={[styles.microNote, { color: theme.subtle }, theme.font.body]}>
-              {t('food.microsDish.estimated')}
-            </Text>
-          ) : null}
-          <Text style={[styles.microNote, { color: theme.subtle }, theme.font.body]}>{t('food.microsDish.note')}</Text>
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
-/// The dish's amount of one norm row, or null when the dish carries none of it
-/// (so the caller shows no bar rather than an implied zero). Mirrors the day
-/// view's `microIntake`, reading a scaled NutrientValues block.
-function microIntakeOf(values: NutrientValues, row: MicroRow): number | null {
-  const src = (row.group === 'mineral' ? values.minerals : values.vitamins) as
-    | Record<string, number | undefined>
-    | undefined;
-  const v = src?.[row.key];
-  return typeof v === 'number' && v > 0 ? v : null;
-}
-
-/// Whole numbers for µg + minerals; sub-mg vitamins keep 1 dp (matches day view).
-function fmtMicro(row: MicroRow, v: number): string {
-  return row.group === 'vitamin' && row.unit === 'mg' ? (Math.round(v * 10) / 10).toString() : Math.round(v).toString();
-}
-
-function ItemCard({
-  item,
-  hideCalories,
-  theme,
-  onGrams,
-  onManualMacros,
-  onSelectAlternative,
-  onSearch,
-  onReplace,
-}: {
-  item: NutritionItem;
-  hideCalories: boolean;
-  theme: Theme;
-  onGrams: (grams: number) => void;
-  onManualMacros: (macros: { kcal: number; prot: number; fat: number; carb: number }) => void;
-  onSelectAlternative: (altIndex: number) => void;
-  onSearch: (query: string) => Promise<NutritionAlternative[]>;
-  onReplace: (replacement: NutritionAlternative) => void;
-}) {
-  const { t } = useTranslation();
-  // TRANSPARENCY: which DB row the numbers describe. Shown when the matched
-  // row's own name differs from what the user logged («картошка» → «картофель
-  // варёный») — the row name usually carries the preparation state, so the
-  // user can judge the baseline instead of guessing. To change the state the
-  // user picks another match ("не то?"/"найти вручную") or re-parses a clearer
-  // query — we no longer apply a coarse cooking-method multiplier ourselves.
-  const matchedLabel =
-    item.matched_name &&
-    normalizeChoiceName(item.matched_name) !== normalizeChoiceName(item.name_ru) &&
-    normalizeChoiceName(item.matched_name) !== normalizeChoiceName(item.name_en)
-      ? item.matched_name
-      : null;
-  // The card title = what the user logged (or the DB name after an explicit
-  // re-pick). The matched DB row, when it differs, is shown on the small grey
-  // «на 100 г» line below — not crammed into the title in parens (which read as
-  // «молоко 1.8% (молоко 3.2%)» → «почему 3.2%?»).
-  const titleName = item.userChosen && item.matched_name ? item.matched_name : item.name_ru;
-  // The "per 100 g · <source>" line shows the DB row itself (the footnote's promise).
-  const dbPer100 = item.per100;
-  // A full DB miss: the resolver's coarse placeholder. We show NO fabricated
-  // numbers for it — only an honest "not in our database" + manual entry.
-  const isMiss = item.per100.source === 'estimate';
-  // Other DB matches the user can switch to. Low confidence in the auto-pick
-  // opens the list proactively; otherwise it hides behind a "не то?" toggle.
-  const alternatives = item.alternatives ?? [];
-  // REFEREE signal: the server only injects an `ai_estimate` alternative when a
-  // DB match grossly contradicted the model's expectation for this food (a
-  // likely wrong-product match, e.g. «мясное рагу» → pure «Beef, stew meat»).
-  // We warn and open the picker so the inflated numbers aren't taken at face value.
-  const refereeFlagged = alternatives.some((a) => a.per100.source === 'ai_estimate');
-  // ONE «Другой вариант» disclosure unifies the DB alternatives AND manual search
-  // (they both answer «take a different product»). Opens itself when the auto-pick
-  // is shaky (low confidence or a referee flag) so the choice isn't buried.
-  const [otherOpen, setOtherOpen] = useState(item.confidence < 0.5 || refereeFlagged);
-  const [searchText, setSearchText] = useState('');
-  const [searching, setSearching] = useState(false);
-  const [searchResults, setSearchResults] = useState<NutritionAlternative[] | null>(null);
-  const grams = Math.round(item.grams);
-  const PORTIONS = [100, 200, 250];
-
-  async function runSearch() {
-    const q = searchText.trim();
-    if (q.length === 0) return;
-    setSearching(true);
-    try {
-      setSearchResults(await onSearch(q));
-    } finally {
-      setSearching(false);
-    }
-  }
-
-  // The eaten total is the HERO — it's what the user is logging. Per-100g and the
-  // source drop to a small grey line; the DB match, alternatives and manual search
-  // collapse under one «Другой вариант». Honesty (source, «≈», wrong-product note)
-  // stays, only quieter.
-  const sourceInLine =
-    item.per100.source === 'ai_estimate' || item.per100.source === 'manual'
-      ? '' // already shown as the header badge — no need to repeat
-      : ` · ${t(`food.source.${item.per100.source}`)}`;
-  const per100Line = hideCalories
-    ? `${t('macros.protein')} ${dbPer100.prot} · ${t('macros.fat')} ${dbPer100.fat} · ${t('macros.carbs')} ${dbPer100.carb}`
-    : `${dbPer100.kcal} ${t('units.kcal')} · ${t('macros.protein')} ${dbPer100.prot} · ${t('macros.fat')} ${dbPer100.fat} · ${t('macros.carbs')} ${dbPer100.carb}`;
-
-  return (
-    <Card style={styles.item}>
-      {/* Header: what the user logged + one estimate/manual flag (DB source is
-          quieter, on the grey line below). */}
-      <View style={styles.itemHead}>
-        <Text style={[styles.itemName, { color: theme.text }, theme.font.bodySemiBold]} numberOfLines={2}>
-          {titleName}
-        </Text>
-        {item.per100.source === 'ai_estimate' || item.per100.source === 'manual' ? (
-          <View style={[styles.badge, { borderColor: theme.primary }]}>
-            <Text style={[styles.badgeText, { color: theme.primary }, theme.font.body]}>
-              {t(`food.source.${item.per100.source}`)}
-            </Text>
-          </View>
-        ) : null}
-      </View>
-
-      {isMiss ? (
-        <Text style={[styles.notInDb, { color: theme.subtle }, theme.font.body]}>{t('food.notInDb')}</Text>
-      ) : (
-        <>
-          {/* HERO — the eaten amount, big and first. */}
-          <View style={styles.heroRow}>
-            <Text style={[styles.heroValue, { color: theme.text }, theme.font.bodySemiBold]}>
-              {hideCalories ? item.scaled.prot : item.scaled.kcal}
-            </Text>
-            <Text style={[styles.heroUnit, { color: theme.subtle }, theme.font.body]}>
-              {hideCalories
-                ? `${t('macros.protein').toLowerCase()} · ${t('food.forGrams', { grams })}`
-                : `${t('units.kcal')} · ${t('food.forGrams', { grams })} · ${t('macros.protein')} ${item.scaled.prot} ${t('units.g')}`}
-            </Text>
-            {item.approximate ? <ApproxBadge theme={theme} label={t('food.approx')} /> : null}
-          </View>
-
-          {/* Secondary grey line: the matched DB row + its per-100g + source. */}
-          <Text style={[styles.per100Line, { color: theme.subtle }, theme.font.body]}>
-            {matchedLabel ? `${matchedLabel} · ` : ''}
-            {t('food.per100')} {per100Line}
-            {sourceInLine}
-          </Text>
-
-          {/* Full micro breakdown, collapsed. */}
-          <NutrientDetail values={item.scaled} caption={t('food.detail.basis', { grams })} theme={theme} />
-
-          {/* HONESTY notes — only when they apply. */}
-          {item.dry_basis ? (
-            <View style={[styles.dryBasisNote, { borderColor: theme.primary, backgroundColor: theme.card }]}>
-              <Text style={[styles.dryBasisText, { color: theme.text }, theme.font.body]}>{t('food.dryBasis')}</Text>
-            </View>
-          ) : null}
-          {refereeFlagged ? (
-            <View style={[styles.dryBasisNote, { borderColor: theme.primary, backgroundColor: theme.card }]}>
-              <Text style={[styles.dryBasisText, { color: theme.text }, theme.font.body]}>
-                {t('food.refereeMismatch')}
-              </Text>
-            </View>
-          ) : null}
-        </>
-      )}
-
-      {/* Manual per-100g entry — on a DB miss (enter real numbers) and over an AI
-          estimate (correct the guess → source flips to honest 'manual'). */}
-      {isMiss || item.per100.source === 'manual' || item.per100.source === 'ai_estimate' ? (
-        <ManualMacros item={item} isMiss={isMiss} theme={theme} onManualMacros={onManualMacros} />
-      ) : null}
-
-      {/* WEIGHT — the main thing users adjust. Quick-set chips + a custom field;
-          tapping either confirms the weight (the «прикидка» caption disappears). */}
-      <View style={styles.portionRow}>
-        {PORTIONS.map((p) => {
-          const active = grams === p;
-          return (
-            <Pressable
-              key={p}
-              onPress={() => onGrams(p)}
-              style={({ pressed }) => [
-                styles.portionChip,
-                {
-                  borderColor: active ? theme.primary : theme.separator,
-                  backgroundColor: theme.card,
-                  opacity: pressed ? 0.6 : 1,
-                },
-              ]}
-            >
-              <Text
-                style={[styles.portionChipText, { color: active ? theme.primary : theme.subtle }, theme.font.body]}
-              >
-                {p} {t('units.g')}
-              </Text>
-            </Pressable>
-          );
-        })}
-        <TextField
-          value={String(grams)}
-          onChangeText={(v) => onGrams(toNumber(v))}
-          keyboardType="numeric"
-          style={styles.gramsInput}
-        />
-        <Text style={[styles.gramsUnit, { color: theme.subtle }, theme.font.body]}>{t('units.g')}</Text>
-      </View>
-      {item.grams_source === 'estimated' ? (
-        <Text style={[styles.gramsEstimate, { color: theme.subtle }, theme.font.body]}>
-          {t('food.gramsEstimatedShort')}
-        </Text>
-      ) : null}
-
-      {/* ONE «Другой вариант» — DB alternatives (from the parse) AND manual search
-          in the same disclosure. Opens itself on a shaky auto-pick. */}
-      <View style={styles.altWrap}>
-        <Pressable onPress={() => setOtherOpen((s) => !s)} hitSlop={6}>
-          <Text style={[styles.altToggle, { color: theme.primary }, theme.font.body]}>
-            {otherOpen
-              ? t('food.otherOption.hide')
-              : alternatives.length > 0
-                ? t('food.otherOption.openCount', { count: alternatives.length })
-                : t('food.otherOption.open')}
-          </Text>
-        </Pressable>
-        {otherOpen ? (
-          <View style={styles.altList}>
-            {alternatives.map((alt, j) => (
-              <Pressable
-                key={`a-${alt.name}-${j}`}
-                onPress={() => onSelectAlternative(j)}
-                style={({ pressed }) => [
-                  styles.altRow,
-                  { borderColor: theme.separator, backgroundColor: theme.card, opacity: pressed ? 0.6 : 1 },
-                ]}
-              >
-                <Text style={[styles.altName, { color: theme.text }, theme.font.body]} numberOfLines={1}>
-                  {alt.name}
-                </Text>
-                <Text style={[styles.altMacros, { color: theme.subtle }, theme.font.body]}>
-                  {hideCalories
-                    ? `${t('macros.protein')} ${alt.per100.prot} · ${t(`food.source.${alt.per100.source}`)}`
-                    : `${alt.per100.kcal} ${t('units.kcal')} · ${t('macros.protein')} ${alt.per100.prot} · ${t(`food.source.${alt.per100.source}`)}`}
-                </Text>
-              </Pressable>
-            ))}
-            <View style={styles.searchRow}>
-              <TextField
-                value={searchText}
-                onChangeText={setSearchText}
-                onSubmitEditing={runSearch}
-                placeholder={t('food.manualSearch.placeholder')}
-                style={styles.searchInput}
-              />
-              <Pressable
-                onPress={runSearch}
-                disabled={searching || searchText.trim().length === 0}
-                style={({ pressed }) => [
-                  styles.searchBtn,
-                  { borderColor: theme.separator, backgroundColor: theme.card, opacity: pressed || searching ? 0.6 : 1 },
-                ]}
-              >
-                <Text style={[styles.cookChipText, { color: theme.primary }, theme.font.body]}>
-                  {searching ? t('food.manualSearch.searching') : t('food.manualSearch.action')}
-                </Text>
-              </Pressable>
-            </View>
-            {searchResults != null && searchResults.length === 0 && !searching ? (
-              <Text style={[styles.altMacros, { color: theme.subtle }, theme.font.body]}>
-                {t('food.manualSearch.empty')}
-              </Text>
-            ) : null}
-            {(searchResults ?? []).map((alt, j) => (
-              <Pressable
-                key={`s-${alt.name}-${j}`}
-                onPress={() => {
-                  onReplace(alt);
-                  setOtherOpen(false);
-                  setSearchResults(null);
-                  setSearchText('');
-                }}
-                style={({ pressed }) => [
-                  styles.altRow,
-                  { borderColor: theme.separator, backgroundColor: theme.card, opacity: pressed ? 0.6 : 1 },
-                ]}
-              >
-                <Text style={[styles.altName, { color: theme.text }, theme.font.body]} numberOfLines={1}>
-                  {alt.name}
-                </Text>
-                <Text style={[styles.altMacros, { color: theme.subtle }, theme.font.body]}>
-                  {hideCalories
-                    ? `${t('macros.protein')} ${alt.per100.prot} · ${t(`food.source.${alt.per100.source}`)}`
-                    : `${alt.per100.kcal} ${t('units.kcal')} · ${t('macros.protein')} ${alt.per100.prot} · ${t(`food.source.${alt.per100.source}`)}`}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        ) : null}
-      </View>
-    </Card>
-  );
-}
-
-/// Per-100g macro entry for a DB miss (and editing it afterwards). Keeps its own
-/// input strings so partial typing isn't clobbered by re-renders; every change
-/// pushes the parsed macros up via `onManualMacros` (→ source becomes 'manual').
-function ManualMacros({
-  item,
-  isMiss,
-  theme,
-  onManualMacros,
-}: {
-  item: NutritionItem;
-  isMiss: boolean;
-  theme: Theme;
-  onManualMacros: (macros: { kcal: number; prot: number; fat: number; carb: number }) => void;
-}) {
-  const { t } = useTranslation();
-  // Seed from the current per100 when the user is editing already-entered manual
-  // macros; blank on a fresh miss so nothing fabricated is shown.
-  const init = (n: number) => (isMiss ? '' : String(n));
-  const [kcal, setKcal] = useState(init(item.per100.kcal));
-  const [prot, setProt] = useState(init(item.per100.prot));
-  const [fat, setFat] = useState(init(item.per100.fat));
-  const [carb, setCarb] = useState(init(item.per100.carb));
-
-  function push(next: { kcal: string; prot: string; fat: string; carb: string }) {
-    onManualMacros({
-      kcal: toNumber(next.kcal),
-      prot: toNumber(next.prot),
-      fat: toNumber(next.fat),
-      carb: toNumber(next.carb),
-    });
-  }
-
-  const fields: { key: 'kcal' | 'prot' | 'fat' | 'carb'; label: string; value: string; set: (v: string) => void }[] = [
-    { key: 'kcal', label: t('units.kcal'), value: kcal, set: setKcal },
-    { key: 'prot', label: t('macros.protein'), value: prot, set: setProt },
-    { key: 'fat', label: t('macros.fat'), value: fat, set: setFat },
-    { key: 'carb', label: t('macros.carbs'), value: carb, set: setCarb },
-  ];
-
-  return (
-    <View style={styles.manualWrap}>
-      <Text style={[styles.manualLabel, { color: theme.subtle }, theme.font.body]}>{t('food.enterMacros')}</Text>
-      <View style={styles.manualRow}>
-        {fields.map((f) => (
-          <View key={f.key} style={styles.manualField}>
-            <Text style={[styles.manualFieldLabel, { color: theme.subtle }, theme.font.body]}>{f.label}</Text>
-            <TextField
-              value={f.value}
-              onChangeText={(v) => {
-                f.set(v);
-                push({ kcal, prot, fat, carb, [f.key]: v });
-              }}
-              keyboardType="numeric"
-              // An em-dash, not «0»: four zeros in a row read as pre-filled
-              // data («болванки»), while a dash reads as awaiting input.
-              placeholder="—"
-              style={styles.manualInput}
-            />
-          </View>
-        ))}
-      </View>
-    </View>
-  );
-}
-
-function toNumber(v: string): number {
-  const n = parseFloat(v.replace(',', '.'));
-  return Number.isFinite(n) ? Math.max(0, n) : 0;
 }
 
 const styles = StyleSheet.create({
   input: { marginBottom: 12 },
+  // Capture-method segmented control (mirrors the workout screen). One method
+  // visible at a time; inactive segments on `iconBg` so they read on dark.
+  segments: { flexDirection: 'row', gap: 6, marginBottom: 12 },
+  segment: { flex: 1, paddingVertical: 9, borderRadius: 10, borderWidth: 1, alignItems: 'center' },
+  segmentText: { fontSize: 13 },
   micButton: { borderRadius: 999, borderWidth: 1.5, paddingVertical: 12, alignItems: 'center', marginBottom: 8 },
   photoRow: { flexDirection: 'row', gap: 8 },
   photoButton: { flex: 1, paddingHorizontal: 12 },
   micText: { fontSize: 15 },
   voiceError: { fontSize: 13, textAlign: 'center', marginTop: -2, marginBottom: 8, lineHeight: 18 },
+  // Shared by ApproxNotes (collapsed «Почему приблизительно»).
   altWrap: { marginTop: 8 },
   altToggle: { fontSize: 13 },
-  altList: { gap: 6, marginTop: 6 },
-  altRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 10 },
-  altName: { fontSize: 13, flex: 1 },
-  altMacros: { fontSize: 12 },
-  searchRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  searchInput: { flex: 1 },
-  searchBtn: { borderWidth: 1, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 14 },
+  detailBox: { marginTop: 6, gap: 3 },
   processingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 8 },
   clearBtn: { alignSelf: 'center', marginTop: 12, paddingVertical: 4 },
   clearText: { fontSize: 13, textDecorationLine: 'underline' },
   hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
   results: { marginTop: 16 },
-  item: { marginBottom: 10 },
-  itemHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 6 },
-  itemName: { fontSize: 15, flex: 1 },
-  // HERO: the eaten amount — big number + small unit, first thing in the card.
-  heroRow: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', gap: 8, marginBottom: 2 },
-  heroValue: { fontSize: 26 },
-  heroUnit: { fontSize: 13, flexShrink: 1 },
-  // Quiet secondary: matched DB row + per-100g + source.
-  per100Line: { fontSize: 12, marginBottom: 2, lineHeight: 17 },
-  // Quick-set weight chips.
-  portionRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, flexWrap: 'wrap' },
-  portionChip: { borderWidth: 1, borderRadius: 10, paddingVertical: 6, paddingHorizontal: 12 },
-  portionChipText: { fontSize: 13 },
-  detailBox: { marginTop: 6, gap: 3 },
-  detailRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  detailLabel: { fontSize: 12 },
-  detailValue: { fontSize: 12 },
-  detailCaption: { fontSize: 10, fontStyle: 'italic', marginTop: 4, lineHeight: 14 },
-  dryBasisNote: { marginTop: 8, borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },
-  dryBasisText: { fontSize: 12, lineHeight: 17 },
-  microGroup: { marginTop: 8, gap: 6 },
-  microGroupHeading: { fontSize: 11, letterSpacing: 0.6, textTransform: 'uppercase' },
-  microRow: { gap: 3 },
-  microRowHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  microName: { fontSize: 12 },
-  microVal: { fontSize: 11 },
-  microNote: { fontSize: 10, fontStyle: 'italic', marginTop: 6, lineHeight: 14 },
-  cookChipText: { fontSize: 12 },
-  notInDb: { fontSize: 13, marginBottom: 6, lineHeight: 18 },
-  manualWrap: { marginTop: 4, marginBottom: 4 },
-  manualLabel: { fontSize: 12, marginBottom: 6 },
-  manualRow: { flexDirection: 'row', gap: 8 },
-  manualField: { flex: 1 },
-  manualFieldLabel: { fontSize: 11, marginBottom: 2 },
-  manualInput: { textAlign: 'center' },
-  gramsRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' },
-  gramsLabel: { fontSize: 12 },
-  gramsInput: { width: 64, paddingVertical: 8, fontSize: 14, textAlign: 'center' },
-  gramsUnit: { fontSize: 12 },
-  gramsEstimate: { fontSize: 10, fontStyle: 'italic', marginTop: 2, lineHeight: 14 },
   totalCard: { marginTop: 4, marginBottom: 8 },
-  totalHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
-  totalLabel: { fontSize: 15 },
-  totalValue: { fontSize: 14 },
+  totalLabel: { fontSize: 12, marginBottom: 2 },
+  // HERO: the meal total leads big, like each item's eaten amount.
+  totalHeroRow: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', gap: 8, marginBottom: 4 },
+  totalValue: { fontSize: 26 },
+  totalUnit: { fontSize: 13, flexShrink: 1 },
   hideCaloriesToggle: { marginTop: 8, alignSelf: 'flex-start' },
   hideCaloriesText: { fontSize: 12, textDecorationLine: 'underline' },
   disclaimer: { fontSize: 11, marginTop: 8, lineHeight: 16 },
-  badge: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
-  badgeText: { fontSize: 11 },
   proteinNote: { fontSize: 12, marginTop: 4, marginBottom: 8, lineHeight: 17 },
   parseIssue: { fontSize: 13, textAlign: 'center', marginTop: 10, lineHeight: 18 },
   savedAck: { fontSize: 13, marginTop: 4, marginBottom: 10, textAlign: 'center', lineHeight: 18 },
   quick: { marginTop: 16 },
   quickGroup: { marginBottom: 14 },
   quickLabel: { fontSize: 11, letterSpacing: 1.2, marginBottom: 8 },
-  myDietHint: { fontSize: 12, marginTop: -2, marginBottom: 8, lineHeight: 16 },
   quickWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 9 },
   chipText: { fontSize: 14, maxWidth: 240 },
