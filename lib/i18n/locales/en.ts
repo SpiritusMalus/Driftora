@@ -1088,6 +1088,14 @@ export const en = {
     empty: 'No wins yet — mark your first one, however small.',
     share: 'Share',
     dbUnavailable: 'Wins are available in a device dev build.',
+    totalLabel: 'Wins so far',
+    streak: '{{days}} days running',
+    quick: {
+      walk: 'Took a walk',
+      sleep: 'Slept well',
+      cooked: 'Cooked at home',
+      mood: 'Handled stress',
+    },
     auto: {
       stepsGoal: 'Daily step goal reached — {{steps}} steps 🎉',
       stepsGoal2: 'Step goal done today — {{steps}} steps. Your legs carried you 🎉',
