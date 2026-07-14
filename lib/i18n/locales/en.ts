@@ -303,7 +303,11 @@ export const en = {
   },
   more: {
     title: 'Sections',
-    intro: 'Every part of the app in one place.',
+    groups: {
+      daily: 'Every day',
+      progress: 'Progress',
+      app: 'App',
+    },
     sections: {
       food: 'Food today',
       steps: 'Steps',

@@ -1,15 +1,16 @@
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { StyleSheet, Text } from 'react-native';
 
 import { ListGroup, type RowSpec } from '@/components/ui/ListGroup';
 import { Screen } from '@/components/ui/Screen';
+import { SectionHeader } from '@/components/ui/SectionHeader';
 import { useTheme } from '@/lib/theme/theme';
 
-/// "More" — the home for everything demoted off the daily screen so Home can
-/// stay a single insight. A plain list of links to routes that already exist
-/// (food log, weight, wins, weekly review, settings). No new logic — just
-/// navigation, rendered with the platform-aware grouped list.
+/// "More" — the app's ONLY full navigation surface (there is no tab bar; Home
+/// and Mood reach it through the header «Разделы ›» link). So it earns the same
+/// grouped structure as Settings rather than a flat wall of links: three
+/// labelled sections — everyday logging, look-back, and meta — mirroring the
+/// order the rows already lived in. No new logic, just navigation.
 export default function MoreScreen() {
   const { t } = useTranslation();
   const theme = useTheme();
@@ -19,7 +20,8 @@ export default function MoreScreen() {
   const amberTile = theme.scheme === 'light' ? '#FBEFD9' : '#33261F';
   const neutralTile = theme.scheme === 'light' ? '#EFE6E0' : '#2C2622';
 
-  const rows: RowSpec[] = [
+  // Section 1 — the things you log/track every day.
+  const daily: RowSpec[] = [
     {
       key: 'food',
       icon: 'restaurant-outline',
@@ -70,6 +72,10 @@ export default function MoreScreen() {
       subtitle: t('more.subtitles.mind'),
       onPress: () => router.push('/mood'),
     },
+  ];
+
+  // Section 2 — the look-back screens.
+  const progress: RowSpec[] = [
     {
       key: 'wins',
       icon: 'trophy-outline',
@@ -88,6 +94,10 @@ export default function MoreScreen() {
       subtitle: t('more.subtitles.review'),
       onPress: () => router.push('/review'),
     },
+  ];
+
+  // Section 3 — help + configuration.
+  const app: RowSpec[] = [
     {
       key: 'how',
       icon: 'help-circle-outline',
@@ -110,12 +120,12 @@ export default function MoreScreen() {
 
   return (
     <Screen>
-      <Text style={[styles.intro, { color: theme.subtle }, theme.font.body]}>{t('more.intro')}</Text>
-      <ListGroup rows={rows} />
+      <SectionHeader>{t('more.groups.daily')}</SectionHeader>
+      <ListGroup rows={daily} />
+      <SectionHeader>{t('more.groups.progress')}</SectionHeader>
+      <ListGroup rows={progress} />
+      <SectionHeader>{t('more.groups.app')}</SectionHeader>
+      <ListGroup rows={app} />
     </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  intro: { fontSize: 14, lineHeight: 20, marginBottom: 14, marginHorizontal: 4 },
-});
