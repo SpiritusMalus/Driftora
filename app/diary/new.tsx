@@ -109,9 +109,22 @@ export default function DiaryNewScreen() {
       contentInsetAdjustmentBehavior="automatic"
       keyboardShouldPersistTaps="handled"
     >
-      <Text style={[styles.progress, { color: theme.subtle }, theme.font.heading]}>
-        {t('diary.progress', { current: step + 1, total: STEPS.length })}
-      </Text>
+      <View
+        style={styles.dots}
+        accessibilityRole="progressbar"
+        accessibilityLabel={t('diary.progress', { current: step + 1, total: STEPS.length })}
+      >
+        {STEPS.map((_, i) => (
+          <View
+            key={i}
+            style={[
+              styles.dot,
+              { backgroundColor: i <= step ? theme.primary : theme.separator },
+              i === step && styles.dotActive,
+            ]}
+          />
+        ))}
+      </View>
       <Text style={[styles.title, { color: theme.text }, theme.font.heading]}>
         {t(`diary.steps.${key}.title`)}
       </Text>
@@ -203,6 +216,16 @@ export default function DiaryNewScreen() {
         )}
       </View>
 
+      {/* Escape hatch: once there's something worth keeping, let the record be
+          saved from any step — no need to tap "Дальше" through to the end. */}
+      {!isLast && canSave ? (
+        <Pressable onPress={onSave} disabled={saving} hitSlop={8} style={styles.saveExit}>
+          <Text style={[styles.saveExitText, { color: theme.subtle }, theme.font.bodyMedium]}>
+            {saving ? t('diary.saving') : t('diary.saveExit')}
+          </Text>
+        </Pressable>
+      ) : null}
+
       {db == null ? (
         <Text style={[styles.dbHint, { color: theme.subtle }, theme.font.body]}>{t('diary.dbUnavailable')}</Text>
       ) : null}
@@ -244,14 +267,22 @@ function EmotionsEditor({
 }) {
   const { t } = useTranslation();
   const [name, setName] = useState('');
-  const [intensity, setIntensity] = useState('50');
+  // Intensity is picked from four buckets instead of typed — a tap beats the
+  // numeric keyboard. Stored value stays 0–100 for compatibility with old records.
+  const [intensity, setIntensity] = useState(50);
+  const levels: { value: number; label: string }[] = [
+    { value: 25, label: t('diary.emotion.low') },
+    { value: 50, label: t('diary.emotion.mid') },
+    { value: 75, label: t('diary.emotion.high') },
+    { value: 100, label: t('diary.emotion.max') },
+  ];
 
   function add() {
     const nm = name.trim();
     if (nm.length === 0) return;
-    onChange([...emotions, { name: nm, intensity: clamp(toInt(intensity), 0, 100) }]);
+    onChange([...emotions, { name: nm, intensity }]);
     setName('');
-    setIntensity('50');
+    setIntensity(50);
   }
 
   return (
@@ -271,16 +302,31 @@ function EmotionsEditor({
           </Pressable>
         </View>
       ))}
-      <View style={styles.emotionAddRow}>
-        <TextField value={name} onChangeText={setName} placeholder={t('diary.emotion.name')} style={styles.emotionName} />
-        <TextField value={intensity} onChangeText={setIntensity} keyboardType="numeric" style={styles.emotionIntensity} />
-        <Pressable onPress={add} style={({ pressed }) => [styles.emotionAdd, { borderColor: theme.primary, opacity: pressed ? 0.6 : 1 }]}>
-          <Text style={[styles.emotionAddText, { color: theme.primary }, theme.font.bodySemiBold]}>
-            {t('diary.emotion.add')}
-          </Text>
-        </Pressable>
+      <TextField value={name} onChangeText={setName} placeholder={t('diary.emotion.name')} />
+      <Text style={[styles.fieldLabel, styles.intensityLabel, { color: theme.subtle }, theme.font.bodyMedium]}>
+        {t('diary.emotion.intensityLabel')}
+      </Text>
+      <View style={styles.intensityChips}>
+        {levels.map((lv) => {
+          const on = intensity === lv.value;
+          return (
+            <Pressable
+              key={lv.value}
+              onPress={() => setIntensity(lv.value)}
+              style={[styles.intensityChip, { borderColor: on ? theme.primary : theme.separator, backgroundColor: on ? theme.iconBg : theme.card }]}
+            >
+              <Text style={[{ color: on ? theme.primary : theme.text, fontSize: 13 }, theme.font.bodyMedium]}>
+                {lv.label}
+              </Text>
+            </Pressable>
+          );
+        })}
       </View>
-      <Text style={[styles.scaleHint, { color: theme.subtle }, theme.font.body]}>{t('diary.emotion.scale')}</Text>
+      <Pressable onPress={add} style={({ pressed }) => [styles.emotionAdd, { borderColor: theme.primary, opacity: pressed ? 0.6 : 1 }]}>
+        <Text style={[styles.emotionAddText, { color: theme.primary }, theme.font.bodySemiBold]}>
+          {t('diary.emotion.add')}
+        </Text>
+      </Pressable>
     </View>
   );
 }
@@ -295,47 +341,53 @@ function DistortionPicker({
   theme: Theme;
 }) {
   const { t } = useTranslation();
+  // Optional clinical layer — collapsed by default so the 11 labels don't wall
+  // off the thought step. Opens automatically when editing a record that has tags.
+  const [expanded, setExpanded] = useState(selected.length > 0);
   function toggle(key: DistortionKey) {
     onChange(selected.includes(key) ? selected.filter((k) => k !== key) : [...selected, key]);
   }
   return (
     <View style={styles.distortWrap}>
-      <Text style={[styles.fieldLabel, { color: theme.subtle }, theme.font.bodyMedium]}>
-        {t('diary.distortions.label')}
-      </Text>
-      <View style={styles.distortRow}>
-        {DISTORTION_KEYS.map((key) => {
-          const on = selected.includes(key);
-          return (
-            <Pressable
-              key={key}
-              onPress={() => toggle(key)}
-              style={[styles.distortChip, { borderColor: on ? theme.primary : theme.separator, backgroundColor: on ? theme.iconBg : theme.card }]}
-            >
-              <Text style={[{ color: on ? theme.primary : theme.text, fontSize: 13 }, theme.font.bodyMedium]}>
-                {t(`diary.distortions.${key}`)}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      <Pressable onPress={() => setExpanded((v) => !v)} style={styles.distortHead} accessibilityRole="button">
+        <Text style={[styles.fieldLabel, styles.distortLabel, { color: theme.subtle }, theme.font.bodyMedium]}>
+          {t('diary.distortions.label')}
+        </Text>
+        <Text style={[styles.distortChevron, { color: theme.subtle }]}>{expanded ? '▾' : '▸'}</Text>
+      </Pressable>
+      {!expanded && selected.length > 0 ? (
+        <Text style={[styles.distortSummary, { color: theme.primary }, theme.font.bodyMedium]}>
+          {selected.map((k) => t(`diary.distortions.${k}`)).join(' · ')}
+        </Text>
+      ) : null}
+      {expanded ? (
+        <View style={styles.distortRow}>
+          {DISTORTION_KEYS.map((key) => {
+            const on = selected.includes(key);
+            return (
+              <Pressable
+                key={key}
+                onPress={() => toggle(key)}
+                style={[styles.distortChip, { borderColor: on ? theme.primary : theme.separator, backgroundColor: on ? theme.iconBg : theme.card }]}
+              >
+                <Text style={[{ color: on ? theme.primary : theme.text, fontSize: 13 }, theme.font.bodyMedium]}>
+                  {t(`diary.distortions.${key}`)}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
     </View>
   );
-}
-
-function toInt(v: string): number {
-  const n = parseInt(v, 10);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function clamp(n: number, lo: number, hi: number): number {
-  return Math.min(hi, Math.max(lo, n));
 }
 
 const styles = StyleSheet.create({
   androidContent: { paddingHorizontal: 18, paddingTop: 8, paddingBottom: 32 },
   iosContent: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 32 },
-  progress: { fontSize: 11, letterSpacing: 1.2 },
+  dots: { flexDirection: 'row', gap: 6, marginTop: 4, marginBottom: 2 },
+  dot: { width: 7, height: 7, borderRadius: 4 },
+  dotActive: { width: 20 },
   title: { fontSize: 22, letterSpacing: -0.4, marginTop: 6 },
   hint: { fontSize: 13, marginTop: 6, marginBottom: 4, lineHeight: 19 },
   fields: { marginVertical: 12 },
@@ -345,6 +397,8 @@ const styles = StyleSheet.create({
   navBtn: { flex: 1 },
   navBack: { borderWidth: 1.5, borderRadius: 16, paddingVertical: 15, alignItems: 'center', justifyContent: 'center' },
   navBackText: { fontSize: 16 },
+  saveExit: { alignSelf: 'center', paddingVertical: 12, marginTop: 4 },
+  saveExitText: { fontSize: 14 },
   dbHint: { fontSize: 12, textAlign: 'center', marginTop: 12 },
   emotionChip: {
     flexDirection: 'row',
@@ -358,18 +412,21 @@ const styles = StyleSheet.create({
   },
   emotionText: { fontSize: 14 },
   emotionRemove: { fontSize: 14 },
-  emotionAddRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
-  emotionName: { flex: 1 },
-  emotionIntensity: { width: 64, textAlign: 'center' },
-  emotionAdd: { borderWidth: 1.5, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 12 },
+  intensityLabel: { marginTop: 12 },
+  intensityChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
+  intensityChip: { borderWidth: 1.5, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 9 },
+  emotionAdd: { borderWidth: 1.5, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 12, alignItems: 'center' },
   emotionAddText: { fontSize: 14 },
-  scaleHint: { fontSize: 11, marginTop: 8, fontStyle: 'italic' },
   moodWrap: { marginTop: 12 },
   thoughtRecall: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 14, padding: 14, marginBottom: 14 },
   thoughtRecallLabel: { fontSize: 12, marginBottom: 6 },
   thoughtRecallText: { fontSize: 15, lineHeight: 21 },
   thoughtRecallTags: { fontSize: 12, marginTop: 8, fontStyle: 'italic' },
   distortWrap: { marginTop: 16 },
-  distortRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  distortHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  distortLabel: { marginBottom: 0 },
+  distortChevron: { fontSize: 13 },
+  distortSummary: { fontSize: 13, marginTop: 6 },
+  distortRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
   distortChip: { borderWidth: 1.5, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 },
 });

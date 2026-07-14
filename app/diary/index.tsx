@@ -98,16 +98,15 @@ export default function DiaryListScreen() {
       <PrimaryButton label={t('diary.add')} onPress={() => router.push('/diary/new')} style={styles.add} />
 
       {entries && entries.length > 0 ? (
-        <Pressable
-          onPress={onShare}
-          style={({ pressed }) => [styles.shareBtn, { borderColor: theme.primary, opacity: pressed ? 0.6 : 1 }]}
-        >
+        <Pressable onPress={onShare} hitSlop={8} style={({ pressed }) => [styles.shareBtn, { opacity: pressed ? 0.5 : 1 }]}>
           <Text style={[styles.shareText, { color: theme.primary }, theme.font.bodySemiBold]}>
             {t('diary.export.button')}
           </Text>
         </Pressable>
       ) : null}
 
+      {/* One card above the list, never two: the gentle nudge takes priority
+          over the weekly trap so the top of the screen stays calm. */}
       {suggestion && !assistDismissed ? (
         <Card
           style={[
@@ -134,7 +133,7 @@ export default function DiaryListScreen() {
         </Card>
       ) : null}
 
-      {trap ? (
+      {trap && !(suggestion && !assistDismissed) ? (
         <Card style={[styles.trapCard, { backgroundColor: theme.iconBg, borderColor: theme.cardBorder }]}>
           <Text style={[styles.trapTitle, { color: theme.text }, theme.font.bodySemiBold]}>
             {t('diary.trap.title')}
@@ -153,15 +152,15 @@ export default function DiaryListScreen() {
         <View style={styles.list}>
           {entries.map((e) => (
             <Card key={e.id} style={styles.row} onPress={() => router.push(`/diary/${e.id}`)}>
-              <Text style={[styles.rowDate, { color: theme.subtle }, theme.font.body]}>{formatDate(e.ts)}</Text>
+              <View style={styles.rowHead}>
+                <Text style={[styles.rowDate, { color: theme.subtle }, theme.font.body]}>{formatDate(e.ts)}</Text>
+                {e.mood != null ? (
+                  <Text style={[styles.rowMood, { color: theme.subtle }, theme.font.bodyMedium]}>{e.mood}/10</Text>
+                ) : null}
+              </View>
               <Text style={[styles.rowText, { color: theme.text }, theme.font.body]} numberOfLines={2}>
                 {snippet(e, t('diary.emptyValue'))}
               </Text>
-              {e.mood != null ? (
-                <Text style={[styles.rowMood, { color: theme.subtle }, theme.font.body]}>
-                  {t('diary.moodShort')}: {e.mood}/10
-                </Text>
-              ) : null}
             </Card>
           ))}
         </View>
@@ -182,8 +181,8 @@ function formatDate(d: Date): string {
 
 const styles = StyleSheet.create({
   add: { marginTop: 4, marginBottom: 12 },
-  shareBtn: { borderWidth: 1.5, borderRadius: 999, paddingVertical: 12, alignItems: 'center', marginBottom: 16 },
-  shareText: { fontSize: 15 },
+  shareBtn: { alignSelf: 'flex-end', paddingVertical: 6, marginBottom: 12 },
+  shareText: { fontSize: 14 },
   assistCard: { marginBottom: 16 },
   assistHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   assistTitle: { fontSize: 14, flex: 1, paddingRight: 12 },
@@ -195,7 +194,8 @@ const styles = StyleSheet.create({
   hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
   list: { gap: 10 },
   row: {},
-  rowDate: { fontSize: 12, marginBottom: 4 },
+  rowHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  rowDate: { fontSize: 12 },
   rowText: { fontSize: 15, lineHeight: 21 },
-  rowMood: { fontSize: 12, marginTop: 6 },
+  rowMood: { fontSize: 12 },
 });

@@ -62,32 +62,46 @@ export default function DiaryEntryScreen() {
   if (entry === null) return <Centered theme={theme} text={t('diary.notFound')} />;
 
   const dash = t('diary.emptyValue');
+  // The payoff of a thought record is the mood shift — lead with it when both
+  // ratings exist. Situation / thoughts / reframe stay always-on (the CBT
+  // skeleton); the rest of the fields only show when the user actually filled
+  // them, so a short record isn't a wall of "—".
+  const hasShift = entry.moodBefore != null && entry.mood != null;
   return (
     <Screen>
       <Text style={[styles.date, { color: theme.subtle }, theme.font.body]}>{formatDate(entry.ts)}</Text>
       <Card>
-        <Section label={t('diary.steps.situation.title')} value={entry.situation} dash={dash} theme={theme} first />
-        <Section
-          label={t('diary.fields.moodBefore')}
-          value={entry.moodBefore != null ? `${entry.moodBefore}/10` : ''}
-          dash={dash}
-          theme={theme}
-        />
+        {hasShift ? (
+          <View style={[styles.shiftHero, { borderBottomColor: theme.separator }]}>
+            <View style={styles.shiftRow}>
+              <Text style={[styles.shiftNum, { color: theme.subtle }, theme.font.heading]}>{entry.moodBefore}</Text>
+              <Text style={[styles.shiftArrow, { color: theme.subtle }]}>→</Text>
+              <Text style={[styles.shiftNum, { color: theme.heroAccent }, theme.font.heading]}>{entry.mood}</Text>
+            </View>
+            <Text style={[styles.shiftCaption, { color: theme.subtle }, theme.font.body]}>
+              {t('diary.moodShiftCaption')}
+            </Text>
+          </View>
+        ) : null}
 
-        <Block label={t('diary.steps.emotions.title')} theme={theme}>
-          {entry.emotions.length === 0 ? (
-            <Text style={[styles.value, { color: theme.text }, theme.font.body]}>{dash}</Text>
-          ) : (
-            entry.emotions.map((em, i) => (
+        <Section label={t('diary.steps.situation.title')} value={entry.situation} dash={dash} theme={theme} first={!hasShift} />
+
+        {entry.emotions.length > 0 ? (
+          <Block label={t('diary.steps.emotions.title')} theme={theme}>
+            {entry.emotions.map((em, i) => (
               <Text key={i} style={[styles.value, { color: theme.text }, theme.font.body]}>
                 • {em.name} — {em.intensity}/100
               </Text>
-            ))
-          )}
-        </Block>
+            ))}
+          </Block>
+        ) : null}
 
-        <Section label={t('diary.reaction.body')} value={entry.reactionBody} dash={dash} theme={theme} />
-        <Section label={t('diary.reaction.behavior')} value={entry.reactionBehavior} dash={dash} theme={theme} />
+        {entry.reactionBody.trim().length > 0 ? (
+          <Section label={t('diary.reaction.body')} value={entry.reactionBody} dash={dash} theme={theme} />
+        ) : null}
+        {entry.reactionBehavior.trim().length > 0 ? (
+          <Section label={t('diary.reaction.behavior')} value={entry.reactionBehavior} dash={dash} theme={theme} />
+        ) : null}
 
         <Section label={t('diary.steps.thoughts.title')} value={entry.thoughts} dash={dash} theme={theme} />
         {entry.distortions.length > 0 ? (
@@ -98,15 +112,22 @@ export default function DiaryEntryScreen() {
           </Block>
         ) : null}
 
-        <Section label={t('diary.evidence.for')} value={entry.evidenceFor} dash={dash} theme={theme} />
-        <Section label={t('diary.evidence.against')} value={entry.evidenceAgainst} dash={dash} theme={theme} />
+        {entry.evidenceFor.trim().length > 0 ? (
+          <Section label={t('diary.evidence.for')} value={entry.evidenceFor} dash={dash} theme={theme} />
+        ) : null}
+        {entry.evidenceAgainst.trim().length > 0 ? (
+          <Section label={t('diary.evidence.against')} value={entry.evidenceAgainst} dash={dash} theme={theme} />
+        ) : null}
+
         <Section label={t('diary.steps.reframe.title')} value={entry.reframe} dash={dash} theme={theme} />
-        <Section
-          label={t('diary.fields.moodAfter')}
-          value={entry.mood != null ? `${entry.mood}/10` : ''}
-          dash={dash}
-          theme={theme}
-        />
+
+        {/* Only one mood recorded — no shift to show, so surface it as a plain row. */}
+        {!hasShift && entry.moodBefore != null ? (
+          <Section label={t('diary.fields.moodBefore')} value={`${entry.moodBefore}/10`} dash={dash} theme={theme} />
+        ) : null}
+        {!hasShift && entry.mood != null ? (
+          <Section label={t('diary.fields.moodAfter')} value={`${entry.mood}/10`} dash={dash} theme={theme} />
+        ) : null}
       </Card>
 
       <PrimaryButton label={t('diary.edit')} onPress={() => router.push(`/diary/new?id=${id}`)} style={styles.edit} />
@@ -169,6 +190,11 @@ const styles = StyleSheet.create({
   edit: { marginTop: 16 },
   deleteBtn: { borderWidth: 1.5, borderRadius: 999, paddingVertical: 12, alignItems: 'center', marginTop: 10 },
   deleteText: { fontSize: 15 },
+  shiftHero: { alignItems: 'center', paddingBottom: 16, marginBottom: 4, borderBottomWidth: StyleSheet.hairlineWidth },
+  shiftRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  shiftNum: { fontSize: 40, lineHeight: 44 },
+  shiftArrow: { fontSize: 24 },
+  shiftCaption: { fontSize: 12, marginTop: 4 },
   section: { marginTop: 16 },
   sectionFirst: { marginTop: 0 },
   label: { fontSize: 12, marginBottom: 4 },
