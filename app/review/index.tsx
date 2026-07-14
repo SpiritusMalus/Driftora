@@ -62,12 +62,17 @@ export default function ReviewScreen() {
 
   const a = review.thisWeek;
   const b = review.lastWeek;
-  const metrics: { label: string; value: number; delta: number; unit?: string }[] = [
+  type Metric = { label: string; value: number; delta: number; unit?: string };
+  // Two honest groups: per-day averages vs. weekly totals. Splitting them lets
+  // the labels drop the repeated "(avg/day)" qualifier without blurring units.
+  const avgMetrics: Metric[] = [
     { label: t('review.metrics.steps'), value: a.stepsAvg, delta: a.stepsAvg - b.stepsAvg },
     { label: t('review.metrics.protein'), value: a.proteinAvg, delta: a.proteinAvg - b.proteinAvg, unit: t('units.g') },
     ...(hideCalories
       ? []
       : [{ label: t('review.metrics.kcal'), value: a.kcalAvg, delta: a.kcalAvg - b.kcalAvg, unit: t('units.kcal') }]),
+  ];
+  const totalMetrics: Metric[] = [
     { label: t('review.metrics.foodDays'), value: a.foodLogDays, delta: a.foodLogDays - b.foodLogDays },
     { label: t('review.metrics.diary'), value: a.diaryCount, delta: a.diaryCount - b.diaryCount },
     { label: t('review.metrics.wins'), value: a.winsCount, delta: a.winsCount - b.winsCount },
@@ -90,51 +95,64 @@ export default function ReviewScreen() {
     }
   })();
 
-  const metricRows: RowSpec[] = metrics.map((m) => ({
-    key: m.label,
-    title: m.label,
-    right: (
-      <View style={styles.rowRight}>
-        <Text style={[styles.rowValue, { color: theme.text }, theme.font.bodySemiBold]}>
-          {m.value}
-          {m.unit ? ` ${m.unit}` : ''}
-        </Text>
-        <Text style={[styles.rowDelta, { color: theme.subtle }, theme.font.body]}>
-          {formatDelta(m.delta, t)}
-        </Text>
-      </View>
-    ),
-  }));
+  const toRows = (metrics: Metric[]): RowSpec[] =>
+    metrics.map((m) => ({
+      key: m.label,
+      title: m.label,
+      right: (
+        <View style={styles.rowRight}>
+          <Text style={[styles.rowValue, { color: theme.text }, theme.font.bodySemiBold]}>
+            {m.value}
+            {m.unit ? ` ${m.unit}` : ''}
+          </Text>
+          <Text style={[styles.rowDelta, { color: theme.subtle }, theme.font.body]}>
+            {formatDelta(m.delta, t)}
+          </Text>
+        </View>
+      ),
+    }));
 
   return (
     <Screen>
-      <Card style={[styles.summary, { backgroundColor: theme.iconBg, borderColor: theme.cardBorder }]}>
-        <Text style={[styles.summaryMain, { color: theme.text }, theme.font.heading]}>
-          {t('review.northStar', { days: review.northStarThisWeek })}
+      <View style={styles.hero}>
+        <Text style={[styles.heroLabel, { color: theme.labelCaps }, theme.font.bodyBold]}>
+          {t('review.totalLabel').toUpperCase()}
         </Text>
-        {review.streakWeeks > 0 ? (
-          <Text style={[styles.summarySub, { color: theme.subtle }, theme.font.bodyMedium]}>
-            {t('review.streak', { weeks: review.streakWeeks })}
+        <View style={styles.heroRow}>
+          <Text style={[styles.heroNum, { color: theme.heroAccent }, theme.font.heading]}>
+            {review.northStarThisWeek}
           </Text>
-        ) : null}
+          {review.streakWeeks > 0 ? (
+            <Text style={[styles.heroStreak, { color: theme.subtle }, theme.font.bodyMedium]}>
+              {t('review.streak', { weeks: review.streakWeeks })}
+            </Text>
+          ) : null}
+        </View>
         <Text style={[styles.reassurance, { color: theme.subtle }, theme.font.body]}>
           {t('review.reassurance')}
         </Text>
-      </Card>
+      </View>
 
-      <SectionHeader>{t('review.vsLastWeek')}</SectionHeader>
-      <ListGroup rows={metricRows} />
+      <Text style={[styles.deltaCaption, { color: theme.subtle }, theme.font.body]}>
+        {t('review.deltaCaption')}
+      </Text>
+
+      <SectionHeader>{t('review.avgSection')}</SectionHeader>
+      <ListGroup rows={toRows(avgMetrics)} />
+
+      <SectionHeader>{t('review.totalSection')}</SectionHeader>
+      <ListGroup rows={toRows(totalMetrics)} />
 
       {normsLine ? (
-        <Card style={styles.card}>
-          <Text style={[styles.normsTitle, { color: theme.subtle }, theme.font.heading]}>
-            {t('review.norms.title').toUpperCase()}
-          </Text>
-          <Text style={[styles.normsBody, { color: theme.text }, theme.font.body]}>{normsLine}</Text>
-          <Text style={[styles.normsSource, { color: theme.subtle }, theme.font.body]}>
-            {t('review.norms.source')}
-          </Text>
-        </Card>
+        <>
+          <SectionHeader>{t('review.norms.title')}</SectionHeader>
+          <Card style={styles.card}>
+            <Text style={[styles.normsBody, { color: theme.text }, theme.font.body]}>{normsLine}</Text>
+            <Text style={[styles.normsSource, { color: theme.subtle }, theme.font.body]}>
+              {t('review.norms.source')}
+            </Text>
+          </Card>
+        </>
       ) : null}
 
       {trap ? (
@@ -159,16 +177,20 @@ function formatDelta(delta: number, t: (k: string, o?: Record<string, unknown>) 
 
 const styles = StyleSheet.create({
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
-  summary: { marginTop: 4, marginBottom: 4 },
-  summaryMain: { fontSize: 17, lineHeight: 25, letterSpacing: -0.3 },
-  summarySub: { fontSize: 14, marginTop: 8 },
+  // Hero — north-star log-days big (coral, the reward), streak riding beside it
+  // (mirrors the Wins hero). Bare on the page, no tinted card.
+  hero: { marginTop: 8, marginBottom: 4 },
+  heroLabel: { fontSize: 12, letterSpacing: 1.44, marginBottom: 4 },
+  heroRow: { flexDirection: 'row', alignItems: 'baseline', gap: 10 },
+  heroNum: { fontSize: 40, lineHeight: 44 },
+  heroStreak: { fontSize: 14, lineHeight: 19 },
   reassurance: { fontSize: 12, marginTop: 10, lineHeight: 17 },
+  deltaCaption: { fontSize: 12, marginTop: 14, lineHeight: 16 },
   card: { marginTop: 12 },
   rowRight: { alignItems: 'flex-end' },
   rowValue: { fontSize: 16 },
   rowDelta: { fontSize: 12, marginTop: 2 },
-  normsTitle: { fontSize: 11, letterSpacing: 1.2 },
-  normsBody: { fontSize: 14, marginTop: 8, lineHeight: 20 },
+  normsBody: { fontSize: 14, lineHeight: 20 },
   normsSource: { fontSize: 11, marginTop: 8, fontStyle: 'italic', lineHeight: 16 },
   trapTitle: { fontSize: 14 },
   trapBody: { fontSize: 13, marginTop: 4, lineHeight: 18 },
