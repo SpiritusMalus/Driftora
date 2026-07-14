@@ -670,7 +670,11 @@ export const en = {
   mood: {
     title: 'Mood & diary',
     prompt: 'How are you right now?',
-    scale: '0 — very low, 10 — great. One tap, no explanation needed.',
+    // Scale direction lives in anchors under the ends (0⟷10) instead of a
+    // separate caption line — shorter and clearer.
+    anchorLow: 'very low',
+    anchorHigh: 'great',
+    showAll: 'Show all ({{count}})',
     empty: 'No mood check-ins yet.',
     dbUnavailable: 'Mood is available in a device dev build.',
   },
