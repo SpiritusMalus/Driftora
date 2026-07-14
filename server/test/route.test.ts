@@ -137,15 +137,23 @@ test('POST /food/search: empty DB + ai:true → an honest ai_estimate candidate 
     const url = typeof input === 'string' ? input : input.toString();
     if (url.includes('127.0.0.1')) return realFetch(input as never, init);
     if (url.includes('openrouter.ai')) {
-      return llmReply([
-        {
-          name_ru: 'загадочный батончик',
-          name_en: 'mystery bar',
-          est_grams: 60,
-          confidence: 0.6,
-          estimate: { kcal_100g: 350, prot_100g: 30, fat_100g: 10, carb_100g: 40 },
-        },
-      ]);
+      // The manual-search estimator returns a flat per-100g object (not the
+      // identify `items` shape) — brand/intent-aware, always complete.
+      return json({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                name_ru: 'загадочный батончик',
+                kcal_100g: 350,
+                prot_100g: 30,
+                fat_100g: 10,
+                carb_100g: 40,
+              }),
+            },
+          },
+        ],
+      });
     }
     if (url.includes('openfoodfacts')) return json({ products: [] });
     if (url.includes('api.nal.usda.gov')) return json({ foods: [] });
@@ -154,7 +162,7 @@ test('POST /food/search: empty DB + ai:true → an honest ai_estimate candidate 
 
   const { base, stop } = await startApp();
   try {
-    // Cyrillic RU query the curated table misses → DB empty → AI fallback fires.
+    // Cyrillic RU query the curated table misses → DB empty → only the AI card.
     const res = await postTo(base, '/food/search', { query: 'загадочный батончик', region: 'RU', ai: true });
     assert.equal(res.status, 200);
     const data = (await res.json()) as { candidates: any[] };
