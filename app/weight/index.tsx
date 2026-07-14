@@ -68,8 +68,8 @@ export default function WeightScreen() {
   const [ack, setAck] = useState<{ where: 'plan' | 'manual'; text: string } | null>(null);
   const ackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Collapsed-by-default sections; body opens itself while the profile is
-  // still incomplete (it's the one thing the plan needs from the user).
+  // Collapsed-by-default sections. When the profile is incomplete the plan card
+  // itself carries the «Настроить тело» CTA, so nothing here needs to auto-open.
   const [openBmi, setOpenBmi] = useState(false);
   const [openBody, setOpenBody] = useState(false);
   const [openHistory, setOpenHistory] = useState(false);
@@ -244,7 +244,32 @@ export default function WeightScreen() {
 
   return (
     <Screen>
-      {/* ── 1. The ritual: type today's weight, see it acknowledged ── */}
+      {/* ── 1. HERO — the current weight is the point of the screen. The trend
+             rides right under it (single weigh-ins are noise), unifying with the
+             «Шаги» hero. The typing ritual sits just below, still the primary
+             action here because there's no automatic weigh-in. ── */}
+      <View style={styles.hero}>
+        {latestKg > 0 ? (
+          <>
+            <View style={styles.heroRow}>
+              <Text style={[styles.heroNum, { color: theme.text }, theme.font.heading]}>
+                {latestKg.toFixed(1)}
+              </Text>
+              <Text style={[styles.heroUnit, { color: theme.subtle }, theme.font.body]}>{t('weight.unit')}</Text>
+            </View>
+            {trendLine ? (
+              <>
+                <Text style={[styles.heroTrend, { color: theme.subtle }, theme.font.bodyMedium]}>{trendLine}</Text>
+                <Text style={[styles.heroNote, { color: theme.subtle }, theme.font.body]}>{t('weight.note')}</Text>
+              </>
+            ) : null}
+          </>
+        ) : (
+          <Text style={[styles.heroEmpty, { color: theme.subtle }, theme.font.body]}>{t('weight.hero.empty')}</Text>
+        )}
+      </View>
+
+      {/* The ritual: type today's weight, see it acknowledged. */}
       <View style={styles.inputRow}>
         <TextField
           value={text}
@@ -264,29 +289,17 @@ export default function WeightScreen() {
         disabled={db == null || !valid || saving}
         style={styles.save}
       />
-      {/* The number the user just typed must not silently vanish into the
-          history list — echo it (with its delta) right here. */}
+      {/* Transient echo of the number just typed (with its delta), so it doesn't
+          silently vanish into the history list. */}
       {weightAck ? (
         <Text style={[styles.weightAck, { color: theme.accent }, theme.font.bodyMedium]}>{weightAck}</Text>
-      ) : items != null && items.length > 0 ? (
-        <Text style={[styles.weightAck, { color: theme.subtle }, theme.font.body]}>
-          {t('weight.lastEntry', { kg: items[0].weightKg.toFixed(1), date: formatDay(items[0].date) })}
-        </Text>
       ) : null}
 
       {db == null ? (
         <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('weight.dbUnavailable')}</Text>
       ) : null}
 
-      {/* ── 2. Trend: one line, because single weigh-ins are noise ── */}
-      {trendLine ? (
-        <Card style={styles.trendCard}>
-          <Text style={[styles.trendText, { color: theme.text }, theme.font.bodySemiBold]}>{trendLine}</Text>
-          <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>{t('weight.note')}</Text>
-        </Card>
-      ) : null}
-
-      {/* ── 3. The centerpiece: a human-language КБЖУ plan that follows the
+      {/* ── 2. The centerpiece: a human-language КБЖУ plan that follows the
              latest weight. One tap makes it the food-diary goal. ── */}
       {db != null ? (
         <Card style={styles.trendCard}>
@@ -369,7 +382,7 @@ export default function WeightScreen() {
                   pace: plan.paceKgPerWeek.toFixed(1),
                 })}
               </Text>
-              <Text style={[styles.planKcal, { color: theme.text }, theme.font.bodySemiBold]}>
+              <Text style={[styles.planKcal, { color: theme.heroAccent }, theme.font.heading]}>
                 {t('weight.plan.kcalPerDay', { kcal: plan.kcal })}
               </Text>
               <View style={styles.macroRow}>
@@ -524,13 +537,91 @@ export default function WeightScreen() {
         </Card>
       ) : null}
 
-      {/* ── 4. Everything secondary, one quiet line each ── */}
+      {/* ── 3. Everything secondary, one quiet line each ── */}
       {db != null ? (
         <>
+          {/* Body parameters first among the secondary sections — it's what the
+              plan actually needs from the user. Read-only here; the body-setup
+              wizard is the single editor (all answered, then saved ONCE). */}
+          <Section
+            title={t('weight.sections.body.title')}
+            summary={bodySummary}
+            open={openBody}
+            onToggle={() => setOpenBody((v) => !v)}
+            theme={theme}
+          >
+            <ProfileLine
+              label={t('weight.height')}
+              value={heightCm > 0 ? `${Math.round(heightCm)} ${t('weight.heightUnit')}` : '—'}
+              theme={theme}
+            />
+            <ProfileLine label={t('weight.formula.sex')} value={sex ? t(`weight.formula.${sex}`) : '—'} theme={theme} />
+            <ProfileLine label={t('weight.formula.birthYear')} value={birthYearText || '—'} theme={theme} />
+            <ProfileLine
+              label={t('weight.formula.bodyFat')}
+              value={bodyFatText ? `${bodyFatText}%` : t('weight.sections.body.fatUnset')}
+              theme={theme}
+            />
+            <Pressable
+              onPress={() => router.push('/body-setup')}
+              style={({ pressed }) => [styles.applyBtn, { borderColor: theme.primary, opacity: pressed ? 0.6 : 1 }]}
+            >
+              <Text style={[styles.applyText, { color: theme.primary }, theme.font.bodySemiBold]}>
+                {t('weight.sections.body.edit')}
+              </Text>
+            </Pressable>
+          </Section>
+
+          <Section
+            title={t('weight.bmi.title')}
+            summary={bmiSummary}
+            open={openBmi}
+            onToggle={() => setOpenBmi((v) => !v)}
+            theme={theme}
+          >
+            {bmi != null ? (
+              <>
+                <Text style={[styles.bmiValue, { color: theme.text }, theme.font.bodySemiBold]}>
+                  {t('weight.bmi.value', {
+                    value: bmi.toFixed(1),
+                    category: t(`weight.bmi.category.${bmiCategory(bmi)}`),
+                  })}
+                </Text>
+                <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
+                  {t('weight.bmi.current', { kg: latestKg.toFixed(1), cm: Math.round(heightCm) })}
+                </Text>
+                <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
+                  {t('weight.bmi.ranges')}
+                </Text>
+              </>
+            ) : (
+              <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
+                {latestKg <= 0 ? t('weight.bmi.needWeight') : t('weight.bmi.needHeight')}
+              </Text>
+            )}
+            <Text style={[styles.disclaimer, { color: theme.subtle }, theme.font.body]}>
+              {t('weight.bmi.disclaimer')}
+            </Text>
+          </Section>
+
+          <Section
+            title={t('weight.sections.history.title')}
+            summary={t('weight.sections.history.count', { count: items?.length ?? 0 })}
+            open={openHistory}
+            onToggle={() => setOpenHistory((v) => !v)}
+            theme={theme}
+          >
+            {items == null || items.length === 0 ? (
+              <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>{t('weight.empty')}</Text>
+            ) : (
+              <ListGroup rows={rows} />
+            )}
+          </Section>
+
           {/* Reference table: daily norms for the basic vitamins & minerals.
-              Collapsed like the rest; a norm ("how much you need"), NOT a count
-              of intake — vitamins aren't in the food DB, so tracking here would
-              be dishonest. */}
+              Least personal of the sections, so it sits low. A norm ("how much
+              you need"), NOT a count of intake — vitamins aren't in the food DB,
+              so tracking here would be dishonest. */}
           <Section
             title={t('weight.micros.title')}
             summary={t('weight.micros.summary')}
@@ -576,84 +667,6 @@ export default function WeightScreen() {
             <Text style={[styles.disclaimer, { color: theme.subtle }, theme.font.body]}>
               {t('weight.micros.disclaimer')}
             </Text>
-          </Section>
-
-          <Section
-            title={t('weight.bmi.title')}
-            summary={bmiSummary}
-            open={openBmi}
-            onToggle={() => setOpenBmi((v) => !v)}
-            theme={theme}
-          >
-            {bmi != null ? (
-              <>
-                <Text style={[styles.bmiValue, { color: theme.text }, theme.font.bodySemiBold]}>
-                  {t('weight.bmi.value', {
-                    value: bmi.toFixed(1),
-                    category: t(`weight.bmi.category.${bmiCategory(bmi)}`),
-                  })}
-                </Text>
-                <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
-                  {t('weight.bmi.current', { kg: latestKg.toFixed(1), cm: Math.round(heightCm) })}
-                </Text>
-                <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
-                  {t('weight.bmi.ranges')}
-                </Text>
-              </>
-            ) : (
-              <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
-                {latestKg <= 0 ? t('weight.bmi.needWeight') : t('weight.bmi.needHeight')}
-              </Text>
-            )}
-            <Text style={[styles.disclaimer, { color: theme.subtle }, theme.font.body]}>
-              {t('weight.bmi.disclaimer')}
-            </Text>
-          </Section>
-
-          <Section
-            title={t('weight.sections.body.title')}
-            summary={bodySummary}
-            open={openBody}
-            onToggle={() => setOpenBody((v) => !v)}
-            theme={theme}
-          >
-            {/* Read-only: the body-setup wizard is the single editor for these
-                facts (all answered, then saved ONCE) — nothing here autosaves
-                mid-typing anymore. */}
-            <ProfileLine
-              label={t('weight.height')}
-              value={heightCm > 0 ? `${Math.round(heightCm)} ${t('weight.heightUnit')}` : '—'}
-              theme={theme}
-            />
-            <ProfileLine label={t('weight.formula.sex')} value={sex ? t(`weight.formula.${sex}`) : '—'} theme={theme} />
-            <ProfileLine label={t('weight.formula.birthYear')} value={birthYearText || '—'} theme={theme} />
-            <ProfileLine
-              label={t('weight.formula.bodyFat')}
-              value={bodyFatText ? `${bodyFatText}%` : t('weight.sections.body.fatUnset')}
-              theme={theme}
-            />
-            <Pressable
-              onPress={() => router.push('/body-setup')}
-              style={({ pressed }) => [styles.applyBtn, { borderColor: theme.primary, opacity: pressed ? 0.6 : 1 }]}
-            >
-              <Text style={[styles.applyText, { color: theme.primary }, theme.font.bodySemiBold]}>
-                {t('weight.sections.body.edit')}
-              </Text>
-            </Pressable>
-          </Section>
-
-          <Section
-            title={t('weight.sections.history.title')}
-            summary={t('weight.sections.history.count', { count: items?.length ?? 0 })}
-            open={openHistory}
-            onToggle={() => setOpenHistory((v) => !v)}
-            theme={theme}
-          >
-            {items == null || items.length === 0 ? (
-              <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>{t('weight.empty')}</Text>
-            ) : (
-              <ListGroup rows={rows} />
-            )}
           </Section>
 
           <Section
@@ -832,20 +845,27 @@ function formatDay(date: string): string {
 }
 
 const styles = StyleSheet.create({
-  inputRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4, marginBottom: 12 },
+  // Hero — current weight big, trend riding under it (mirrors the «Шаги» hero).
+  hero: { marginTop: 8, marginBottom: 16 },
+  heroRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
+  heroNum: { fontSize: 40, lineHeight: 44 },
+  heroUnit: { fontSize: 15 },
+  heroTrend: { fontSize: 14, lineHeight: 19, marginTop: 6 },
+  heroNote: { fontSize: 12, lineHeight: 17, marginTop: 3 },
+  heroEmpty: { fontSize: 15, lineHeight: 21 },
+  inputRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
   input: { flex: 1 },
   unit: { fontSize: 15 },
   save: { marginBottom: 6 },
   weightAck: { fontSize: 14, textAlign: 'center', marginBottom: 10 },
   trendCard: { marginBottom: 16 },
-  trendText: { fontSize: 15 },
   trendNote: { fontSize: 12, marginTop: 6, lineHeight: 17 },
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
   cardTitle: { fontSize: 16 },
   ackTick: { fontSize: 13 },
   planIntro: { fontSize: 14, lineHeight: 20, marginTop: 4 },
   assumedAge: { fontSize: 12, lineHeight: 17, marginTop: 8 },
-  planKcal: { fontSize: 22, marginTop: 8, marginBottom: 10 },
+  planKcal: { fontSize: 28, lineHeight: 32, marginTop: 8, marginBottom: 10 },
   macroRow: { flexDirection: 'row', gap: 8 },
   macroTile: { flex: 1, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 4, alignItems: 'center' },
   macroLabel: { fontSize: 11 },
