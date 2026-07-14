@@ -96,6 +96,25 @@ function estimateMismatch(db: Per100, est: AiEstimate): boolean {
   return false;
 }
 
+/** Numeric grade tokens in a food name (incl. decimals, «,»→«.») — «молоко 1.8%» → ['1.8']. */
+function gradesOf(s: string): string[] {
+  return (s.match(/\d+(?:[.,]\d+)?/g) ?? []).map((x) => x.replace(',', '.'));
+}
+
+/**
+ * The user asked for a specific GRADE the matched row doesn't actually carry —
+ * «молоко 1.8%» resolved to «молоко 1%», «сыр 30%» to a plain «сыр». The stray
+ * grade proves the DB lacks that exact variant, so we should offer the model's
+ * estimate for the real grade rather than pass off the wrong one as a hit.
+ */
+function unhonoredGrade(query: string, matched?: string): boolean {
+  if (!matched) return false;
+  const wanted = gradesOf(query);
+  if (wanted.length === 0) return false;
+  const have = new Set(gradesOf(matched));
+  return wanted.some((g) => !have.has(g));
+}
+
 /** Confidence a DB match is knocked down to once the referee flags it. */
 const REFEREE_DEMOTED_CONFIDENCE = 0.3;
 
@@ -372,7 +391,14 @@ export class Resolver {
     // means the match is probably the wrong food: keep the DB number primary but
     // drop confidence (client surfaces the picker) and offer the AI estimate as
     // a one-tap alternative. We never let the model silently overwrite the DB.
-    const suspect = aiFull ? estimateMismatch(found.per100, item.estimate!) : false;
+    // GRADE CHECK: the user named a grade (молоко 1.8%, сыр 30%) but the DB match
+    // either dropped it or is only a loose crowd hit (<0.9) — the base rarely has
+    // the exact graded variant. Offer the model's estimate for the SPECIFIC grade
+    // so the user can pick it; the client opens the picker on any AI alternative.
+    const graded = /\d/.test(item.name_ru);
+    const gradeSuspect =
+      !!aiFull && graded && (unhonoredGrade(item.name_ru, found.name) || found.matchConfidence < 0.9);
+    const suspect = (aiFull ? estimateMismatch(found.per100, item.estimate!) : false) || gradeSuspect;
     const confidence = suspect
       ? REFEREE_DEMOTED_CONFIDENCE
       : Math.min(item.confidence, found.matchConfidence);

@@ -16,6 +16,28 @@ test('normalizeRu lowercases, ё→е, strips punctuation', () => {
   assert.equal(normalizeRu('Гречка (варёная)!'), 'гречка вареная');
 });
 
+test('normalizeRu keeps a decimal grade whole («1.8» not «1 8»)', () => {
+  // The whole «1.8» must survive so it can NOT masquerade-match «молоко 1%».
+  assert.equal(normalizeRu('молоко 1.8%'), 'молоко 1.8');
+  assert.equal(normalizeRu('Молоко 1,8 %'), 'молоко 1.8'); // RU decimal comma → dot
+  assert.equal(normalizeRu('творог 2%'), 'творог 2'); // plain integer unchanged
+  assert.equal(normalizeRu('сыр 45.5% жирности'), 'сыр 45.5 жирности');
+});
+
+test('an 1.8% query no longer masquerade-matches the 1% row', async () => {
+  const p = new SkurikhinProvider([
+    { name: 'молоко 1%', aliases: [], per100: { kcal: 42, prot: 3.4, fat: 1, carb: 5, minerals: {} } },
+    { name: 'молоко 3.2%', aliases: [], per100: { kcal: 61, prot: 2.9, fat: 3.2, carb: 4.7, minerals: {} } },
+  ]);
+  // «молоко 1.8%» shares only «молоко» with each row now (the «1» is gone) →
+  // 0.5, below the floor → neither wrong grade is offered.
+  const list = await p.searchMany!('молоко 1.8%', 'RU');
+  assert.equal(list.length, 0);
+  // The exact grade still resolves cleanly.
+  const exact = await p.search('молоко 3.2%', 'RU');
+  assert.equal(exact!.per100.kcal, 61);
+});
+
 test('exact name match returns per100 with minerals (USDA-sourced, attributed)', async () => {
   const r = await provider.search('куриная грудка', 'RU');
   assert.ok(r);
