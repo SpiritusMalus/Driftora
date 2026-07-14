@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -18,6 +19,7 @@ export function ItemCard({
   onSelectAlternative,
   onSearch,
   onReplace,
+  onRemove,
 }: {
   item: NutritionItem;
   hideCalories: boolean;
@@ -27,6 +29,9 @@ export function ItemCard({
   onSelectAlternative: (altIndex: number) => void;
   onSearch: (query: string) => Promise<NutritionAlternative[]>;
   onReplace: (replacement: NutritionAlternative) => void;
+  // Edit screen only: drop this dish from a saved entry. Absent on the log
+  // screen (a fresh parse), so the × header control shows only when passed.
+  onRemove?: () => void;
 }) {
   const { t } = useTranslation();
   // TRANSPARENCY: which DB row the numbers describe. Shown when the matched
@@ -106,6 +111,17 @@ export function ItemCard({
               {t(`food.source.${item.per100.source}`)}
             </Text>
           </View>
+        ) : null}
+        {onRemove ? (
+          <Pressable
+            onPress={onRemove}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel={t('food.removeItem')}
+            style={({ pressed }) => [styles.removeBtn, { opacity: pressed ? 0.5 : 1 }]}
+          >
+            <Ionicons name="close" size={18} color={theme.subtle} />
+          </Pressable>
         ) : null}
       </View>
 
@@ -362,6 +378,7 @@ const styles = StyleSheet.create({
   item: { marginBottom: 10 },
   itemHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 6 },
   itemName: { fontSize: 15, flex: 1 },
+  removeBtn: { padding: 2 },
   // HERO: the eaten amount — big number + small unit, first thing in the card.
   heroRow: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', gap: 8, marginBottom: 2 },
   heroValue: { fontSize: 26 },
