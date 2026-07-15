@@ -135,6 +135,13 @@ export default function FoodLogScreen() {
   // Why the last camera/gallery attempt produced nothing (localized) — an
   // undecodable file must explain itself instead of a silently dead button.
   const [photoError, setPhotoError] = useState<string | null>(null);
+  // A multi-photo batch (library multi-select): the photos still awaiting their
+  // OWN parse+save after the one under review. Each becomes a SEPARATE entry
+  // (device feedback 2026-07-15: «сфоткал отдельно все блюда»). Empty = the
+  // ordinary single-photo/voice/text flow. `batchTotal` is the picked count, so
+  // the review can show «фото N из M».
+  const [photoQueue, setPhotoQueue] = useState<PhotoInput[]>([]);
+  const [batchTotal, setBatchTotal] = useState(0);
   const [listening, setListening] = useState(false);
   // Why on-device recognition last failed (localized) — shown under the mic so a
   // dropped session explains itself instead of silently resetting. Cleared on a
@@ -502,33 +509,46 @@ export default function FoodLogScreen() {
 
   // Photo (camera or an earlier shot from the gallery) → downscale + EXIF
   // strip → (consent) → backend vision → two-tier draft.
+  // Begin ONE photo's parse. A fresh shot is a NEW attempt: clear the previous
+  // parse AND the input — the echoed text of photo №1 used to survive into photo
+  // №2's draft and become its (wrong) name (device feedback 2026-07-12: «инпут
+  // не чистится»). Shared by the first pick and every batch advance, so a queued
+  // photo resets the same way. Consent-gates before the first photo→AI send.
+  function startPhoto(photo: PhotoInput) {
+    setFreshDraft(null);
+    setText('');
+    setMeal(null);
+    setParseIssue(null);
+    setSavedAck(null);
+    setSource('photo');
+    if (AI_CONFIGURED && needsAiConsent({ aiFoodParseConsent: aiConsent, aiFoodParseConsentVersion: aiConsentVersion })) {
+      // Stronger, SEPARATE photo warning before the first photo→AI send (§C).
+      // Asked once per batch — once granted, later queued photos skip straight
+      // to the parse.
+      setPendingPhoto(photo);
+      setConsentPrompt('photo');
+      return;
+    }
+    void runPhotoParse(photo, aiConsent);
+  }
+
   async function onPhoto(src: PhotoSource) {
     if (parsing || listening) return;
     setPhotoError(null);
-    const result = await capturePhoto(src);
+    // Gallery allows picking several dishes at once; the camera stays single.
+    const result = await capturePhoto(src, { multiple: src === 'library' });
     if (result.status === 'cancelled') return;
     if (result.status === 'failed') {
       setPhotoError(t('food.photoError'));
       return;
     }
-    // A new shot is a NEW attempt: clear the previous parse AND the input —
-    // the echoed text of photo №1 used to survive into photo №2's draft and
-    // become its (wrong) name (device feedback 2026-07-12: «инпут не
-    // чистится»). Cleared only after a photo actually arrived, so cancelling
-    // the picker loses nothing.
-    setFreshDraft(null);
-    setText('');
-    setMeal(null);
-    setParseIssue(null);
-    const photo = result.photo;
-    setSource('photo');
-    if (AI_CONFIGURED && needsAiConsent({ aiFoodParseConsent: aiConsent, aiFoodParseConsentVersion: aiConsentVersion })) {
-      // Stronger, SEPARATE photo warning before the first photo→AI send (§C).
-      setPendingPhoto(photo);
-      setConsentPrompt('photo');
-      return;
-    }
-    await runPhotoParse(photo, aiConsent);
+    // Library multi-select → each dish its own entry: parse the first now, queue
+    // the rest; every save advances to the next (see onSave). Cleared only after
+    // photos actually arrived, so cancelling the picker loses nothing.
+    const [first, ...rest] = result.photos;
+    setPhotoQueue(rest);
+    setBatchTotal(result.photos.length);
+    startPhoto(first);
   }
 
   /// One-tap, fully reversible comfort: hide or show calorie numbers. The
@@ -614,6 +634,9 @@ export default function FoodLogScreen() {
     setSource('text');
     setParseIssue(null);
     setMeal(null);
+    // Abandon any remaining batch — «очистить» means the whole capture is off.
+    setPhotoQueue([]);
+    setBatchTotal(0);
   }
 
   // Effective meal-of-day: the user's tap wins; until they touch the chips the
@@ -684,6 +707,17 @@ export default function FoodLogScreen() {
           saveSeedRef.current++,
         ),
       );
+      // Mid-batch (multi-photo): don't leave the screen — advance to the next
+      // shot's parse so every photo becomes its own entry in one sitting. Only
+      // the last one navigates out.
+      if (photoQueue.length > 0) {
+        const [next, ...rest] = photoQueue;
+        setPhotoQueue(rest);
+        setSaving(false);
+        startPhoto(next);
+        return;
+      }
+      setBatchTotal(0);
       // Land on the day's food list (not a bare back to Home) so the just-saved
       // entry is visibly there and can be reopened/edited. `replace` keeps the
       // log screen out of the back stack.
@@ -691,6 +725,15 @@ export default function FoodLogScreen() {
     } catch {
       setSaving(false);
     }
+  }
+
+  // Drop the current photo's draft WITHOUT saving and advance to the next in the
+  // batch — a misfired shot (blurry, wrong dish) shouldn't force a junk entry.
+  function onSkipPhoto() {
+    if (photoQueue.length === 0) return;
+    const [next, ...rest] = photoQueue;
+    setPhotoQueue(rest);
+    startPhoto(next);
   }
 
   return (
@@ -910,6 +953,24 @@ export default function FoodLogScreen() {
         </View>
       ) : null}
 
+      {/* Multi-photo batch progress: where in the picked set this review sits,
+          plus a skip for a misfired shot. Shown for both a parsed draft and an
+          empty parse, so a blank photo can still be skipped forward. */}
+      {batchTotal > 1 && draft != null ? (
+        <View style={styles.batchBar}>
+          <Text style={[styles.batchProgress, { color: theme.subtle }, theme.font.bodySemiBold]}>
+            {t('food.batchProgress', { index: batchTotal - photoQueue.length, total: batchTotal })}
+          </Text>
+          {photoQueue.length > 0 ? (
+            <Pressable onPress={onSkipPhoto} disabled={saving} hitSlop={8}>
+              <Text style={[styles.batchSkip, { color: theme.primary }, theme.font.bodySemiBold]}>
+                {t('food.batchSkip')}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+
       {draft == null ? (
         // The «опишите и нажмите Разобрать» invitation is for the IDLE state
         // only — while a parse/recording/dictation runs it read as a second,
@@ -1123,6 +1184,16 @@ const styles = StyleSheet.create({
   proteinNote: { fontSize: 12, marginTop: 4, marginBottom: 8, lineHeight: 17 },
   parseIssue: { fontSize: 13, textAlign: 'center', marginTop: 10, lineHeight: 18 },
   savedAck: { fontSize: 13, marginTop: 4, marginBottom: 10, textAlign: 'center', lineHeight: 18 },
+  batchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    marginTop: 14,
+    marginBottom: 2,
+  },
+  batchProgress: { fontSize: 13 },
+  batchSkip: { fontSize: 13 },
   quick: { marginTop: 16 },
   quickGroup: { marginBottom: 14 },
   quickLabel: { fontSize: 12, letterSpacing: 1.44, marginBottom: 8 },

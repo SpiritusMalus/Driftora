@@ -793,6 +793,9 @@ export const en = {
     photo: '📷 Camera',
     photoLibrary: '🖼 From gallery',
     photoError: 'Couldn’t process that photo. Try another one, or type the meal instead.',
+    // Multi-select photos: each dish its own entry, reviewed one at a time.
+    batchProgress: 'Photo {{index}} of {{total}}',
+    batchSkip: 'Skip photo',
     save: 'Save',
     saving: 'Saving…',
     clear: 'Start over',

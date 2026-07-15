@@ -323,7 +323,7 @@ export function WorkoutSection({
       setParseNote(t('workouts.photoFailed'));
       return;
     }
-    await withConsent((c) => runPhotoParse(res.photo, c));
+    await withConsent((c) => runPhotoParse(res.photos[0]!, c));
   }
 
   async function runPhotoParse(photo: PhotoInput, consentNow: boolean) {
