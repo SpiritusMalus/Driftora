@@ -360,7 +360,7 @@ function DayProgress({
   return (
     <Card style={styles.dayCard}>
       <View style={styles.dayHead}>
-        <Text style={[styles.dayEyebrow, { color: theme.labelCaps }, theme.font.bodySemiBold]}>
+        <Text style={[styles.dayEyebrow, { color: theme.labelCaps }, theme.font.bodyBold]}>
           {t('food.day.title')}
         </Text>
         {goal.hideCalories || !onPlan ? null : (
@@ -571,11 +571,12 @@ const styles = StyleSheet.create({
   dayTitle: { fontSize: 15 },
   // Small caps eyebrow above the hero number (was the 15px card title that
   // out-shouted the figure it sat over).
-  dayEyebrow: { fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.6 },
+  dayEyebrow: { fontSize: 12, textTransform: 'uppercase', letterSpacing: 1.44 },
   dayChip: { fontSize: 12 },
-  // The day's hero: the remaining/over figure, large, with a quiet unit label.
+  // The day's hero: the remaining/over figure, large (40/44 — the app-wide
+  // hero-number size), with a quiet unit label.
   dayHeroRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: 8 },
-  dayHeroNum: { fontSize: 32, lineHeight: 36 },
+  dayHeroNum: { fontSize: 40, lineHeight: 44 },
   dayHeroLabel: { fontSize: 13 },
   daySecondary: { fontSize: 13, marginTop: 8 },
   dayWorkout: { fontSize: 12, marginTop: 6, lineHeight: 17 },

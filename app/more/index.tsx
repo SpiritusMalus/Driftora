@@ -16,8 +16,8 @@ export default function MoreScreen() {
   const theme = useTheme();
   const router = useRouter();
 
-  const coralTile = theme.scheme === 'light' ? '#FBE2D9' : '#3A241B';
-  const amberTile = theme.scheme === 'light' ? '#FBEFD9' : '#33261F';
+  const coralTile = theme.primarySoft;
+  const amberTile = theme.accentSoft;
   const neutralTile = theme.scheme === 'light' ? '#EFE6E0' : '#2C2622';
 
   // Section 1 — the things you log/track every day.

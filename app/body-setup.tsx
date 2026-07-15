@@ -577,7 +577,7 @@ const styles = StyleSheet.create({
   invalid: { fontSize: 13, lineHeight: 18, marginTop: 8 },
   skip: { fontSize: 14, marginTop: 14, textAlign: 'center', paddingVertical: 4 },
   chips: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  chip: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 10 },
+  chip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 10 },
   chipText: { fontSize: 15 },
   option: {
     borderWidth: 1.5,

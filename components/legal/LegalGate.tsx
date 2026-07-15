@@ -77,8 +77,13 @@ export function LegalGate({ children }: { children: ReactNode }) {
   return (
     <View style={[styles.fill, { backgroundColor: theme.background, paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }]}>
       <View style={styles.body}>
-        <Text style={[styles.title, { color: theme.text }, theme.font.display]}>{t('legal.gate.title')}</Text>
-        <Text style={[styles.lead, { color: theme.text }, theme.font.body]}>{t('legal.gate.body')}</Text>
+        {/* Hero — the privacy promise, promoted out of a 15px body block to the
+            heroText+heroAccent idiom used across Settings/Backup (#148/#149). */}
+        <View style={styles.hero}>
+          <Text style={[styles.heroLine, { color: theme.heroText }, theme.font.heading]}>{t('legal.gate.heroText')}</Text>
+          <Text style={[styles.heroLine, { color: theme.heroAccent }, theme.font.heading]}>{t('legal.gate.heroLead')}</Text>
+        </View>
+        <Text style={[styles.lead, { color: theme.subtle }, theme.font.body]}>{t('legal.gate.body')}</Text>
 
         <View style={styles.links}>
           <DocRow label={t('legal.terms')} onPress={() => setReader('terms')} theme={theme} />
@@ -124,8 +129,9 @@ const styles = StyleSheet.create({
   fill: { flex: 1, paddingHorizontal: 22, justifyContent: 'space-between' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   body: { flex: 1, justifyContent: 'center' },
-  title: { fontSize: 26, marginBottom: 16, lineHeight: 32 },
-  lead: { fontSize: 15, lineHeight: 23, marginBottom: 24 },
+  hero: { marginBottom: 14 },
+  heroLine: { fontSize: 22, lineHeight: 29 },
+  lead: { fontSize: 13, lineHeight: 20, marginBottom: 24 },
   links: { gap: 10 },
   online: { fontSize: 13, textAlign: 'center', marginTop: 14, textDecorationLine: 'underline' },
   docRow: {

@@ -177,7 +177,7 @@ export default function MoodScreen() {
     key: 'diary',
     icon: 'sparkles-outline',
     tint: theme.primary,
-    iconBg: theme.scheme === 'light' ? '#FBE2D9' : '#3A241B',
+    iconBg: theme.primarySoft,
     title: t('home.feeders.diary'),
     subtitle: diaryCount > 0 ? t('home.feeders.diaryCount', { count: diaryCount }) : t('home.feeders.diaryCta'),
     onPress: () => router.push('/diary'),

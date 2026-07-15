@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -42,7 +43,7 @@ export default function HowItWorksScreen() {
               <Text style={[styles.title, { color: theme.text }, theme.font.bodyBold]}>
                 {t(`howItWorks.${key}.title`)}
               </Text>
-              <Text style={[styles.chevron, { color: theme.subtle }]}>{expanded ? '▾' : '▸'}</Text>
+              <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={16} color={theme.tertiary} />
             </Pressable>
             {expanded ? (
               <Text style={[styles.body, { color: theme.subtle }, theme.font.body]}>{t(`howItWorks.${key}.body`)}</Text>
@@ -60,11 +61,10 @@ export default function HowItWorksScreen() {
 
 const styles = StyleSheet.create({
   hero: { marginTop: 4, marginBottom: 18, marginHorizontal: 4 },
-  heroLine: { fontSize: 21, lineHeight: 28 },
+  heroLine: { fontSize: 20, lineHeight: 27 },
   card: { marginBottom: 12 },
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   title: { fontSize: 17, flex: 1, paddingRight: 12 },
-  chevron: { fontSize: 15 },
   body: { fontSize: 14, lineHeight: 21, marginTop: 8 },
   teaser: { fontSize: 14, lineHeight: 20, marginTop: 4 },
 });

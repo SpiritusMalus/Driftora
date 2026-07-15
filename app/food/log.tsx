@@ -853,7 +853,7 @@ export default function FoodLogScreen() {
       {myDiet.length > 0 ? (
         <View style={styles.quick}>
           <View style={styles.quickGroup}>
-            <Text style={[styles.quickLabel, { color: theme.subtle }, theme.font.heading]}>
+            <Text style={[styles.quickLabel, { color: theme.labelCaps }, theme.font.bodyBold]}>
               {t('food.myDiet').toUpperCase()}
             </Text>
             <View style={styles.quickWrap}>
@@ -884,7 +884,7 @@ export default function FoodLogScreen() {
       {draft == null && quickPickList.length > 0 ? (
         <View style={styles.quick}>
           <View style={styles.quickGroup}>
-            <Text style={[styles.quickLabel, { color: theme.subtle }, theme.font.heading]}>
+            <Text style={[styles.quickLabel, { color: theme.labelCaps }, theme.font.bodyBold]}>
               {t('food.quickPick').toUpperCase()}
             </Text>
             <View style={styles.quickWrap}>
@@ -1125,7 +1125,7 @@ const styles = StyleSheet.create({
   savedAck: { fontSize: 13, marginTop: 4, marginBottom: 10, textAlign: 'center', lineHeight: 18 },
   quick: { marginTop: 16 },
   quickGroup: { marginBottom: 14 },
-  quickLabel: { fontSize: 11, letterSpacing: 1.2, marginBottom: 8 },
+  quickLabel: { fontSize: 12, letterSpacing: 1.44, marginBottom: 8 },
   quickWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 9 },
   chipText: { fontSize: 14, maxWidth: 240 },
