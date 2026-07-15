@@ -240,16 +240,31 @@ export default function FoodDayScreen() {
         <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('food.emptyDay')}</Text>
       ) : (
         <View style={styles.list}>
-          {groupEntriesByMeal(entries).map((group) => (
+          {groupEntriesByMeal(entries).map((group) => {
+            // Per-meal sums — kcal AND macros, so a meal's protein/fat/carb are
+            // visible without opening each row (device feedback 2026-07-15:
+            // «хочется видеть за приём пищи не только калории, но и БЖУ»).
+            const mealKcal = Math.round(group.entries.reduce((sum, e) => sum + e.kcal, 0));
+            const mealProt = Math.round(group.entries.reduce((sum, e) => sum + e.proteinG, 0));
+            const mealFat = Math.round(group.entries.reduce((sum, e) => sum + e.fatG, 0));
+            const mealCarb = Math.round(group.entries.reduce((sum, e) => sum + e.carbG, 0));
+            return (
             <View key={group.type} style={styles.group}>
-              {/* A real section header — meal name + the meal's kcal sum — so the
-                  day visibly splits into завтрак/обед/ужин (device feedback). */}
-              <View style={[styles.mealHeadRow, { borderBottomColor: theme.separator }]}>
-                <Text style={[styles.mealHead, { color: theme.text }, theme.font.bodySemiBold]}>
-                  {t(`food.meal.${group.type}`)}
-                </Text>
-                <Text style={[styles.mealSum, { color: theme.subtle }, theme.font.body]}>
-                  {Math.round(group.entries.reduce((sum, e) => sum + e.kcal, 0))} {t('units.kcal')}
+              {/* A real section header — meal name + the meal's kcal sum + a
+                  second line with the meal's БЖУ — so the day visibly splits into
+                  завтрак/обед/ужин and each meal's macros read at a glance. */}
+              <View style={[styles.mealHead, { borderBottomColor: theme.separator }]}>
+                <View style={styles.mealHeadTop}>
+                  <Text style={[styles.mealName, { color: theme.text }, theme.font.bodySemiBold]}>
+                    {t(`food.meal.${group.type}`)}
+                  </Text>
+                  <Text style={[styles.mealSum, { color: theme.subtle }, theme.font.body]}>
+                    {mealKcal} {t('units.kcal')}
+                  </Text>
+                </View>
+                <Text style={[styles.mealMacros, { color: theme.subtle }, theme.font.body]}>
+                  {t('macros.protShort')} {mealProt} · {t('macros.fatShort')} {mealFat} ·{' '}
+                  {t('macros.carbShort')} {mealCarb} {t('units.g')}
                 </Text>
               </View>
               {group.entries.map((e) => (
@@ -286,7 +301,8 @@ export default function FoodDayScreen() {
                 </Card>
               ))}
             </View>
-          ))}
+            );
+          })}
         </View>
       )}
     </Screen>
@@ -549,17 +565,20 @@ const styles = StyleSheet.create({
   hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
   list: { gap: 22 },
   group: { gap: 10 },
-  mealHeadRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-    gap: 8,
+  mealHead: {
     borderBottomWidth: 1,
     paddingBottom: 6,
     marginBottom: 2,
   },
-  mealHead: { fontSize: 14, textTransform: 'uppercase', letterSpacing: 0.6 },
+  mealHeadTop: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  mealName: { fontSize: 14, textTransform: 'uppercase', letterSpacing: 0.6 },
   mealSum: { fontSize: 12 },
+  mealMacros: { fontSize: 12, marginTop: 3 },
   row: {},
   rowHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
   rowText: { fontSize: 15, flex: 1 },
