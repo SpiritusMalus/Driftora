@@ -2,7 +2,7 @@ import nacl from 'tweetnacl';
 import { decodeBase64, decodeUTF8, encodeBase64 } from 'tweetnacl-util';
 import { scrypt } from 'scrypt-js';
 
-import { keyPairMatches, publicKeyFromPrivateKey, type E2EEKeyPair } from './e2ee';
+import { installExpoCryptoRng, keyPairMatches, publicKeyFromPrivateKey, type E2EEKeyPair } from './e2ee';
 
 /**
  * Recovery layer for Driftora — the user-held fallback that lets a backup be
@@ -88,6 +88,12 @@ function concatBytes(...chunks: Uint8Array[]): Uint8Array {
  * node's CSPRNG in jest — see `e2ee.ts`).
  */
 export function generateRecoveryPhrase(): string {
+  // Wire TweetNaCl's PRNG to expo-crypto before the FIRST nacl.randomBytes of the
+  // session. On-device (Hermes) nacl has no default CSPRNG, and this path can be
+  // the very first key op (Backup → «Create backup» before any master-key op has
+  // run), so we must install the RNG here — not rely on keystore having done it.
+  // Idempotent; a no-op in jest/node where nacl's default source already works.
+  installExpoCryptoRng();
   const bytes = nacl.randomBytes(18);
   // url-safe base64 without padding: 18 bytes → exactly 24 chars.
   const b64 = encodeBase64(bytes)
@@ -132,6 +138,7 @@ async function deriveKey(phrase: string, salt: Uint8Array): Promise<Uint8Array> 
  * @throws if `privateKeyB64` is not valid base64.
  */
 export async function wrapMasterKey(privateKeyB64: string, phrase: string): Promise<string> {
+  installExpoCryptoRng(); // ensure nacl.randomBytes has a CSPRNG on-device (idempotent)
   const privateKeyBytes = decodeBase64(privateKeyB64);
   if (privateKeyBytes.length !== nacl.box.secretKeyLength) {
     throw new Error('recovery: invalid private key length');

@@ -22,7 +22,6 @@ import {
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import {
   BiometricGateError,
-  getOrCreateMasterKeyPair,
   hasMasterKey,
   installMasterKeyPair,
   tryRestoreMasterKeyFromPlatform,
@@ -307,8 +306,8 @@ export default function BackupScreen() {
       //     account (iCloud Keychain / Block Store) → install + use it, NO phrase.
       //  3. Fresh device, no platform key, file has a recovery header → ask for the
       //     recovery phrase (the cross-ecosystem / lost-everything path).
-      //  4. Legacy Phase-1 file with no recovery header and no key → fall through to
-      //     a (wrong) fresh key so the user gets an honest "wrong key" message.
+      //  4. Legacy Phase-1 file with no recovery header and no key → nothing here can
+      //     decrypt it; show the honest "wrong key" error WITHOUT minting a master key.
       let privateKey: string;
       let restoredViaPlatform = false;
       if (await hasMasterKey()) {
@@ -325,7 +324,12 @@ export default function BackupScreen() {
           setStatus({ kind: 'idle' });
           return;
         } else {
-          privateKey = (await getOrCreateMasterKeyPair()).privateKey;
+          // No key on device, no platform custody, no recovery header. A fresh key
+          // couldn't decrypt this anyway — surface the error rather than calling
+          // getOrCreateMasterKeyPair, which would persist AND mirror a throwaway
+          // master key to iCloud just to fail the decrypt below.
+          setStatus({ kind: 'error', message: t('backup.restoreWrongKey') });
+          return;
         }
       }
 

@@ -1,3 +1,4 @@
+import { TIMEOUT_MS } from '../httpTimeout.js';
 import type { Minerals, Per100, Region } from '../types.js';
 import type { NutritionProvider, ProviderResult } from './provider.js';
 import { rankByName, scoreToConfidence } from './scoring.js';
@@ -129,6 +130,7 @@ export class FatSecretProvider implements NutritionProvider {
         method: 'POST',
         headers: { Authorization: `Basic ${basic}`, 'Content-Type': 'application/x-www-form-urlencoded' },
         body: 'grant_type=client_credentials&scope=basic',
+        signal: AbortSignal.timeout(TIMEOUT_MS.fatsecret),
       });
     } catch {
       return null;
@@ -166,7 +168,11 @@ export class FatSecretProvider implements NutritionProvider {
 
     let res: Response;
     try {
-      res = await fetch(url, { method: 'GET', headers: { Authorization: `Bearer ${token}` } });
+      res = await fetch(url, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(TIMEOUT_MS.fatsecret),
+      });
     } catch {
       return [];
     }
