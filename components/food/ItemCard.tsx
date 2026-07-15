@@ -34,23 +34,24 @@ export function ItemCard({
   onRemove?: () => void;
 }) {
   const { t } = useTranslation();
-  // TRANSPARENCY: which DB row the numbers describe. Shown when the matched
-  // row's own name differs from what the user logged («картошка» → «картофель
-  // варёный») — the row name usually carries the preparation state, so the
-  // user can judge the baseline instead of guessing. To change the state the
-  // user picks another match ("не то?"/"найти вручную") or re-parses a clearer
-  // query — we no longer apply a coarse cooking-method multiplier ourselves.
+  // The card title = what the user logged (or the DB name after an explicit
+  // re-pick). The matched DB row, when it differs, is shown on the «Как в базе»
+  // line below — not crammed into the title in parens (which read as «молоко
+  // 1.8% (молоко 3.2%)» → «почему 3.2%?»).
+  const titleName = item.userChosen && item.matched_name ? item.matched_name : item.name_ru;
+  // TRANSPARENCY: which DB row the numbers actually describe — shown on its own
+  // «Как в базе: …» line whenever it differs from the title the user sees. We
+  // deliberately DON'T suppress it just because it looks like a translation of
+  // the input (the old `!== name_en` check hid «Protein Pudding» for a typed
+  // «протеиновый пудинг» — so the card echoed the user's own words back and gave
+  // no evidence of WHAT it matched, device report 2026-07-15 «непонятно что
+  // выдал»). Only an exact repeat of the title is dropped. The row name usually
+  // carries the preparation/brand, so the user can judge the baseline instead of
+  // guessing; to change it they pick another match or re-parse a clearer query.
   const matchedLabel =
-    item.matched_name &&
-    normalizeChoiceName(item.matched_name) !== normalizeChoiceName(item.name_ru) &&
-    normalizeChoiceName(item.matched_name) !== normalizeChoiceName(item.name_en)
+    item.matched_name && normalizeChoiceName(item.matched_name) !== normalizeChoiceName(titleName)
       ? item.matched_name
       : null;
-  // The card title = what the user logged (or the DB name after an explicit
-  // re-pick). The matched DB row, when it differs, is shown on the small grey
-  // «на 100 г» line below — not crammed into the title in parens (which read as
-  // «молоко 1.8% (молоко 3.2%)» → «почему 3.2%?»).
-  const titleName = item.userChosen && item.matched_name ? item.matched_name : item.name_ru;
   // The "per 100 g · <source>" line shows the DB row itself (the footnote's promise).
   const dbPer100 = item.per100;
   // A full DB miss: the resolver's coarse placeholder. We show NO fabricated
@@ -142,11 +143,20 @@ export function ItemCard({
             {item.approximate ? <ApproxBadge theme={theme} label={t('food.approx')} /> : null}
           </View>
 
-          {/* Secondary grey line: the matched DB row + its per-100g + source. */}
+          {/* Provenance: WHAT DB row the numbers came from + its source, on its
+              own labelled line so «непонятно что выдал» can't happen — the user
+              sees the actual matched entry, not just their own words echoed. */}
+          {matchedLabel ? (
+            <Text style={[styles.matchedLine, { color: theme.subtle }, theme.font.body]}>
+              {t('food.matchedAs', { name: matchedLabel })}
+              {sourceInLine}
+            </Text>
+          ) : null}
+          {/* Secondary grey line: the per-100g baseline (+ source when no matched
+              line above already carries it). */}
           <Text style={[styles.per100Line, { color: theme.subtle }, theme.font.body]}>
-            {matchedLabel ? `${matchedLabel} · ` : ''}
             {t('food.per100')} {per100Line}
-            {sourceInLine}
+            {matchedLabel ? '' : sourceInLine}
           </Text>
 
           {/* Full micro breakdown, collapsed. */}
@@ -174,8 +184,19 @@ export function ItemCard({
         <ManualMacros item={item} isMiss={isMiss} theme={theme} onManualMacros={onManualMacros} />
       ) : null}
 
-      {/* WEIGHT — the main thing users adjust. Quick-set chips + a custom field;
-          tapping either confirms the weight (the «прикидка» caption disappears). */}
+      {/* WEIGHT — the main thing users adjust. When the weight was GUESSED (not
+          given), say so prominently right above the chips: the assumed grams
+          drive the whole number, and a 10px italic footnote was too easy to miss
+          (device report 2026-07-15). Tapping a chip / editing confirms the
+          weight → grams_source flips to 'confirmed' and this note disappears. */}
+      {item.grams_source === 'estimated' ? (
+        <View style={[styles.gramsGuessNote, { borderColor: theme.primary, backgroundColor: theme.card }]}>
+          <Text style={[styles.gramsGuessText, { color: theme.text }, theme.font.body]}>
+            {t('food.gramsGuessed', { grams })}
+          </Text>
+        </View>
+      ) : null}
+      {/* Quick-set chips + a custom field. */}
       <View style={styles.portionRow}>
         {PORTIONS.map((p) => {
           const active = grams === p;
@@ -208,11 +229,6 @@ export function ItemCard({
         />
         <Text style={[styles.gramsUnit, { color: theme.subtle }, theme.font.body]}>{t('units.g')}</Text>
       </View>
-      {item.grams_source === 'estimated' ? (
-        <Text style={[styles.gramsEstimate, { color: theme.subtle }, theme.font.body]}>
-          {t('food.gramsEstimatedShort')}
-        </Text>
-      ) : null}
 
       {/* ONE «Другой вариант» — DB alternatives (from the parse) AND manual search
           in the same disclosure. Opens itself on a shaky auto-pick. */}
@@ -383,8 +399,13 @@ const styles = StyleSheet.create({
   heroRow: { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', gap: 8, marginBottom: 2 },
   heroValue: { fontSize: 26 },
   heroUnit: { fontSize: 13, flexShrink: 1 },
-  // Quiet secondary: matched DB row + per-100g + source.
+  // Quiet secondary: matched DB row (provenance) + per-100g baseline + source.
+  matchedLine: { fontSize: 12, marginBottom: 2, lineHeight: 17 },
   per100Line: { fontSize: 12, marginBottom: 2, lineHeight: 17 },
+  // Prominent «weight was guessed» note — a bordered box above the chips, not a
+  // tiny footnote, because the assumed grams drive the whole number.
+  gramsGuessNote: { marginTop: 10, borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },
+  gramsGuessText: { fontSize: 12, lineHeight: 17 },
   // Quick-set weight chips.
   portionRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, flexWrap: 'wrap' },
   portionChip: { borderWidth: 1, borderRadius: 10, paddingVertical: 6, paddingHorizontal: 12 },
@@ -401,7 +422,6 @@ const styles = StyleSheet.create({
   manualInput: { textAlign: 'center' },
   gramsInput: { width: 64, paddingVertical: 8, fontSize: 14, textAlign: 'center' },
   gramsUnit: { fontSize: 12 },
-  gramsEstimate: { fontSize: 10, fontStyle: 'italic', marginTop: 2, lineHeight: 14 },
   badge: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
   badgeText: { fontSize: 11 },
   altWrap: { marginTop: 8 },

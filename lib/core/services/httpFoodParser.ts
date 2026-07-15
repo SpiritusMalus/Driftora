@@ -12,7 +12,15 @@ import type {
 } from './foodParser';
 
 const SOURCES: readonly NutritionSource[] = ['usda', 'skurikhin', 'openfoodfacts', 'apininjas', 'fatsecret', 'label', 'ai_estimate', 'estimate'];
+/** Text/search: the fast path (one LLM turn over a short string). */
 const DEFAULT_TIMEOUT_MS = 12_000;
+/** Photo/audio uploads: vision/transcription is much slower than text, and the
+ *  server's own OpenRouter call alone is bounded at 20s (server httpTimeout.ts)
+ *  — a 12s client abort could hang up while the backend is still legitimately
+ *  working, so a photo silently «failed to recognize» (device report
+ *  2026-07-15: «2 фото грузанул, одно не захотело распознаваться»). Give the
+ *  upload comfortably more than the server's 20s, mirroring the workout parser. */
+const UPLOAD_TIMEOUT_MS = 25_000;
 
 function isNutrientValues(v: unknown): v is NutrientValues {
   if (v === null || typeof v !== 'object') return false;
@@ -109,6 +117,8 @@ export interface HttpFoodParserOptions {
   searchEndpoint?: string;
   /** When set, every request carries `Authorization: Bearer <token>`. */
   token?: string;
+  /** Override the photo/audio upload timeout (defaults to `UPLOAD_TIMEOUT_MS`). */
+  uploadTimeoutMs?: number;
 }
 
 export class HttpFoodParser implements FoodParser {
@@ -117,6 +127,8 @@ export class HttpFoodParser implements FoodParser {
   private readonly searchEndpoint: string;
   /** Extra headers on every request — `Authorization` when a token is set. */
   private readonly authHeaders: Record<string, string>;
+  /** Longer timeout for the slow multipart uploads (photo/audio). */
+  private readonly uploadTimeoutMs: number;
 
   constructor(
     private readonly endpoint: string,
@@ -128,6 +140,7 @@ export class HttpFoodParser implements FoodParser {
     this.audioEndpoint = opts.audioEndpoint ?? deriveEndpoint(endpoint, 'audio');
     this.searchEndpoint = opts.searchEndpoint ?? deriveSearchEndpoint(endpoint);
     this.authHeaders = opts.token ? { Authorization: `Bearer ${opts.token}` } : {};
+    this.uploadTimeoutMs = opts.uploadTimeoutMs ?? UPLOAD_TIMEOUT_MS;
   }
 
   /**
@@ -190,7 +203,7 @@ export class HttpFoodParser implements FoodParser {
    */
   async parsePhoto(photo: PhotoInput, region: Region): Promise<MealDraft> {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    const timer = setTimeout(() => controller.abort(), this.uploadTimeoutMs);
     try {
       const form = new FormData();
       form.append('region', region);
@@ -225,7 +238,7 @@ export class HttpFoodParser implements FoodParser {
    */
   async parseAudio(audio: AudioInput, region: Region): Promise<MealDraft> {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    const timer = setTimeout(() => controller.abort(), this.uploadTimeoutMs);
     try {
       const form = new FormData();
       form.append('region', region);
