@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -47,9 +48,21 @@ export default function MoodScreen() {
   // acknowledgement. `selected` alone can't: it preloads the latest check-in
   // (possibly days old), so an ack keyed on it would fire without a fresh tap.
   const [ackValue, setAckValue] = useState<number | null>(null);
-  // History is a long, low-signal list; show the recent slice with a tap to
-  // expand rather than scrolling 30 near-identical rows by default.
+  // History is collapsed BY DAY, not by check-in: several check-ins a day are
+  // wanted (the insight averages them), but a flat row-per-tap list grows into
+  // a wall of near-identical lines (device feedback 2026-07-15: «лог должен быть
+  // дня, а не вниз огромный список»). Each day shows its LATEST value always,
+  // and expands on tap to reveal every check-in of that day.
   const [showAllHistory, setShowAllHistory] = useState(false);
+  const [expandedDays, setExpandedDays] = useState<Set<string>>(() => new Set());
+  const toggleDay = useCallback((key: string) => {
+    setExpandedDays((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
   const [saving, setSaving] = useState(false);
   const [best, setBest] = useState<SignalAssociation | null>(null);
   const [steps, setSteps] = useState<number | null>(null);
@@ -196,18 +209,52 @@ export default function MoodScreen() {
         }
       : null;
 
-  const HISTORY_PREVIEW = 7;
-  const allMoods = items ?? [];
-  const shownMoods = showAllHistory ? allMoods : allMoods.slice(0, HISTORY_PREVIEW);
-  const historyRows: RowSpec[] = shownMoods.map((m) => ({
-    key: String(m.id),
-    title: formatDate(m.ts),
-    right: <Text style={[styles.value, { color: theme.text }, theme.font.bodyBold]}>{m.value}/10</Text>,
-  }));
-  if (!showAllHistory && allMoods.length > HISTORY_PREVIEW) {
+  // Group the newest-first check-ins into calendar days (order preserved), then
+  // render one summary row per day. A day with several check-ins is tappable:
+  // its header keeps showing the latest value, and expanding lists each one.
+  const HISTORY_PREVIEW_DAYS = 7;
+  const days = groupMoodsByDay(items ?? []);
+  const shownDays = showAllHistory ? days : days.slice(0, HISTORY_PREVIEW_DAYS);
+  const historyRows: RowSpec[] = [];
+  for (const day of shownDays) {
+    const latest = day.entries[0]; // newest-first within the day
+    const multi = day.entries.length > 1;
+    const expanded = expandedDays.has(day.key);
+    const valueBadge = (v: number, strong: boolean) => (
+      <Text
+        style={[styles.value, { color: strong ? theme.text : theme.subtle }, strong ? theme.font.bodyBold : theme.font.body]}
+      >
+        {v}/10
+      </Text>
+    );
+    historyRows.push({
+      key: day.key,
+      title: formatDay(day.date),
+      subtitle: multi ? t(marksKey(day.entries.length), { count: day.entries.length }) : undefined,
+      onPress: multi ? () => toggleDay(day.key) : undefined,
+      right: multi ? (
+        <View style={styles.dayRight}>
+          {valueBadge(latest.value, true)}
+          <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={16} color={theme.tertiary} />
+        </View>
+      ) : (
+        valueBadge(latest.value, true)
+      ),
+    });
+    if (multi && expanded) {
+      for (const m of day.entries) {
+        historyRows.push({
+          key: `${day.key}-${m.id}`,
+          title: formatTime(m.ts),
+          right: valueBadge(m.value, false),
+        });
+      }
+    }
+  }
+  if (!showAllHistory && days.length > HISTORY_PREVIEW_DAYS) {
     historyRows.push({
       key: 'showAll',
-      title: t('mood.showAll', { count: allMoods.length }),
+      title: t('mood.showAll', { count: days.length }),
       onPress: () => setShowAllHistory(true),
     });
   }
@@ -286,9 +333,52 @@ function swipeRight(dx: number, dy: number): boolean {
   return dx > 28 && Math.abs(dx) > Math.abs(dy) * 1.75;
 }
 
-function formatDate(d: Date): string {
+/// One calendar day of check-ins, newest day first and newest-within-day first
+/// (the input list is already `desc(ts)`, so this preserves order).
+interface MoodDay {
+  key: string;
+  date: Date;
+  entries: MoodRow[];
+}
+
+/// Buckets newest-first mood rows into local calendar days, keeping order. The
+/// key is the local Y-M-D so two check-ins minutes apart share one row.
+function groupMoodsByDay(moods: MoodRow[]): MoodDay[] {
+  const days: MoodDay[] = [];
+  let current: MoodDay | null = null;
+  for (const m of moods) {
+    const d = m.ts;
+    const key = `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+    if (!current || current.key !== key) {
+      current = { key, date: d, entries: [m] };
+      days.push(current);
+    } else {
+      current.entries.push(m);
+    }
+  }
+  return days;
+}
+
+function formatDay(d: Date): string {
   const p = (n: number) => String(n).padStart(2, '0');
-  return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  return `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()}`;
+}
+
+function formatTime(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/// Plural-correct key for the "N check-ins" day subtitle. i18next here runs
+/// without the plural plugin, so we branch explicitly (mirrors [buildingKey]);
+/// the ru locale carries one/few/many, en carries one/other under the same key
+/// stems, so the same slugs resolve in both.
+function marksKey(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return 'mood.marksOne';
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'mood.marksFew';
+  return 'mood.marksMany';
 }
 
 /// Picks the plural-correct "N more days" key. i18next here is configured without
@@ -328,4 +418,5 @@ const styles = StyleSheet.create({
   hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
   history: { marginTop: 16 },
   value: { fontSize: 16 },
+  dayRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
 });
