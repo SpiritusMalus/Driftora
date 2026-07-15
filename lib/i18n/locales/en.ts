@@ -679,7 +679,13 @@ export const en = {
     // separate caption line — shorter and clearer.
     anchorLow: 'very low',
     anchorHigh: 'great',
-    showAll: 'Show all ({{count}})',
+    showAll: 'Show all days ({{count}})',
+    // History collapses by day; this labels how many check-ins a day holds. The
+    // ru plural split (one/few/many) reuses the same key stems — in English few
+    // and many both read as the plural form.
+    marksOne: '{{count}} check-in',
+    marksFew: '{{count}} check-ins',
+    marksMany: '{{count}} check-ins',
     empty: 'No mood check-ins yet.',
     dbUnavailable: 'Mood is available in a device dev build.',
   },
