@@ -831,6 +831,9 @@ export const en = {
     myDiet: 'From my diet',
     myDietHint: 'Pick a food and type the grams — the exact macros are already saved.',
     per100: 'per 100 g',
+    // Provenance: which DB row the numbers came from (so «what did it return?»
+    // can't happen — the user sees the real match, not their own words echoed).
+    matchedAs: 'In database: {{name}}',
     approx: '≈ approx',
     disclaimer:
       'Per-100 g figures come from the database. Until the weight is confirmed, the dish total is approximate.',
@@ -841,6 +844,9 @@ export const en = {
     // The user never named a weight — say honestly this is our guess.
     gramsEstimated: '≈ the weight is our guess at a typical portion. Adjust it if you know better.',
     gramsEstimatedShort: '≈ weight is our guess — adjust it',
+    // Prominent note above the chips: no weight given, show the assumed one and
+    // invite a fix (the weight drives the whole number).
+    gramsGuessed: 'No weight given — assumed {{grams}} g. Adjust if your portion differs.',
     forGrams: 'per {{grams}} g',
     otherOption: {
       open: 'Other option',
