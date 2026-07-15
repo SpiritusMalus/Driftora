@@ -9,9 +9,10 @@ export const en = {
   // from the AI cross-border consent below — Russian law bans bundled consent.
   legal: {
     gate: {
-      title: 'Before you start',
-      body: "Your diary, mood, weight and meals are stored only on this phone, in an encrypted database. There is no account and no server holding your records — we can't see or read them.",
-      acceptHint: 'By tapping "Accept", you agree to the Terms of Use and the Privacy Policy.',
+      heroText: 'Your entries stay on your phone.',
+      heroLead: 'In an encrypted database — yours alone.',
+      body: 'There’s no account or server holding them: we can’t see or read them.',
+      acceptHint: 'By tapping “Accept”, you agree to the Terms of Use and the Privacy Policy.',
       accept: 'Accept',
     },
     terms: 'Terms of Use',
@@ -25,7 +26,7 @@ export const en = {
       title: 'Send this meal for recognition?',
       body: 'Your food description — text, photo or voice — goes for recognition to OpenRouter (OpenRouter, Inc., USA) via our server. Calories and macros come from the food database; when a food is in no database, a rough AI estimate marked “≈” fills in. Your diary, mood and weight are never sent. Write about the food only — no extra personal details. This is a cross-border data transfer; you can withdraw consent in Settings.',
       accept: 'Send',
-      decline: "Don't send",
+      decline: 'Don’t send',
       declineCaption: 'Text is counted from the built-in table — rougher. Photos and voice can’t be parsed without AI.',
     },
     photo: {
@@ -38,7 +39,7 @@ export const en = {
       title: 'Parse this workout with AI?',
       body: 'Your workout description — text, voice or a screenshot — goes to OpenRouter (OpenRouter, Inc., USA) via our server to identify the activity type and duration. Calories are computed by the app from your weight; for a tracker screenshot, the printed figure is logged. Your diary, mood and weight are never sent. Write about the workout only. This is a cross-border data transfer; you can withdraw consent in Settings.',
       accept: 'Parse',
-      decline: "Don't send",
+      decline: 'Don’t send',
       declineCaption: 'You can still add a workout with the buttons — they work offline.',
     },
   },
@@ -52,16 +53,12 @@ export const en = {
       noneYet: 'nothing logged yet',
       earnedEstimate: '≈ {{kcal}} kcal above resting from steps',
     },
-    activity: {
-      // Workout line in the activity widget — the counted (75%) budget share.
-      workoutsLine: 'Workouts: +{{kcal}} kcal to the budget',
-    },
     // Compare today to the user's own normal (personal step baseline). Tone is
     // curious and supportive — never a target, never "you're behind".
     baseline: {
       above: 'Above your usual today',
       typical: 'A typical day for you',
-      below: "Quieter than usual today — and that's okay",
+      below: 'Quieter than usual today — and that’s okay',
       forming: 'Still learning your rhythm',
     },
     bodyMind: { basis: 'Based on {{days}} days with mood + {{signal}}' },
@@ -80,7 +77,7 @@ export const en = {
     sleep: {
       meaning: {
         unknown: 'no sleep data yet',
-        very_short: 'under 6 hours — a short night; one won\'t undo you',
+        very_short: 'under 6 hours — a short night; one won’t undo you',
         short: 'close to the range; nearer 7 hours often feels easier by day',
         ample: 'within the recommended 7–9 hours',
         long: 'over 9 hours — sometimes a sign your body is catching up',
@@ -90,14 +87,14 @@ export const en = {
       empty: 'A new day. Check in your mood or take a few steps, and a summary shows up here.',
       steps: '{{steps}} steps already today. A good start.',
       mood: 'Mood today — {{mood}}/10. Thanks for checking in.',
-      win: 'There\'s already a small win today — that counts.',
+      win: 'There’s already a small win today — that counts.',
       stepsMood: '{{steps}} steps and a mood of {{mood}}/10 today.',
       stepsWin: '{{steps}} steps today — and already a win.',
       moodWin: 'Mood {{mood}}/10 and a win in the bag. Good day.',
       stepsMoodWin: '{{steps}} steps, mood {{mood}}/10 — and already a win today.',
       returning1: 'Good to see you back. Returning is itself a kind of care.',
       returning2: 'Welcome back. Any day is a good day to pick this up again.',
-      returning3: 'You\'re here again — and that\'s the habit. Start small whenever you\'re ready.',
+      returning3: 'You’re here again — and that’s the habit. Start small whenever you’re ready.',
       returning4: 'Back together. No need to catch up — just note how you are right now.',
     },
     feeders: {
@@ -106,8 +103,8 @@ export const en = {
       // activity widget). Opens the workouts screen.
       workouts: 'Workouts',
       workoutsCta: 'Log a workout',
-      workoutsToday: '+{{kcal}} kcal to today\'s budget',
-      sleep: 'Last night\'s sleep',
+      workoutsToday: '≈{{kcal}} kcal to today’s budget',
+      sleep: 'Last night’s sleep',
       diary: 'Thought diary',
       diaryCount: '{{count}} entries',
       diaryCta: 'Walk a worrying thought through steps',
@@ -163,10 +160,6 @@ export const en = {
     hero: {
       title: 'Body and mind, together',
       body: 'Driftora looks for one honest link: how moving, sleep and food shape how you feel. An association, not a cause.',
-    },
-    privacy: {
-      title: 'Your data stays yours',
-      body: 'Everything lives on your phone in an encrypted database; your diary and mood never leave it. To survive a lost phone, make a backup in Settings — it is encrypted too.',
     },
     feed: {
       title: 'A minute a day is enough',

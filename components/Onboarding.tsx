@@ -18,9 +18,12 @@ import { useTheme } from '@/lib/theme/theme';
 /// Degradation: with no database (web / Expo Go) there's nothing to persist, so
 /// we don't trap the user — content shows. On a real build the flag is set on
 /// dismiss and the intro never returns.
+// Two slides: the value prop, then how to feed it in a tap. The privacy slide
+// was cut — its promise already leads the LegalGate one screen earlier, and its
+// backup nudge is premature on a fresh, data-empty install (it lives in
+// Settings, where there is something to back up).
 const SLIDES = [
   { icon: 'pulse-outline', key: 'hero' },
-  { icon: 'lock-closed-outline', key: 'privacy' },
   { icon: 'hand-left-outline', key: 'feed' },
 ] as const;
 

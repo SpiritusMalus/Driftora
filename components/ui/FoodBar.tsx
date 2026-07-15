@@ -20,8 +20,10 @@ export function FoodBar({
 }) {
   const theme = useTheme();
   const { t } = useTranslation();
+  // Icon sits on the coral disc/gradient — same surface as PrimaryButton, so it
+  // takes the same on-primary token (dark ink on the lighter dark-mode coral).
   const mic = (
-    <Ionicons name="mic-outline" size={22} color="#FFFFFF" />
+    <Ionicons name="mic-outline" size={22} color={theme.onPrimary} />
   );
 
   return (
@@ -86,7 +88,7 @@ const styles = StyleSheet.create({
   barIOS: {
     borderRadius: 22,
     shadowOpacity: 0.12,
-    shadowColor: '#000',
+    shadowColor: '#2A1A14',
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 10 },
   },

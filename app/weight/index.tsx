@@ -878,7 +878,7 @@ const styles = StyleSheet.create({
   field: { marginBottom: 10 },
   fieldLabel: { fontSize: 12, marginBottom: 5, marginTop: 4 },
   chips: { flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginBottom: 8 },
-  chip: { borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 7 },
+  chip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7 },
   chipText: { fontSize: 13 },
   applyBtn: { borderWidth: 1.5, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 10, alignSelf: 'flex-start', marginTop: 12 },
   applyText: { fontSize: 14 },

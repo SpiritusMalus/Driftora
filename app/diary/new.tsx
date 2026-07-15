@@ -1,10 +1,11 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { MoodScale } from '@/components/ui/MoodScale';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
+import { Screen } from '@/components/ui/Screen';
 import { TextField } from '@/components/ui/TextField';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { getDiaryEntry, saveDiaryEntry, updateDiaryEntry, type Emotion } from '@/lib/core/db/diary';
@@ -103,12 +104,7 @@ export default function DiaryNewScreen() {
   }
 
   return (
-    <ScrollView
-      style={{ backgroundColor: theme.background }}
-      contentContainerStyle={theme.isIOS ? styles.iosContent : styles.androidContent}
-      contentInsetAdjustmentBehavior="automatic"
-      keyboardShouldPersistTaps="handled"
-    >
+    <Screen>
       <View
         style={styles.dots}
         accessibilityRole="progressbar"
@@ -229,7 +225,7 @@ export default function DiaryNewScreen() {
       {db == null ? (
         <Text style={[styles.dbHint, { color: theme.subtle }, theme.font.body]}>{t('diary.dbUnavailable')}</Text>
       ) : null}
-    </ScrollView>
+    </Screen>
   );
 }
 
@@ -383,8 +379,6 @@ function DistortionPicker({
 }
 
 const styles = StyleSheet.create({
-  androidContent: { paddingHorizontal: 18, paddingTop: 8, paddingBottom: 32 },
-  iosContent: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 32 },
   dots: { flexDirection: 'row', gap: 6, marginTop: 4, marginBottom: 2 },
   dot: { width: 7, height: 7, borderRadius: 4 },
   dotActive: { width: 20 },

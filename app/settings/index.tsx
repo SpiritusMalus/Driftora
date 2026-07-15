@@ -196,8 +196,8 @@ export default function SettingsScreen() {
   }
 
   const encrypted = db != null && getDbDriver() === 'op-sqlite';
-  const coralTile = theme.scheme === 'light' ? '#FBE2D9' : '#3A241B';
-  const amberTile = theme.scheme === 'light' ? '#FBEFD9' : '#33261F';
+  const coralTile = theme.primarySoft;
+  const amberTile = theme.accentSoft;
   const neutralTile = theme.scheme === 'light' ? '#EFE6E0' : '#2C2622';
 
   // «Данные и приватность» — the scattered legal / storage / backup rows folded
