@@ -74,18 +74,33 @@ export async function hasAnyWinOnDay(
   return rows.length > 0;
 }
 
+/// Serializes all award attempts through a single in-flight chain. The check
+/// (`hasWinOfKindOnDay`) and the insert are separated by an `await`, and the
+/// `wins` table has no unique (kind, day) constraint — so two overlapping calls
+/// (rapid Home refocus, or a manual trigger racing the auto pass) could both read
+/// "no win yet" and both insert, duplicating the win. There is a single JS
+/// runtime, so a promise-chain mutex fully closes the interleave without a schema
+/// migration.
+let awardChain: Promise<unknown> = Promise.resolve();
+
 /// Inserts a win of [kind] unless one already exists on [date]'s local day.
 /// Returns true iff a new win was written — idempotent per (kind, day), so it
-/// is safe to call on every Home focus.
+/// is safe to call on every Home focus (see `awardChain`).
 export async function awardOncePerDay(
   db: AnyDb,
   kind: string,
   message: string,
   date: Date = new Date(),
 ): Promise<boolean> {
-  if (await hasWinOfKindOnDay(db, kind, date)) return false;
-  await db.insert(wins).values({ kind, message, ts: date });
-  return true;
+  const run = awardChain.then(async () => {
+    if (await hasWinOfKindOnDay(db, kind, date)) return false;
+    await db.insert(wins).values({ kind, message, ts: date });
+    return true;
+  });
+  // Keep the chain alive even if this attempt rejects (swallow only for the
+  // chain; the original rejection still propagates to `run`'s awaiter).
+  awardChain = run.catch(() => undefined);
+  return run;
 }
 
 /// Evaluates today's facts and awards any earned auto-wins, deduped per day.

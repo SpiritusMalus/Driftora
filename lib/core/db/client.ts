@@ -50,16 +50,38 @@ export async function openDatabase(): Promise<Database> {
   const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient;
 
   if (!isExpoGo) {
+    // Load the native module FIRST, separately from opening the DB. A failure to
+    // import means op-sqlite isn't linked (legitimate → fall through to the
+    // unencrypted expo-sqlite path). But if the module IS present and the
+    // ENCRYPTED open/schema then fails, we must NOT silently create an
+    // unencrypted expo-sqlite `driftora.db` — that would persist all health data
+    // in plaintext with only a console warning. In that case we fail closed:
+    // rethrow so `DatabaseProvider` leaves `db` null (screens show placeholders)
+    // rather than downgrade at-rest encryption behind the user's back.
+    let opModule: typeof import('@op-engineering/op-sqlite') | null = null;
+    let drizzleOp: typeof import('drizzle-orm/op-sqlite') | null = null;
     try {
-      const { open } = await import('@op-engineering/op-sqlite');
-      const { drizzle } = await import('drizzle-orm/op-sqlite');
-      const op = open({ name: 'driftora.db', encryptionKey: key });
-      await applySchema((statement) => op.execute(statement));
-      _db = drizzle(op, { schema });
-      _driver = 'op-sqlite';
-      return _db;
-    } catch (nativeError) {
-      console.warn('op-sqlite failed to open — falling back to expo-sqlite.', nativeError);
+      opModule = await import('@op-engineering/op-sqlite');
+      drizzleOp = await import('drizzle-orm/op-sqlite');
+    } catch (moduleAbsent) {
+      console.warn('op-sqlite module not present — falling back to expo-sqlite.', moduleAbsent);
+      opModule = null;
+    }
+
+    if (opModule && drizzleOp) {
+      try {
+        const op = opModule.open({ name: 'driftora.db', encryptionKey: key });
+        await applySchema((statement) => op.execute(statement));
+        _db = drizzleOp.drizzle(op, { schema });
+        _driver = 'op-sqlite';
+        return _db;
+      } catch (openError) {
+        console.error(
+          'op-sqlite is present but the encrypted open failed — refusing to fall back to unencrypted storage.',
+          openError,
+        );
+        throw openError;
+      }
     }
   }
 

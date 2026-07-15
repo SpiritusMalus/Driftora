@@ -475,7 +475,9 @@ export function normalizeIdentified(payload: unknown): IdentifiedItem[] {
     const name_ru = typeof r.name_ru === 'string' ? r.name_ru.trim() : '';
     const name_en = typeof r.name_en === 'string' ? r.name_en.trim() : '';
     if (name_ru.length === 0 && name_en.length === 0) continue;
-    const grams = round1(Math.max(0, num(r.est_grams)));
+    // Clamp to a sane ceiling (5 kg, same bound as net_weight_g) so a hallucinated
+    // or injected est_grams (e.g. 1e12) can't produce absurd totals downstream.
+    const grams = round1(Math.min(5000, Math.max(0, num(r.est_grams))));
     const confidence = Math.min(1, Math.max(0, num(r.confidence)));
     const item: IdentifiedItem = {
       name_ru: name_ru || name_en,

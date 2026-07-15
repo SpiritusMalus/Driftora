@@ -30,6 +30,7 @@ android {
 }
 
 dependencies {
-  // Google Block Store — cloud key custody restored after Google sign-in.
-  implementation "com.google.android.gms:play-services-auth-blockstore:16.4.0"
+  // (No runtime deps — Block Store custody is not wired yet; the Android module
+  // is a no-op placeholder. The unused play-services-auth-blockstore dependency
+  // was removed to trim APK weight. Re-add it when custody is actually implemented.)
 }

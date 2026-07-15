@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 
 import { dayKey } from '../db/steps';
 import type { HealthAvailability, HealthService } from './health';
+import { asleepMinutes, type SleepSample } from './sleepSamples';
 
 /// REAL device health source — reads steps + sleep from the OS health store via
 /// `react-native-health` (iOS HealthKit) and `react-native-health-connect`
@@ -26,7 +27,7 @@ interface AppleHealthKit {
   getStepCount(opts: { date: string }, cb: (err: string | null, res: { value: number }) => void): void;
   getSleepSamples(
     opts: { startDate: string; endDate: string },
-    cb: (err: string | null, res: { startDate: string; endDate: string }[]) => void,
+    cb: (err: string | null, res: SleepSample[]) => void,
   ): void;
   Constants: { Permissions: { StepCount: string; SleepAnalysis: string } };
 }
@@ -80,10 +81,7 @@ class IosHealthService implements HealthService {
         { startDate: start.toISOString(), endDate: end.toISOString() },
         (err, samples) => {
           if (err || !Array.isArray(samples)) return resolve(null);
-          const minutes = samples.reduce(
-            (sum, s) => sum + (new Date(s.endDate).getTime() - new Date(s.startDate).getTime()) / 60000,
-            0,
-          );
+          const minutes = asleepMinutes(samples);
           resolve(minutes > 0 ? Math.round(minutes) : null);
         },
       );
