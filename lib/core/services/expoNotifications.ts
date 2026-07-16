@@ -44,9 +44,24 @@ export class ExpoNotificationService implements NotificationService {
     minute: number;
     title: string;
     body: string;
+    once?: boolean;
   }): Promise<void> {
     const N = await this.mod();
     if (!N) return;
+    if (opts.once) {
+      // One-shot (context nudges): fire at hour:minute TODAY only. If that
+      // moment already passed, don't schedule at all — rolling it to tomorrow
+      // would deliver a stale context, the exact failure `once` exists to stop.
+      const now = new Date();
+      const at = new Date(now.getFullYear(), now.getMonth(), now.getDate(), opts.hour, opts.minute, 0, 0);
+      if (at.getTime() <= now.getTime()) return;
+      await N.scheduleNotificationAsync({
+        identifier: opts.id,
+        content: { title: opts.title, body: opts.body },
+        trigger: { type: N.SchedulableTriggerInputTypes.DATE, date: at },
+      });
+      return;
+    }
     await N.scheduleNotificationAsync({
       identifier: opts.id,
       content: { title: opts.title, body: opts.body },

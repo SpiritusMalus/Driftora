@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ConsentModal } from '@/components/consent/ConsentModal';
 import { Card } from '@/components/ui/Card';
@@ -383,6 +383,15 @@ export function WorkoutSection({
     await reload();
   }
 
+  // The ✕ is a tiny target and the delete silently reshapes the day's budget —
+  // ask first, exactly like the food and diary deletes do.
+  function confirmRemove(id: number) {
+    Alert.alert(t('workouts.removeConfirmTitle'), t('workouts.removeConfirmBody'), [
+      { text: t('workouts.removeCancel'), style: 'cancel' },
+      { text: t('workouts.remove'), style: 'destructive', onPress: () => void remove(id) },
+    ]);
+  }
+
   const totalRaw = rows.reduce((s, r) => s + Number(r.kcal), 0);
   const counted = Math.round(totalRaw * EATBACK_FRACTION);
 
@@ -710,7 +719,7 @@ export function WorkoutSection({
                     {Math.round(r.kcal)} {t('units.kcal')}
                   </Text>
                   <Pressable
-                    onPress={() => void remove(r.id)}
+                    onPress={() => confirmRemove(r.id)}
                     hitSlop={8}
                     accessibilityRole="button"
                     accessibilityLabel={t('workouts.remove')}

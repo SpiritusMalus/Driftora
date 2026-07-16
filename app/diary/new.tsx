@@ -1,7 +1,8 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { usePreventRemove } from '@react-navigation/native';
+import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { MoodScale } from '@/components/ui/MoodScale';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
@@ -17,6 +18,40 @@ import { type Theme, useTheme } from '@/lib/theme/theme';
 /// name the thought, then weigh it. Mood is rated before (on `situation`) and
 /// after (on `reframe`) so the record shows the shift.
 const STEPS = ['situation', 'emotions', 'reaction', 'thoughts', 'evidence', 'reframe'] as const;
+
+/// Serialized form state for the exit guard — one stable shape shared by the
+/// blank baseline, the loaded-record baseline and the current values.
+function snapshot(v: {
+  situation: string;
+  thoughts: string;
+  emotions: Emotion[];
+  reactionBody: string;
+  reactionBehavior: string;
+  evidenceFor: string;
+  evidenceAgainst: string;
+  reframe: string;
+  moodBefore: number | null;
+  mood: number | null;
+  distortions: DistortionKey[];
+}): string {
+  return JSON.stringify(v);
+}
+
+function blankSnapshot(): string {
+  return snapshot({
+    situation: '',
+    thoughts: '',
+    emotions: [],
+    reactionBody: '',
+    reactionBehavior: '',
+    evidenceFor: '',
+    evidenceAgainst: '',
+    reframe: '',
+    moodBefore: null,
+    mood: null,
+    distortions: [],
+  });
+}
 
 export default function DiaryNewScreen() {
   const { t } = useTranslation();
@@ -42,6 +77,14 @@ export default function DiaryNewScreen() {
   const [mood, setMood] = useState<number | null>(null);
   const [distortions, setDistortions] = useState<DistortionKey[]>([]);
   const [saving, setSaving] = useState(false);
+  // Set on successful save; navigation happens in an effect AFTER the re-render
+  // so the exit guard below sees the form as clean and lets the back through.
+  const [savedOk, setSavedOk] = useState(false);
+  // What the wizard looked like before the user touched it: blank for a new
+  // record, the stored values once an edit pre-fills. The exit guard compares
+  // against this so system back can't silently destroy typed-in work — the
+  // most effortful entry in the app (null until an edit's baseline is known).
+  const [baseline, setBaseline] = useState<string | null>(editId == null ? blankSnapshot() : null);
 
   // When editing, load the record once and pre-fill every field.
   useEffect(() => {
@@ -61,6 +104,21 @@ export default function DiaryNewScreen() {
       setMoodBefore(e.moodBefore ?? null);
       setMood(e.mood);
       setDistortions(e.distortions);
+      setBaseline(
+        snapshot({
+          situation: e.situation,
+          thoughts: e.thoughts,
+          emotions: e.emotions,
+          reactionBody: e.reactionBody,
+          reactionBehavior: e.reactionBehavior,
+          evidenceFor: e.evidenceFor,
+          evidenceAgainst: e.evidenceAgainst,
+          reframe: e.reframe,
+          moodBefore: e.moodBefore ?? null,
+          mood: e.mood,
+          distortions: e.distortions,
+        }),
+      );
     })();
     return () => {
       active = false;
@@ -73,6 +131,35 @@ export default function DiaryNewScreen() {
   const canSave =
     db != null &&
     (situation.trim().length > 0 || thoughts.trim().length > 0 || reframe.trim().length > 0);
+
+  const navigation = useNavigation();
+  const current = snapshot({
+    situation,
+    thoughts,
+    emotions,
+    reactionBody,
+    reactionBehavior,
+    evidenceFor,
+    evidenceAgainst,
+    reframe,
+    moodBefore,
+    mood,
+    distortions,
+  });
+  // Guard system back / header back while there is unsaved typed-in work.
+  usePreventRemove(baseline != null && current !== baseline && !savedOk, ({ data }) => {
+    Alert.alert(t('diary.discardTitle'), t('diary.discardBody'), [
+      { text: t('diary.discardStay'), style: 'cancel' },
+      {
+        text: t('diary.discardLeave'),
+        style: 'destructive',
+        onPress: () => navigation.dispatch(data.action),
+      },
+    ]);
+  });
+  useEffect(() => {
+    if (savedOk) router.back();
+  }, [savedOk, router]);
 
   async function onSave() {
     if (!db) return;
@@ -97,7 +184,9 @@ export default function DiaryNewScreen() {
       } else {
         await saveDiaryEntry(db, draft);
       }
-      router.back();
+      // Leave via the savedOk effect (not directly): the exit guard must first
+      // re-render as clean, or it would challenge our own post-save back.
+      setSavedOk(true);
     } finally {
       setSaving(false);
     }

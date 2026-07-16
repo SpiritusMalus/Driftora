@@ -85,13 +85,13 @@ export const en = {
     },
     daySummary: {
       empty: 'A new day. Check in your mood or take a few steps, and a summary shows up here.',
-      steps: '{{steps}} steps already today. A good start.',
+      steps: '{{steps}} {{stepsWord}} already today. A good start.',
       mood: 'Mood today — {{mood}}/10. Thanks for checking in.',
       win: 'There’s already a small win today — that counts.',
-      stepsMood: '{{steps}} steps and a mood of {{mood}}/10 today.',
-      stepsWin: '{{steps}} steps today — and already a win.',
+      stepsMood: '{{steps}} {{stepsWord}} and a mood of {{mood}}/10 today.',
+      stepsWin: '{{steps}} {{stepsWord}} today — and already a win.',
       moodWin: 'Mood {{mood}}/10 and a win in the bag. Good day.',
-      stepsMoodWin: '{{steps}} steps, mood {{mood}}/10 — and already a win today.',
+      stepsMoodWin: '{{steps}} {{stepsWord}}, mood {{mood}}/10 — and already a win today.',
       returning1: 'Good to see you back. Returning is itself a kind of care.',
       returning2: 'Welcome back. Any day is a good day to pick this up again.',
       returning3: 'You’re here again — and that’s the habit. Start small whenever you’re ready.',
@@ -374,7 +374,7 @@ export const en = {
     screenTitle: 'Workouts',
     title: 'Workouts today',
     summaryEmpty: 'none — add one',
-    summary: '−{{kcal}} kcal · {{counted}} counted',
+    summary: '−{{kcal}} kcal · {{counted}} kcal into the budget',
     // Segmented control: one input path at a time instead of three open blocks.
     mode: { exact: 'Exact', tracker: 'From tracker', ai: 'Describe' },
     minutes: 'e.g. 30',
@@ -404,6 +404,10 @@ export const en = {
     },
     add: 'Add',
     remove: 'Remove',
+    // Same confirm pattern as food and diary deletes: this reshapes the day budget.
+    removeConfirmTitle: 'Remove this workout?',
+    removeConfirmBody: 'The entry will be deleted and the day budget recalculated.',
+    removeCancel: 'Keep it',
     exactHead: 'Enter exactly',
     aiHead: 'Or describe it — AI will parse',
     weightFallback: 'Estimated from {{kg}} kg — log your weight on the Weight screen for accuracy.',
@@ -429,7 +433,9 @@ export const en = {
     // The short line is always visible; the full math is a tap away («How we count»).
     noteShort: 'Only 75% enters the budget — formulas usually overstate.',
     noteToggle: 'How we count',
-    note: 'Burn is an estimate from type and duration; strength — from sets. Strength and interval work get ≈10% more: the body keeps burning above rest for a while after. Only 75% enters the budget — formulas usually overstate. A tracker number is saved as-is (“from tracker”). Details — in “How it works”.',
+    // The 75% line lives in `noteShort`, which stays visible above this — no
+    // point repeating it word for word one line lower.
+    note: 'Burn is an estimate from type and duration; strength — from sets. Strength and interval work get ≈10% more: the body keeps burning above rest for a while after. A tracker number is saved as-is (“from tracker”). Details — in “How it works”.',
     type: {
       walk: 'Walking',
       run: 'Running',
@@ -481,6 +487,7 @@ export const en = {
     unit: 'kg',
     save: 'Save',
     saving: 'Saving…',
+    rangeHint: 'Looks like a typo: weight should be between 20 and 400 kg.',
     empty: 'No weight entries yet. Weighing in is optional — no pressure.',
     note: 'Weight is just one signal, and it naturally fluctuates day to day.',
     dbUnavailable: 'Weight is available in a device dev build.',
@@ -547,6 +554,8 @@ export const en = {
         'The target won’t drop below {{kcal}} kcal — the healthy minimum. Steps and workouts add on top.',
       apply: 'Make this my daily target',
       applied: 'Already your daily target ✓',
+      // The save above is skipped without a database — no false «target ✓».
+      notSaved: 'Database unavailable — the target was not saved.',
       appliedTick: 'Goal updated ✓',
       recalc: 'The plan recalculates itself after every new weigh-in.',
       needWeight: 'Log a weight above — the plan is computed from it.',
@@ -635,6 +644,11 @@ export const en = {
   steps: {
     placeholder: 'Steps today',
     unit: 'steps',
+    // Declension next to a CONCRETE number (the bare `unit` stays the label
+    // beside inputs); picked via [pluralKey] — en only branches on 1.
+    unitOne: 'step',
+    unitFew: 'steps',
+    unitMany: 'steps',
     save: 'Save',
     saving: 'Saving…',
     note: 'A number you enter by hand always wins — the automatic count never overwrites it.',
@@ -662,7 +676,10 @@ export const en = {
   // their own screen now.
   activity: {
     title: 'Steps',
-    today: 'steps today',
+    // Follows the hero NUMBER, so it declines with it (via [pluralKey]).
+    todayOne: 'step today',
+    todayFew: 'steps today',
+    todayMany: 'steps today',
     // Screen is open but there's no automatic or manual number for today yet.
     noneToday: 'No steps logged for today yet — connect automatic counting or enter them by hand.',
     // Honest «steps → budget» payoff, right on the screen that owns steps.
@@ -796,6 +813,7 @@ export const en = {
     // Multi-select photos: each dish its own entry, reviewed one at a time.
     batchProgress: 'Photo {{index}} of {{total}}',
     batchSkip: 'Skip photo',
+    saveFailed: 'Didn’t save — please try again.',
     save: 'Save',
     saving: 'Saving…',
     clear: 'Start over',
@@ -803,7 +821,7 @@ export const en = {
     savedWarm2: 'Noted. Thanks for keeping track',
     savedWarm3: 'Saved. A small step is care too',
     savedWarm4: 'Done. You noticed this meal — that’s the skill',
-    empty: 'Describe your meal and tap “Parse”.',
+    empty: 'Describe your meal and tap “Add up”.',
     total: 'Total',
     hideCalories: 'Hide calories — keep protein only',
     showCalories: 'Show calories and macros',
@@ -946,6 +964,11 @@ export const en = {
     next: 'Next',
     save: 'Save',
     saveExit: 'Save & exit',
+    // Exit guard for the stepper — typed-in work must not vanish on a stray back.
+    discardTitle: 'Entry not saved',
+    discardBody: 'If you leave now, what you typed will be lost.',
+    discardStay: 'Stay',
+    discardLeave: 'Leave without saving',
     saving: 'Saving…',
     progress: 'Step {{current}} of {{total}}',
     moodShort: 'Mood',
@@ -1066,6 +1089,13 @@ export const en = {
     reminderAdd: 'Time (HH:mm)',
     reminderAddBtn: 'Add',
     reminderRemove: 'Remove reminder {{time}}',
+    // Honesty: no OS permission → the promised «Next reminder» will never fire.
+    notifDenied: 'Notifications for Driftora are off in the system — reminders will not arrive. Tap to open settings.',
+    // Exit guard: toggles and fields here only apply on Save.
+    unsavedTitle: 'Changes not saved',
+    unsavedBody: 'Go back and tap “Save” to apply them.',
+    unsavedStay: 'Stay',
+    unsavedLeave: 'Leave without saving',
     remindersNote: 'Fire when the app is allowed to send notifications. A break turns them off.',
     nextReminder: 'Next: {{when}}',
     contextualNudges: 'Smart movement nudges (optional)',
@@ -1121,10 +1151,10 @@ export const en = {
       mood: 'Handled stress',
     },
     auto: {
-      stepsGoal: 'Daily step goal reached — {{steps}} steps 🎉',
-      stepsGoal2: 'Step goal done today — {{steps}} steps. Your legs carried you 🎉',
-      stepsGoal3: '{{steps}} steps — daily goal taken. Your body thanks you 🚶',
-      stepsGoal4: 'Done: {{steps}} steps today. A small win that counts ✨',
+      stepsGoal: 'Daily step goal reached — {{steps}} {{stepsWord}} 🎉',
+      stepsGoal2: 'Step goal done today — {{steps}} {{stepsWord}}. Your legs carried you 🎉',
+      stepsGoal3: '{{steps}} {{stepsWord}} — daily goal taken. Your body thanks you 🚶',
+      stepsGoal4: 'Done: {{steps}} {{stepsWord}} today. A small win that counts ✨',
       proteinGoal: 'Protein goal reached — {{protein}} g 💪',
       proteinGoal2: 'Protein goal done — {{protein}} g. Muscle supported 💪',
       proteinGoal3: '{{protein}} g protein — goal met. Satiety and strength up 🍳',

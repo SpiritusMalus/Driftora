@@ -10,6 +10,7 @@ import { Card } from '@/components/ui/Card';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
 import { TextField } from '@/components/ui/TextField';
+import { needsAiConsent } from '@/lib/core/consent/consent';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import {
   deleteFoodEntry,
@@ -56,10 +57,14 @@ export default function FoodEntryScreen() {
   const [meal, setMeal] = useState<MealType | null>(null);
   const [region, setRegion] = useState<Region>('RU');
   const [aiConsent, setAiConsent] = useState(false);
+  const [aiConsentVersion, setAiConsentVersion] = useState('');
   // Honour the log screen's «скрыть калории» comfort here too, so a user who
   // hid them doesn't get them back the moment they open a saved entry to edit.
   const [hideCalories, setHideCalories] = useState(false);
   const [busy, setBusy] = useState(false);
+  // The update/repeat write threw — without a visible line the tap looks
+  // ignored and the user leaves sure the change landed.
+  const [saveIssue, setSaveIssue] = useState(false);
   const [missing, setMissing] = useState(false);
 
   useEffect(() => {
@@ -80,6 +85,7 @@ export default function FoodEntryScreen() {
       setDraft(d);
       setRegion(r);
       setAiConsent(settings.aiFoodParseConsent);
+      setAiConsentVersion(settings.aiFoodParseConsentVersion);
       setHideCalories(settings.hideCalories);
     })();
     return () => {
@@ -112,19 +118,26 @@ export default function FoodEntryScreen() {
   }
 
   // Manual DB search for one dish («Другой вариант») — same source as the log
-  // screen: online when AI is configured AND consented, else the offline stub.
+  // screen: online when AI is configured AND consented AT THE CURRENT
+  // disclosure version (a stale consent falls back to the offline stub, the
+  // same rule the parse paths follow).
   function onSearch(query: string): Promise<NutritionAlternative[]> {
-    return getFoodParser(aiConsent).searchFoods(query, region);
+    const consentCurrent =
+      aiConsent &&
+      !needsAiConsent({ aiFoodParseConsent: aiConsent, aiFoodParseConsentVersion: aiConsentVersion });
+    return getFoodParser(consentCurrent).searchFoods(query, region);
   }
 
   async function onUpdate() {
     if (!db || !draft || !entry) return;
     setBusy(true);
+    setSaveIssue(false);
     try {
       await updateFoodEntry(db, entryId, { rawText: rawText.trim(), source: entry.source, draft, meal });
       router.back();
     } catch {
       setBusy(false);
+      setSaveIssue(true);
     }
   }
 
@@ -133,11 +146,13 @@ export default function FoodEntryScreen() {
   async function onRepeat() {
     if (!db) return;
     setBusy(true);
+    setSaveIssue(false);
     try {
       await repeatFoodEntry(db, entryId);
       router.back();
     } catch {
       setBusy(false);
+      setSaveIssue(true);
     }
   }
 
@@ -229,6 +244,11 @@ export default function FoodEntryScreen() {
       ) : null}
 
       <PrimaryButton label={t('food.update')} onPress={onUpdate} disabled={busy} style={styles.update} />
+      {saveIssue ? (
+        <Text style={[styles.saveIssue, { color: theme.primary }, theme.font.bodyMedium]}>
+          {t('food.saveFailed')}
+        </Text>
+      ) : null}
       <Pressable
         onPress={() => void onRepeat()}
         disabled={busy}
@@ -265,6 +285,7 @@ const styles = StyleSheet.create({
   totalUnit: { fontSize: 13, flexShrink: 1 },
   mealChips: { marginTop: 14 },
   update: { marginTop: 16 },
+  saveIssue: { fontSize: 13, marginTop: 8, textAlign: 'center' },
   repeatBtn: { borderWidth: 1.5, borderRadius: 999, paddingVertical: 12, alignItems: 'center', marginTop: 10 },
   repeatText: { fontSize: 15 },
   deleteBtn: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 999, paddingVertical: 12, alignItems: 'center', marginTop: 10 },

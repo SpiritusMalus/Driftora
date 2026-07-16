@@ -33,8 +33,9 @@ const EXPORT_TABLES = [
 type TableName = (typeof EXPORT_TABLES)[number];
 
 /// A single table's rows as raw SQLite primitives (number | string | null —
-/// SQLite has no native bool/date, so timestamps are epoch-ms integers and
-/// booleans are 0/1, exactly as stored). Portable JSON with no driver coupling.
+/// SQLite has no native bool/date, so timestamps are epoch-SECONDS integers
+/// (drizzle `mode: 'timestamp'`) and booleans are 0/1, exactly as stored).
+/// Portable JSON with no driver coupling.
 export type TableRows = Record<string, number | string | null>[];
 
 /// The versioned backup document. `tables` maps each table name to its rows.
@@ -56,8 +57,19 @@ export interface BackupDocument {
 /// it never CONTAINS the key.
 export async function exportAllTables(db: AnyDb): Promise<BackupDocument> {
   const tables = {} as Record<TableName, TableRows>;
-  for (const table of EXPORT_TABLES) {
-    tables[table] = await selectAll(db, table);
+  // One transaction around the reads: a concurrent save between two SELECTs
+  // must not produce a document with child rows whose parent isn't included.
+  await db.run(sql`BEGIN`);
+  try {
+    for (const table of EXPORT_TABLES) {
+      tables[table] = await selectAll(db, table);
+    }
+  } finally {
+    try {
+      await db.run(sql`COMMIT`);
+    } catch {
+      // Read-only transaction: if COMMIT itself fails there is nothing to undo.
+    }
   }
   return {
     app: APP_ID,

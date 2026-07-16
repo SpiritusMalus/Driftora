@@ -181,11 +181,26 @@ class AndroidHealthService implements HealthService {
   async sleepForDay(day: Date): Promise<number | null> {
     const end = new Date(startOfDay(day).getTime() + 12 * 60 * 60 * 1000);
     const start = new Date(end.getTime() - DAY_MS);
-    return this.readSum('SleepSession', start, end, (r) => {
-      const s = r as { startTime?: string; endTime?: string };
-      if (!s.startTime || !s.endTime) return 0;
-      return (new Date(s.endTime).getTime() - new Date(s.startTime).getTime()) / 60000;
-    });
+    if (!(await this.ensure())) return null;
+    try {
+      const res = await this.hc.readRecords('SleepSession', {
+        timeRangeFilter: { operator: 'between', startTime: start.toISOString(), endTime: end.toISOString() },
+      });
+      const records: unknown[] = res?.records ?? [];
+      if (records.length === 0) return null;
+      // Sessions from several writers (phone + watch + apps) can OVERLAP — sum
+      // the merged union, not the raw durations, mirroring the iOS de-dup: a
+      // naive sum reads a 7 h night with two sources as 13 h+.
+      const samples: SleepSample[] = [];
+      for (const r of records) {
+        const s = r as { startTime?: string; endTime?: string };
+        if (s.startTime && s.endTime) samples.push({ startDate: s.startTime, endDate: s.endTime });
+      }
+      const minutes = asleepMinutes(samples);
+      return minutes > 0 ? Math.round(minutes) : null;
+    } catch {
+      return null;
+    }
   }
 }
 

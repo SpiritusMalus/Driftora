@@ -229,8 +229,15 @@ export async function applySchema(
   for (const migration of MIGRATIONS) {
     try {
       await run(migration);
-    } catch {
+    } catch (e) {
       // Expected when the column already exists (duplicate column) — idempotent.
+      // Anything else (I/O, database is locked) is a REAL failure: keep going —
+      // re-running on the next launch usually heals it, and throwing here would
+      // take the whole app down to null-db placeholders — but never hide it.
+      const message = e instanceof Error ? e.message : String(e);
+      if (!/duplicate column/i.test(message)) {
+        console.warn('schema migration failed (will retry next launch):', migration, message);
+      }
     }
   }
 }

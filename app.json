@@ -11,7 +11,7 @@
       "bundleIdentifier": "com.driftora.app",
       "supportsTablet": true,
       "infoPlist": {
-        "NSHealthShareUsageDescription": "Доступ к данным о шагах нужен, чтобы показывать вашу активность и её пользу для здоровья.",
+        "NSHealthShareUsageDescription": "Доступ к данным о шагах и сне нужен, чтобы показывать вашу активность, отдых и их пользу для здоровья.",
         "NSSpeechRecognitionUsageDescription": "Распознавание речи используется для голосового ввода еды.",
         "NSMicrophoneUsageDescription": "Микрофон нужен для голосового ввода того, что вы съели."
       },

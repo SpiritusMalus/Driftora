@@ -17,6 +17,7 @@ import { latestWeight } from '@/lib/core/db/weight';
 import { stepsEarnedKcal } from '@/lib/core/insights/bodyMetrics';
 import { useAppActiveEffect } from '@/lib/core/services/appActive';
 import { getHealthService } from '@/lib/core/services/healthProvider';
+import { pluralKey } from '@/lib/i18n/plural';
 import { useTheme } from '@/lib/theme/theme';
 
 type HealthState =
@@ -188,7 +189,7 @@ export default function ActivityScreen() {
                 {formatStepCount(today.steps)}
               </Text>
               <Text style={[styles.heroLabel, { color: theme.subtle }, theme.font.body]}>
-                {t('activity.today')}
+                {t(pluralKey('activity.today', today.steps))}
               </Text>
             </View>
             {payoffLine ? (

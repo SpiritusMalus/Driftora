@@ -175,14 +175,22 @@ export default function FoodDayScreen() {
   // app resumes on.
   useAppActiveEffect(() => void reload());
 
+  // Ref, not state: the ack below is the visible feedback — this only has to
+  // stop a double-tap on ↻ from writing the same meal twice.
+  const repeatingRef = useRef(false);
   async function onRepeat(id: number) {
-    if (!db) return;
-    const newId = await repeatFoodEntry(db, id);
-    if (newId == null) return;
-    await reload();
-    setRepeatAck(t('food.repeated'));
-    if (ackTimer.current) clearTimeout(ackTimer.current);
-    ackTimer.current = setTimeout(() => setRepeatAck(null), 2500);
+    if (!db || repeatingRef.current) return;
+    repeatingRef.current = true;
+    try {
+      const newId = await repeatFoodEntry(db, id);
+      if (newId == null) return;
+      await reload();
+      setRepeatAck(t('food.repeated'));
+      if (ackTimer.current) clearTimeout(ackTimer.current);
+      ackTimer.current = setTimeout(() => setRepeatAck(null), 2500);
+    } finally {
+      repeatingRef.current = false;
+    }
   }
 
   /// Quick ✕ on a day row — an accidental quick-pick/repeat shouldn't take a

@@ -32,6 +32,7 @@ import { daySummary, daysSince, type DaySummary } from '@/lib/core/insights/dayS
 import { dayOfYear, pickVariant } from '@/lib/core/insights/variant';
 import { stepInsight } from '@/lib/core/insights/stepInsight';
 import { useAppActiveEffect } from '@/lib/core/services/appActive';
+import { pluralKey } from '@/lib/i18n/plural';
 import { getHealthService } from '@/lib/core/services/healthProvider';
 import { getNotificationService } from '@/lib/core/services/notificationProvider';
 import { buildDailyReminders, rescheduleReminders } from '@/lib/core/services/reminders';
@@ -124,10 +125,10 @@ export default function HomeScreen() {
             // once-per-day award dedup so the stored message stays consistent.
             stepsGoal: pickVariant(
               [
-                t('wins.auto.stepsGoal', { steps: stepsForGoals }),
-                t('wins.auto.stepsGoal2', { steps: stepsForGoals }),
-                t('wins.auto.stepsGoal3', { steps: stepsForGoals }),
-                t('wins.auto.stepsGoal4', { steps: stepsForGoals }),
+                t('wins.auto.stepsGoal', { steps: stepsForGoals, stepsWord: t(pluralKey('steps.unit', stepsForGoals)) }),
+                t('wins.auto.stepsGoal2', { steps: stepsForGoals, stepsWord: t(pluralKey('steps.unit', stepsForGoals)) }),
+                t('wins.auto.stepsGoal3', { steps: stepsForGoals, stepsWord: t(pluralKey('steps.unit', stepsForGoals)) }),
+                t('wins.auto.stepsGoal4', { steps: stepsForGoals, stepsWord: t(pluralKey('steps.unit', stepsForGoals)) }),
               ],
               dayOfYear(),
             ),
@@ -373,6 +374,7 @@ export default function HomeScreen() {
           <Text style={[styles.daySummary, { color: theme.text }, theme.font.bodyMedium]}>
             {t(`home.daySummary.${summary.key}`, {
               steps: summary.steps != null ? formatSteps(summary.steps) : '',
+              stepsWord: summary.steps != null ? t(pluralKey('steps.unit', summary.steps)) : '',
               mood: summary.mood ?? '',
             })}
           </Text>

@@ -22,6 +22,7 @@ import {
   normalizeIdentified,
   normalizeParsedWorkouts,
   normalizeParsedWorkoutPhoto,
+  round1,
   type IdentifiedItem,
   type ParsedWorkout,
   type ParsedWorkoutPhoto,
@@ -210,15 +211,22 @@ function parseEstimate(data: unknown, fallbackName: string): FoodEstimate | null
     return null;
   }
   const o = payload as Record<string, unknown>;
-  const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
-  const kcal = num(o.kcal_100g);
-  const prot = num(o.prot_100g);
-  const fat = num(o.fat_100g);
-  const carb = num(o.carb_100g);
+  // Mirror `coerceEstimate`'s bounds (types.ts): the identify path clamps its
+  // AI numbers there, and this manual-search card must not stay the one hole a
+  // model glitch (or an injected «kcal_100g=9999999») pushes absurd numbers
+  // through — nothing edible exceeds ~900 kcal / 100 g of any macro over 100 g.
+  const num = (v: unknown, max: number): number | undefined =>
+    typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= max ? v : undefined;
+  const kcal = num(o.kcal_100g, 900);
+  const prot = num(o.prot_100g, 100);
+  const fat = num(o.fat_100g, 100);
+  const carb = num(o.carb_100g, 100);
   // An estimate is only useful complete — a partial guess reads as fabricated fact.
   if (kcal === undefined || prot === undefined || fat === undefined || carb === undefined) return null;
+  // All zeros would render an authoritative-looking «0 kcal» card for any food.
+  if (kcal === 0 && prot === 0 && fat === 0 && carb === 0) return null;
   const name = typeof o.name_ru === 'string' && o.name_ru.trim().length > 0 ? o.name_ru.trim() : fallbackName;
-  return { name, kcal, prot, fat, carb };
+  return { name, kcal: Math.round(kcal), prot: round1(prot), fat: round1(fat), carb: round1(carb) };
 }
 
 /** Layer 2: free-text meal → identified foods + estimated grams (no numbers). */

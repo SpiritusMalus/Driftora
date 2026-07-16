@@ -56,8 +56,10 @@ yarn-error.*
 .claude/
 dist.stale.*
 
-.claude/
-dist.stale.*
+# IDE project files (JetBrains) — machine-local, never part of the app.
+.idea/
+*.iml
+
 # Anchored to repo root: ignore the top-level nested mockup / handoff-ref dirs
 # (duplicate UI, .dc.html, *-frame.jsx — never part of the RN build) WITHOUT
 # matching nested package dirs like modules/.../com/driftora/ (macOS git is
@@ -65,4 +67,3 @@ dist.stale.*
 # future-proofs the rebrand rename — keep both.
 /Driftora/
 /HealthRoutine/
-.DS_Store

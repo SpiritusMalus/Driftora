@@ -1,7 +1,8 @@
-import { useFocusEffect, useRouter } from 'expo-router';
+import { usePreventRemove } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Linking, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, Linking, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { ConsentModal } from '@/components/consent/ConsentModal';
 import { LegalReader } from '@/components/legal/LegalReader';
@@ -62,6 +63,9 @@ export default function SettingsScreen() {
   const [region, setRegion] = useState<'auto' | 'RU' | 'US'>('auto');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  // OS notification permission was refused on the last save — without this the
+  // screen keeps promising «Ближайшее напоминание» that can never arrive.
+  const [notifDenied, setNotifDenied] = useState(false);
   // Cross-border AI consent — persisted immediately on toggle (not via Save),
   // since it is a consent action. Version drives the re-prompt logic.
   const [aiConsent, setAiConsent] = useState(false);
@@ -94,7 +98,26 @@ export default function SettingsScreen() {
     }, [db, loaded]),
   );
 
-  const dirty = () => setSaved(false);
+  // `saved` drives the button's «Сохранено ✓» ack; `unsaved` is the real dirty
+  // flag for the exit guard — the toggles here flip visually but only persist
+  // on Save, so walking out with edits would silently lose them.
+  const [unsaved, setUnsaved] = useState(false);
+  const dirty = () => {
+    setSaved(false);
+    setUnsaved(true);
+  };
+
+  const navigation = useNavigation();
+  usePreventRemove(unsaved && !saving, ({ data }) => {
+    Alert.alert(t('settings.unsavedTitle'), t('settings.unsavedBody'), [
+      { text: t('settings.unsavedStay'), style: 'cancel' },
+      {
+        text: t('settings.unsavedLeave'),
+        style: 'destructive',
+        onPress: () => navigation.dispatch(data.action),
+      },
+    ]);
+  });
 
   function addTime() {
     const v = newTime.trim();
@@ -120,6 +143,7 @@ export default function SettingsScreen() {
       });
       await syncReminders();
       setSaved(true);
+      setUnsaved(false);
     } finally {
       setSaving(false);
     }
@@ -156,7 +180,12 @@ export default function SettingsScreen() {
         });
         specs.push(...buildContextNudgeReminders(nudges, nudgeCopy(t), paused));
       }
-      if (specs.length > 0) await service.requestPermissions();
+      if (specs.length > 0) {
+        const granted = await service.requestPermissions();
+        setNotifDenied(!granted);
+      } else {
+        setNotifDenied(false);
+      }
       await rescheduleReminders(service, specs);
     } catch (e) {
       console.warn('reminder scheduling failed', e);
@@ -283,6 +312,13 @@ export default function SettingsScreen() {
         </Pressable>
       </View>
       <Note theme={theme}>{t('settings.remindersNote')}</Note>
+      {notifDenied ? (
+        <Pressable onPress={() => void Linking.openSettings()} hitSlop={6} accessibilityRole="button">
+          <Text style={[styles.nextHint, { color: theme.accent }, theme.font.bodyMedium]}>
+            {t('settings.notifDenied')}
+          </Text>
+        </Pressable>
+      ) : null}
       {(() => {
         const next = nextReminder(reminders);
         if (!next) return null;

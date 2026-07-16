@@ -342,7 +342,9 @@ export default function BodySetupScreen() {
               ))}
             </View>
             <Text style={[styles.appliedLine, { color: theme.accent }, theme.font.bodyMedium]}>
-              {t('bodySetup.result.applied')}
+              {/* The save above is skipped without a database — claiming
+                  «записали как цель» then would be a false confirmation. */}
+              {db != null ? t('bodySetup.result.applied') : t('bodySetup.result.notSaved')}
             </Text>
           </Card>
 

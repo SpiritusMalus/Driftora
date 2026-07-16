@@ -7,6 +7,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card } from '@/components/ui/Card';
 import { TextField } from '@/components/ui/TextField';
 import { upsertWeight } from '@/lib/core/db/weight';
+import { weightValid } from '@/lib/core/insights/bodySetup';
 import { useTheme } from '@/lib/theme/theme';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -38,7 +39,10 @@ export function WeightWidget({
   const [saving, setSaving] = useState(false);
 
   const kg = toNumber(text);
-  const valid = kg > 0;
+  // Same bounds as the body-setup wizard — a slipped decimal («9.4» for 94)
+  // must not silently poison the trend, BMI and the day plan.
+  const valid = weightValid(kg);
+  const rangeIssue = text.trim().length > 0 && kg > 0 && !valid;
 
   async function save() {
     if (!db || !valid || saving) return;
@@ -109,6 +113,11 @@ export function WeightWidget({
           </Pressable>
         </View>
       ) : null}
+      {open && rangeIssue ? (
+        <Text style={[styles.rangeHint, { color: theme.subtle }, theme.font.body]}>
+          {t('weight.rangeHint')}
+        </Text>
+      ) : null}
     </Card>
   );
 }
@@ -119,6 +128,7 @@ const styles = StyleSheet.create({
   headMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
   headText: { flex: 1 },
   plusBtn: { width: 32, height: 32, borderRadius: 16, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  rangeHint: { fontSize: 12, marginTop: 6 },
   title: { fontSize: 15 },
   subtitle: { fontSize: 13, marginTop: 1 },
   inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 },
