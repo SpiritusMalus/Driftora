@@ -33,9 +33,17 @@ const MAX_PHOTO_BYTES = 8 * 1024 * 1024; // 8 MB — client downscales to ≤~10
 const MAX_AUDIO_BYTES = 8 * 1024 * 1024; // 8 MB — short voice clips are far under this
 
 // In-memory upload (stateless, nothing written to disk) — privacy §2.
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_PHOTO_BYTES } });
+// `fileSize` alone leaves multer's OTHER limits unbounded: without `fields`/
+// `parts`/`fieldSize` caps a single multipart request with thousands of text
+// fields accumulates them all in memory until OOM. Routes send one file plus
+// a couple of small string fields — cap accordingly.
+const MULTIPART_LIMITS = { files: 1, fields: 8, parts: 12, fieldSize: 10 * 1024 };
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_PHOTO_BYTES, ...MULTIPART_LIMITS } });
 // Separate instance so an audio upload is bounded by its own cap (same size).
-const uploadAudio = multer({ storage: multer.memoryStorage(), limits: { fileSize: MAX_AUDIO_BYTES } });
+const uploadAudio = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_AUDIO_BYTES, ...MULTIPART_LIMITS },
+});
 
 /**
  * Detect the actual image type from magic bytes. The multipart mime is
@@ -213,6 +221,9 @@ export function createApp(
         fail(res, 503, 'llm_unavailable', 'The parsing service is temporarily unavailable.');
         return;
       }
+      // Error name+message only — never the request content (privacy §2).
+      // Without this line a recurring internal bug is invisible in journalctl.
+      console.error('parse failed:', route, err instanceof Error ? `${err.name}: ${err.message}` : String(err));
       fail(res, 500, 'internal_error', 'Internal server error.');
     }
   }
@@ -293,6 +304,8 @@ export function createApp(
       fail(res, 503, 'llm_unavailable', 'The parsing service is temporarily unavailable.');
       return;
     }
+    // Same privacy-safe visibility as the food tail: name+message, no content.
+    console.error('workout parse failed:', err instanceof Error ? `${err.name}: ${err.message}` : String(err));
     fail(res, 500, 'internal_error', 'Internal server error.');
   }
 
@@ -365,10 +378,12 @@ export function createApp(
   });
 
   // Map multer rejections (e.g. oversized upload) to a clean error envelope.
-  app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
+  app.use((err: unknown, req: Request, res: Response, next: NextFunction) => {
     if (err instanceof multer.MulterError) {
       const tooLarge = err.code === 'LIMIT_FILE_SIZE';
-      fail(res, tooLarge ? 413 : 400, tooLarge ? 'image_too_large' : 'bad_upload', err.message);
+      // The audio routes must not blame a «photo» — pick the code by route.
+      const tooLargeCode = req.path.includes('audio') ? 'audio_too_large' : 'image_too_large';
+      fail(res, tooLarge ? 413 : 400, tooLarge ? tooLargeCode : 'bad_upload', err.message);
       return;
     }
     if (err) {

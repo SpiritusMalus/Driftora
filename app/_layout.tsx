@@ -23,12 +23,13 @@ export default function RootLayout() {
   const { t } = useTranslation();
   const scheme = useColorScheme() === 'dark' ? 'dark' : 'light';
   const theme = resolveTheme(scheme);
-  const [fontsLoaded] = useFonts(fontAssets);
+  const [fontsLoaded, fontError] = useFonts(fontAssets);
 
   // Hold the first frame until the Ember fonts are ready so Android headers and
   // the hero don't flash in the system face before swapping. (iOS uses SF, so
-  // this only matters for Android, but a single gate keeps it simple.)
-  if (!fontsLoaded) return null;
+  // this only matters for Android, but a single gate keeps it simple.) A FAILED
+  // load must release the gate too — the system face beats a forever-blank app.
+  if (!fontsLoaded && !fontError) return null;
 
   const headerOptions =
     Platform.OS === 'ios'

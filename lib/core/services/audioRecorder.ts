@@ -1,4 +1,5 @@
 import type { AudioInput } from './foodParser';
+import { deleteTempFile } from './tempFiles';
 
 /// Voice-note recording for AI food logging (Telegram-style: record → send).
 ///
@@ -139,6 +140,9 @@ async function begin(Audio: any): Promise<ActiveRecording> {
     } catch {
       /* ignore */
     }
+    // The audio mode was already flipped to record — reset it, or a failed
+    // start leaves the iOS session in recording mode for the rest of the app.
+    await resetAudioMode(Audio);
     throw e;
   }
 
@@ -167,17 +171,12 @@ async function begin(Audio: any): Promise<ActiveRecording> {
     } catch {
       /* ignore */
     }
+    await resetAudioMode(Audio);
     throw e;
   }
 
   let done = false;
-  const teardown = async () => {
-    try {
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
-    } catch {
-      /* best-effort */
-    }
-  };
+  const teardown = async () => resetAudioMode(Audio);
   return {
     async stop(): Promise<AudioInput | null> {
       if (done) return null;
@@ -190,6 +189,8 @@ async function begin(Audio: any): Promise<ActiveRecording> {
         return uri ? { uri, mimeType: 'audio/m4a' } : null;
       } catch {
         await teardown();
+        // A clip nobody will consume must not sit in cache.
+        deleteRecordingFile(recording);
         return null;
       }
     },
@@ -203,6 +204,9 @@ async function begin(Audio: any): Promise<ActiveRecording> {
         /* ignore */
       }
       await teardown();
+      // Cancel means the clip is unwanted — every abandoned recording (screen
+      // unmount, user abort) otherwise leaves its m4a in cache forever.
+      deleteRecordingFile(recording);
     },
     onMeter(cb: (level: number) => void): () => void {
       if (done) return () => {};
@@ -213,4 +217,25 @@ async function begin(Audio: any): Promise<ActiveRecording> {
       return peak;
     },
   };
+}
+
+/// Return the OS audio session to playback mode — must run on EVERY exit path
+/// (stop, cancel, prepare/start failure), or iOS stays in record mode.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function resetAudioMode(Audio: any): Promise<void> {
+  try {
+    await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+  } catch {
+    /* best-effort */
+  }
+}
+
+/// Best-effort removal of the recorded clip when nobody will consume it.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function deleteRecordingFile(recording: any): void {
+  try {
+    deleteTempFile(recording.getURI());
+  } catch {
+    /* the recorder may refuse getURI() mid-teardown — nothing to clean then */
+  }
 }

@@ -103,7 +103,13 @@ export default function FoodLogScreen() {
     'offline' | 'offlineEmpty' | 'offlineMedia' | 'failed' | null
   >(null);
   const [savedAck, setSavedAck] = useState<string | null>(null);
+  // The DB write itself threw. Without a visible line the tap looks ignored and
+  // the user walks away sure the meal was logged.
+  const [saveIssue, setSaveIssue] = useState(false);
   const saveSeedRef = useRef(0);
+  // Post-save exit timer — must be cleared on unmount, or a back within the
+  // ack window later yanks the user off whatever screen they moved to.
+  const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [hideCalories, setHideCalories] = useState(false);
   // Cross-border AI consent — mirrors app_settings; drives the parser gate, the
   // just-in-time prompt and the on-screen notice. Starts false (opt-in).
@@ -142,6 +148,10 @@ export default function FoodLogScreen() {
   // the review can show «фото N из M».
   const [photoQueue, setPhotoQueue] = useState<PhotoInput[]>([]);
   const [batchTotal, setBatchTotal] = useState(0);
+  // Mirror for the unmount sweep — the cleanup closure would otherwise hold the
+  // mount-time (empty) queue and leak the downscaled JPEGs still waiting in it.
+  const photoQueueRef = useRef<PhotoInput[]>([]);
+  photoQueueRef.current = photoQueue;
   const [listening, setListening] = useState(false);
   // Why on-device recognition last failed (localized) — shown under the mic so a
   // dropped session explains itself instead of silently resetting. Cleared on a
@@ -191,6 +201,10 @@ export default function FoodLogScreen() {
       active = false;
       void speech.stop();
       void recRef.current?.cancel();
+      if (exitTimerRef.current != null) clearTimeout(exitTimerRef.current);
+      // Batch leftovers that never reached their parse are downscaled JPEGs in
+      // cache — sweep them so an abandoned batch doesn't accumulate files.
+      for (const p of photoQueueRef.current) deleteTempFile(p.uri);
     };
   }, []);
 
@@ -608,10 +622,14 @@ export default function FoodLogScreen() {
   }
 
   // Manual DB search for one item ("найти вручную") and the swap when the user
-  // picks a result. Search uses the active parser (online when consented, else
-  // the offline stub which returns nothing).
+  // picks a result. The query text goes to the same online parser, so it is
+  // gated like a parse: consent must exist AT THE CURRENT disclosure version —
+  // after a sub-processor change a stale consent falls back to the stub.
   function onItemSearch(query: string): Promise<NutritionAlternative[]> {
-    return getFoodParser(aiConsent).searchFoods(query, region);
+    const consentCurrent =
+      aiConsent &&
+      !needsAiConsent({ aiFoodParseConsent: aiConsent, aiFoodParseConsentVersion: aiConsentVersion });
+    return getFoodParser(consentCurrent).searchFoods(query, region);
   }
   function onItemReplace(index: number, replacement: NutritionAlternative) {
     setDraft((prev) => (prev ? withItemReplacement(prev, index, replacement) : prev));
@@ -631,10 +649,13 @@ export default function FoodLogScreen() {
     setFreshDraft(null);
     setText('');
     setSavedAck(null);
+    setSaveIssue(false);
     setSource('text');
     setParseIssue(null);
     setMeal(null);
     // Abandon any remaining batch — «очистить» means the whole capture is off.
+    // The queued shots never reach their parse's own cleanup, so sweep here.
+    for (const p of photoQueue) deleteTempFile(p.uri);
     setPhotoQueue([]);
     setBatchTotal(0);
   }
@@ -670,6 +691,7 @@ export default function FoodLogScreen() {
   async function onSave() {
     if (!draft || !db) return;
     setSaving(true);
+    setSaveIssue(false);
     try {
       await saveParsedEntry(db, { rawText: text, source, draft, meal: mealChoice });
       // Personal food journal (layer 2): remember this food → per-100g so the
@@ -721,9 +743,12 @@ export default function FoodLogScreen() {
       // Land on the day's food list (not a bare back to Home) so the just-saved
       // entry is visibly there and can be reopened/edited. `replace` keeps the
       // log screen out of the back stack.
-      setTimeout(() => router.replace('/food'), 1100);
+      exitTimerRef.current = setTimeout(() => router.replace('/food'), 1100);
     } catch {
+      // Never fail into silence: the write threw, so say so — otherwise the
+      // user leaves sure the meal was logged.
       setSaving(false);
+      setSaveIssue(true);
     }
   }
 
@@ -954,9 +979,10 @@ export default function FoodLogScreen() {
       ) : null}
 
       {/* Multi-photo batch progress: where in the picked set this review sits,
-          plus a skip for a misfired shot. Shown for both a parsed draft and an
-          empty parse, so a blank photo can still be skipped forward. */}
-      {batchTotal > 1 && draft != null ? (
+          plus a skip for a misfired shot. Shown for a parsed draft, an empty
+          parse AND a failed parse (draft == null but parseIssue set) — a broken
+          shot must not strand the rest of the batch out of reach. */}
+      {batchTotal > 1 && (draft != null || parseIssue != null) ? (
         <View style={styles.batchBar}>
           <Text style={[styles.batchProgress, { color: theme.subtle }, theme.font.bodySemiBold]}>
             {t('food.batchProgress', { index: batchTotal - photoQueue.length, total: batchTotal })}
@@ -1077,6 +1103,11 @@ export default function FoodLogScreen() {
             onPress={onSave}
             disabled={saving || db == null}
           />
+          {saveIssue ? (
+            <Text style={[styles.parseIssue, { color: theme.primary }, theme.font.bodyMedium]}>
+              {t('food.saveFailed')}
+            </Text>
+          ) : null}
           <Pressable onPress={onClearDraft} disabled={saving} hitSlop={8} style={styles.clearBtn}>
             <Text style={[styles.clearText, { color: theme.subtle }, theme.font.body]}>{t('food.clear')}</Text>
           </Pressable>

@@ -111,6 +111,9 @@ export class FatSecretProvider implements NutritionProvider {
 
   // Cached client-credentials token; refreshed lazily a touch before it expires.
   private token: { value: string; expiresAt: number } | null = null;
+  // In-flight token request — a cold start fires many resolveItem calls at
+  // once, and they must share ONE OAuth round-trip, not stampede the endpoint.
+  private tokenFetch: Promise<string | null> | null = null;
 
   constructor(
     private readonly clientId: string,
@@ -123,6 +126,13 @@ export class FatSecretProvider implements NutritionProvider {
 
   private async accessToken(): Promise<string | null> {
     if (this.token && this.token.expiresAt > Date.now() + 5_000) return this.token.value;
+    this.tokenFetch ??= this.fetchToken().finally(() => {
+      this.tokenFetch = null;
+    });
+    return this.tokenFetch;
+  }
+
+  private async fetchToken(): Promise<string | null> {
     const basic = Buffer.from(`${this.clientId}:${this.clientSecret}`).toString('base64');
     let res: Response;
     try {
@@ -174,6 +184,13 @@ export class FatSecretProvider implements NutritionProvider {
         signal: AbortSignal.timeout(TIMEOUT_MS.fatsecret),
       });
     } catch {
+      return [];
+    }
+    if (res.status === 401) {
+      // The cached token was revoked or expired early — drop it so the NEXT
+      // call mints a fresh one instead of the provider staying silently dead
+      // for up to a day on the stale cache.
+      this.token = null;
       return [];
     }
     if (!res.ok) return [];

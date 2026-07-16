@@ -17,7 +17,8 @@ import { todayMacroTotals } from '@/lib/core/db/food';
 import { listMoods, logMood } from '@/lib/core/db/mood';
 import type { MoodRow } from '@/lib/core/db/schema';
 import { getSleepForDay } from '@/lib/core/db/sleep';
-import { getStepsRow } from '@/lib/core/db/steps';
+import { dayKey, getStepsRow } from '@/lib/core/db/steps';
+import { pluralKey } from '@/lib/i18n/plural';
 import {
   MIN_PAIRED_DAYS,
   type BodyMindSignal,
@@ -106,7 +107,10 @@ export default function MoodScreen() {
         ]);
         if (!active) return;
         setItems(list);
-        setSelected(list.length > 0 ? list[0].value : null);
+        // Pre-highlight only TODAY's latest check-in: echoing a days-old mark
+        // on the scale (and in the day card) reads as a claim about today.
+        const last = list.length > 0 ? list[0] : null;
+        setSelected(last != null && dayKey(new Date(last.ts)) === dayKey() ? last.value : null);
         setBest(bestLink);
         setSteps(stepsRow != null ? Number(stepsRow.steps) : null);
         setSleepMin(sleep);
@@ -153,7 +157,7 @@ export default function MoodScreen() {
       const remaining = Math.max(1, MIN_PAIRED_DAYS - (result?.pairedDays ?? 0));
       return {
         eyebrow,
-        headline: t(buildingKey(remaining), { days: remaining, signal: signalNoun }),
+        headline: t(pluralKey('home.hero.building', remaining), { days: remaining, signal: signalNoun }),
         caption: t('home.hero.buildingCaption'),
       };
     }
@@ -230,7 +234,7 @@ export default function MoodScreen() {
     historyRows.push({
       key: day.key,
       title: formatDay(day.date),
-      subtitle: multi ? t(marksKey(day.entries.length), { count: day.entries.length }) : undefined,
+      subtitle: multi ? t(pluralKey('mood.marks', day.entries.length), { count: day.entries.length }) : undefined,
       onPress: multi ? () => toggleDay(day.key) : undefined,
       right: multi ? (
         <View style={styles.dayRight}>
@@ -367,31 +371,6 @@ function formatDay(d: Date): string {
 function formatTime(d: Date): string {
   const p = (n: number) => String(n).padStart(2, '0');
   return `${p(d.getHours())}:${p(d.getMinutes())}`;
-}
-
-/// Plural-correct key for the "N check-ins" day subtitle. i18next here runs
-/// without the plural plugin, so we branch explicitly (mirrors [buildingKey]);
-/// the ru locale carries one/few/many, en carries one/other under the same key
-/// stems, so the same slugs resolve in both.
-function marksKey(n: number): string {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return 'mood.marksOne';
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'mood.marksFew';
-  return 'mood.marksMany';
-}
-
-/// Picks the plural-correct "N more days" key. i18next here is configured without
-/// the plural-suffix plugin, so we branch explicitly (ru: one/few/many, en:
-/// one/other) to keep the building copy grammatical.
-function buildingKey(n: number): string {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return 'home.hero.buildingOne';
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
-    return 'home.hero.buildingFew';
-  }
-  return 'home.hero.buildingMany';
 }
 
 /// Thin-space thousands so "6 240" reads like the steps widget.

@@ -64,12 +64,25 @@ async function prepare(
 ): Promise<PhotoInput> {
   const w = asset.width ?? 0;
   const h = asset.height ?? 0;
+  if (w === 0 || h === 0) {
+    // Dimensions unknown (rare picker paths): a blind `resize(width: MAX_EDGE)`
+    // here would UPSCALE a small shot — inflating the upload and vision tokens,
+    // the exact cost the cap exists to bound. Re-encode first (the result
+    // reports real dimensions), then cap the longer edge only if it's over.
+    const probe = await M.manipulateAsync(asset.uri, [], { compress: 0.7, format: M.SaveFormat.JPEG });
+    if (Math.max(probe.width, probe.height) <= MAX_EDGE) return { uri: probe.uri, mimeType: 'image/jpeg' };
+    const capped = await M.manipulateAsync(
+      probe.uri,
+      [{ resize: probe.height > probe.width ? { height: MAX_EDGE } : { width: MAX_EDGE } }],
+      { compress: 0.7, format: M.SaveFormat.JPEG },
+    );
+    deleteTempFile(probe.uri);
+    return { uri: capped.uri, mimeType: 'image/jpeg' };
+  }
   const actions: ImageManipulatorNS.Action[] =
-    w === 0 || h === 0
-      ? [{ resize: { width: MAX_EDGE } }] // dimensions unknown → previous behaviour
-      : Math.max(w, h) > MAX_EDGE
-        ? [{ resize: h > w ? { height: MAX_EDGE } : { width: MAX_EDGE } }]
-        : []; // already within the cap on both sides → re-encode only, no upscale
+    Math.max(w, h) > MAX_EDGE
+      ? [{ resize: h > w ? { height: MAX_EDGE } : { width: MAX_EDGE } }]
+      : []; // already within the cap on both sides → re-encode only, no upscale
   const result = await M.manipulateAsync(asset.uri, actions, {
     compress: 0.7,
     format: M.SaveFormat.JPEG,

@@ -38,7 +38,13 @@ export default function HistoryDayScreen() {
     useCallback(() => {
       let active = true;
       void (async () => {
-        if (!db || !dayDate || typeof date !== 'string') return;
+        if (!db) return;
+        // A malformed day key must land on the honest empty state, not an
+        // eternally blank body (loaded would otherwise never flip).
+        if (!dayDate || typeof date !== 'string') {
+          setLoaded(true);
+          return;
+        }
         const [settings, dayEntries, dayMoods, weightRow, stepsRow] = await Promise.all([
           ensureSettings(db),
           listEntriesForDay(db, dayDate),

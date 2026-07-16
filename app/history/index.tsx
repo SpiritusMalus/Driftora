@@ -12,6 +12,7 @@ import { ensureSettings } from '@/lib/core/db/settings';
 import { listStepsDays } from '@/lib/core/db/steps';
 import { listWeights } from '@/lib/core/db/weight';
 import { formatDayTitle, localDayKey } from '@/lib/i18n/formatDay';
+import { pluralKey } from '@/lib/i18n/plural';
 import { useTheme } from '@/lib/theme/theme';
 
 /// How far back the day list reaches. A month of context is what «посмотреть
@@ -82,7 +83,7 @@ export default function HistoryScreen() {
               : `${Math.round(food.kcal)} ${t('units.kcal')} · ${t('macros.protein')} ${Math.round(food.proteinG)} ${t('units.g')}`;
           } else {
             const parts: string[] = [];
-            if (stepsN != null) parts.push(`${formatSteps(stepsN)} ${t('steps.unit')}`);
+            if (stepsN != null) parts.push(`${formatSteps(stepsN)} ${t(pluralKey('steps.unit', stepsN))}`);
             if (weightN != null) parts.push(`${weightN.toFixed(1)} ${t('weight.unit')}`);
             subtitle = parts.length > 0 ? parts.join(' · ') : mood != null ? undefined : t('history.noFood');
           }

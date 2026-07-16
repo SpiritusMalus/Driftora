@@ -15,6 +15,10 @@ export interface DailyReminderSpec {
   minute: number;
   title: string;
   body: string;
+  /// One-shot: fire at the NEXT hour:minute today and never repeat. Context
+  /// nudges are computed from the moment's signals, so a repeating trigger
+  /// would re-deliver yesterday's context every day until the next reschedule.
+  once?: boolean;
 }
 
 /// Turns saved "HH:mm" strings into stable daily-reminder specs. Invalid and
@@ -67,6 +71,9 @@ export function buildContextNudgeReminders(
       minute: n.minute,
       title: copy[n.type].title,
       body: copy[n.type].body,
+      // Nudges carry TODAY's context («сейчас мало шагов») — deliver once, not
+      // as a daily repeat that outlives the signal it was planned from.
+      once: true,
     });
   }
   return out;

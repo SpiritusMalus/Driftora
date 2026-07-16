@@ -50,8 +50,8 @@ describe('buildContextNudgeReminders', () => {
 
   it('maps planned nudges to specs with type-derived ids and per-type copy', () => {
     expect(buildContextNudgeReminders(nudges, nudgeCopy)).toEqual([
-      { id: 'nudge-mood_walk', hour: 14, minute: 0, title: 'mood-t', body: 'mood-b' },
-      { id: 'nudge-afternoon_walk', hour: 15, minute: 30, title: 'aft-t', body: 'aft-b' },
+      { id: 'nudge-mood_walk', hour: 14, minute: 0, title: 'mood-t', body: 'mood-b', once: true },
+      { id: 'nudge-afternoon_walk', hour: 15, minute: 30, title: 'aft-t', body: 'aft-b', once: true },
     ]);
   });
 

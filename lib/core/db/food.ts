@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lt } from 'drizzle-orm';
+import { and, desc, eq, gte, lt, sql } from 'drizzle-orm';
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
 import type {
@@ -83,6 +83,26 @@ export function dayBounds(date: Date): { start: Date; end: Date } {
   return { start, end };
 }
 
+/// Run related writes atomically: BEGIN/COMMIT with ROLLBACK on failure — the
+/// same raw-SQL seam [importAllTables] uses (drizzle's `transaction()` isn't
+/// wired for every driver this app runs on). Without this, a crash between an
+/// entry write and its item rows leaves a meal without its breakdown.
+async function withTx<T>(db: AnyDb, body: () => Promise<T>): Promise<T> {
+  await db.run(sql`BEGIN`);
+  try {
+    const out = await body();
+    await db.run(sql`COMMIT`);
+    return out;
+  } catch (e) {
+    try {
+      await db.run(sql`ROLLBACK`);
+    } catch {
+      // Surfacing the original failure matters more than a rollback error.
+    }
+    throw e;
+  }
+}
+
 /// Saves a confirmed meal plus its item breakdown. Returns the entry id.
 ///
 /// The honest [MealDraft] (exact per-100g + scaled totals) collapses to the
@@ -102,26 +122,28 @@ export async function saveParsedEntry(
 ): Promise<number> {
   const ts = opts.ts ?? new Date();
   const d = opts.draft;
-  const inserted = await db
-    .insert(foodEntries)
-    .values({
-      ts,
-      rawText: opts.rawText,
-      source: opts.source,
-      kcal: d.totals.kcal,
-      proteinG: d.totals.prot,
-      fatG: d.totals.fat,
-      carbG: d.totals.carb,
-      confirmed: true,
-      micros: encodeMicros(d.totals),
-      meal: opts.meal ?? null,
-    })
-    .returning({ id: foodEntries.id });
+  return withTx(db, async () => {
+    const inserted = await db
+      .insert(foodEntries)
+      .values({
+        ts,
+        rawText: opts.rawText,
+        source: opts.source,
+        kcal: d.totals.kcal,
+        proteinG: d.totals.prot,
+        fatG: d.totals.fat,
+        carbG: d.totals.carb,
+        confirmed: true,
+        micros: encodeMicros(d.totals),
+        meal: opts.meal ?? null,
+      })
+      .returning({ id: foodEntries.id });
 
-  const entryId = inserted[0].id as number;
+    const entryId = inserted[0].id as number;
 
-  await insertDraftItems(db, entryId, d);
-  return entryId;
+    await insertDraftItems(db, entryId, d);
+    return entryId;
+  });
 }
 
 /// Insert the draft's item breakdown for an entry (each row holds the SCALED
@@ -182,32 +204,36 @@ export async function updateFoodEntry(
   },
 ): Promise<void> {
   const d = opts.draft;
-  await db
-    .update(foodEntries)
-    .set({
-      rawText: opts.rawText,
-      source: opts.source,
-      kcal: d.totals.kcal,
-      proteinG: d.totals.prot,
-      fatG: d.totals.fat,
-      carbG: d.totals.carb,
-      confirmed: true,
-      micros: encodeMicros(d.totals),
-      ...(opts.ts ? { ts: opts.ts } : {}),
-      ...(opts.meal !== undefined ? { meal: opts.meal } : {}),
-    })
-    .where(eq(foodEntries.id, id));
-  // Replace the item set as a unit. Delete explicitly (not relying on the FK
-  // cascade) so no `food_items` are orphaned even if PRAGMA foreign_keys is off.
-  await db.delete(foodItems).where(eq(foodItems.entryId, id));
-  await insertDraftItems(db, id, d);
+  await withTx(db, async () => {
+    await db
+      .update(foodEntries)
+      .set({
+        rawText: opts.rawText,
+        source: opts.source,
+        kcal: d.totals.kcal,
+        proteinG: d.totals.prot,
+        fatG: d.totals.fat,
+        carbG: d.totals.carb,
+        confirmed: true,
+        micros: encodeMicros(d.totals),
+        ...(opts.ts ? { ts: opts.ts } : {}),
+        ...(opts.meal !== undefined ? { meal: opts.meal } : {}),
+      })
+      .where(eq(foodEntries.id, id));
+    // Replace the item set as a unit. Delete explicitly (not relying on the FK
+    // cascade) so no `food_items` are orphaned even if PRAGMA foreign_keys is off.
+    await db.delete(foodItems).where(eq(foodItems.entryId, id));
+    await insertDraftItems(db, id, d);
+  });
 }
 
 /// Delete an entry and its items. Items are removed explicitly first so there
 /// are never orphan `food_items` rows regardless of the FK-cascade pragma.
 export async function deleteFoodEntry(db: AnyDb, id: number): Promise<void> {
-  await db.delete(foodItems).where(eq(foodItems.entryId, id));
-  await db.delete(foodEntries).where(eq(foodEntries.id, id));
+  await withTx(db, async () => {
+    await db.delete(foodItems).where(eq(foodItems.entryId, id));
+    await db.delete(foodEntries).where(eq(foodEntries.id, id));
+  });
 }
 
 /// Re-log a past meal as of `ts` (default: now) — copies the entry row AND its
@@ -218,41 +244,43 @@ export async function repeatFoodEntry(db: AnyDb, id: number, ts: Date = new Date
   const detail = await getFoodEntry(db, id);
   if (!detail) return null;
   const e = detail.entry;
-  const inserted = await db
-    .insert(foodEntries)
-    .values({
-      ts,
-      rawText: e.rawText,
-      source: e.source,
-      kcal: e.kcal,
-      proteinG: e.proteinG,
-      fatG: e.fatG,
-      carbG: e.carbG,
-      confirmed: true,
-      // The re-logged meal is the same food — carry its micro totals forward so
-      // «Повторить» counts toward the day's micronutrients like the original.
-      micros: e.micros,
-      // Deliberately NOT copied: the copy happens at a new time of day, so its
-      // meal is re-derived from the new clock by the day view (breakfast eggs
-      // repeated at 20:00 belong to ужин, not to the original's завтрак).
-      meal: null,
-    })
-    .returning({ id: foodEntries.id });
-  const newId = inserted[0].id as number;
-  if (detail.items.length > 0) {
-    await db.insert(foodItems).values(
-      detail.items.map((it) => ({
-        entryId: newId,
-        name: it.name,
-        qtyG: it.qtyG,
-        kcal: it.kcal,
-        proteinG: it.proteinG,
-        fatG: it.fatG,
-        carbG: it.carbG,
-      })),
-    );
-  }
-  return newId;
+  return withTx(db, async () => {
+    const inserted = await db
+      .insert(foodEntries)
+      .values({
+        ts,
+        rawText: e.rawText,
+        source: e.source,
+        kcal: e.kcal,
+        proteinG: e.proteinG,
+        fatG: e.fatG,
+        carbG: e.carbG,
+        confirmed: true,
+        // The re-logged meal is the same food — carry its micro totals forward so
+        // «Повторить» counts toward the day's micronutrients like the original.
+        micros: e.micros,
+        // Deliberately NOT copied: the copy happens at a new time of day, so its
+        // meal is re-derived from the new clock by the day view (breakfast eggs
+        // repeated at 20:00 belong to ужин, not to the original's завтрак).
+        meal: null,
+      })
+      .returning({ id: foodEntries.id });
+    const newId = inserted[0].id as number;
+    if (detail.items.length > 0) {
+      await db.insert(foodItems).values(
+        detail.items.map((it) => ({
+          entryId: newId,
+          name: it.name,
+          qtyG: it.qtyG,
+          kcal: it.kcal,
+          proteinG: it.proteinG,
+          fatG: it.fatG,
+          carbG: it.carbG,
+        })),
+      );
+    }
+    return newId;
+  });
 }
 
 /// Rebuild an editable [MealDraft] from a stored entry + items. Storage keeps

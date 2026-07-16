@@ -23,6 +23,7 @@ import {
   type GoalMode,
   type Sex,
 } from '@/lib/core/insights/bodyMetrics';
+import { weightValid } from '@/lib/core/insights/bodySetup';
 import { dailyMicroNorms, type MicroRow } from '@/lib/core/insights/microNutrients';
 import { summarizeWeightTrend, type WeightPoint } from '@/lib/core/insights/weightTrend';
 import { type Theme, useTheme } from '@/lib/theme/theme';
@@ -129,7 +130,9 @@ export default function WeightScreen() {
 
   async function onSaveWeight() {
     const kg = toNumber(text);
-    if (!db || kg <= 0) return;
+    // Same bounds as the body-setup wizard — a slipped decimal («9.4» for 94)
+    // must not silently poison the trend, BMI and the day plan.
+    if (!db || !weightValid(kg)) return;
     setSaving(true);
     try {
       // Delta vs the previous DIFFERENT day (a same-day re-weigh overwrites, so
@@ -161,7 +164,9 @@ export default function WeightScreen() {
     return t('weight.trend.up', { days, abs });
   })();
 
-  const valid = toNumber(text) > 0;
+  const valid = weightValid(toNumber(text));
+  // Out-of-range typed input (likely a slipped decimal) — say why Save is dead.
+  const rangeIssue = text.trim().length > 0 && toNumber(text) > 0 && !valid;
 
   const latestKg = items != null && items.length > 0 ? items[0].weightKg : 0;
   const heightCm = toNumber(heightText);
@@ -289,6 +294,11 @@ export default function WeightScreen() {
         disabled={db == null || !valid || saving}
         style={styles.save}
       />
+      {rangeIssue ? (
+        <Text style={[styles.weightAck, { color: theme.subtle }, theme.font.body]}>
+          {t('weight.rangeHint')}
+        </Text>
+      ) : null}
       {/* Transient echo of the number just typed (with its delta), so it doesn't
           silently vanish into the history list. */}
       {weightAck ? (
