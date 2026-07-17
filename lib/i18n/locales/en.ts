@@ -680,6 +680,23 @@ export const en = {
     workoutExplainer:
       'Watch workouts can appear here by themselves — via Health / Health Connect. Kcal comes from your device, and steps inside a workout are never counted twice as steps. Read-only access; data stays on your device.',
   },
+  // Night signals from the device (mood screen). Informational — they never
+  // feed the calorie math. HRV is labeled with its method: iOS measures SDNN,
+  // Android RMSSD — different quantities, never shown as one number.
+  night: {
+    title: 'Night — from your device',
+    restingHr: 'Resting heart rate',
+    bpm: 'bpm',
+    hrv: {
+      sdnn: 'Variability (SDNN)',
+      rmssd: 'Variability (RMSSD)',
+    },
+    ms: 'ms',
+    spo2: 'Oxygen SpO₂',
+    respRate: 'Breathing',
+    perMin: '/min',
+    note: 'Informational, not medical data. Never part of the calorie math.',
+  },
   steps: {
     placeholder: 'Steps today',
     unit: 'steps',
@@ -727,6 +744,7 @@ export const en = {
     // Steps inside imported workouts: the budget counts them as workout kcal,
     // so the step earnings exclude them.
     inWorkouts: '−{{steps}} inside workouts — counted there',
+    vo2max: 'VO₂max ≈ {{value}} — from your watch',
     autoConnected: 'Automatic counting is on — your daily steps are read for you',
     manualAdd: 'Enter by hand',
     historySection: 'History',

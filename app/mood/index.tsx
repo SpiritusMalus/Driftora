@@ -14,8 +14,9 @@ import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { bestBodyMindFromDb } from '@/lib/core/db/bodyMind';
 import { countDiaryEntries } from '@/lib/core/db/diary';
 import { todayMacroTotals } from '@/lib/core/db/food';
+import { getHealthDay } from '@/lib/core/db/healthDays';
 import { listMoods, logMood } from '@/lib/core/db/mood';
-import type { MoodRow } from '@/lib/core/db/schema';
+import type { HealthDayRow, MoodRow } from '@/lib/core/db/schema';
 import { getSleepForDay } from '@/lib/core/db/sleep';
 import { dayKey, getStepsRow } from '@/lib/core/db/steps';
 import { pluralKey } from '@/lib/i18n/plural';
@@ -68,6 +69,8 @@ export default function MoodScreen() {
   const [best, setBest] = useState<SignalAssociation | null>(null);
   const [steps, setSteps] = useState<number | null>(null);
   const [sleepMin, setSleepMin] = useState<number | null>(null);
+  // Night/body signals from the device (health_days) — informational rows only.
+  const [healthDay, setHealthDay] = useState<HealthDayRow | null>(null);
   const [proteinG, setProteinG] = useState(0);
   const [diaryCount, setDiaryCount] = useState(0);
 
@@ -97,16 +100,18 @@ export default function MoodScreen() {
       let active = true;
       void (async () => {
         if (!db) return;
-        const [list, bestLink, stepsRow, sleep, tot, diaryN] = await Promise.all([
+        const [list, bestLink, stepsRow, sleep, tot, diaryN, night] = await Promise.all([
           listMoods(db, 30),
           bestBodyMindFromDb(db),
           getStepsRow(db),
           getSleepForDay(db),
           todayMacroTotals(db),
           countDiaryEntries(db),
+          getHealthDay(db),
         ]);
         if (!active) return;
         setItems(list);
+        setHealthDay(night);
         // Pre-highlight only TODAY's latest check-in: echoing a days-old mark
         // on the scale (and in the day card) reads as a claim about today.
         const last = list.length > 0 ? list[0] : null;
@@ -213,6 +218,45 @@ export default function MoodScreen() {
         }
       : null;
 
+  // «Ночь» — the device's informational night signals, one quiet row per
+  // metric that actually exists (watches vary; an all-null day shows nothing).
+  // Display only, never calorie math; the HRV row NAMES its method — iOS
+  // measures SDNN, Android RMSSD, and they must not read as the same number.
+  const nightRows: RowSpec[] = [];
+  if (healthDay?.restingBpm != null) {
+    nightRows.push({
+      key: 'rhr',
+      title: t('night.restingHr'),
+      right: nightValue(`${healthDay.restingBpm} ${t('night.bpm')}`),
+    });
+  }
+  if (healthDay?.hrvMs != null) {
+    nightRows.push({
+      key: 'hrv',
+      title: t(`night.hrv.${healthDay.hrvMethod ?? 'rmssd'}`),
+      right: nightValue(`≈ ${healthDay.hrvMs} ${t('night.ms')}`),
+    });
+  }
+  if (healthDay?.spo2Pct != null) {
+    nightRows.push({
+      key: 'spo2',
+      title: t('night.spo2'),
+      right: nightValue(`≈ ${healthDay.spo2Pct} %`),
+    });
+  }
+  if (healthDay?.respRate != null) {
+    nightRows.push({
+      key: 'resp',
+      title: t('night.respRate'),
+      right: nightValue(`≈ ${healthDay.respRate} ${t('night.perMin')}`),
+    });
+  }
+  function nightValue(text: string) {
+    return (
+      <Text style={[styles.value, { color: theme.text }, theme.font.bodySemiBold]}>{text}</Text>
+    );
+  }
+
   // Group the newest-first check-ins into calendar days (order preserved), then
   // render one summary row per day. A day with several check-ins is tappable:
   // its header keeps showing the latest value, and expanding lists each one.
@@ -317,6 +361,18 @@ export default function MoodScreen() {
         <ListGroup rows={sleepRow ? [diaryRow, sleepRow] : [diaryRow]} />
       </View>
 
+      {nightRows.length > 0 ? (
+        <View style={styles.rows}>
+          <Text style={[styles.nightTitle, { color: theme.subtle }, theme.font.bodySemiBold]}>
+            {t('night.title')}
+          </Text>
+          <ListGroup rows={nightRows} />
+          <Text style={[styles.nightNote, { color: theme.subtle }, theme.font.body]}>
+            {t('night.note')}
+          </Text>
+        </View>
+      ) : null}
+
       {db == null ? (
         <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('mood.dbUnavailable')}</Text>
       ) : items == null ? null : items.length === 0 ? (
@@ -394,6 +450,8 @@ const styles = StyleSheet.create({
   ack: { fontSize: 13, marginTop: 12, lineHeight: 18 },
   hero: { marginTop: 4 },
   rows: { marginTop: 16 },
+  nightTitle: { fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8, marginLeft: 4 },
+  nightNote: { fontSize: 11, lineHeight: 15, marginTop: 8, marginLeft: 4, fontStyle: 'italic' },
   hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
   history: { marginTop: 16 },
   value: { fontSize: 16 },

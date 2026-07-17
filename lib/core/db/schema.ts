@@ -120,6 +120,24 @@ export const workoutImportTombstones = sqliteTable('workout_import_tombstones', 
   deletedAt: integer('deleted_at', { mode: 'timestamp' }).notNull(),
 });
 
+/// Informational body/night signals from the OS health store, one row per day —
+/// resting heart rate, night HRV, SpO₂, respiratory rate, VO₂max. Every metric
+/// independently nullable (watches vary wildly in what they measure). DISPLAY
+/// ONLY: none of these feed the calorie budget. `hrvMethod` matters: iOS
+/// exposes SDNN (seconds→ms), Android RMSSD (ms) — different metrics that must
+/// never be shown as the same number without their name.
+export const healthDays = sqliteTable('health_days', {
+  date: text('date').primaryKey(), // 'YYYY-MM-DD'
+  restingBpm: integer('resting_bpm'),
+  hrvMs: real('hrv_ms'),
+  hrvMethod: text('hrv_method', { enum: ['sdnn', 'rmssd'] }),
+  spo2Pct: real('spo2_pct'), // 0–100
+  respRate: real('resp_rate'), // breaths/min
+  vo2max: real('vo2max'), // ml/kg/min, latest within 60 days
+  syncedAt: integer('synced_at', { mode: 'timestamp' }).notNull(),
+});
+export type HealthDayRow = typeof healthDays.$inferSelect;
+
 /// Nightly sleep duration (minutes) pulled from the OS health store, one row per
 /// day. A second zero-effort passive signal alongside steps; it feeds the
 /// Body↔Mind insight (sleep↔mood). Real HealthKit / Health Connect data is

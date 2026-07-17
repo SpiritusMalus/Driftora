@@ -11,6 +11,7 @@ import { Screen } from '@/components/ui/Screen';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { TextField } from '@/components/ui/TextField';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
+import { getHealthDay } from '@/lib/core/db/healthDays';
 import { syncDayHealth } from '@/lib/core/db/healthSync';
 import type { StepsRow, WeightRow } from '@/lib/core/db/schema';
 import { ensureSettings } from '@/lib/core/db/settings';
@@ -49,6 +50,8 @@ export default function ActivityScreen() {
 
   const [items, setItems] = useState<StepsRow[] | null>(null);
   const [weight, setWeight] = useState<WeightRow | null>(null);
+  // Latest VO₂max from the watch (health_days) — one quiet informational line.
+  const [vo2max, setVo2max] = useState<number | null>(null);
   const [text, setText] = useState('');
   const [manualOpen, setManualOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -74,6 +77,7 @@ export default function ActivityScreen() {
       // The latest weight lets us turn today's steps into an honest «≈ N ккал»
       // payoff (same base+earned model as Home). Missing weight simply hides it.
       if (db) void latestWeight(db).then((w) => active && setWeight(w));
+      if (db) void getHealthDay(db).then((h) => active && setVo2max(h?.vo2max ?? null));
       return () => {
         active = false;
       };
@@ -213,6 +217,11 @@ export default function ActivityScreen() {
             {workoutStepsLine ? (
               <Text style={[styles.heroPayoff, { color: theme.tertiary }, theme.font.body]}>
                 {workoutStepsLine}
+              </Text>
+            ) : null}
+            {vo2max != null ? (
+              <Text style={[styles.heroSource, { color: theme.tertiary }, theme.font.body]}>
+                {t('activity.vo2max', { value: vo2max })}
               </Text>
             ) : null}
             <Text style={[styles.heroSource, { color: theme.tertiary }, theme.font.body]}>

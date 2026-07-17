@@ -3,6 +3,7 @@ import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 import { kcalFromMet, workoutKcal, WORKOUT_TYPES, type WorkoutType } from '../insights/bodyMetrics';
 import type { DeviceWorkoutSession, HealthService } from '../services/health';
 import { mergedDayWindows, type TimeWindow } from '../services/workoutWindows';
+import { upsertHealthDay } from './healthDays';
 import { getStepsRow, dayKey, setWorkoutSteps, syncDaySteps } from './steps';
 import { syncDaySleep } from './sleep';
 import { latestWeight, syncWeighIns } from './weight';
@@ -58,7 +59,21 @@ export async function syncDayHealth(
   }
   const workoutSteps = await syncDayWorkouts(db, service, day);
   await syncWeighIns(db, service, 1, day);
+  await syncDayBodySignals(db, service, day);
   return { steps, workoutSteps };
+}
+
+/// Pulls the day's informational body/night signals (resting HR, HRV, SpO₂,
+/// respiratory rate, VO₂max) into health_days. Display only — never calories.
+export async function syncDayBodySignals(
+  db: AnyDb,
+  service: HealthService,
+  day: Date = new Date(),
+): Promise<boolean> {
+  if (!service.bodySignalsForDay) return false;
+  const signals = await service.bodySignalsForDay(day);
+  if (signals == null) return false;
+  return upsertHealthDay(db, day, signals);
 }
 
 /// Imports the day's device workout sessions and recomputes the day's
@@ -158,13 +173,17 @@ async function resolveSessionKcal(
 export async function backfillHealth(
   db: AnyDb,
   service: HealthService,
-  opts: { weightDays?: number; workoutDays?: number } = {},
+  opts: { weightDays?: number; workoutDays?: number; signalDays?: number } = {},
   now: Date = new Date(),
 ): Promise<void> {
   const weightDays = opts.weightDays ?? 30;
   const workoutDays = opts.workoutDays ?? 14;
+  const signalDays = opts.signalDays ?? 14;
   await syncWeighIns(db, service, weightDays, now);
   for (let back = workoutDays - 1; back >= 0; back--) {
     await syncDayWorkouts(db, service, new Date(now.getTime() - back * DAY_MS));
+  }
+  for (let back = signalDays - 1; back >= 0; back--) {
+    await syncDayBodySignals(db, service, new Date(now.getTime() - back * DAY_MS));
   }
 }

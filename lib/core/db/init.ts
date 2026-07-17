@@ -69,6 +69,16 @@ CREATE TABLE IF NOT EXISTS workout_import_tombstones (
   external_id TEXT PRIMARY KEY,
   deleted_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS health_days (
+  date TEXT PRIMARY KEY,
+  resting_bpm INTEGER,
+  hrv_ms REAL,
+  hrv_method TEXT,
+  spo2_pct REAL,
+  resp_rate REAL,
+  vo2max REAL,
+  synced_at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS weights (
   date TEXT PRIMARY KEY,
   weight_kg REAL NOT NULL,
@@ -250,6 +260,8 @@ export const MIGRATIONS: string[] = [
   // budget subtracts from the raw count before pricing steps (a watch-imported
   // run must not earn kcal twice: once as steps, once as workout kcal).
   `ALTER TABLE steps_days ADD COLUMN workout_steps INTEGER NOT NULL DEFAULT 0`,
+  // 2026-07-17: night/body signals (stage 3) — the new `health_days` table
+  // needs no ALTER, CREATE TABLE IF NOT EXISTS above covers old installs.
 ];
 
 /// Runs each CREATE statement through [run], then the idempotent [MIGRATIONS].

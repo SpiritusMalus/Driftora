@@ -60,6 +60,26 @@ interface AppleHealthKit {
     opts: { startDate: string; endDate: string },
     cb: (err: unknown, res: { data: HkWorkout[] }) => void,
   ): void;
+  getRestingHeartRateSamples(
+    opts: { startDate: string; endDate: string; ascending?: boolean },
+    cb: (err: string | null, res: HkSample[]) => void,
+  ): void;
+  getHeartRateVariabilitySamples(
+    opts: { startDate: string; endDate: string; ascending?: boolean },
+    cb: (err: string | null, res: HkSample[]) => void,
+  ): void;
+  getOxygenSaturationSamples(
+    opts: { startDate: string; endDate: string; ascending?: boolean },
+    cb: (err: string | null, res: HkSample[]) => void,
+  ): void;
+  getRespiratoryRateSamples(
+    opts: { startDate: string; endDate: string; ascending?: boolean },
+    cb: (err: string | null, res: HkSample[]) => void,
+  ): void;
+  getVo2MaxSamples(
+    opts: { startDate: string; endDate: string; ascending?: boolean },
+    cb: (err: string | null, res: HkSample[]) => void,
+  ): void;
   getDailyStepCountSamples(
     opts: { startDate: string; endDate: string; period?: number; includeManuallyAdded?: boolean },
     cb: (err: string | null, res: HkSample[]) => void,
@@ -257,6 +277,54 @@ class IosHealthService implements HealthService {
         },
       );
     });
+  }
+
+  /// One HK sample query as a promise; null (not []) on error so callers can
+  /// tell "can't read" from "no data".
+  private hkSamples(
+    method: (
+      opts: { startDate: string; endDate: string; ascending?: boolean },
+      cb: (err: string | null, res: HkSample[]) => void,
+    ) => void,
+    start: Date,
+    end: Date,
+  ): Promise<HkSample[] | null> {
+    return new Promise((resolve) => {
+      method.call(
+        this.hk,
+        { startDate: start.toISOString(), endDate: end.toISOString(), ascending: true },
+        (err: string | null, samples: HkSample[]) => {
+          resolve(err || !Array.isArray(samples) ? null : samples);
+        },
+      );
+    });
+  }
+
+  async bodySignalsForDay(day: Date): Promise<import('./health').DeviceBodySignals | null> {
+    if (!(await this.ensureFull())) return null;
+    const dayStart = startOfDay(day);
+    const dayEnd = new Date(dayStart.getTime() + DAY_MS);
+    // Night ending on `day` — the same noon-to-noon window as sleep.
+    const nightEnd = new Date(dayStart.getTime() + 12 * 60 * 60 * 1000);
+    const nightStart = new Date(nightEnd.getTime() - DAY_MS);
+    const [rhr, hrv, spo2, resp, vo2] = await Promise.all([
+      this.hkSamples(this.hk.getRestingHeartRateSamples, dayStart, dayEnd),
+      this.hkSamples(this.hk.getHeartRateVariabilitySamples, nightStart, nightEnd),
+      this.hkSamples(this.hk.getOxygenSaturationSamples, nightStart, nightEnd),
+      this.hkSamples(this.hk.getRespiratoryRateSamples, nightStart, nightEnd),
+      this.hkSamples(this.hk.getVo2MaxSamples, new Date(dayEnd.getTime() - 60 * DAY_MS), dayEnd),
+    ]);
+    const hrvMeanSec = meanValue(hrv); // HK unit: seconds
+    return {
+      restingBpm: latestValue(rhr),
+      // SDNN, seconds → ms. iOS measures SDNN, not RMSSD — keep the name.
+      hrvMs: hrvMeanSec != null ? Math.round(hrvMeanSec * 1000 * 10) / 10 : null,
+      hrvMethod: hrvMeanSec != null ? 'sdnn' : null,
+      // HK returns the 0–1 fraction — ×100 to percent.
+      spo2Pct: scale(meanValue(spo2), 100),
+      respRate: round1(meanValue(resp)),
+      vo2Max: round1(latestValue(vo2)),
+    };
   }
 
   async stepsForDay(day: Date): Promise<number | null> {
@@ -486,6 +554,46 @@ class AndroidHealthService implements HealthService {
     }
   }
 
+  async bodySignalsForDay(day: Date): Promise<import('./health').DeviceBodySignals | null> {
+    if (!(await this.ensure())) return null;
+    const dayStart = startOfDay(day);
+    const dayEnd = new Date(dayStart.getTime() + DAY_MS);
+    // Night ending on `day` — the same noon-to-noon window as sleep.
+    const nightEnd = new Date(dayStart.getTime() + 12 * 60 * 60 * 1000);
+    const nightStart = new Date(nightEnd.getTime() - DAY_MS);
+    const [rhr, hrv, spo2, resp, vo2] = await Promise.all([
+      this.readSamples('RestingHeartRate', dayStart, dayEnd, (r) => {
+        const rec = r as { time?: string; beatsPerMinute?: number };
+        return { at: rec.time, value: Number(rec.beatsPerMinute ?? NaN) };
+      }),
+      this.readSamples('HeartRateVariabilityRmssd', nightStart, nightEnd, (r) => {
+        const rec = r as { time?: string; heartRateVariabilityMillis?: number };
+        return { at: rec.time, value: Number(rec.heartRateVariabilityMillis ?? NaN) };
+      }),
+      this.readSamples('OxygenSaturation', nightStart, nightEnd, (r) => {
+        const rec = r as { time?: string; percentage?: number };
+        return { at: rec.time, value: Number(rec.percentage ?? NaN) };
+      }),
+      this.readSamples('RespiratoryRate', nightStart, nightEnd, (r) => {
+        const rec = r as { time?: string; rate?: number };
+        return { at: rec.time, value: Number(rec.rate ?? NaN) };
+      }),
+      this.readSamples('Vo2Max', new Date(dayEnd.getTime() - 60 * DAY_MS), dayEnd, (r) => {
+        const rec = r as { time?: string; vo2MillilitersPerMinuteKilogram?: number };
+        return { at: rec.time, value: Number(rec.vo2MillilitersPerMinuteKilogram ?? NaN) };
+      }),
+    ]);
+    const hrvMean = meanValue(hrv);
+    return {
+      restingBpm: latestValue(rhr),
+      hrvMs: round1(hrvMean), // RMSSD, already ms
+      hrvMethod: hrvMean != null ? 'rmssd' : null,
+      spo2Pct: round1(meanValue(spo2)), // already 0–100
+      respRate: round1(meanValue(resp)),
+      vo2Max: round1(latestValue(vo2)),
+    };
+  }
+
   private async readSum(recordType: string, start: Date, end: Date, pick: (r: unknown) => number): Promise<number | null> {
     if (!(await this.ensure())) return null;
     try {
@@ -551,6 +659,39 @@ class AndroidHealthService implements HealthService {
 function startOfDay(day: Date): Date {
   const [y, m, d] = dayKey(day).split('-').map(Number);
   return new Date(y, m - 1, d);
+}
+
+// Small sample-bag helpers shared by both platforms' bodySignalsForDay.
+// iOS samples carry `startDate`, Android's `at` — accept either.
+interface TimedValue {
+  value: number;
+  at?: string;
+  startDate?: string;
+}
+
+function meanValue(samples: TimedValue[] | null): number | null {
+  const values = (samples ?? []).map((s) => s.value).filter((v) => Number.isFinite(v));
+  if (values.length === 0) return null;
+  return values.reduce((a, b) => a + b, 0) / values.length;
+}
+
+function latestValue(samples: TimedValue[] | null): number | null {
+  let best: { t: number; v: number } | null = null;
+  for (const s of samples ?? []) {
+    if (!Number.isFinite(s.value)) continue;
+    const t = new Date(s.at ?? s.startDate ?? '').getTime();
+    if (!Number.isFinite(t)) continue;
+    if (best == null || t > best.t) best = { t, v: s.value };
+  }
+  return best ? best.v : null;
+}
+
+function scale(v: number | null, k: number): number | null {
+  return v != null ? Math.round(v * k * 10) / 10 : null;
+}
+
+function round1(v: number | null): number | null {
+  return v != null ? Math.round(v * 10) / 10 : null;
 }
 
 /// Constructs the platform-native health service. Throws if the matching native

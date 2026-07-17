@@ -84,4 +84,21 @@ export interface HealthService {
   /// OS-deduplicated active energy (kcal) inside a window — the measured burn
   /// of a session, preferred over any MET estimate.
   activeKcalInWindow?(start: Date, end: Date): Promise<number | null>;
+
+  /// Informational body/night signals for the day: resting HR (that calendar
+  /// day), HRV / SpO₂ / respiratory rate averaged over the night ending on the
+  /// day (same noon-to-noon window as sleep), VO₂max (latest within 60 days).
+  /// Every metric independently nullable. DISPLAY ONLY — never calorie math.
+  bodySignalsForDay?(day: Date): Promise<DeviceBodySignals | null>;
+}
+
+/// See [HealthService.bodySignalsForDay]. `hrvMethod` names the metric: iOS
+/// measures SDNN, Android RMSSD — different quantities, never merge silently.
+export interface DeviceBodySignals {
+  restingBpm: number | null;
+  hrvMs: number | null;
+  hrvMethod: 'sdnn' | 'rmssd' | null;
+  spo2Pct: number | null; // 0–100
+  respRate: number | null; // breaths/min
+  vo2Max: number | null; // ml/kg/min
 }

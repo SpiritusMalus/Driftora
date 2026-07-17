@@ -1,4 +1,4 @@
-import type { DeviceWorkoutSession, HealthSample, HealthService } from './health';
+import type { DeviceBodySignals, DeviceWorkoutSession, HealthSample, HealthService } from './health';
 import { dayKey } from '../db/steps';
 
 /**
@@ -98,6 +98,21 @@ export class StubHealthService implements HealthService {
     if (start.getDate() % 2 !== 0) return null;
     const minutes = Math.max(0, (end.getTime() - start.getTime()) / 60000);
     return Math.round(minutes * 8);
+  }
+
+  /// Deterministic night signals in plausible bands; SpO₂ only every second
+  /// day and VO₂max only every fifth — exercising the partial-null rendering.
+  async bodySignalsForDay(day: Date): Promise<DeviceBodySignals> {
+    const seed =
+      day.getFullYear() * 211 + (day.getMonth() + 1) * 23 + day.getDate() * 11;
+    return {
+      restingBpm: 50 + (seed % 16), // 50–65
+      hrvMs: 35 + (seed % 40), // 35–74 ms
+      hrvMethod: 'rmssd',
+      spo2Pct: seed % 2 === 0 ? 95 + (seed % 4) : null, // 95–98, or absent
+      respRate: 13 + (seed % 5), // 13–17/min
+      vo2Max: seed % 5 === 0 ? 38 + (seed % 12) : null, // 38–49, rare
+    };
   }
 }
 
