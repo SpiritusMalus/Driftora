@@ -1,4 +1,5 @@
-import type { HealthService } from './health';
+import type { DeviceBodySignals, DeviceWorkoutSession, HealthSample, HealthService } from './health';
+import { dayKey } from '../db/steps';
 
 /**
  * OFFLINE STUB health source — no native HealthKit / Health Connect calls.
@@ -33,4 +34,101 @@ export class StubHealthService implements HealthService {
       day.getFullYear() * 145 + (day.getMonth() + 1) * 17 + day.getDate() * 7;
     return 300 + (seed % 24) * 10;
   }
+
+  async requestExtendedPermissions(): Promise<boolean> {
+    return true;
+  }
+
+  /// Deterministic morning weigh-in per day: 74.0–79.9 kg drifting with the
+  /// calendar (0.1-kg steps), stamped 07:30 local. One sample per day.
+  async weightSamplesForRange(start: Date, end: Date): Promise<HealthSample[]> {
+    const samples: HealthSample[] = [];
+    for (const day of eachDay(start, end)) {
+      const seed =
+        day.getFullYear() * 372 + (day.getMonth() + 1) * 31 + day.getDate();
+      const kg = 74 + (seed % 60) / 10;
+      samples.push({ at: at(day, 7, 30), value: kg });
+    }
+    return samples;
+  }
+
+  /// Deterministic body-fat % every SECOND day (scales don't always catch
+  /// impedance — exercises the null path), 18.0–27.5 in 0.5 steps.
+  async bodyFatSamplesForRange(start: Date, end: Date): Promise<HealthSample[]> {
+    const samples: HealthSample[] = [];
+    for (const day of eachDay(start, end)) {
+      const seed =
+        day.getFullYear() * 53 + (day.getMonth() + 1) * 13 + day.getDate() * 3;
+      if (seed % 2 !== 0) continue;
+      samples.push({ at: at(day, 7, 31), value: 18 + (seed % 20) * 0.5 });
+    }
+    return samples;
+  }
+
+  /// One deterministic evening session every THIRD calendar day, 18:00–18:40,
+  /// cycling run → strength → walk — so a dev build exercises the import, the
+  /// step subtraction AND both kcal paths without a watch.
+  async workoutSessionsForDay(day: Date): Promise<DeviceWorkoutSession[]> {
+    if (day.getDate() % 3 !== 0) return [];
+    const types = ['run', 'strength', 'walk'] as const;
+    return [
+      {
+        externalId: `stub-${dayKey(day)}`,
+        start: at(day, 18, 0),
+        end: at(day, 18, 40),
+        type: types[Math.floor(day.getDate() / 3) % 3],
+        title: null,
+        deviceKcal: null,
+        origin: 'stub',
+      },
+    ];
+  }
+
+  /// Deterministic window steps, scaled to the window length (≈120 шагов/мин
+  /// ходьбы-бега) with a per-day wobble — enough for the subtraction to move.
+  async stepsInWindow(start: Date, end: Date): Promise<number> {
+    const minutes = Math.max(0, (end.getTime() - start.getTime()) / 60000);
+    const seed = start.getFullYear() * 91 + (start.getMonth() + 1) * 11 + start.getDate() * 5;
+    return Math.round(minutes * (80 + (seed % 9) * 10));
+  }
+
+  /// Measured window energy on EVEN days only — odd days exercise the honest
+  /// «≈MET» fallback path end-to-end.
+  async activeKcalInWindow(start: Date, end: Date): Promise<number | null> {
+    if (start.getDate() % 2 !== 0) return null;
+    const minutes = Math.max(0, (end.getTime() - start.getTime()) / 60000);
+    return Math.round(minutes * 8);
+  }
+
+  /// Deterministic night signals in plausible bands; SpO₂ only every second
+  /// day and VO₂max only every fifth — exercising the partial-null rendering.
+  async bodySignalsForDay(day: Date): Promise<DeviceBodySignals> {
+    const seed =
+      day.getFullYear() * 211 + (day.getMonth() + 1) * 23 + day.getDate() * 11;
+    return {
+      restingBpm: 50 + (seed % 16), // 50–65
+      hrvMs: 35 + (seed % 40), // 35–74 ms
+      hrvMethod: 'rmssd',
+      spo2Pct: seed % 2 === 0 ? 95 + (seed % 4) : null, // 95–98, or absent
+      respRate: 13 + (seed % 5), // 13–17/min
+      vo2Max: seed % 5 === 0 ? 38 + (seed % 12) : null, // 38–49, rare
+    };
+  }
+}
+
+/// Local days whose calendar date falls inside [start, end], oldest first.
+function eachDay(start: Date, end: Date): Date[] {
+  const days: Date[] = [];
+  const cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const last = dayKey(end);
+  while (dayKey(cursor) <= last) {
+    days.push(new Date(cursor.getTime()));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return days;
+}
+
+/// ISO timestamp for HH:mm local on the given day.
+function at(day: Date, h: number, m: number): string {
+  return new Date(day.getFullYear(), day.getMonth(), day.getDate(), h, m).toISOString();
 }

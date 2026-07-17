@@ -62,6 +62,17 @@ async function seed(db: ReturnType<typeof makeDb>['db']) {
   await upsertSteps(db, '2026-06-18', 8123);
   await upsertSleep(db, '2026-06-18', 450);
   await addWorkout(db, 'run', 30, 71.4, null, new Date(2026, 5, 18, 18));
+  await db.insert(schema.workoutImportTombstones).values({
+    externalId: 'hk-deleted-session',
+    deletedAt: new Date(2026, 5, 18, 19),
+  });
+  await db.insert(schema.healthDays).values({
+    date: '2026-06-18',
+    restingBpm: 54,
+    hrvMs: 48.5,
+    hrvMethod: 'rmssd',
+    syncedAt: new Date(2026, 5, 18, 9),
+  });
   await upsertWeight(db, '2026-06-18', 71.4);
   await logMood(db, 7);
   await saveDiaryEntry(db, {

@@ -1,4 +1,4 @@
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, inArray } from 'drizzle-orm';
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
 import {
@@ -8,7 +8,7 @@ import {
   type StrengthIntensity,
   type WorkoutType,
 } from '../insights/bodyMetrics';
-import { workouts, type WorkoutRow } from './schema';
+import { workoutImportTombstones, workouts, type WorkoutRow } from './schema';
 import { dayKey } from './steps';
 
 /// Accepts any drizzle SQLite database (op-sqlite async on device,
@@ -86,6 +86,7 @@ export async function addParsedWorkout(
     speedKmh,
     label: parsed.name_ru.trim() || null,
     sets: parsed.sets != null && parsed.sets > 0 ? Math.round(parsed.sets) : null,
+    source: 'ai',
   });
   return kcal;
 }
@@ -110,8 +111,75 @@ export async function addTrackerWorkout(
     speedKmh: null,
     label: input.label?.trim() || null,
     sets: input.sets != null && input.sets > 0 ? Math.round(input.sets) : null,
+    source: 'tracker',
   });
   return kcal;
+}
+
+/// One device session normalized for storage — the sync layer resolves the kcal
+/// (window aggregate → session total → ≈MET) BEFORE calling this.
+export interface DeviceWorkoutInput {
+  externalId: string;
+  start: Date;
+  end: Date;
+  type: string; // WorkoutType key or 'other'
+  title: string | null;
+  minutes: number;
+  kcal: number;
+  kcalFrom: 'device' | 'met';
+  stepsInWindow: number | null;
+}
+
+/// Upserts a device-imported session, keyed by the OS record id: a re-sync
+/// UPDATES the existing row (watch data often firms up minutes after the
+/// session) instead of duplicating it, and a tombstoned id — one the user
+/// deleted — is never resurrected. The row's `date` is the session's START
+/// day, matching manual `ts → date` semantics for midnight-crossers. Returns
+/// whether the session is now present in the log.
+export async function importDeviceWorkout(db: AnyDb, input: DeviceWorkoutInput): Promise<boolean> {
+  const dead = await db
+    .select()
+    .from(workoutImportTombstones)
+    .where(eq(workoutImportTombstones.externalId, input.externalId));
+  if (dead.length > 0) return false;
+  const values = {
+    ts: input.start,
+    date: dayKey(input.start),
+    type: input.type,
+    minutes: Math.round(Math.min(Math.max(0, input.minutes), 600)),
+    kcal: Math.round(Math.min(Math.max(0, input.kcal), 5000)),
+    speedKmh: null,
+    label: input.title,
+    sets: null,
+    intensity: null,
+    source: 'device' as const,
+    externalId: input.externalId,
+    startTs: input.start,
+    endTs: input.end,
+    stepsInWindow:
+      input.stepsInWindow != null ? Math.max(0, Math.round(input.stepsInWindow)) : null,
+    kcalFrom: input.kcalFrom,
+  };
+  const existing = (await db
+    .select()
+    .from(workouts)
+    .where(eq(workouts.externalId, input.externalId))) as WorkoutRow[];
+  if (existing.length > 0) {
+    await db.update(workouts).set(values).where(eq(workouts.id, existing[0].id));
+  } else {
+    await db.insert(workouts).values(values);
+  }
+  return true;
+}
+
+/// Which of the given OS record ids the user has deleted (tombstoned).
+export async function tombstonedIds(db: AnyDb, ids: string[]): Promise<Set<string>> {
+  if (ids.length === 0) return new Set();
+  const rows = (await db
+    .select()
+    .from(workoutImportTombstones)
+    .where(inArray(workoutImportTombstones.externalId, ids))) as { externalId: string }[];
+  return new Set(rows.map((r) => r.externalId));
 }
 
 /// A day's logged workouts, newest-first.
@@ -138,7 +206,17 @@ export async function todayWorkoutKcal(
   return rows.reduce((sum, r) => sum + Number(r.kcal), 0);
 }
 
-/// Remove one logged workout by id.
+/// Remove one logged workout by id. Deleting a DEVICE import also tombstones
+/// its OS record id, so the next passive sync doesn't resurrect the row the
+/// user just removed.
 export async function deleteWorkout(db: AnyDb, id: number): Promise<void> {
+  const rows = (await db.select().from(workouts).where(eq(workouts.id, id))) as WorkoutRow[];
+  const row = rows[0];
+  if (row && row.source === 'device' && row.externalId) {
+    await db
+      .insert(workoutImportTombstones)
+      .values({ externalId: row.externalId, deletedAt: new Date() })
+      .onConflictDoNothing();
+  }
   await db.delete(workouts).where(eq(workouts.id, id));
 }

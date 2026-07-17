@@ -13,6 +13,7 @@ import {
   restingPlan,
   setsToMinutes,
   stepsEarnedKcal,
+  stepsOutsideWorkouts,
   suggestActivityLevel,
   suggestPlan,
   suggestTargets,
@@ -591,5 +592,28 @@ describe('130 kg / 36 % fat / 10k steps — matches the by-hand clinical numbers
     const rest = restingPlan(profile, 130, 'maintain', NOW)!;
     expect(rest.minDayKcal).toBe(0);
     expect(rest.baseKcal).toBe(rest.kcal);
+  });
+});
+
+describe('stepsOutsideWorkouts (steps↔workout double-count fix)', () => {
+  it('subtracts the workout-window steps from the raw count', () => {
+    expect(stepsOutsideWorkouts(8000, 1200)).toBe(6800);
+    expect(stepsOutsideWorkouts(8000, 0)).toBe(8000);
+  });
+
+  it('never goes negative and shrugs off garbage', () => {
+    expect(stepsOutsideWorkouts(2000, 5000)).toBe(0); // window > day (clock skew)
+    expect(stepsOutsideWorkouts(NaN, 100)).toBe(0);
+    expect(stepsOutsideWorkouts(5000, NaN)).toBe(5000);
+    expect(stepsOutsideWorkouts(-100, -50)).toBe(0);
+  });
+
+  it('composes with stepsEarnedKcal: subtraction lands BEFORE the 3000 baseline', () => {
+    // 82 kg, 8000 steps of which 1200 inside an imported run:
+    // (8000 − 1200 − 3000) × 0.0005 × 82 = 155.8 → 156 kcal.
+    expect(stepsEarnedKcal(stepsOutsideWorkouts(8000, 1200), 82)).toBe(156);
+    // Without the fix the same day priced (8000 − 3000) × 0.0005 × 82 = 205 —
+    // and the run's kcal would ride on top: the double count this kills.
+    expect(stepsEarnedKcal(8000, 82)).toBe(205);
   });
 });

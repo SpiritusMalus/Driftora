@@ -23,6 +23,8 @@ const EXPORT_TABLES = [
   'steps_days',
   'sleep_days',
   'workouts',
+  'workout_import_tombstones',
+  'health_days',
   'weights',
   'moods',
   'diary_entries',

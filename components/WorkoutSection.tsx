@@ -702,30 +702,45 @@ export function WorkoutSection({
           {rows.length > 0 ? (
             <View style={styles.list}>
               {rows.map((r) => (
-                <View key={r.id} style={styles.item}>
-                  <Text style={[styles.itemName, { color: theme.text }, theme.font.body]} numberOfLines={1}>
-                    {(() => {
-                      const parts = [r.label ? r.label : t(`workouts.type.${r.type}`)];
-                      if (r.sets != null && r.sets > 0) parts.push(t('workouts.setsCount', { count: r.sets }));
-                      // Skip a «0 мин» tail: a «по часам» entry has kcal but no duration.
-                      else if (r.minutes > 0) parts.push(`${r.minutes} ${t('workouts.min')}`);
-                      if (r.speedKmh) parts.push(`${Math.round(r.speedKmh * 10) / 10} ${t('workouts.kmh')}`);
-                      if (r.intensity) parts.push(t(`workouts.intensity.${r.intensity}`));
-                      return parts.join(' · ');
-                    })()}
-                  </Text>
-                  <Text style={[styles.itemKcal, { color: theme.subtle }, theme.font.body]}>
-                    {r.type === 'other' ? '≈ ' : ''}
-                    {Math.round(r.kcal)} {t('units.kcal')}
-                  </Text>
-                  <Pressable
-                    onPress={() => confirmRemove(r.id)}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('workouts.remove')}
-                  >
-                    <Ionicons name="close" size={16} color={theme.tertiary} />
-                  </Pressable>
+                <View key={r.id}>
+                  <View style={styles.item}>
+                    <Text style={[styles.itemName, { color: theme.text }, theme.font.body]} numberOfLines={1}>
+                      {(() => {
+                        const parts = [r.label ? r.label : t(`workouts.type.${r.type}`)];
+                        if (r.sets != null && r.sets > 0) parts.push(t('workouts.setsCount', { count: r.sets }));
+                        // Skip a «0 мин» tail: a «по часам» entry has kcal but no duration.
+                        else if (r.minutes > 0) parts.push(`${r.minutes} ${t('workouts.min')}`);
+                        if (r.speedKmh) parts.push(`${Math.round(r.speedKmh * 10) / 10} ${t('workouts.kmh')}`);
+                        if (r.intensity) parts.push(t(`workouts.intensity.${r.intensity}`));
+                        // Provenance tag for auto-imported sessions — «с часов».
+                        if (r.source === 'device') parts.push(t('workouts.fromDevice'));
+                        return parts.join(' · ');
+                      })()}
+                    </Text>
+                    <Text style={[styles.itemKcal, { color: theme.subtle }, theme.font.body]}>
+                      {/* «≈» = estimated: device rows only when their kcal fell
+                          back to our MET math (kcalFrom='met'); user-logged rows
+                          keep the old model-MET rule (type 'other'). A measured
+                          device number shows verbatim. */}
+                      {(r.source === 'device' ? r.kcalFrom === 'met' : r.type === 'other') ? '≈ ' : ''}
+                      {Math.round(r.kcal)} {t('units.kcal')}
+                    </Text>
+                    <Pressable
+                      onPress={() => confirmRemove(r.id)}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('workouts.remove')}
+                    >
+                      <Ionicons name="close" size={16} color={theme.tertiary} />
+                    </Pressable>
+                  </View>
+                  {/* The double-count fix, said out loud: these steps moved into
+                      the workout's kcal and left the step earnings. */}
+                  {r.source === 'device' && r.stepsInWindow != null && r.stepsInWindow > 0 ? (
+                    <Text style={[styles.itemSub, { color: theme.tertiary }, theme.font.body]}>
+                      {t('workouts.stepsInside', { steps: r.stepsInWindow })}
+                    </Text>
+                  ) : null}
                 </View>
               ))}
             </View>
@@ -798,5 +813,6 @@ const styles = StyleSheet.create({
   item: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   itemName: { fontSize: 13, flex: 1 },
   itemKcal: { fontSize: 13 },
+  itemSub: { fontSize: 11, lineHeight: 15, marginTop: 2 },
   note: { fontSize: 12, marginTop: 12, lineHeight: 17 },
 });

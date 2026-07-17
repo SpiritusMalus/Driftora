@@ -22,11 +22,39 @@ export class NullHealthService implements HealthService {
     return false;
   }
 
+  async requestExtendedPermissions(): Promise<boolean> {
+    return false;
+  }
+
   async stepsForDay(): Promise<number | null> {
     return null;
   }
 
   async sleepForDay(): Promise<number | null> {
+    return null;
+  }
+
+  async weightSamplesForRange(): Promise<null> {
+    return null;
+  }
+
+  async bodyFatSamplesForRange(): Promise<null> {
+    return null;
+  }
+
+  async workoutSessionsForDay(): Promise<null> {
+    return null;
+  }
+
+  async stepsInWindow(): Promise<null> {
+    return null;
+  }
+
+  async activeKcalInWindow(): Promise<null> {
+    return null;
+  }
+
+  async bodySignalsForDay(): Promise<null> {
     return null;
   }
 }

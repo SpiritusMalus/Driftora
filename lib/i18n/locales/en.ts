@@ -203,6 +203,7 @@ export const en = {
       placeholder: 'e.g. 25',
       invalid: 'Realistic range: 3–70%. Leave empty if unsure.',
       skip: 'Don’t know — skip',
+      fromDevice: 'Prefilled from your scale’s measurement of {{date}} — feel free to correct it.',
     },
     goal: {
       title: 'Your goal',
@@ -428,6 +429,10 @@ export const en = {
     screenshot: 'Workout screenshot',
     photoFailed: 'Couldn’t open the image. Try another screenshot.',
     fromTracker: 'from tracker',
+    // Auto-imported session tag + the honest line about its steps: they're in
+    // the workout's kcal already, so the budget's step earnings exclude them.
+    fromDevice: 'from watch',
+    stepsInside: '{{steps}} steps inside — counted in the workout, not in steps',
     trackerAdded: 'Logged from your tracker: {{kcal}} kcal.',
     budgetAck: '✓ Workout logged: +{{kcal}} kcal added to today’s budget.',
     // The short line is always visible; the full math is a tap away («How we count»).
@@ -640,6 +645,57 @@ export const en = {
       birthYear: 'Birth year',
       bodyFat: 'Body fat %',
     },
+    // History-row provenance: typed by hand vs smart scale (via Health /
+    // Health Connect). Always visible — no silent magic.
+    source: {
+      manual: 'Entered by hand',
+      device: 'From your device',
+    },
+    // Scale-measured body fat. NEVER feeds the calculation silently — only via
+    // the explicit “Use in the calculation” tap.
+    deviceFat: {
+      line: '≈ {{pct}} % body fat — from your device, {{date}}',
+      apply: 'Use in the calculation',
+      applied: 'Used in the daily-target calculation ✓',
+    },
+  },
+  // Connect card for the EXTENDED device import (weight & body fat from a smart
+  // scale, workouts from a watch, night signals). One flag lights everything;
+  // the degraded states mirror the automatic-steps card.
+  device: {
+    connect: 'Connect',
+    connecting: 'Connecting…',
+    connectedNow:
+      'Device import is on. If data doesn’t appear, check access in Health / Health Connect.',
+    installAction: 'Open Health Connect on Google Play',
+    state: {
+      denied:
+        'Access not granted — import stays off. You can allow reading in Health / Health Connect.',
+      unavailable: 'Health / Health Connect isn’t available on this device.',
+      update_required: 'Health Connect needs an update before it can grant access.',
+      unsupported: 'Device import isn’t available in this build.',
+    },
+    weightExplainer:
+      'A smart scale can log weight and body fat % by itself — via Health (iPhone) or Health Connect (Android), where the scale’s app writes them. Read-only access; data stays on your device.',
+    workoutExplainer:
+      'Watch workouts can appear here by themselves — via Health / Health Connect. Kcal comes from your device, and steps inside a workout are never counted twice as steps. Read-only access; data stays on your device.',
+  },
+  // Night signals from the device (mood screen). Informational — they never
+  // feed the calorie math. HRV is labeled with its method: iOS measures SDNN,
+  // Android RMSSD — different quantities, never shown as one number.
+  night: {
+    title: 'Night — from your device',
+    restingHr: 'Resting heart rate',
+    bpm: 'bpm',
+    hrv: {
+      sdnn: 'Variability (SDNN)',
+      rmssd: 'Variability (RMSSD)',
+    },
+    ms: 'ms',
+    spo2: 'Oxygen SpO₂',
+    respRate: 'Breathing',
+    perMin: '/min',
+    note: 'Informational, not medical data. Never part of the calorie math.',
   },
   steps: {
     placeholder: 'Steps today',
@@ -685,6 +741,10 @@ export const en = {
     // Honest «steps → budget» payoff, right on the screen that owns steps.
     earned: '≈ {{kcal}} kcal above resting from steps',
     inBase: 'The first ~3,000 are already in the base — the budget grows above that',
+    // Steps inside imported workouts: the budget counts them as workout kcal,
+    // so the step earnings exclude them.
+    inWorkouts: '−{{steps}} inside workouts — counted there',
+    vo2max: 'VO₂max ≈ {{value}} — from your watch',
     autoConnected: 'Automatic counting is on — your daily steps are read for you',
     manualAdd: 'Enter by hand',
     historySection: 'History',
@@ -736,6 +796,10 @@ export const en = {
       restBase: 'base {{kcal}}',
       stepsPart: 'steps {{steps}} +{{kcal}}',
       stepsForecastPart: 'steps ≈{{steps}} (your usual) +{{kcal}}',
+      // Some steps happened inside watch-imported workouts — they already count
+      // in “workouts +N”, so the step earnings exclude them. Always visible.
+      stepsPartCut: 'steps {{steps}} (−{{cut}} in workouts) +{{kcal}}',
+      stepsAllInWorkouts: 'steps — {{cut}} inside workouts, counted there',
       workoutsPart: 'workouts +{{kcal}}',
       minPart: 'not below {{kcal}}',
       forecastNote: 'Today’s steps aren’t logged yet — the budget stands on your usual count. Enter your steps and it firms up.',

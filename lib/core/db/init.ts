@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS steps_days (
   date TEXT PRIMARY KEY,
   steps INTEGER NOT NULL DEFAULT 0,
   source TEXT NOT NULL DEFAULT 'stub',
+  workout_steps INTEGER NOT NULL DEFAULT 0,
   synced_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS sleep_days (
@@ -56,12 +57,34 @@ CREATE TABLE IF NOT EXISTS workouts (
   speed_kmh REAL,
   label TEXT,
   sets INTEGER,
-  intensity TEXT
+  intensity TEXT,
+  source TEXT NOT NULL DEFAULT 'manual',
+  external_id TEXT,
+  start_ts INTEGER,
+  end_ts INTEGER,
+  steps_in_window INTEGER,
+  kcal_from TEXT
+);
+CREATE TABLE IF NOT EXISTS workout_import_tombstones (
+  external_id TEXT PRIMARY KEY,
+  deleted_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS health_days (
+  date TEXT PRIMARY KEY,
+  resting_bpm INTEGER,
+  hrv_ms REAL,
+  hrv_method TEXT,
+  spo2_pct REAL,
+  resp_rate REAL,
+  vo2max REAL,
+  synced_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS weights (
   date TEXT PRIMARY KEY,
   weight_kg REAL NOT NULL,
-  ts INTEGER NOT NULL
+  ts INTEGER NOT NULL,
+  source TEXT NOT NULL DEFAULT 'manual',
+  body_fat_pct REAL
 );
 CREATE TABLE IF NOT EXISTS moods (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -114,6 +137,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
   paused INTEGER NOT NULL DEFAULT 0,
   contextual_nudges INTEGER NOT NULL DEFAULT 0,
   show_population_stats INTEGER NOT NULL DEFAULT 0,
+  health_import_extended INTEGER NOT NULL DEFAULT 0,
   region TEXT NOT NULL DEFAULT 'auto',
   legal_accepted_version TEXT NOT NULL DEFAULT '',
   legal_accepted_at INTEGER,
@@ -210,6 +234,34 @@ export const MIGRATIONS: string[] = [
   // at log time (device feedback: flat 3.5 MET undershot heavy lifting). Null for
   // non-strength and old rows (their kcal is already frozen).
   `ALTER TABLE workouts ADD COLUMN intensity TEXT`,
+  // 2026-07-17: weight provenance + scale-measured body fat (device import,
+  // stage 1). Existing rows were all typed by hand → 'manual' (sticky, the
+  // passive scale sync never overwrites them). body_fat_pct is display-only —
+  // it feeds BMR only via an explicit «Использовать в расчёте» tap.
+  `ALTER TABLE weights ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'`,
+  `ALTER TABLE weights ADD COLUMN body_fat_pct REAL`,
+  // 2026-07-17: opt-in extended device import (weight/body-fat/workouts/vitals).
+  // Ships OFF: with the flag off every new read path is skipped and the app
+  // behaves byte-for-byte as before — and no extended OS permission is ever
+  // requested outside the explicit connect tap.
+  `ALTER TABLE app_settings ADD COLUMN health_import_extended INTEGER NOT NULL DEFAULT 0`,
+  // 2026-07-17: device workout import (stage 2). Provenance for every workout
+  // row (old rows were all user-initiated → 'manual'), the OS record id as the
+  // re-sync dedup key, the session's real time window, the steps counted
+  // inside it (display), and where the kcal came from (device vs ≈MET).
+  // (The new `workout_import_tombstones` table needs no ALTER — CREATE above.)
+  `ALTER TABLE workouts ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'`,
+  `ALTER TABLE workouts ADD COLUMN external_id TEXT`,
+  `ALTER TABLE workouts ADD COLUMN start_ts INTEGER`,
+  `ALTER TABLE workouts ADD COLUMN end_ts INTEGER`,
+  `ALTER TABLE workouts ADD COLUMN steps_in_window INTEGER`,
+  `ALTER TABLE workouts ADD COLUMN kcal_from TEXT`,
+  // 2026-07-17: the day's merged-union workout-window steps — what the eating
+  // budget subtracts from the raw count before pricing steps (a watch-imported
+  // run must not earn kcal twice: once as steps, once as workout kcal).
+  `ALTER TABLE steps_days ADD COLUMN workout_steps INTEGER NOT NULL DEFAULT 0`,
+  // 2026-07-17: night/body signals (stage 3) — the new `health_days` table
+  // needs no ALTER, CREATE TABLE IF NOT EXISTS above covers old installs.
 ];
 
 /// Runs each CREATE statement through [run], then the idempotent [MIGRATIONS].

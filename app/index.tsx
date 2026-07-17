@@ -20,13 +20,19 @@ import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { todayMacroTotals } from '@/lib/core/db/food';
 import type { AppSettings } from '@/lib/core/db/schema';
 import { latestMood } from '@/lib/core/db/mood';
+import { syncDayHealth } from '@/lib/core/db/healthSync';
 import { ensureSettings, parseReminderTimes, updateSettings } from '@/lib/core/db/settings';
-import { syncDaySleep } from '@/lib/core/db/sleep';
-import { dayKey, listStepsDays, syncDaySteps, typicalSteps } from '@/lib/core/db/steps';
+import { dayKey, listStepsDays, typicalSteps } from '@/lib/core/db/steps';
 import { weekReview } from '@/lib/core/db/weekReview';
 import { latestWeight } from '@/lib/core/db/weight';
 import { todayWorkoutKcal } from '@/lib/core/db/workouts';
-import { dayBudgetKcal, EATBACK_FRACTION, restingPlan, stepsEarnedKcal } from '@/lib/core/insights/bodyMetrics';
+import {
+  dayBudgetKcal,
+  EATBACK_FRACTION,
+  restingPlan,
+  stepsEarnedKcal,
+  stepsOutsideWorkouts,
+} from '@/lib/core/insights/bodyMetrics';
 import { personalBaseline, type PersonalBaseline } from '@/lib/core/insights/baseline';
 import { daySummary, daysSince, type DaySummary } from '@/lib/core/insights/daySummary';
 import { dayOfYear, pickVariant } from '@/lib/core/insights/variant';
@@ -75,39 +81,47 @@ export default function HomeScreen() {
   // Raw workout burn today — for the food widget's movement-adjusted target
   // (steps are already loaded above; both feed the same eat-back layer).
   const [workoutRawKcal, setWorkoutRawKcal] = useState(0);
+  // Steps inside today's device-imported workout windows (merged union) — the
+  // eating budget prices steps MINUS these; display/goals keep the raw count.
+  const [workoutSteps, setWorkoutSteps] = useState(0);
   // One /mood push per left-swipe gesture — releases when Home regains focus.
   const swipeNavLock = useRef(false);
 
   const reload = useCallback(async () => {
         if (!db) return;
-        const [tot, settingsRow, moodRow, review, weightLatest, workoutKcal] = await Promise.all([
-          todayMacroTotals(db),
-          ensureSettings(db),
-          latestMood(db),
-          weekReview(db),
-          latestWeight(db),
-          todayWorkoutKcal(db),
-        ]);
+        // Settings FIRST (the extended-import flag), then the passive sync, and
+        // only THEN the workout-kcal read: after watch imports landed, reading
+        // todayWorkoutKcal in parallel with the sync raced against the very
+        // sessions it's about to show.
+        const settingsRow = await ensureSettings(db);
         const svc = getHealthService();
         // Sync today's passive signals first so the read reflects today too.
         // `stepCount` is null when there's genuinely no data (no device source
         // wired + nothing entered) — kept distinct from a real 0 so Home shows
         // "no data", not a fabricated count. Goal/celebration math treats null
-        // as 0 (no steps → no steps win).
-        const stepCount = await syncDaySteps(db, svc);
+        // as 0 (no steps → no steps win). Sleep is synced inside too: it stays
+        // on Home (the app's entry) so the sleep↔mood insight keeps its data
+        // even though sleep is DISPLAYED on the mood screen only.
+        const health = await syncDayHealth(db, svc, new Date(), settingsRow.healthImportExtended);
+        const stepCount = health.steps;
+        const [tot, moodRow, review, weightLatest, workoutKcal] = await Promise.all([
+          todayMacroTotals(db),
+          latestMood(db),
+          weekReview(db),
+          latestWeight(db),
+          todayWorkoutKcal(db),
+        ]);
         const stepsForGoals = stepCount ?? 0;
         // Personal baseline: today vs the median of recent prior days (steps
         // only — ED-safe). Pull a generous window, drop today, feed the totals.
+        // RAW steps on purpose — only the eating budget subtracts the workout
+        // windows; goals/wins/insights keep the real movement.
         const todayKey = dayKey();
         const recentSteps = (await listStepsDays(db, 31))
           .filter((r) => r.date !== todayKey)
           .map((r) => Number(r.steps));
         const stepsBaseline =
           stepCount == null ? null : personalBaseline(recentSteps, stepCount);
-        // Passive sleep sync stays on Home (the app's entry) so the sleep↔mood
-        // insight keeps its data even though sleep is DISPLAYED on the mood
-        // screen only — and only once real data exists.
-        await syncDaySleep(db, svc);
         // Celebrate the day's earned goals automatically (deduped per day). A
         // quiet background behavior, not a Home card — kept as-is.
         await runAutoWins(
@@ -155,6 +169,7 @@ export default function HomeScreen() {
         }
         const daysGap = daysSince(lastActivity);
         setSteps(stepCount);
+        setWorkoutSteps(health.workoutSteps);
         setUsualSteps(await typicalSteps(db));
         // A break promises «цели выключены» — feed an unreachable goal so the
         // insight can never say «личная цель достигнута» under the pause banner.
@@ -315,7 +330,11 @@ export default function HomeScreen() {
           settings.deficitTempo,
         )
       : null;
-  const budgetSteps = steps ?? usualSteps ?? 0;
+  // Priced steps: today's real count minus the workout-window union (a watch-
+  // imported run already earns through workoutRawKcal — pricing its steps too
+  // would double-count). A forecast day has no windows to subtract.
+  const budgetSteps =
+    steps != null ? stepsOutsideWorkouts(steps, workoutSteps) : (usualSteps ?? 0);
   const stepsEarnedAdd = stepsEarnedKcal(budgetSteps, weightRow?.weightKg ?? 0);
   const earnedAdd = stepsEarnedAdd + Math.round(Math.max(0, workoutRawKcal) * EATBACK_FRACTION);
   const foodTargetKcal = hasGoal
@@ -342,7 +361,9 @@ export default function HomeScreen() {
   // «шаги +N» already shows it there, so this would just duplicate it). Needs
   // steps above the resting baseline, so [stepsEarnedKcal] > 0 gates it.
   const stepsEstimateKcal =
-    !hasGoal && weightRow != null ? stepsEarnedKcal(steps ?? 0, weightRow.weightKg) : 0;
+    !hasGoal && weightRow != null
+      ? stepsEarnedKcal(stepsOutsideWorkouts(steps ?? 0, workoutSteps), weightRow.weightKg)
+      : 0;
   const stepsEstimateLine =
     stepsEstimateKcal > 0
       ? t('home.steps.earnedEstimate', { kcal: stepsEstimateKcal })

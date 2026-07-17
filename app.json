@@ -11,7 +11,7 @@
       "bundleIdentifier": "com.driftora.app",
       "supportsTablet": true,
       "infoPlist": {
-        "NSHealthShareUsageDescription": "Доступ к данным о шагах и сне нужен, чтобы показывать вашу активность, отдых и их пользу для здоровья.",
+        "NSHealthShareUsageDescription": "Доступ к данным Здоровья (шаги, сон, вес, % жира, тренировки, пульс покоя и другие показатели) нужен, чтобы показывать вашу активность и точнее считать дневную норму калорий. Данные остаются на устройстве.",
         "NSSpeechRecognitionUsageDescription": "Распознавание речи используется для голосового ввода еды.",
         "NSMicrophoneUsageDescription": "Микрофон нужен для голосового ввода того, что вы съели."
       },
@@ -34,7 +34,16 @@
         "android.permission.USE_BIOMETRIC",
         "android.permission.USE_FINGERPRINT",
         "android.permission.health.READ_STEPS",
-        "android.permission.health.READ_SLEEP"
+        "android.permission.health.READ_SLEEP",
+        "android.permission.health.READ_WEIGHT",
+        "android.permission.health.READ_BODY_FAT",
+        "android.permission.health.READ_EXERCISE",
+        "android.permission.health.READ_ACTIVE_CALORIES_BURNED",
+        "android.permission.health.READ_RESTING_HEART_RATE",
+        "android.permission.health.READ_HEART_RATE_VARIABILITY",
+        "android.permission.health.READ_OXYGEN_SATURATION",
+        "android.permission.health.READ_RESPIRATORY_RATE",
+        "android.permission.health.READ_VO2_MAX"
       ]
     },
     "web": {
