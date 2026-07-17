@@ -52,6 +52,9 @@ export interface SettingsPatch {
   paused?: boolean;
   contextualNudges?: boolean;
   showPopulationStats?: boolean;
+  // Opt-in extended device import (weight/%жира/workouts/vitals) — gates every
+  // extended read and the extended OS permission request. See schema.ts.
+  healthImportExtended?: boolean;
   region?: 'auto' | 'RU' | 'US';
   // РКН-safe consent fields — see schema.ts. The two consents are independent;
   // helpers in `lib/core/consent/consent.ts` set them with the right version +
@@ -98,6 +101,7 @@ export async function updateSettings(
   if (patch.paused != null) set.paused = patch.paused;
   if (patch.contextualNudges != null) set.contextualNudges = patch.contextualNudges;
   if (patch.showPopulationStats != null) set.showPopulationStats = patch.showPopulationStats;
+  if (patch.healthImportExtended != null) set.healthImportExtended = patch.healthImportExtended;
   if (patch.region != null) set.region = patch.region;
   if (patch.legalAcceptedVersion != null) set.legalAcceptedVersion = patch.legalAcceptedVersion;
   // `…At` fields accept an explicit null (clearing consent on AI-off), so probe

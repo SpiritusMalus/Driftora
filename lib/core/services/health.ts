@@ -5,6 +5,13 @@
 /// device/OS; 'unsupported' = no native health module in this build.
 export type HealthAvailability = 'available' | 'update_required' | 'unavailable' | 'unsupported';
 
+/// One timestamped scalar sample from the OS health store (weigh-in, body-fat
+/// measurement, …). `at` is ISO-8601; the unit is fixed by the reading method.
+export interface HealthSample {
+  at: string;
+  value: number;
+}
+
 /// Reads activity from the OS health store (HealthKit / Health Connect).
 /// Implemented in M2 over react-native-health + react-native-health-connect.
 export interface HealthService {
@@ -29,4 +36,21 @@ export interface HealthService {
   /// null if unavailable. Same passive-signal seam as steps — a deterministic
   /// offline stub fills it until a device dev build wires real sleep data.
   sleepForDay(day: Date): Promise<number | null>;
+
+  /// Requests the EXTENDED read grants beyond steps+sleep (weight, body fat,
+  /// workouts, vitals). Called ONLY from an explicit user tap on a connect
+  /// card — never lazily from a read — so existing users are never surprised
+  /// by an OS permission sheet. Optional: absent means "can't" (returns false
+  /// in Null; the UI hides the card then).
+  requestExtendedPermissions?(): Promise<boolean>;
+
+  /// Scale weigh-ins in KILOGRAMS inside [start, end], oldest first, or null
+  /// when unreadable (no grant / no data / no module). Range-based so a 30-day
+  /// backfill is one native call.
+  weightSamplesForRange?(start: Date, end: Date): Promise<HealthSample[] | null>;
+
+  /// Scale body-fat measurements in PERCENT (0–100) inside [start, end], or
+  /// null. Implementations normalize platform quirks (HealthKit returns the
+  /// raw 0–1 fraction) before returning.
+  bodyFatSamplesForRange?(start: Date, end: Date): Promise<HealthSample[] | null>;
 }

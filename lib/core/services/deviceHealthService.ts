@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 
 import { dayKey } from '../db/steps';
-import type { HealthAvailability, HealthService } from './health';
+import type { HealthAvailability, HealthSample, HealthService } from './health';
 import { asleepMinutes, type SleepSample } from './sleepSamples';
 
 /// REAL device health source — reads steps + sleep from the OS health store via
@@ -22,6 +22,11 @@ import { asleepMinutes, type SleepSample } from './sleepSamples';
 
 // Minimal shapes for the two native APIs — declared locally so this file needs
 // no @types from the (optionally installed) packages.
+interface HkSample {
+  value: number;
+  startDate: string;
+  endDate: string;
+}
 interface AppleHealthKit {
   initHealthKit(perms: unknown, cb: (err: string | null) => void): void;
   getStepCount(opts: { date: string }, cb: (err: string | null, res: { value: number }) => void): void;
@@ -29,7 +34,15 @@ interface AppleHealthKit {
     opts: { startDate: string; endDate: string },
     cb: (err: string | null, res: SleepSample[]) => void,
   ): void;
-  Constants: { Permissions: { StepCount: string; SleepAnalysis: string } };
+  getWeightSamples(
+    opts: { startDate: string; endDate: string; unit?: string; ascending?: boolean },
+    cb: (err: string | null, res: HkSample[]) => void,
+  ): void;
+  getBodyFatPercentageSamples(
+    opts: { startDate: string; endDate: string; ascending?: boolean },
+    cb: (err: string | null, res: HkSample[]) => void,
+  ): void;
+  Constants: { Permissions: Record<string, string> };
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -37,10 +50,19 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /// iOS HealthKit via react-native-health. Permission is requested once
 /// (`initHealthKit`); reads return null on any error so callers degrade to "no
 /// data" rather than a fabricated count.
+///
+/// TWO permission scopes, deliberately split: the BASE scope (steps+sleep) is
+/// what the lazy re-request inside stepsForDay/sleepForDay asks for — exactly
+/// as before this file learned extended reads. The EXTENDED scope adds weight,
+/// body fat, workouts and vitals and is requested ONLY via
+/// requestExtendedPermissions (an explicit connect tap). Folding the new types
+/// into the base list would surprise every existing user with a HealthKit
+/// sheet on next app open (Home syncs steps on focus).
 class IosHealthService implements HealthService {
   readonly source = 'device' as const;
   private hk: AppleHealthKit;
   private initialized = false;
+  private fullInitialized = false;
 
   constructor() {
     // `require` (not import) so missing package → throw → provider falls back.
@@ -52,12 +74,89 @@ class IosHealthService implements HealthService {
     return { permissions: { read: [P.StepCount, P.SleepAnalysis], write: [] } };
   }
 
+  private get fullPermissions() {
+    const P = this.hk.Constants.Permissions;
+    return {
+      permissions: {
+        read: [
+          P.StepCount,
+          P.SleepAnalysis,
+          P.Weight,
+          P.BodyFatPercentage,
+          P.Workout,
+          P.ActiveEnergyBurned,
+          P.RestingHeartRate,
+          P.HeartRateVariability,
+          P.OxygenSaturation,
+          P.RespiratoryRate,
+          P.Vo2Max,
+        ],
+        write: [],
+      },
+    };
+  }
+
   async requestPermissions(): Promise<boolean> {
     return new Promise((resolve) => {
       this.hk.initHealthKit(this.permissions, (err) => {
         this.initialized = !err;
         resolve(!err);
       });
+    });
+  }
+
+  async requestExtendedPermissions(): Promise<boolean> {
+    return new Promise((resolve) => {
+      this.hk.initHealthKit(this.fullPermissions, (err) => {
+        this.fullInitialized = !err;
+        this.initialized = this.initialized || !err;
+        resolve(!err);
+      });
+    });
+  }
+
+  /// Extended reads re-init with the full scope. Safe at cold start: this is
+  /// only reached when the user already connected (settings flag), so every
+  /// type is "determined" and initHealthKit shows no sheet.
+  private async ensureFull(): Promise<boolean> {
+    if (this.fullInitialized) return true;
+    return this.requestExtendedPermissions();
+  }
+
+  async weightSamplesForRange(start: Date, end: Date): Promise<HealthSample[] | null> {
+    if (!(await this.ensureFull())) return null;
+    return new Promise((resolve) => {
+      // Explicit unit: without it react-native-health returns POUNDS.
+      this.hk.getWeightSamples(
+        { startDate: start.toISOString(), endDate: end.toISOString(), unit: 'gram', ascending: true },
+        (err, samples) => {
+          if (err || !Array.isArray(samples)) return resolve(null);
+          resolve(
+            samples
+              .filter((s) => Number.isFinite(s?.value) && !!s?.startDate)
+              .map((s) => ({ at: s.startDate, value: s.value / 1000 })),
+          );
+        },
+      );
+    });
+  }
+
+  async bodyFatSamplesForRange(start: Date, end: Date): Promise<HealthSample[] | null> {
+    if (!(await this.ensureFull())) return null;
+    return new Promise((resolve) => {
+      this.hk.getBodyFatPercentageSamples(
+        { startDate: start.toISOString(), endDate: end.toISOString(), ascending: true },
+        (err, samples) => {
+          if (err || !Array.isArray(samples)) return resolve(null);
+          resolve(
+            samples
+              .filter((s) => Number.isFinite(s?.value) && !!s?.startDate)
+              // HealthKit sample queries return the raw 0–1 fraction (only the
+              // getLatest… variant multiplies by 100 natively) — normalize here.
+              .map((s) => ({ at: s.startDate, value: s.value <= 1 ? s.value * 100 : s.value })),
+          );
+        },
+      );
     });
   }
 
@@ -141,6 +240,71 @@ class AndroidHealthService implements HealthService {
     } catch {
       return false;
     }
+  }
+
+  /// The extended read set (weight/body-fat/workouts/vitals) on top of the base
+  /// steps+sleep. Health Connect grants are per-record-type, so a partial grant
+  /// is fine — each read below degrades to null on its own.
+  async requestExtendedPermissions(): Promise<boolean> {
+    if (!(await this.ensure())) return false;
+    try {
+      const granted = await this.hc.requestPermission([
+        { accessType: 'read', recordType: 'Steps' },
+        { accessType: 'read', recordType: 'SleepSession' },
+        { accessType: 'read', recordType: 'Weight' },
+        { accessType: 'read', recordType: 'BodyFat' },
+        { accessType: 'read', recordType: 'ExerciseSession' },
+        { accessType: 'read', recordType: 'ActiveCaloriesBurned' },
+        { accessType: 'read', recordType: 'RestingHeartRate' },
+        { accessType: 'read', recordType: 'HeartRateVariabilityRmssd' },
+        { accessType: 'read', recordType: 'OxygenSaturation' },
+        { accessType: 'read', recordType: 'RespiratoryRate' },
+        { accessType: 'read', recordType: 'Vo2Max' },
+      ]);
+      return Array.isArray(granted) && granted.length > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  /// Range read of a record type mapped to timestamped samples; null on any
+  /// failure (missing grant, provider error) — honest degradation per metric.
+  private async readSamples(
+    recordType: string,
+    start: Date,
+    end: Date,
+    pick: (r: unknown) => { at: string | undefined; value: number },
+  ): Promise<HealthSample[] | null> {
+    if (!(await this.ensure())) return null;
+    try {
+      const res = await this.hc.readRecords(recordType, {
+        timeRangeFilter: { operator: 'between', startTime: start.toISOString(), endTime: end.toISOString() },
+      });
+      const records: unknown[] = res?.records ?? [];
+      const samples: HealthSample[] = [];
+      for (const r of records) {
+        const { at, value } = pick(r);
+        if (at && Number.isFinite(value)) samples.push({ at, value });
+      }
+      return samples;
+    } catch {
+      return null;
+    }
+  }
+
+  async weightSamplesForRange(start: Date, end: Date): Promise<HealthSample[] | null> {
+    return this.readSamples('Weight', start, end, (r) => {
+      const rec = r as { time?: string; weight?: { inKilograms?: number } };
+      return { at: rec.time, value: Number(rec.weight?.inKilograms ?? NaN) };
+    });
+  }
+
+  async bodyFatSamplesForRange(start: Date, end: Date): Promise<HealthSample[] | null> {
+    // BodyFatRecordResult.percentage is already 0–100 (unlike HealthKit's fraction).
+    return this.readSamples('BodyFat', start, end, (r) => {
+      const rec = r as { time?: string; percentage?: number };
+      return { at: rec.time, value: Number(rec.percentage ?? NaN) };
+    });
   }
 
   private async readSum(recordType: string, start: Date, end: Date, pick: (r: unknown) => number): Promise<number | null> {

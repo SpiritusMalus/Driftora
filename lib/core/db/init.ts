@@ -61,7 +61,9 @@ CREATE TABLE IF NOT EXISTS workouts (
 CREATE TABLE IF NOT EXISTS weights (
   date TEXT PRIMARY KEY,
   weight_kg REAL NOT NULL,
-  ts INTEGER NOT NULL
+  ts INTEGER NOT NULL,
+  source TEXT NOT NULL DEFAULT 'manual',
+  body_fat_pct REAL
 );
 CREATE TABLE IF NOT EXISTS moods (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -114,6 +116,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
   paused INTEGER NOT NULL DEFAULT 0,
   contextual_nudges INTEGER NOT NULL DEFAULT 0,
   show_population_stats INTEGER NOT NULL DEFAULT 0,
+  health_import_extended INTEGER NOT NULL DEFAULT 0,
   region TEXT NOT NULL DEFAULT 'auto',
   legal_accepted_version TEXT NOT NULL DEFAULT '',
   legal_accepted_at INTEGER,
@@ -210,6 +213,17 @@ export const MIGRATIONS: string[] = [
   // at log time (device feedback: flat 3.5 MET undershot heavy lifting). Null for
   // non-strength and old rows (their kcal is already frozen).
   `ALTER TABLE workouts ADD COLUMN intensity TEXT`,
+  // 2026-07-17: weight provenance + scale-measured body fat (device import,
+  // stage 1). Existing rows were all typed by hand → 'manual' (sticky, the
+  // passive scale sync never overwrites them). body_fat_pct is display-only —
+  // it feeds BMR only via an explicit «Использовать в расчёте» tap.
+  `ALTER TABLE weights ADD COLUMN source TEXT NOT NULL DEFAULT 'manual'`,
+  `ALTER TABLE weights ADD COLUMN body_fat_pct REAL`,
+  // 2026-07-17: opt-in extended device import (weight/body-fat/workouts/vitals).
+  // Ships OFF: with the flag off every new read path is skipped and the app
+  // behaves byte-for-byte as before — and no extended OS permission is ever
+  // requested outside the explicit connect tap.
+  `ALTER TABLE app_settings ADD COLUMN health_import_extended INTEGER NOT NULL DEFAULT 0`,
 ];
 
 /// Runs each CREATE statement through [run], then the idempotent [MIGRATIONS].

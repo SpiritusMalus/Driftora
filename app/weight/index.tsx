@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { DeviceHealthCard } from '@/components/DeviceHealthCard';
 import { Card } from '@/components/ui/Card';
 import { ListGroup, type RowSpec } from '@/components/ui/ListGroup';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
@@ -12,7 +13,8 @@ import { TextField } from '@/components/ui/TextField';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import type { WeightRow } from '@/lib/core/db/schema';
 import { ensureSettings, updateSettings, type SettingsPatch } from '@/lib/core/db/settings';
-import { listWeights, upsertWeight } from '@/lib/core/db/weight';
+import { latestDeviceBodyFat, listWeights, syncWeighIns, upsertWeight } from '@/lib/core/db/weight';
+import { getHealthService } from '@/lib/core/services/healthProvider';
 import {
   DEFICIT_TEMPOS,
   GOAL_MODES,
@@ -51,6 +53,11 @@ export default function WeightScreen() {
   const [saving, setSaving] = useState(false);
   // «120.0 кг — записано ✓» under the save button; cleared when typing again.
   const [weightAck, setWeightAck] = useState<string | null>(null);
+  // Extended device import: null = settings not loaded yet (card hidden), else
+  // the healthImportExtended flag. The latest scale-measured body-fat row backs
+  // the «Использовать в расчёте» line in the Body section.
+  const [extendedOn, setExtendedOn] = useState<boolean | null>(null);
+  const [deviceFat, setDeviceFat] = useState<WeightRow | null>(null);
 
   // Body profile + КБЖУ targets (single app_settings row). Body facts are
   // display-only here (edited in the wizard); plan levers persist on edit.
@@ -92,13 +99,23 @@ export default function WeightScreen() {
       let active = true;
       void (async () => {
         if (!db) return;
+        // Settings FIRST — the extended-import flag decides whether to pull the
+        // day's scale weigh-in before listing (device rows never overwrite a
+        // manual day, see upsertDeviceWeight).
+        const s = await ensureSettings(db);
+        if (!active) return;
+        setExtendedOn(s.healthImportExtended);
+        if (s.healthImportExtended) {
+          await syncWeighIns(db, getHealthService(), 1).catch(() => {});
+        }
         const list = await listWeights(db, 30);
-        if (active) setItems(list);
+        if (!active) return;
+        setItems(list);
+        setDeviceFat(await latestDeviceBodyFat(db));
+        if (!active) return;
         // Settings re-read on EVERY focus: body facts are edited in the
         // body-setup wizard now, so returning from it must show the fresh save.
         // Inline levers persist on end-editing, so nothing unsaved is clobbered.
-        const s = await ensureSettings(db);
-        if (!active) return;
         setHeightText(s.heightCm > 0 ? String(s.heightCm) : '');
         setSex(s.sex);
         setBirthYearText(s.birthYear > 0 ? String(s.birthYear) : '');
@@ -204,9 +221,13 @@ export default function WeightScreen() {
   const rows: RowSpec[] = (items ?? []).map((w) => ({
     key: w.date,
     title: formatDay(w.date),
+    // Provenance, always visible («никакой тихой магии»): typed vs scale. The
+    // scale's body-fat % rides on the same row when it was measured.
+    subtitle: w.source === 'device' ? t('weight.source.device') : t('weight.source.manual'),
     right: (
       <Text style={[styles.rowKg, { color: theme.text }, theme.font.bodySemiBold]}>
         {w.weightKg.toFixed(1)} {t('weight.unit')}
+        {w.bodyFatPct != null ? ` · ${w.bodyFatPct.toFixed(1)}%` : ''}
       </Text>
     ),
   }));
@@ -303,6 +324,21 @@ export default function WeightScreen() {
           silently vanish into the history list. */}
       {weightAck ? (
         <Text style={[styles.weightAck, { color: theme.accent }, theme.font.bodyMedium]}>{weightAck}</Text>
+      ) : null}
+
+      {/* AUTOMATIC weigh-ins — smart-scale import via Здоровье / Health Connect.
+          Shown until connected (extendedOn); afterwards the source tags on the
+          history rows carry the honesty and the screen stays quiet. */}
+      {db != null && extendedOn === false ? (
+        <DeviceHealthCard
+          explainer={t('device.weightExplainer')}
+          onConnected={async () => {
+            await syncWeighIns(db, getHealthService(), 30).catch(() => {});
+            setItems(await listWeights(db, 30));
+            setDeviceFat(await latestDeviceBodyFat(db));
+            setExtendedOn(true);
+          }}
+        />
       ) : null}
 
       {db == null ? (
@@ -572,6 +608,45 @@ export default function WeightScreen() {
               value={bodyFatText ? `${bodyFatText}%` : t('weight.sections.body.fatUnset')}
               theme={theme}
             />
+            {/* Scale-measured body fat NEVER feeds BMR silently — the plan uses
+                app_settings.bodyFatPct only, and this explicit tap is the single
+                bridge between the measurement and the calculation. */}
+            {deviceFat?.bodyFatPct != null ? (
+              (() => {
+                const measured = Math.round((deviceFat.bodyFatPct as number) * 10) / 10;
+                const applied = toNumber(bodyFatText) === measured;
+                return (
+                  <>
+                    <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
+                      {t('weight.deviceFat.line', {
+                        pct: measured.toFixed(1),
+                        date: formatDay(deviceFat.date),
+                      })}
+                    </Text>
+                    {applied ? (
+                      <Text style={[styles.appliedLine, { color: theme.accent }, theme.font.bodyMedium]}>
+                        {t('weight.deviceFat.applied')}
+                      </Text>
+                    ) : (
+                      <Pressable
+                        onPress={() => {
+                          setBodyFatText(String(measured));
+                          void persist({ bodyFatPct: measured }, t('weight.targets.savedTick'), 'plan');
+                        }}
+                        style={({ pressed }) => [
+                          styles.applyBtn,
+                          { borderColor: theme.primary, opacity: pressed ? 0.6 : 1 },
+                        ]}
+                      >
+                        <Text style={[styles.applyText, { color: theme.primary }, theme.font.bodySemiBold]}>
+                          {t('weight.deviceFat.apply')}
+                        </Text>
+                      </Pressable>
+                    )}
+                  </>
+                );
+              })()
+            ) : null}
             <Pressable
               onPress={() => router.push('/body-setup')}
               style={({ pressed }) => [styles.applyBtn, { borderColor: theme.primary, opacity: pressed ? 0.6 : 1 }]}

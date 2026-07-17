@@ -10,7 +10,7 @@ import { Screen } from '@/components/ui/Screen';
 import { TextField } from '@/components/ui/TextField';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
-import { latestWeight, upsertWeight } from '@/lib/core/db/weight';
+import { latestDeviceBodyFat, latestWeight, upsertWeight } from '@/lib/core/db/weight';
 import {
   DEFICIT_TEMPOS,
   GOAL_MODES,
@@ -49,6 +49,9 @@ export default function BodySetupScreen() {
   const [heightText, setHeightText] = useState('');
   const [weightText, setWeightText] = useState('');
   const [bodyFatText, setBodyFatText] = useState('');
+  // 'YYYY-MM-DD' of the scale measurement that prefilled bodyFat (no manual
+  // value existed) — the step then names its source instead of staying silent.
+  const [deviceFatDate, setDeviceFatDate] = useState<string | null>(null);
   // No preselected goal on the first pass — the choice must be deliberate.
   const [goal, setGoal] = useState<GoalMode | null>(null);
   const [goalWeightText, setGoalWeightText] = useState('');
@@ -71,7 +74,18 @@ export default function BodySetupScreen() {
       if (s.sex === 'male' || s.sex === 'female') setSex(s.sex);
       if (s.heightCm > 0) setHeightText(String(s.heightCm));
       if (w != null) setWeightText(String(w.weightKg));
-      if (s.bodyFatPct > 0) setBodyFatText(String(s.bodyFatPct));
+      if (s.bodyFatPct > 0) {
+        setBodyFatText(String(s.bodyFatPct));
+      } else {
+        // No manual value yet — offer the scale's measurement as a prefill,
+        // NAMED as such on the step. Saving still goes through the explicit
+        // «Рассчитать» tap, so nothing feeds BMR silently.
+        const df = await latestDeviceBodyFat(db);
+        if (active && df?.bodyFatPct != null) {
+          setBodyFatText(String(Math.round(df.bodyFatPct * 10) / 10));
+          setDeviceFatDate(df.date);
+        }
+      }
       if (s.goalWeightKg > 0) setGoalWeightText(String(s.goalWeightKg));
       setTempo(s.deficitTempo);
       const complete = (s.sex === 'male' || s.sex === 'female') && s.heightCm >= 100 && s.heightCm <= 250;
@@ -253,6 +267,11 @@ export default function BodySetupScreen() {
             onSubmit={next}
           />
           {bodyFatText.trim() !== '' && !stepOk ? <Invalid text={t('bodySetup.bodyFat.invalid')} theme={theme} /> : null}
+          {deviceFatDate != null ? (
+            <Text style={[styles.skip, { color: theme.subtle }, theme.font.body]}>
+              {t('bodySetup.bodyFat.fromDevice', { date: formatDeviceDate(deviceFatDate) })}
+            </Text>
+          ) : null}
           <Pressable
             onPress={() => {
               setBodyFatText('');
@@ -562,6 +581,12 @@ function Chip({
 function toNumber(v: string): number {
   const n = parseFloat(v.replace(',', '.'));
   return Number.isFinite(n) ? n : 0;
+}
+
+/// '2026-06-17' → '17.06.2026' (same day format as the weight history).
+function formatDeviceDate(date: string): string {
+  const [y, m, d] = date.split('-');
+  return `${d}.${m}.${y}`;
 }
 
 const styles = StyleSheet.create({

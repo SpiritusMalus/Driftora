@@ -53,4 +53,27 @@ describe('schema migrations (existing install)', () => {
     expect((await ensureSettings(db)).region).toBe('auto');
     sqlite.close();
   });
+
+  it('upgrades a pre-device weights table: source defaults to manual, data survives', async () => {
+    const sqlite = new BetterSqlite3(':memory:');
+    // Old install: weights without source/body_fat_pct, with a logged weigh-in.
+    sqlite.exec(`CREATE TABLE weights (
+      date TEXT PRIMARY KEY,
+      weight_kg REAL NOT NULL,
+      ts INTEGER NOT NULL
+    );`);
+    sqlite.exec("INSERT INTO weights (date, weight_kg, ts) VALUES ('2026-07-01', 82.4, 0)");
+
+    await applySchema((s) => sqlite.exec(s));
+
+    const db = drizzle(sqlite, { schema });
+    const rows = await db.select().from(schema.weights);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].weightKg).toBe(82.4); // existing data preserved
+    expect(rows[0].source).toBe('manual'); // old rows were all typed by hand
+    expect(rows[0].bodyFatPct).toBeNull();
+    // The extended-import flag lands too, shipped OFF.
+    expect((await ensureSettings(db)).healthImportExtended).toBe(false);
+    sqlite.close();
+  });
 });

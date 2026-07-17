@@ -99,6 +99,13 @@
       "when": 1783841929907,
       "tag": "0013_add_workout_intensity",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1784310429248,
+      "tag": "0014_device_weight_bodyfat",
+      "breakpoints": true
     }
   ]
 }

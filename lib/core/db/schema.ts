@@ -95,13 +95,22 @@ export const sleepDays = sqliteTable('sleep_days', {
   syncedAt: integer('synced_at', { mode: 'timestamp' }).notNull(),
 });
 
-/// Manually logged body weight, one row per day. No weigh-in pressure: logging
-/// is optional and the UI frames the trend neutrally (weight fluctuates).
+/// Logged body weight, one row per day. No weigh-in pressure: logging is
+/// optional and the UI frames the trend neutrally (weight fluctuates).
 /// Feeds future adaptive macro targets (recalibrated from the weight trend).
 export const weights = sqliteTable('weights', {
   date: text('date').primaryKey(), // 'YYYY-MM-DD'
   weightKg: real('weight_kg').notNull(),
   ts: integer('ts', { mode: 'timestamp' }).notNull(),
+  // Provenance, mirroring steps_days.source: 'manual' = typed by the user
+  // (sticky — the passive device sync never overwrites it), 'device' = read
+  // from the OS health store (smart scale via HealthKit / Health Connect).
+  source: text('source', { enum: ['manual', 'device'] }).notNull().default('manual'),
+  // Body-fat % measured by the scale ALONGSIDE this weigh-in (0–100). Null for
+  // manual rows and scales without impedance. Display/history only — it NEVER
+  // feeds BMR silently; the user applies it to app_settings.bodyFatPct with an
+  // explicit tap on the weight screen (no smart magic).
+  bodyFatPct: real('body_fat_pct'),
 });
 
 /// A standalone quick mood check-in (0–10), separate from the full СМЭР diary —
@@ -210,6 +219,15 @@ export const appSettings = sqliteTable('app_settings', {
   // Opt-in (default off): show sourced step reference points vs. the user's
   // average. Off by default — social comparison can demotivate (Roadmap §5).
   showPopulationStats: integer('show_population_stats', { mode: 'boolean' })
+    .notNull()
+    .default(false),
+  // Opt-in (default off): EXTENDED device import beyond steps+sleep — weight и
+  // %жира с умных весов, тренировки с часов, ночные сигналы. Gates every
+  // extended read AND the extended OS permission request, so existing users
+  // never see a surprise permission sheet (iOS lazily re-requests the base
+  // scope on reads — enlarging that list without this gate would prompt
+  // everyone on next app open). Off = behavior identical to before.
+  healthImportExtended: integer('health_import_extended', { mode: 'boolean' })
     .notNull()
     .default(false),
   // GENERAL consent to use the app (Terms + Privacy Policy), captured by the

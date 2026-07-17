@@ -203,6 +203,7 @@ export const en = {
       placeholder: 'e.g. 25',
       invalid: 'Realistic range: 3–70%. Leave empty if unsure.',
       skip: 'Don’t know — skip',
+      fromDevice: 'Prefilled from your scale’s measurement of {{date}} — feel free to correct it.',
     },
     goal: {
       title: 'Your goal',
@@ -640,6 +641,38 @@ export const en = {
       birthYear: 'Birth year',
       bodyFat: 'Body fat %',
     },
+    // History-row provenance: typed by hand vs smart scale (via Health /
+    // Health Connect). Always visible — no silent magic.
+    source: {
+      manual: 'Entered by hand',
+      device: 'From your device',
+    },
+    // Scale-measured body fat. NEVER feeds the calculation silently — only via
+    // the explicit “Use in the calculation” tap.
+    deviceFat: {
+      line: '≈ {{pct}} % body fat — from your device, {{date}}',
+      apply: 'Use in the calculation',
+      applied: 'Used in the daily-target calculation ✓',
+    },
+  },
+  // Connect card for the EXTENDED device import (weight & body fat from a smart
+  // scale, workouts from a watch, night signals). One flag lights everything;
+  // the degraded states mirror the automatic-steps card.
+  device: {
+    connect: 'Connect',
+    connecting: 'Connecting…',
+    connectedNow:
+      'Device import is on. If data doesn’t appear, check access in Health / Health Connect.',
+    installAction: 'Open Health Connect on Google Play',
+    state: {
+      denied:
+        'Access not granted — import stays off. You can allow reading in Health / Health Connect.',
+      unavailable: 'Health / Health Connect isn’t available on this device.',
+      update_required: 'Health Connect needs an update before it can grant access.',
+      unsupported: 'Device import isn’t available in this build.',
+    },
+    weightExplainer:
+      'A smart scale can log weight and body fat % by itself — via Health (iPhone) or Health Connect (Android), where the scale’s app writes them. Read-only access; data stays on your device.',
   },
   steps: {
     placeholder: 'Steps today',
