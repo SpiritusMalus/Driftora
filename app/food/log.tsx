@@ -761,6 +761,43 @@ export default function FoodLogScreen() {
     startPhoto(next);
   }
 
+  // «Из моего рациона» — per-food memory so a daily eater can assemble a plate
+  // food-by-food and type each weight. Tapping appends the food; grams are set
+  // in its card. Rendered in ONE of two spots depending on the draft (idle:
+  // under the parse button; mid-draft: below the results) — never above the
+  // just-parsed cards.
+  const myDietSection =
+    myDiet.length > 0 ? (
+      <View style={styles.quick}>
+        <View style={styles.quickGroup}>
+          <Text style={[styles.quickLabel, { color: theme.labelCaps }, theme.font.bodyBold]}>
+            {t('food.myDiet').toUpperCase()}
+          </Text>
+          <View style={styles.quickWrap}>
+            {myDiet.slice(0, 12).map((food, i) => (
+              <Pressable
+                key={i}
+                onPress={() => onMemoryPick(food)}
+                style={({ pressed }) => [
+                  styles.chip,
+                  { backgroundColor: theme.card, borderColor: theme.separator, opacity: pressed ? 0.6 : 1 },
+                ]}
+              >
+                <Text numberOfLines={1} style={[styles.chipText, { color: theme.text }, theme.font.bodySemiBold]}>
+                  {food.name}
+                </Text>
+                <Text style={[styles.chipMacro, { color: theme.subtle }, theme.font.body]}>
+                  {hideCalories
+                    ? `${t('macros.protein')} ${Math.round(food.per100.prot)} ${t('units.g')} / 100 ${t('units.g')}`
+                    : `${Math.round(food.per100.kcal)} ${t('units.kcal')} / 100 ${t('units.g')}`}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      </View>
+    ) : null;
+
   return (
     <Screen>
       <TextField
@@ -915,39 +952,12 @@ export default function FoodLogScreen() {
         </Text>
       ) : null}
 
-      {/* «Из моего рациона» — per-food memory, always available (even mid-draft)
-          so a daily eater can assemble a plate food-by-food and type each weight.
-          Tapping appends the food; grams are set in its card below. */}
-      {myDiet.length > 0 ? (
-        <View style={styles.quick}>
-          <View style={styles.quickGroup}>
-            <Text style={[styles.quickLabel, { color: theme.labelCaps }, theme.font.bodyBold]}>
-              {t('food.myDiet').toUpperCase()}
-            </Text>
-            <View style={styles.quickWrap}>
-              {myDiet.slice(0, 12).map((food, i) => (
-                <Pressable
-                  key={i}
-                  onPress={() => onMemoryPick(food)}
-                  style={({ pressed }) => [
-                    styles.chip,
-                    { backgroundColor: theme.card, borderColor: theme.separator, opacity: pressed ? 0.6 : 1 },
-                  ]}
-                >
-                  <Text numberOfLines={1} style={[styles.chipText, { color: theme.text }, theme.font.bodySemiBold]}>
-                    {food.name}
-                  </Text>
-                  <Text style={[styles.chipMacro, { color: theme.subtle }, theme.font.body]}>
-                    {hideCalories
-                      ? `${t('macros.protein')} ${Math.round(food.per100.prot)} ${t('units.g')} / 100 ${t('units.g')}`
-                      : `${Math.round(food.per100.kcal)} ${t('units.kcal')} / 100 ${t('units.g')}`}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-        </View>
-      ) : null}
+      {/* «Из моего рациона» — while IDLE it sits right under the parse button
+          as a starting point. Once a draft exists it renders BELOW the results
+          instead (see after the results block): a wall of diet chips above the
+          cards buried what was just parsed off-screen, reading as «ничего не
+          нашлось» (device feedback 2026-07-16). */}
+      {draft == null ? myDietSection : null}
 
       {draft == null && quickPickList.length > 0 ? (
         <View style={styles.quick}>
@@ -1116,6 +1126,10 @@ export default function FoodLogScreen() {
           ) : null}
         </View>
       )}
+
+      {/* Mid-draft the diet chips stay reachable — below the results, so
+          appending another food is one scroll away but never buries the cards. */}
+      {draft != null ? myDietSection : null}
 
       <ConsentModal
         visible={consentPrompt === 'text' || consentPrompt === 'audio'}
