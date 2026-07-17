@@ -11,10 +11,12 @@ import { Screen } from '@/components/ui/Screen';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { TextField } from '@/components/ui/TextField';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
+import { syncDayHealth } from '@/lib/core/db/healthSync';
 import type { StepsRow, WeightRow } from '@/lib/core/db/schema';
-import { dayKey, listStepsDays, setManualSteps, syncDaySteps } from '@/lib/core/db/steps';
+import { ensureSettings } from '@/lib/core/db/settings';
+import { dayKey, listStepsDays, setManualSteps } from '@/lib/core/db/steps';
 import { latestWeight } from '@/lib/core/db/weight';
-import { stepsEarnedKcal } from '@/lib/core/insights/bodyMetrics';
+import { stepsEarnedKcal, stepsOutsideWorkouts } from '@/lib/core/insights/bodyMetrics';
 import { useAppActiveEffect } from '@/lib/core/services/appActive';
 import { getHealthService } from '@/lib/core/services/healthProvider';
 import { pluralKey } from '@/lib/i18n/plural';
@@ -52,12 +54,14 @@ export default function ActivityScreen() {
   const [saving, setSaving] = useState(false);
   const [health, setHealth] = useState<HealthState>('idle');
 
-  // Pull today's device count BEFORE listing, so the hero and the history's top
+  // Pull today's device data BEFORE listing, so the hero and the history's top
   // row are the live number, not whatever some earlier screen happened to store
-  // (a manual entry stays sticky inside syncDaySteps).
+  // (a manual entry stays sticky inside syncDaySteps). The full health sync
+  // (not just steps) keeps the workout-window subtraction fresh here too.
   const reloadSteps = useCallback(async () => {
     if (!db) return null;
-    await syncDaySteps(db, getHealthService());
+    const s = await ensureSettings(db);
+    await syncDayHealth(db, getHealthService(), new Date(), s.healthImportExtended);
     return listStepsDays(db, 30);
   }, [db]);
 
@@ -152,8 +156,13 @@ export default function ActivityScreen() {
   // Honest «шаги → бюджет» payoff, only once a weight is known: real earned kcal
   // above the resting baseline, or a note that the first ~3000 are already in the
   // base (so a small count reading as "did nothing" is explained, not hidden).
+  // Steps inside imported workout windows are subtracted first — they already
+  // earn as workout kcal — and named on their own quiet line below.
+  const workoutStepsToday = today != null ? Number(today.workoutSteps) : 0;
   const earnedKcal =
-    today != null && weight != null ? stepsEarnedKcal(today.steps, weight.weightKg) : 0;
+    today != null && weight != null
+      ? stepsEarnedKcal(stepsOutsideWorkouts(today.steps, workoutStepsToday), weight.weightKg)
+      : 0;
   const payoffLine =
     today == null
       ? null
@@ -162,6 +171,10 @@ export default function ActivityScreen() {
         : today.steps > 0
           ? t('activity.inBase')
           : null;
+  const workoutStepsLine =
+    today != null && workoutStepsToday > 0
+      ? t('activity.inWorkouts', { steps: Math.min(workoutStepsToday, today.steps) })
+      : null;
 
   // Auto counting is "working" either after connecting this session, or whenever
   // today's number came from the device — collapse the setup card to a quiet line.
@@ -195,6 +208,11 @@ export default function ActivityScreen() {
             {payoffLine ? (
               <Text style={[styles.heroPayoff, { color: theme.subtle }, theme.font.body]}>
                 {payoffLine}
+              </Text>
+            ) : null}
+            {workoutStepsLine ? (
+              <Text style={[styles.heroPayoff, { color: theme.tertiary }, theme.font.body]}>
+                {workoutStepsLine}
               </Text>
             ) : null}
             <Text style={[styles.heroSource, { color: theme.tertiary }, theme.font.body]}>

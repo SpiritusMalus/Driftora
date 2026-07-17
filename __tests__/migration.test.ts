@@ -54,6 +54,47 @@ describe('schema migrations (existing install)', () => {
     sqlite.close();
   });
 
+  it('upgrades a pre-import workouts table: source manual, import fields null, data survives', async () => {
+    const sqlite = new BetterSqlite3(':memory:');
+    // Old install: workouts without the device-import columns, one logged row.
+    sqlite.exec(`CREATE TABLE workouts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ts INTEGER NOT NULL,
+      date TEXT NOT NULL,
+      type TEXT NOT NULL,
+      minutes INTEGER NOT NULL,
+      kcal REAL NOT NULL DEFAULT 0,
+      speed_kmh REAL,
+      label TEXT,
+      sets INTEGER,
+      intensity TEXT
+    );`);
+    sqlite.exec(
+      "INSERT INTO workouts (ts, date, type, minutes, kcal) VALUES (0, '2026-07-01', 'run', 30, 300)",
+    );
+    // And steps_days without workout_steps, with a recorded day.
+    sqlite.exec(`CREATE TABLE steps_days (
+      date TEXT PRIMARY KEY,
+      steps INTEGER NOT NULL DEFAULT 0,
+      source TEXT NOT NULL DEFAULT 'stub',
+      synced_at INTEGER NOT NULL
+    );`);
+    sqlite.exec("INSERT INTO steps_days (date, steps, source, synced_at) VALUES ('2026-07-01', 8000, 'device', 0)");
+
+    await applySchema((s) => sqlite.exec(s));
+
+    const db = drizzle(sqlite, { schema });
+    const [w] = await db.select().from(schema.workouts);
+    expect(w.kcal).toBe(300); // existing data preserved
+    expect(w.source).toBe('manual'); // old rows were user-initiated
+    expect(w.externalId).toBeNull();
+    expect(w.kcalFrom).toBeNull();
+    const [sd] = await db.select().from(schema.stepsDays);
+    expect(sd.steps).toBe(8000);
+    expect(sd.workoutSteps).toBe(0); // new column, nothing subtracted yet
+    sqlite.close();
+  });
+
   it('upgrades a pre-device weights table: source defaults to manual, data survives', async () => {
     const sqlite = new BetterSqlite3(':memory:');
     // Old install: weights without source/body_fat_pct, with a logged weigh-in.

@@ -41,6 +41,18 @@ export class NullHealthService implements HealthService {
   async bodyFatSamplesForRange(): Promise<null> {
     return null;
   }
+
+  async workoutSessionsForDay(): Promise<null> {
+    return null;
+  }
+
+  async stepsInWindow(): Promise<null> {
+    return null;
+  }
+
+  async activeKcalInWindow(): Promise<null> {
+    return null;
+  }
 }
 
 /**

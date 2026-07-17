@@ -50,6 +50,23 @@ export async function setManualSteps(
   await upsertSteps(db, day, steps, 'manual', syncedAt);
 }
 
+/// Stores the day's merged-union workout-window steps (the eating budget's
+/// subtraction) WITHOUT touching `steps` or `source` — a manual day keeps its
+/// typed count and stickiness but still gets the honest subtraction. No row
+/// yet → no-op: there's nothing to subtract from, and fabricating a 0-step row
+/// would poison typicalSteps' median.
+export async function setWorkoutSteps(
+  db: AnyDb,
+  day: Date | string,
+  workoutSteps: number,
+): Promise<void> {
+  const date = typeof day === 'string' ? day : dayKey(day);
+  await db
+    .update(stepsDays)
+    .set({ workoutSteps: Math.max(0, Math.round(workoutSteps)) })
+    .where(eq(stepsDays.date, date));
+}
+
 /// The stored row for a day, or null if nothing has been recorded yet.
 export async function getStepsRow(
   db: AnyDb,

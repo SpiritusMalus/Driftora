@@ -354,6 +354,18 @@ export function stepsEarnedKcal(steps: number, weightKg: number): number {
   return Math.round(extra * KCAL_PER_STEP_PER_KG * kg);
 }
 
+/// Steps still priced by «шаги +N» after removing those walked INSIDE the day's
+/// device-imported workout sessions — that stretch of movement is already
+/// credited as the sessions' workout kcal, so pricing it again would count a
+/// watch-tracked run twice (its steps AND its burn). Subtraction happens on the
+/// RAW count, BEFORE [stepsEarnedKcal]'s 3000-step resting baseline. Only the
+/// eating budget uses this; the step goal, wins and insights keep raw steps.
+export function stepsOutsideWorkouts(daySteps: number, workoutWindowSteps: number): number {
+  const s = Number.isFinite(daySteps) ? Math.max(0, daySteps) : 0;
+  const w = Number.isFinite(workoutWindowSteps) ? Math.max(0, workoutWindowSteps) : 0;
+  return Math.max(0, s - w);
+}
+
 /// The day's assembled eating target under «база + заработал»: the deficit base
 /// (floored at the healthy day-minimum) plus today's earned activity (steps above
 /// the baseline + the workout eat-back) ON TOP. Earned movement ALWAYS adds to

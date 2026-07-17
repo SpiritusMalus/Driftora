@@ -58,6 +58,12 @@ export const stepsDays = sqliteTable('steps_days', {
   source: text('source', { enum: ['manual', 'device', 'stub'] })
     .notNull()
     .default('stub'),
+  // Steps inside the day's device-imported workout sessions (the MERGED union
+  // of their windows, clipped to the day) — computed at sync time. The eating
+  // budget subtracts this from `steps` before pricing them, because that
+  // movement is already credited as workout kcal; everything else (step goal,
+  // wins, insights) keeps the RAW count.
+  workoutSteps: integer('workout_steps').notNull().default(0),
   syncedAt: integer('synced_at', { mode: 'timestamp' }).notNull(),
 });
 
@@ -82,8 +88,37 @@ export const workouts = sqliteTable('workouts', {
   // time. Null for non-strength and for parsed/tracker entries (fixed MET / a
   // measured number). See [StrengthIntensity] in bodyMetrics.
   intensity: text('intensity'),
+  // How the row was logged: chip form / AI free-text parse / «по трекеру»
+  // verbatim kcal / auto-imported device session. Old rows default 'manual'
+  // (all were user-initiated). Device rows carry the import fields below.
+  source: text('source', { enum: ['manual', 'ai', 'tracker', 'device'] })
+    .notNull()
+    .default('manual'),
+  // The OS store's record id (HealthKit UUID / Health Connect metadata.id) —
+  // the re-sync dedup key for device imports. Null for user-logged rows.
+  externalId: text('external_id'),
+  // The session's real time window (device imports only) — start drives `date`,
+  // and the window is what the day's step subtraction is computed from.
+  startTs: integer('start_ts', { mode: 'timestamp' }),
+  endTs: integer('end_ts', { mode: 'timestamp' }),
+  // Steps the OS counted INSIDE this session's window — display only («N шагов
+  // внутри»). The budget subtracts steps_days.workout_steps (the day's MERGED
+  // union), never a sum of these: overlapping sessions would double-subtract.
+  stepsInWindow: integer('steps_in_window'),
+  // Where a device row's kcal came from: 'device' = the OS store's measured
+  // energy (shown verbatim), 'met' = our MET fallback (shown with «≈»). Null
+  // for user-logged rows (their display rules predate this column).
+  kcalFrom: text('kcal_from', { enum: ['device', 'met'] }),
 });
 export type WorkoutRow = typeof workouts.$inferSelect;
+
+/// Device sessions the user DELETED from the log. Consulted by the workout
+/// import so a re-sync never resurrects them. A separate table (not a flag on
+/// `workouts`) keeps every existing SELECT's semantics untouched.
+export const workoutImportTombstones = sqliteTable('workout_import_tombstones', {
+  externalId: text('external_id').primaryKey(),
+  deletedAt: integer('deleted_at', { mode: 'timestamp' }).notNull(),
+});
 
 /// Nightly sleep duration (minutes) pulled from the OS health store, one row per
 /// day. A second zero-effort passive signal alongside steps; it feeds the

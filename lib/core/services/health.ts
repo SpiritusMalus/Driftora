@@ -12,6 +12,22 @@ export interface HealthSample {
   value: number;
 }
 
+/// One device-recorded workout session, already normalized to the app's
+/// vocabulary (see exerciseTypeMap.ts). `deviceKcal` is the session's OWN
+/// energy total when the store carried one (HealthKit does; Health Connect
+/// sessions don't — their energy comes from an ActiveCaloriesBurned window
+/// aggregate at sync time). `type` is imported as a string to avoid coupling
+/// this seam to the insights layer; values are WorkoutType keys or 'other'.
+export interface DeviceWorkoutSession {
+  externalId: string;
+  start: string; // ISO-8601
+  end: string; // ISO-8601
+  type: string;
+  title: string | null;
+  deviceKcal: number | null;
+  origin: string | null; // writing app (sourceName / dataOrigin package)
+}
+
 /// Reads activity from the OS health store (HealthKit / Health Connect).
 /// Implemented in M2 over react-native-health + react-native-health-connect.
 export interface HealthService {
@@ -53,4 +69,19 @@ export interface HealthService {
   /// null. Implementations normalize platform quirks (HealthKit returns the
   /// raw 0–1 fraction) before returning.
   bodyFatSamplesForRange?(start: Date, end: Date): Promise<HealthSample[] | null>;
+
+  /// Device workout sessions OVERLAPPING the given local day (a session that
+  /// started the previous evening and crossed midnight is included). Sessions
+  /// without a store record id are dropped by implementations — no synthesized
+  /// dedup keys. Null when unreadable.
+  workoutSessionsForDay?(day: Date): Promise<DeviceWorkoutSession[] | null>;
+
+  /// OS-deduplicated step count inside an arbitrary window. Implementations
+  /// MUST use statistics/aggregate APIs (HealthKit statistics collection,
+  /// Health Connect aggregate) — raw samples double-count watch+phone.
+  stepsInWindow?(start: Date, end: Date): Promise<number | null>;
+
+  /// OS-deduplicated active energy (kcal) inside a window — the measured burn
+  /// of a session, preferred over any MET estimate.
+  activeKcalInWindow?(start: Date, end: Date): Promise<number | null>;
 }

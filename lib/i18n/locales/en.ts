@@ -429,6 +429,10 @@ export const en = {
     screenshot: 'Workout screenshot',
     photoFailed: 'Couldn’t open the image. Try another screenshot.',
     fromTracker: 'from tracker',
+    // Auto-imported session tag + the honest line about its steps: they're in
+    // the workout's kcal already, so the budget's step earnings exclude them.
+    fromDevice: 'from watch',
+    stepsInside: '{{steps}} steps inside — counted in the workout, not in steps',
     trackerAdded: 'Logged from your tracker: {{kcal}} kcal.',
     budgetAck: '✓ Workout logged: +{{kcal}} kcal added to today’s budget.',
     // The short line is always visible; the full math is a tap away («How we count»).
@@ -673,6 +677,8 @@ export const en = {
     },
     weightExplainer:
       'A smart scale can log weight and body fat % by itself — via Health (iPhone) or Health Connect (Android), where the scale’s app writes them. Read-only access; data stays on your device.',
+    workoutExplainer:
+      'Watch workouts can appear here by themselves — via Health / Health Connect. Kcal comes from your device, and steps inside a workout are never counted twice as steps. Read-only access; data stays on your device.',
   },
   steps: {
     placeholder: 'Steps today',
@@ -718,6 +724,9 @@ export const en = {
     // Honest «steps → budget» payoff, right on the screen that owns steps.
     earned: '≈ {{kcal}} kcal above resting from steps',
     inBase: 'The first ~3,000 are already in the base — the budget grows above that',
+    // Steps inside imported workouts: the budget counts them as workout kcal,
+    // so the step earnings exclude them.
+    inWorkouts: '−{{steps}} inside workouts — counted there',
     autoConnected: 'Automatic counting is on — your daily steps are read for you',
     manualAdd: 'Enter by hand',
     historySection: 'History',
@@ -769,6 +778,10 @@ export const en = {
       restBase: 'base {{kcal}}',
       stepsPart: 'steps {{steps}} +{{kcal}}',
       stepsForecastPart: 'steps ≈{{steps}} (your usual) +{{kcal}}',
+      // Some steps happened inside watch-imported workouts — they already count
+      // in “workouts +N”, so the step earnings exclude them. Always visible.
+      stepsPartCut: 'steps {{steps}} (−{{cut}} in workouts) +{{kcal}}',
+      stepsAllInWorkouts: 'steps — {{cut}} inside workouts, counted there',
       workoutsPart: 'workouts +{{kcal}}',
       minPart: 'not below {{kcal}}',
       forecastNote: 'Today’s steps aren’t logged yet — the budget stands on your usual count. Enter your steps and it firms up.',

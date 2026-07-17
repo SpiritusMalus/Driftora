@@ -8,7 +8,13 @@ import { Card } from '@/components/ui/Card';
 import { FillBar } from '@/components/ui/FillBar';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
-import { dayBudgetKcal, EATBACK_FRACTION, restingPlan, stepsEarnedKcal } from '@/lib/core/insights/bodyMetrics';
+import {
+  dayBudgetKcal,
+  EATBACK_FRACTION,
+  restingPlan,
+  stepsEarnedKcal,
+  stepsOutsideWorkouts,
+} from '@/lib/core/insights/bodyMetrics';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import {
   deleteFoodEntry,
@@ -18,8 +24,9 @@ import {
   todayMicroTotals,
   type MicroTotals,
 } from '@/lib/core/db/food';
+import { syncDayHealth } from '@/lib/core/db/healthSync';
 import { ensureSettings } from '@/lib/core/db/settings';
-import { syncDaySteps, typicalSteps } from '@/lib/core/db/steps';
+import { typicalSteps } from '@/lib/core/db/steps';
 import { latestWeight } from '@/lib/core/db/weight';
 import { todayWorkoutKcal } from '@/lib/core/db/workouts';
 import { useAppActiveEffect } from '@/lib/core/services/appActive';
@@ -71,6 +78,9 @@ export default function FoodDayScreen() {
   const [stepsToday, setStepsToday] = useState(0);
   const [stepsEarned, setStepsEarned] = useState(0);
   const [stepsForecast, setStepsForecast] = useState(false);
+  // Steps removed from the pricing because they fell inside imported workout
+  // windows — shown in the breakdown so the reduction is visible, not silent.
+  const [workoutStepsCut, setWorkoutStepsCut] = useState(0);
   // «Добавлено ещё раз ✓» after a one-tap repeat; cleared after a moment.
   const [repeatAck, setRepeatAck] = useState<string | null>(null);
   const ackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -84,16 +94,20 @@ export default function FoodDayScreen() {
 
   const reload = useCallback(async () => {
     if (!db) return;
-    // Steps are SYNCED here, not just read: this screen is where the budget
-    // lives, and the stored row only refreshed on a Home focus — with the
+    // Health is SYNCED here, not just read: this screen is where the budget
+    // lives, and the stored rows only refreshed on a Home focus — with the
     // automatic count (Health Connect) the number went stale for hours and the
     // budget «не менялся». A manual entry stays sticky inside syncDaySteps.
-    const [list, tot, mic, settings, todaySteps, usualSteps, weightRow, workoutKcal] = await Promise.all([
+    // Order matters: settings (the extended flag) → sync (may import today's
+    // watch sessions) → ONLY THEN todayWorkoutKcal, or the budget misses the
+    // sessions imported a moment ago.
+    const settings = await ensureSettings(db);
+    const health = await syncDayHealth(db, getHealthService(), new Date(), settings.healthImportExtended);
+    const todaySteps = health.steps;
+    const [list, tot, mic, usualSteps, weightRow, workoutKcal] = await Promise.all([
       listEntriesForDay(db),
       todayMacroTotals(db),
       todayMicroTotals(db),
-      ensureSettings(db),
-      syncDaySteps(db, getHealthService()),
       typicalSteps(db),
       latestWeight(db),
       todayWorkoutKcal(db),
@@ -127,9 +141,16 @@ export default function FoodDayScreen() {
     // on the median of your recent recorded days («как обычно»), marked as a
     // forecast — the synced/entered fact replaces it the moment it exists.
     const effectiveSteps = todaySteps ?? usualSteps ?? 0;
+    // Steps PRICED by the budget: today's count minus the union of imported
+    // workout windows (that movement already earns as workout kcal — pricing
+    // it again would double-count a watch-tracked run). Forecast days have no
+    // windows; display keeps the raw count, the cut is shown separately.
+    const pricedSteps =
+      todaySteps != null ? stepsOutsideWorkouts(todaySteps, health.workoutSteps) : effectiveSteps;
     setStepsToday(effectiveSteps);
+    setWorkoutStepsCut(todaySteps != null ? Math.min(health.workoutSteps, todaySteps) : 0);
     setStepsForecast(todaySteps == null && usualSteps != null);
-    setStepsEarned(stepsEarnedKcal(effectiveSteps, weightRow?.weightKg ?? 0));
+    setStepsEarned(stepsEarnedKcal(pricedSteps, weightRow?.weightKg ?? 0));
     // The progress card needs a deliberate goal AND an unpaused app — otherwise
     // it would pressure with an arbitrary default, which this app never does.
     setGoal(
@@ -228,6 +249,7 @@ export default function FoodDayScreen() {
           steps={stepsToday}
           stepsEarned={stepsEarned}
           stepsForecast={stepsForecast}
+          workoutStepsCut={workoutStepsCut}
           theme={theme}
         />
       ) : null}
@@ -327,6 +349,7 @@ function DayProgress({
   steps,
   stepsEarned,
   stepsForecast,
+  workoutStepsCut,
   theme,
 }: {
   goal: DayGoal;
@@ -335,6 +358,7 @@ function DayProgress({
   steps: number;
   stepsEarned: number;
   stepsForecast: boolean;
+  workoutStepsCut: number;
   theme: Theme;
 }) {
   const { t } = useTranslation();
@@ -360,10 +384,25 @@ function DayProgress({
   // above plan. Both stay non-negative; the label switches, never a red number.
   const remaining = Math.max(0, target - kcalEaten);
   const overBy = Math.max(0, kcalEaten - target);
-  // The visible breakdown: «покой N · шаги +N · тренировки +N».
+  // The visible breakdown: «покой N · шаги +N · тренировки +N». When imported
+  // workout windows removed steps from the pricing, the steps part says so —
+  // the reduction must be visible, never silent.
   const parts = [t('food.day.restBase', { kcal: restingShown })];
   if (stepsAdd > 0)
-    parts.push(t(stepsForecast ? 'food.day.stepsForecastPart' : 'food.day.stepsPart', { kcal: stepsAdd, steps }));
+    parts.push(
+      t(
+        stepsForecast
+          ? 'food.day.stepsForecastPart'
+          : workoutStepsCut > 0
+            ? 'food.day.stepsPartCut'
+            : 'food.day.stepsPart',
+        { kcal: stepsAdd, steps, cut: workoutStepsCut },
+      ),
+    );
+  else if (workoutStepsCut > 0 && steps > 0 && !stepsForecast)
+    // Every priced step fell inside workouts (or under the baseline) — name
+    // the cut instead of silently dropping the steps part.
+    parts.push(t('food.day.stepsAllInWorkouts', { cut: workoutStepsCut }));
   if (workoutAdd > 0) parts.push(t('food.day.workoutsPart', { kcal: workoutAdd }));
   // Device feedback 2026-07-10: «не понял, почему цифра такая низкая». With no
   // movement logged yet the breakdown used to hide — exactly when the "steps

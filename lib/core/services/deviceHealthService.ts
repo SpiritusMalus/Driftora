@@ -1,8 +1,13 @@
 import { Platform } from 'react-native';
 
 import { dayKey } from '../db/steps';
-import type { HealthAvailability, HealthSample, HealthService } from './health';
+import { workoutTypeFromHcExerciseType, workoutTypeFromHkActivity } from './exerciseTypeMap';
+import type { DeviceWorkoutSession, HealthAvailability, HealthSample, HealthService } from './health';
 import { asleepMinutes, type SleepSample } from './sleepSamples';
+
+/// Sessions that STARTED up to this long before the day can still overlap it
+/// (a workout crossing midnight) — the session query looks back this far.
+const SESSION_LOOKBACK_MS = 6 * 60 * 60 * 1000;
 
 /// REAL device health source — reads steps + sleep from the OS health store via
 /// `react-native-health` (iOS HealthKit) and `react-native-health-connect`
@@ -27,6 +32,15 @@ interface HkSample {
   startDate: string;
   endDate: string;
 }
+interface HkWorkout {
+  activityName: string;
+  calories: number;
+  id: string;
+  tracked: boolean;
+  sourceName?: string;
+  start: string;
+  end: string;
+}
 interface AppleHealthKit {
   initHealthKit(perms: unknown, cb: (err: string | null) => void): void;
   getStepCount(opts: { date: string }, cb: (err: string | null, res: { value: number }) => void): void;
@@ -40,6 +54,18 @@ interface AppleHealthKit {
   ): void;
   getBodyFatPercentageSamples(
     opts: { startDate: string; endDate: string; ascending?: boolean },
+    cb: (err: string | null, res: HkSample[]) => void,
+  ): void;
+  getAnchoredWorkouts(
+    opts: { startDate: string; endDate: string },
+    cb: (err: unknown, res: { data: HkWorkout[] }) => void,
+  ): void;
+  getDailyStepCountSamples(
+    opts: { startDate: string; endDate: string; period?: number; includeManuallyAdded?: boolean },
+    cb: (err: string | null, res: HkSample[]) => void,
+  ): void;
+  getActiveEnergyBurned(
+    opts: { startDate: string; endDate: string; period?: number },
     cb: (err: string | null, res: HkSample[]) => void,
   ): void;
   Constants: { Permissions: Record<string, string> };
@@ -155,6 +181,79 @@ class IosHealthService implements HealthService {
               // getLatest… variant multiplies by 100 natively) — normalize here.
               .map((s) => ({ at: s.startDate, value: s.value <= 1 ? s.value * 100 : s.value })),
           );
+        },
+      );
+    });
+  }
+
+  async workoutSessionsForDay(day: Date): Promise<DeviceWorkoutSession[] | null> {
+    if (!(await this.ensureFull())) return null;
+    const dayStart = startOfDay(day);
+    const dayEnd = new Date(dayStart.getTime() + DAY_MS);
+    const queryStart = new Date(dayStart.getTime() - SESSION_LOOKBACK_MS);
+    return new Promise((resolve) => {
+      this.hk.getAnchoredWorkouts(
+        { startDate: queryStart.toISOString(), endDate: dayEnd.toISOString() },
+        (err, res) => {
+          if (err || !Array.isArray(res?.data)) return resolve(null);
+          const sessions: DeviceWorkoutSession[] = [];
+          for (const w of res.data) {
+            // Hand-typed entries in Apple Health (tracked=false) are skipped —
+            // the user's own manual log lives in Driftora; importing another
+            // manual channel would double it.
+            if (!w?.id || w.tracked === false) continue;
+            const endMs = new Date(w.end).getTime();
+            if (!Number.isFinite(endMs) || endMs <= dayStart.getTime()) continue;
+            sessions.push({
+              externalId: w.id,
+              start: w.start,
+              end: w.end,
+              type: workoutTypeFromHkActivity(w.activityName),
+              title: w.activityName || null,
+              deviceKcal: Number.isFinite(w.calories) && w.calories > 0 ? Math.round(w.calories) : null,
+              origin: w.sourceName ?? null,
+            });
+          }
+          resolve(sessions);
+        },
+      );
+    });
+  }
+
+  async stepsInWindow(start: Date, end: Date): Promise<number | null> {
+    if (!(await this.ensureFull())) return null;
+    // A statistics-collection query with the window itself as the bucket —
+    // HealthKit dedups overlapping watch+phone sources at the OS level (raw
+    // samples would double-count). Manually added steps excluded: the app's
+    // own manual channel is steps_days.source='manual'.
+    const minutes = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 60000));
+    return new Promise((resolve) => {
+      this.hk.getDailyStepCountSamples(
+        {
+          startDate: start.toISOString(),
+          endDate: end.toISOString(),
+          period: minutes,
+          includeManuallyAdded: false,
+        },
+        (err, buckets) => {
+          if (err || !Array.isArray(buckets)) return resolve(null);
+          const total = buckets.reduce((sum, b) => sum + (Number.isFinite(b?.value) ? b.value : 0), 0);
+          resolve(Math.max(0, Math.round(total)));
+        },
+      );
+    });
+  }
+
+  async activeKcalInWindow(start: Date, end: Date): Promise<number | null> {
+    if (!(await this.ensureFull())) return null;
+    const minutes = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 60000));
+    return new Promise((resolve) => {
+      this.hk.getActiveEnergyBurned(
+        { startDate: start.toISOString(), endDate: end.toISOString(), period: minutes },
+        (err, buckets) => {
+          if (err || !Array.isArray(buckets)) return resolve(null);
+          const total = buckets.reduce((sum, b) => sum + (Number.isFinite(b?.value) ? b.value : 0), 0);
+          resolve(Math.max(0, Math.round(total)));
         },
       );
     });
@@ -305,6 +404,86 @@ class AndroidHealthService implements HealthService {
       const rec = r as { time?: string; percentage?: number };
       return { at: rec.time, value: Number(rec.percentage ?? NaN) };
     });
+  }
+
+  async workoutSessionsForDay(day: Date): Promise<DeviceWorkoutSession[] | null> {
+    if (!(await this.ensure())) return null;
+    const dayStart = startOfDay(day);
+    const dayEnd = new Date(dayStart.getTime() + DAY_MS);
+    const queryStart = new Date(dayStart.getTime() - SESSION_LOOKBACK_MS);
+    try {
+      const res = await this.hc.readRecords('ExerciseSession', {
+        timeRangeFilter: {
+          operator: 'between',
+          startTime: queryStart.toISOString(),
+          endTime: dayEnd.toISOString(),
+        },
+      });
+      const records: unknown[] = res?.records ?? [];
+      const sessions: DeviceWorkoutSession[] = [];
+      for (const r of records) {
+        const rec = r as {
+          exerciseType?: number;
+          title?: string;
+          startTime?: string;
+          endTime?: string;
+          metadata?: { id?: string; dataOrigin?: string };
+        };
+        // No store record id → no dedup key → skip entirely (a synthesized id
+        // would risk duplicate imports on every sync).
+        if (!rec.metadata?.id || !rec.startTime || !rec.endTime) continue;
+        const endMs = new Date(rec.endTime).getTime();
+        if (!Number.isFinite(endMs) || endMs <= dayStart.getTime()) continue;
+        sessions.push({
+          externalId: rec.metadata.id,
+          start: rec.startTime,
+          end: rec.endTime,
+          type: workoutTypeFromHcExerciseType(Number(rec.exerciseType ?? -1)),
+          title: rec.title?.trim() || null,
+          // HC sessions carry no energy of their own — the window aggregate
+          // (activeKcalInWindow) supplies the measured burn at sync time.
+          deviceKcal: null,
+          origin: rec.metadata.dataOrigin ?? null,
+        });
+      }
+      return sessions;
+    } catch {
+      return null;
+    }
+  }
+
+  async stepsInWindow(start: Date, end: Date): Promise<number | null> {
+    if (!(await this.ensure())) return null;
+    try {
+      const res = await this.hc.aggregateRecord({
+        recordType: 'Steps',
+        timeRangeFilter: { operator: 'between', startTime: start.toISOString(), endTime: end.toISOString() },
+      });
+      const total = Number(res?.COUNT_TOTAL ?? NaN);
+      if (Number.isFinite(total)) return Math.max(0, Math.round(total));
+    } catch {
+      // Fall through to the raw sum below.
+    }
+    // Raw-record fallback can overcount (watch+phone both writing) — for a
+    // SUBTRACTION that only shrinks the eating budget, the safe direction.
+    return this.readSum('Steps', start, end, (r) => Number((r as { count?: number }).count ?? 0));
+  }
+
+  async activeKcalInWindow(start: Date, end: Date): Promise<number | null> {
+    if (!(await this.ensure())) return null;
+    try {
+      const res = await this.hc.aggregateRecord({
+        recordType: 'ActiveCaloriesBurned',
+        timeRangeFilter: { operator: 'between', startTime: start.toISOString(), endTime: end.toISOString() },
+      });
+      const kcal = Number(res?.ACTIVE_CALORIES_TOTAL?.inKilocalories ?? NaN);
+      if (Number.isFinite(kcal)) return Math.max(0, Math.round(kcal));
+      return null;
+    } catch {
+      // No raw fallback here: raw energy records double-count writers badly.
+      // Null lets the sync fall back to the honest ≈MET estimate instead.
+      return null;
+    }
   }
 
   private async readSum(recordType: string, start: Date, end: Date, pick: (r: unknown) => number): Promise<number | null> {
