@@ -16,6 +16,7 @@ import {
 import { metrics } from './metrics.js';
 import { Resolver } from './nutrition/resolver.js';
 import { buildMealDraft, buildProviders } from './orchestrator.js';
+import { localizeAlternatives, localizeDraft } from './nutrition/translateNames.js';
 import { buildLimiters, type RateLimits, resolveLimits } from './rateLimit.js';
 import {
   coercePer100,
@@ -215,7 +216,9 @@ export function createApp(
       const draft: MealDraft =
         identified.length === 0 ? emptyMealDraft(region) : await buildMealDraft(resolver, identified, region);
       metrics.recordParse(route, region, draft, Date.now() - startedAt);
-      res.json(draft);
+      // Display-only: localize English DB row labels to Russian for RU (behind
+      // the TRANSLATE_DB_LABELS flag; a no-op / English fallback otherwise).
+      res.json(await localizeDraft(draft, region));
     } catch (err) {
       if (err instanceof VisionUnavailableError) {
         fail(res, 503, 'llm_unavailable', 'The parsing service is temporarily unavailable.');
@@ -271,7 +274,11 @@ export function createApp(
       resolver.search(query, region).catch(() => []),
       body.ai === true ? aiSearchCard(query, region).catch(() => null) : Promise.resolve(null),
     ]);
-    res.json({ candidates: aiCard ? [...candidates, aiCard] : candidates });
+    // Localize the English DB candidate labels to Russian (RU, behind the flag).
+    // The AI card's name is already Russian (from the estimate), so it's appended
+    // after localization untouched.
+    const localized = await localizeAlternatives(candidates, region);
+    res.json({ candidates: aiCard ? [...localized, aiCard] : localized });
   });
 
   // Free-text WORKOUT parse: `{ text }` → `{ workouts: ParsedWorkout[] }`. The

@@ -99,6 +99,36 @@ export function userEstimateSearchInstruction(region: Region, name: string): str
   return `Region: ${region}. Estimate the per-100g nutrition for this food the user typed:\n\n${name}`;
 }
 
+// DISPLAY-ONLY translation of English nutrition-DB row labels (FatSecret/USDA)
+// into short Russian names, so the RU user reads «Рис с молоком» instead of
+// «Rice with Milk» (device feedback 2026-07-18). It touches NO numbers — the
+// per-100g composition and the «по базе …» source tag are untouched; only the
+// human label is localized. One batched call per meal, results cached by string.
+export const TRANSLATE_LABELS_SYSTEM_PROMPT = `You translate short food/database labels from English into Russian for display in a food-logging app.
+
+- Return a SHORT, natural Russian food name for EACH input, in the SAME ORDER and the SAME COUNT.
+- Keep brand names (Latin brands may stay Latin, e.g. «Nutella»); translate the generic food words around them.
+- NO notes, quantities, parentheses-explanations, or extra words — just the name.
+- If an input is ALREADY Russian, return it unchanged.
+- Never drop, merge, or add entries: exactly one output per input.`;
+
+export const TRANSLATE_LABELS_SCHEMA = {
+  type: 'object',
+  properties: {
+    translations: {
+      type: 'array',
+      description: 'Short Russian food names, one per input label, in the same order.',
+      items: { type: 'string' },
+    },
+  },
+  required: ['translations'],
+} as const;
+
+export function userTranslateLabelsInstruction(labels: string[]): string {
+  const list = labels.map((l, i) => `${i + 1}. ${l}`).join('\n');
+  return `Translate these ${labels.length} food labels to short Russian names, preserving order and count:\n\n${list}`;
+}
+
 /**
  * PHOTO system prompt. Identification works exactly as above, PLUS one addition
  * that only makes sense for an image: reading a printed nutrition panel.
