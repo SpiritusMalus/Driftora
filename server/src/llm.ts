@@ -3,6 +3,9 @@ import { metrics } from './metrics.js';
 import {
   ESTIMATE_SEARCH_SCHEMA,
   ESTIMATE_SEARCH_SYSTEM_PROMPT,
+  TRANSLATE_LABELS_SCHEMA,
+  TRANSLATE_LABELS_SYSTEM_PROMPT,
+  userTranslateLabelsInstruction,
   IDENTIFY_PHOTO_SCHEMA,
   IDENTIFY_PHOTO_SYSTEM_PROMPT,
   IDENTIFY_SCHEMA,
@@ -227,6 +230,54 @@ function parseEstimate(data: unknown, fallbackName: string): FoodEstimate | null
   if (kcal === 0 && prot === 0 && fat === 0 && carb === 0) return null;
   const name = typeof o.name_ru === 'string' && o.name_ru.trim().length > 0 ? o.name_ru.trim() : fallbackName;
   return { name, kcal: Math.round(kcal), prot: round1(prot), fat: round1(fat), carb: round1(carb) };
+}
+
+/**
+ * DISPLAY-ONLY: batch-translate short English DB labels (FatSecret/USDA row
+ * names) into short Russian names. Returns an array aligned 1:1 to `labels`
+ * (same order/length). Best-effort — on any failure or a shape mismatch it
+ * returns the inputs UNCHANGED, so the caller safely falls back to English.
+ * Never touches nutrition numbers; the source tag stays truthful.
+ */
+export async function translateFoodLabels(labels: string[]): Promise<string[]> {
+  if (labels.length === 0) return [];
+  let raw: unknown;
+  try {
+    raw = await complete(
+      [
+        { role: 'system', content: TRANSLATE_LABELS_SYSTEM_PROMPT },
+        { role: 'user', content: userTranslateLabelsInstruction(labels) },
+      ],
+      MODEL,
+      TRANSLATE_LABELS_SCHEMA,
+    );
+  } catch {
+    return labels; // upstream failure → keep English, never throw into a parse
+  }
+  return parseTranslations(raw, labels);
+}
+
+/** Parse the translate model's content → string[] aligned to `labels`. On any
+ *  malformed / wrong-length output, returns `labels` (English) unchanged. */
+export function parseTranslations(data: unknown, labels: string[]): string[] {
+  const d = data as { choices?: { message?: { content?: unknown } }[] } | null;
+  const content = d?.choices?.[0]?.message?.content;
+  const text = typeof content === 'string' ? content.trim() : '';
+  if (!text) return labels;
+  let payload: unknown;
+  try {
+    payload = JSON.parse(stripFences(text));
+  } catch {
+    return labels;
+  }
+  const arr = (payload as { translations?: unknown }).translations;
+  // A length mismatch means the model dropped/merged entries — we can't align
+  // them safely, so fall back wholesale rather than mislabel a food.
+  if (!Array.isArray(arr) || arr.length !== labels.length) return labels;
+  return labels.map((original, i) => {
+    const t = arr[i];
+    return typeof t === 'string' && t.trim().length > 0 ? t.trim() : original;
+  });
 }
 
 /** Layer 2: free-text meal → identified foods + estimated grams (no numbers). */

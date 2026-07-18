@@ -253,7 +253,7 @@ export function ItemCard({
                   { borderColor: theme.separator, backgroundColor: theme.card, opacity: pressed ? 0.6 : 1 },
                 ]}
               >
-                <Text style={[styles.altName, { color: theme.text }, theme.font.body]} numberOfLines={1}>
+                <Text style={[styles.altName, { color: theme.text }, theme.font.body]} numberOfLines={2}>
                   {alt.name}
                 </Text>
                 <Text style={[styles.altMacros, { color: theme.subtle }, theme.font.body]}>
@@ -303,7 +303,7 @@ export function ItemCard({
                   { borderColor: theme.separator, backgroundColor: theme.card, opacity: pressed ? 0.6 : 1 },
                 ]}
               >
-                <Text style={[styles.altName, { color: theme.text }, theme.font.body]} numberOfLines={1}>
+                <Text style={[styles.altName, { color: theme.text }, theme.font.body]} numberOfLines={2}>
                   {alt.name}
                 </Text>
                 <Text style={[styles.altMacros, { color: theme.subtle }, theme.font.body]}>
@@ -427,8 +427,11 @@ const styles = StyleSheet.create({
   altWrap: { marginTop: 8 },
   altToggle: { fontSize: 13 },
   altList: { gap: 6, marginTop: 6 },
-  altRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 10 },
-  altName: { fontSize: 13, flex: 1 },
+  // Name on its own line, macros beneath — a side-by-side row let the long
+  // «… ккал · Белок … · по базе FatSecret» string squeeze the name down to
+  // «Rice C…» (device report 2026-07-18). Stacked, the name gets the full width.
+  altRow: { gap: 2, borderWidth: 1, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 10 },
+  altName: { fontSize: 13 },
   altMacros: { fontSize: 12 },
   searchRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   searchInput: { flex: 1 },

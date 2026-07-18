@@ -9,6 +9,7 @@ import { DayTitleLink } from '@/components/ui/DayTitleLink';
 import { HeaderSectionsLink } from '@/components/ui/HeaderSectionsLink';
 import { ListGroup, type RowSpec } from '@/components/ui/ListGroup';
 import { MoodScale } from '@/components/ui/MoodScale';
+import { PageDots } from '@/components/ui/PageDots';
 import { Screen } from '@/components/ui/Screen';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { bestBodyMindFromDb } from '@/lib/core/db/bodyMind';
@@ -382,6 +383,15 @@ export default function MoodScreen() {
           <ListGroup rows={historyRows} />
         </View>
       )}
+
+      {/* Mirror of Home's indicator: this is pane 2 of 2 (body ○ ● mind). Tap
+          returns to the body pane for anyone who misses the right swipe. */}
+      <PageDots
+        index={1}
+        onPress={() => (router.canGoBack() ? router.back() : router.replace('/'))}
+        accessibilityLabel={t('home.swipeHintBack')}
+        style={styles.pageDots}
+      />
     </Screen>
     </View>
   );
@@ -454,6 +464,7 @@ const styles = StyleSheet.create({
   nightNote: { fontSize: 11, lineHeight: 15, marginTop: 8, marginLeft: 4, fontStyle: 'italic' },
   hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
   history: { marginTop: 16 },
+  pageDots: { marginTop: 20 },
   value: { fontSize: 16 },
   dayRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
 });

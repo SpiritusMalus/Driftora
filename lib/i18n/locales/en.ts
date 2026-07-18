@@ -125,6 +125,9 @@ export const en = {
       later: 'Later',
     },
     swipeHint: 'Mood & diary — swipe left',
+    // Mirror gesture on the Mind screen: a right swipe returns to body/food.
+    // Serves as the page-dots accessibility label there.
+    swipeHintBack: 'Food & activity — swipe right',
     bodyMindCol: {
       bodySignal: { steps: 'Body · steps', sleep: 'Body · sleep', protein: 'Body · protein' },
       mind: 'Mind · mood',
@@ -767,10 +770,12 @@ export const en = {
     dbUnavailable: 'Mood is available in a device dev build.',
   },
   food: {
-    title: 'Add food',
+    // Unified with the home input bar (home.foodBar.placeholder) and the
+    // add button — everywhere "Log food".
+    title: 'Log food',
     // "Food today" screen: list of entries + view/edit/delete.
     todayTitle: 'Food today',
-    add: 'Add food',
+    add: 'Log food',
     entryTitle: 'Entry',
     entryLabel: 'What it was',
     update: 'Save changes',
@@ -1202,7 +1207,9 @@ export const en = {
   wins: {
     title: 'Wins',
     add: 'Add a win',
-    addPlaceholder: 'What went well? e.g. walked 8,000 steps',
+    // Short one-line example — a long placeholder wraps and clips in the
+    // single-line field, reading like stale prefilled text.
+    addPlaceholder: 'e.g. walked 8,000 steps',
     empty: 'No wins yet — mark your first one, however small.',
     share: 'Share',
     dbUnavailable: 'Wins are available in a device dev build.',

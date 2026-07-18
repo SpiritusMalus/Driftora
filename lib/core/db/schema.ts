@@ -256,8 +256,9 @@ export const appSettings = sqliteTable('app_settings', {
   // gesture (the Home mood row was removed 2026-07-12). True once the user
   // performed the swipe in the coach — or explicitly postponed it.
   moodSwipeCoachSeen: integer('mood_swipe_coach_seen', { mode: 'boolean' }).notNull().default(false),
-  // How many times the mood screen was actually opened BY the swipe. The
-  // subtle Home hint stays until this reaches 3, then retires for good.
+  // DEPRECATED (2026-07-18): drove the retiring Home swipe hint, now replaced
+  // by a persistent page-dots indicator. No longer read or written; kept as a
+  // column to avoid a migration. Safe to drop in a future schema bump.
   moodSwipeOpens: integer('mood_swipe_opens').notNull().default(0),
   // "Take a break" — mutes auto-wins and target pressure without losing data.
   paused: integer('paused', { mode: 'boolean' }).notNull().default(false),
