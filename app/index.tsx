@@ -1,4 +1,3 @@
-import { Ionicons } from '@expo/vector-icons';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -14,6 +13,7 @@ import { Card } from '@/components/ui/Card';
 import { DayTitleLink } from '@/components/ui/DayTitleLink';
 import { FoodBar } from '@/components/ui/FoodBar';
 import { HeaderSectionsLink } from '@/components/ui/HeaderSectionsLink';
+import { PageDots } from '@/components/ui/PageDots';
 import { selfInitiatedLogDays } from '@/lib/core/db/activity';
 import { hasAnyWinOnDay, runAutoWins } from '@/lib/core/db/autoWins';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
@@ -49,9 +49,11 @@ import { useTheme } from '@/lib/theme/theme';
 /// whole mind side (mood scale, the Body↔Mind insight, the thought diary, the
 /// sleep signal) lives on the mood screen, opened by a LEFT SWIPE anywhere on
 /// Home (device feedback 2026-07-12: the mood row was the last non-body card
-/// here). A one-time interactive coach teaches the gesture, a subtle caption
-/// keeps reminding until it sticks (3 swipe-opens), and «Разделы» keeps a
-/// plain tappable path. Home still runs the passive steps/sleep sync so those
+/// here). A one-time interactive coach teaches the gesture, a persistent page
+/// indicator (● ○) signposts the two panes so the swipe never reads as the
+/// header «Разделы» link (device feedback 2026-07-18: «я думала я в разделы
+/// перейду»), and «Разделы» keeps a plain tappable path into the hub. Home
+/// still runs the passive steps/sleep sync so those
 /// signals keep flowing into the insight regardless of which screen shows them.
 export default function HomeScreen() {
   const { t } = useTranslation();
@@ -272,18 +274,12 @@ export default function HomeScreen() {
     if (swipeNavLock.current) return;
     swipeNavLock.current = true;
     router.push('/mood');
-    // Count successful swipe-opens while the caption hint still teaches; after
-    // three the hint retires for good, so no further writes are needed.
-    if (db != null && settings != null && settings.moodSwipeOpens < 3) {
-      void updateSettings(db, { moodSwipeOpens: settings.moodSwipeOpens + 1 }).then(setSettings);
-    }
-  }, [db, settings, router]);
+  }, [router]);
   // One-time interactive coach (existing installs see it on the first open
-  // after the update; fresh installs right after onboarding). The caption hint
-  // below the cards keeps whispering the gesture until it stuck — three real
-  // swipe-opens — then Home goes quiet; «Разделы» keeps the tappable path.
+  // after the update; fresh installs right after onboarding). After it, the
+  // persistent page dots below the cards keep the two panes discoverable, so
+  // Home no longer needs the retiring caption; «Разделы» keeps the tappable path.
   const coachVisible = db != null && settings != null && !settings.moodSwipeCoachSeen;
-  const swipeHintVisible = !coachVisible && settings != null && settings.moodSwipeOpens < 3;
   // The PanResponder is created once; route the trigger and the coach state
   // through refs so the predicates never go stale. Claim only decisively
   // horizontal-left drags (capture phase, before the vertical ScrollView takes
@@ -463,23 +459,15 @@ export default function HomeScreen() {
           onSaved={reload}
         />
         <WorkoutWidget countedKcal={Math.round(Math.max(0, workoutRawKcal) * EATBACK_FRACTION)} />
-        {/* Whispered affordance for the left swipe — tappable too (some will
-            tap the words; screen readers get a plain button). Retires after
-            the gesture stuck: three real swipe-opens. */}
-        {swipeHintVisible ? (
-          <Pressable
-            onPress={() => router.push('/mood')}
-            hitSlop={6}
-            accessibilityRole="button"
-            accessibilityLabel={t('home.swipeHint')}
-            style={({ pressed }) => [styles.swipeHintWrap, { opacity: pressed ? 0.5 : 1 }]}
-          >
-            <Ionicons name="chevron-back" size={13} color={theme.subtle} />
-            <Text style={[styles.swipeHint, { color: theme.subtle }, theme.font.body]}>
-              {t('home.swipeHint')}
-            </Text>
-          </Pressable>
-        ) : null}
+        {/* Persistent page indicator for the two day panes (body ● ○ mind). It
+            signposts the left swipe for good — tappable too, so anyone who reads
+            the dots but misses the gesture still reaches the mind pane. */}
+        <PageDots
+          index={0}
+          onPress={() => router.push('/mood')}
+          accessibilityLabel={t('home.swipeHint')}
+          style={styles.pageDots}
+        />
 
         {streakWeeks > 0 ? (
           <Text style={[styles.northStar, { color: theme.accent }, theme.font.bodyMedium]}>
@@ -508,13 +496,10 @@ export default function HomeScreen() {
       {coachVisible ? (
         <SwipeCoach
           onSwiped={() => {
-            // Push first (the payoff of the gesture), persist behind it. The
-            // coach swipe is swipe-open №1, so the caption hint needs two more.
+            // Push first (the payoff of the gesture), persist the coach-seen
+            // flag behind it. The page dots carry discoverability from here on.
             router.push('/mood');
-            void updateSettings(db, {
-              moodSwipeCoachSeen: true,
-              moodSwipeOpens: settings.moodSwipeOpens + 1,
-            }).then(setSettings);
+            void updateSettings(db, { moodSwipeCoachSeen: true }).then(setSettings);
           }}
           onLater={() => {
             void updateSettings(db, { moodSwipeCoachSeen: true }).then(setSettings);
@@ -551,14 +536,7 @@ const styles = StyleSheet.create({
   androidContent: { paddingHorizontal: 18, paddingTop: 4, paddingBottom: 96 },
   iosContent: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 96 },
   daySummary: { fontSize: 15, lineHeight: 21, marginTop: 8, marginBottom: 10 },
-  swipeHintWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 14,
-    paddingVertical: 6,
-  },
-  swipeHint: { fontSize: 13 },
+  pageDots: { marginTop: 14 },
   northStar: { fontSize: 12, textAlign: 'center', marginTop: 22 },
   footer: { position: 'absolute', left: 0, right: 0 },
   footerAndroid: { paddingHorizontal: 18 },
