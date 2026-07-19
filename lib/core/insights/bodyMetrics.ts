@@ -58,7 +58,15 @@ export function mifflinBmr(sex: Sex, weightKg: number, heightCm: number, ageYear
 
 /// Which resting-energy formula the plan used — surfaced so the card can name it
 /// honestly instead of presenting one number as ground truth.
-export type BmrMethod = 'mifflin' | 'katch';
+///  - 'mifflin'   — population-average, from weight/height/age (no composition);
+///  - 'katch'     — composition-aware, from a MEASURED body-fat %;
+///  - 'katch-rfm' — composition-aware, but the body-fat % was ESTIMATED from a
+///                  waist tape (RFM), not measured — weaker signal, named apart
+///                  so the card never dresses a tape estimate up as a scan.
+///  - 'measured'  — calibrated to the user's OWN energy balance (weight trend +
+///                  food log): the formula BMR tilted by a stored factor. The
+///                  most accurate once enough data exists; overrides the rest.
+export type BmrMethod = 'mifflin' | 'katch' | 'katch-rfm' | 'measured';
 
 /// Katch–McArdle resting energy: 370 + 21.6 × lean body mass (kg). Uses body
 /// COMPOSITION, not just total weight, so two people at the same kg but different
@@ -78,6 +86,43 @@ export function katchMcArdleBmr(weightKg: number, bodyFatPct: number): number {
 /// default) the value is treated as absent and the plan stays on Mifflin.
 export function validBodyFatPct(pct: number | undefined): pct is number {
   return typeof pct === 'number' && Number.isFinite(pct) && pct >= 3 && pct <= 70;
+}
+
+/// Plausible adult waist circumference (cm). Outside it (incl. the 0 = "not set"
+/// default) the tape estimate is treated as absent.
+export function validWaistCm(cm: number | undefined): cm is number {
+  return typeof cm === 'number' && Number.isFinite(cm) && cm >= 40 && cm <= 200;
+}
+
+/// A stored BMR calibration factor (adaptive «Использовать мой обмен»). 0 = not
+/// set. A plausible value re-anchors the formula BMR to the user's measured
+/// energy balance; the band mirrors the clamp the factor was stored with, with a
+/// hair of tolerance. See adaptiveExpenditure.bmrFactorFromMeasured.
+export function validBmrFactor(f: number | undefined): f is number {
+  return typeof f === 'number' && Number.isFinite(f) && f >= 0.5 && f <= 1.6;
+}
+
+/// Relative Fat Mass (Woolcott & Bergman, 2018): a DEVICE-FREE body-fat estimate
+/// from height + waist + sex alone — just a cloth tape, no impedance scale. It
+/// was validated against DEXA on >12,000 adults and beats BMI, partly because it
+/// correlates only weakly with muscle mass, so a muscular person isn't mislabeled
+/// the way BMI mislabels them. The point of it here: it captures the composition
+/// Mifflin ignores, which is exactly where a formula-only estimate drifts from a
+/// body scan.
+///   men:   64 − 20 × (height / waist)
+///   women: 76 − 20 × (height / waist)   (height & waist in the same unit)
+/// Returns the % clamped into the plausible band, or null when the waist/height
+/// aren't usable adult measurements. It is an ESTIMATE — weaker than a caliper /
+/// DEXA / scale read — so callers tag the BMR method 'katch-rfm', not 'katch'.
+/// Validated for ages ~20–79; outside that it's rougher (still better than BMI).
+export function rfmBodyFatPct(sex: Sex, heightCm: number, waistCm: number): number | null {
+  if (!validWaistCm(waistCm)) return null;
+  if (!(Number.isFinite(heightCm) && heightCm >= 100 && heightCm <= 250)) return null;
+  const intercept = sex === 'female' ? 76 : 64;
+  const pct = intercept - 20 * (heightCm / waistCm);
+  if (!Number.isFinite(pct)) return null;
+  // Clamp into the plausible band rather than discard a slightly-out value.
+  return Math.min(70, Math.max(3, Math.round(pct * 10) / 10));
 }
 
 // ---- workouts / active energy (MET-based, fully on-device — no external API) -
@@ -396,6 +441,14 @@ export interface BodyProfile {
   /// Optional MEASURED body-fat %. Absent / 0 / out-of-band → plan uses Mifflin;
   /// a plausible value switches the BMR to composition-aware Katch–McArdle.
   bodyFatPct?: number;
+  /// Optional waist circumference (cm) for the device-free RFM body-fat estimate.
+  /// Used ONLY when no measured body-fat % is present — a real measurement always
+  /// wins. Absent / 0 / out-of-band → no estimate (plan stays on Mifflin).
+  waistCm?: number;
+  /// Optional BMR calibration factor from the user's measured energy balance
+  /// (adaptive «Использовать мой обмен»). When plausible it OVERRIDES the formula
+  /// choice: bmr = formulaBmr × factor, method 'measured'. Absent / 0 → formula.
+  bmrFactor?: number;
 }
 
 // ---- goal-aware plan (похудение / поддержание / набор) ----------------------
@@ -561,14 +614,32 @@ export function suggestPlan(
       ? Math.max(goalWeightKg, minHealthyKg)
       : null;
 
-  // Composition-aware BMR when a measured body-fat % is present (Katch–McArdle
-  // uses lean mass, so muscle vs fat at the same weight finally diverges);
-  // otherwise the population-average Mifflin. Age is unused under Katch.
-  const useKatch = validBodyFatPct(profile.bodyFatPct);
-  const bmr = useKatch
-    ? katchMcArdleBmr(weightKg, profile.bodyFatPct as number)
-    : mifflinBmr(sex, weightKg, profile.heightCm, age);
-  const bmrMethod: BmrMethod = useKatch ? 'katch' : 'mifflin';
+  // Composition-aware BMR when we have body composition — a MEASURED body-fat %
+  // first, else a waist-tape RFM estimate (device-free). Katch–McArdle uses lean
+  // mass, so muscle vs fat at the same weight finally diverges; without any
+  // composition we fall back to population-average Mifflin. Age is unused under
+  // Katch. A real measurement always beats the tape estimate.
+  const measuredFat = validBodyFatPct(profile.bodyFatPct) ? profile.bodyFatPct : null;
+  const estimatedFat =
+    measuredFat == null ? rfmBodyFatPct(sex, profile.heightCm, profile.waistCm ?? 0) : null;
+  const effectiveFat = measuredFat ?? estimatedFat;
+  const usesComposition = effectiveFat != null;
+  const formulaBmr =
+    effectiveFat != null
+      ? katchMcArdleBmr(weightKg, effectiveFat)
+      : mifflinBmr(sex, weightKg, profile.heightCm, age);
+  // A measured-energy-balance factor OVERRIDES the formula choice — it's the
+  // user's own number, the most accurate signal we have. It only tilts the
+  // formula BMR (which still tracks weight), so it ages gracefully as they change.
+  const usesMeasured = validBmrFactor(profile.bmrFactor);
+  const bmr = usesMeasured ? formulaBmr * (profile.bmrFactor as number) : formulaBmr;
+  const bmrMethod: BmrMethod = usesMeasured
+    ? 'measured'
+    : measuredFat != null
+      ? 'katch'
+      : estimatedFat != null
+        ? 'katch-rfm'
+        : 'mifflin';
   const maintenance = bmr * factor;
   // The deficit's size: the user's tempo choice wins for lose (soft/fast), while
   // 'standard' keeps the BMI-aware default (−15%, −20% at BMI ≥ 30). The floor
@@ -632,9 +703,10 @@ export function suggestPlan(
     proteinBasis,
     proteinBasisKg: Math.round(basisKg),
     etaWeeks,
-    // Under Katch–McArdle age never enters the BMR, so an unset year isn't an
-    // assumption the number rests on — don't nag for it in that case.
-    assumedAge: !hasBirthYear && !useKatch,
+    // Under Katch–McArdle (measured OR RFM), or a measured-balance factor, age
+    // doesn't drive the BMR, so an unset year isn't an assumption the number
+    // rests on — don't nag for it in that case.
+    assumedAge: !hasBirthYear && !usesComposition && !usesMeasured,
     bmrMethod,
   };
 }

@@ -11,16 +11,28 @@ import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
 import { TextField } from '@/components/ui/TextField';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
+import { macroTotalsByDay } from '@/lib/core/db/food';
 import type { WeightRow } from '@/lib/core/db/schema';
 import { ensureSettings, updateSettings, type SettingsPatch } from '@/lib/core/db/settings';
+import { dayKey, listStepsDays } from '@/lib/core/db/steps';
 import { latestDeviceBodyFat, listWeights, syncWeighIns, upsertWeight } from '@/lib/core/db/weight';
+import { todayWorkoutKcal } from '@/lib/core/db/workouts';
 import { getHealthService } from '@/lib/core/services/healthProvider';
+import {
+  ADAPTIVE_WINDOW_DAYS,
+  averageEarnedKcal,
+  bmrFactorFromMeasured,
+  measuredExpenditure,
+  type EarnedDay,
+  type MeasuredExpenditure,
+} from '@/lib/core/insights/adaptiveExpenditure';
 import {
   DEFICIT_TEMPOS,
   GOAL_MODES,
   bmiCategory,
   bmiValue,
   suggestPlan,
+  validBmrFactor,
   type DeficitTempo,
   type GoalMode,
   type Sex,
@@ -58,6 +70,10 @@ export default function WeightScreen() {
   // the «Использовать в расчёте» line in the Body section.
   const [extendedOn, setExtendedOn] = useState<boolean | null>(null);
   const [deviceFat, setDeviceFat] = useState<WeightRow | null>(null);
+  // The device-free «real burn» measured from the weight trend + food log — the
+  // honest reality-check next to the formula's estimate. Null until there's
+  // enough consistent data (see measuredExpenditure's gates).
+  const [expenditure, setExpenditure] = useState<MeasuredExpenditure | null>(null);
 
   // Body profile + КБЖУ targets (single app_settings row). Body facts are
   // display-only here (edited in the wizard); plan levers persist on edit.
@@ -68,6 +84,11 @@ export default function WeightScreen() {
   const [deficitTempo, setDeficitTempo] = useState<DeficitTempo>('standard');
   const [goalWeightText, setGoalWeightText] = useState('');
   const [bodyFatText, setBodyFatText] = useState('');
+  // Waist is entered in the body-setup wizard, not here — the weight screen only
+  // needs the stored value so its plan card's BMR matches Home / the food day.
+  const [waistCm, setWaistCm] = useState(0);
+  // Adaptive BMR factor (0 = not applied). Set from the «real burn» card below.
+  const [bmrFactor, setBmrFactor] = useState(0);
   const [kcal, setKcal] = useState('2000');
   const [protein, setProtein] = useState('120');
   const [fat, setFat] = useState('70');
@@ -113,6 +134,15 @@ export default function WeightScreen() {
         setItems(list);
         setDeviceFat(await latestDeviceBodyFat(db));
         if (!active) return;
+        // Adaptive «real burn»: intake (last ADAPTIVE_WINDOW_DAYS) vs the weight
+        // trend. Reads the same weigh-ins the list already loaded, plus per-day
+        // food totals. Null-safe — measuredExpenditure hides itself until the
+        // data is dense enough to be honest.
+        const totalsByDay = await macroTotalsByDay(db, ADAPTIVE_WINDOW_DAYS);
+        if (!active) return;
+        const intake = [...totalsByDay].map(([date, m]) => ({ date, kcal: m.kcal }));
+        const weightPts = list.map((w) => ({ date: w.date, kg: w.weightKg }));
+        setExpenditure(measuredExpenditure(intake, weightPts));
         // Settings re-read on EVERY focus: body facts are edited in the
         // body-setup wizard now, so returning from it must show the fresh save.
         // Inline levers persist on end-editing, so nothing unsaved is clobbered.
@@ -123,6 +153,8 @@ export default function WeightScreen() {
         setDeficitTempo(s.deficitTempo);
         setGoalWeightText(s.goalWeightKg > 0 ? String(s.goalWeightKg) : '');
         setBodyFatText(s.bodyFatPct > 0 ? String(s.bodyFatPct) : '');
+        setWaistCm(s.waistCm);
+        setBmrFactor(s.bmrFactor);
         setKcal(String(s.targetKcal));
         setProtein(String(s.targetProteinG));
         setFat(String(s.targetFatG));
@@ -143,6 +175,34 @@ export default function WeightScreen() {
     setAck({ where, text: ackText });
     if (ackTimer.current) clearTimeout(ackTimer.current);
     ackTimer.current = setTimeout(() => setAck(null), 2500);
+  }
+
+  /// «Использовать мой обмен»: turn the measured expenditure into a stored BMR
+  /// factor so the budget rides the user's real energy balance, not a formula.
+  /// Only offered at 'good' confidence (dense enough data). Subtracts the window's
+  /// average earned movement so the resting base isn't double-counted with the
+  /// per-day «шаги +N». Passing 0 as bmrFactor to the profile probe gives the
+  /// UN-calibrated formula BMR to divide by.
+  async function applyMeasuredBurn() {
+    if (!db || expenditure == null || expenditure.confidence !== 'good') return;
+    const formula = suggestPlan({ ...profile, bmrFactor: 0 }, latestKg, 'maintain');
+    if (formula == null) return;
+    const stepsRows = await listStepsDays(db, ADAPTIVE_WINDOW_DAYS + 2);
+    const startKey = dayKey(new Date(Date.now() - (ADAPTIVE_WINDOW_DAYS - 1) * 86_400_000));
+    const todayK = dayKey();
+    const windowRows = stepsRows.filter((r) => r.date >= startKey && r.date <= todayK);
+    const earned: EarnedDay[] = await Promise.all(
+      windowRows.map(async (r) => ({
+        steps: Number(r.steps),
+        workoutSteps: Number(r.workoutSteps ?? 0),
+        workoutKcal: await todayWorkoutKcal(db, r.date),
+      })),
+    );
+    const avgEarned = averageEarnedKcal(earned, latestKg);
+    const factor = bmrFactorFromMeasured(expenditure.kcalPerDay, avgEarned, formula.bmrKcal);
+    if (factor == null) return;
+    await persist({ bmrFactor: factor }, t('weight.burn.appliedTick'), 'plan');
+    setBmrFactor(factor);
   }
 
   async function onSaveWeight() {
@@ -199,7 +259,11 @@ export default function WeightScreen() {
     heightCm,
     activityLevel: 'sedentary' as const,
     bodyFatPct: toNumber(bodyFatText),
+    waistCm,
+    bmrFactor,
   };
+  // Whether the adaptive measurement is currently driving the budget.
+  const burnApplied = validBmrFactor(bmrFactor);
   // Probe with a plausible dummy weight: tells "profile incomplete" apart from
   // "no weight logged yet", so the plan card can say exactly what's missing.
   const profileComplete = suggestPlan(profile, 70, 'maintain') != null;
@@ -461,6 +525,17 @@ export default function WeightScreen() {
                   {t('weight.plan.assumedAge')}
                 </Text>
               ) : null}
+              {/* At high BMI Mifflin systematically OVERestimates (it treats
+                  metabolically-quiet fat as active). If no composition is known,
+                  point at the one-minute tape fix — visible, since the number is
+                  the least reliable exactly here. */}
+              {plan.bmrMethod === 'mifflin' && bmi != null && bmi >= 30 ? (
+                <Pressable onPress={() => router.push('/body-setup')} hitSlop={6}>
+                  <Text style={[styles.assumedAge, { color: theme.accent }, theme.font.bodyMedium]}>
+                    {t('weight.plan.overestimateNudge')}
+                  </Text>
+                </Pressable>
+              ) : null}
               {/* Kept visible: the motivating countdown and the safety floor. */}
               {eta != null ? (
                 <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
@@ -580,6 +655,69 @@ export default function WeightScreen() {
               ) : null}
             </>
           )}
+        </Card>
+      ) : null}
+
+      {/* Adaptive «real burn» — the device-free measurement the user asked for:
+          computed from their own weight trend + food log, not a formula. Shown
+          only once the data is dense enough (measuredExpenditure gates it), and
+          framed as the reliable number to trust when it disagrees with the
+          estimate above. */}
+      {expenditure != null ? (
+        <Card style={styles.trendCard}>
+          <Text style={[styles.burnLabel, { color: theme.labelCaps }, theme.font.bodyBold]}>
+            {t('weight.burn.title', { days: ADAPTIVE_WINDOW_DAYS }).toUpperCase()}
+          </Text>
+          <Text style={[styles.planKcal, { color: theme.heroAccent }, theme.font.heading]}>
+            {t('weight.burn.value', { kcal: expenditure.kcalPerDay })}
+          </Text>
+          <Text style={[styles.burnSub, { color: theme.subtle }, theme.font.body]}>
+            {t('weight.burn.caption')}
+          </Text>
+          <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
+            {t(expenditure.weightSlopeKgPerWeek === 0 ? 'weight.burn.explainFlat' : 'weight.burn.explain', {
+              intake: expenditure.avgIntakeKcal,
+              trend: Math.abs(expenditure.weightSlopeKgPerWeek).toFixed(2),
+              dir: t(
+                expenditure.weightSlopeKgPerWeek < 0 ? 'weight.burn.dirDown' : 'weight.burn.dirUp',
+              ),
+            })}
+          </Text>
+          {expenditure.confidence === 'ok' ? (
+            <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
+              {t('weight.burn.early')}
+            </Text>
+          ) : null}
+          <Text style={[styles.disclaimer, { color: theme.subtle }, theme.font.body]}>
+            {t('weight.burn.note')}
+          </Text>
+          {/* Opt-in, never silent: the user decides to let the measurement drive
+              the budget (mirrors «Использовать измерение весов»). Offered only at
+              'good' confidence; once applied, it says so and can be reset. */}
+          {burnApplied ? (
+            <>
+              <Text style={[styles.appliedLine, { color: theme.accent }, theme.font.bodyMedium]}>
+                {t('weight.burn.applied')}
+              </Text>
+              {ack?.where === 'plan' ? (
+                <Text style={[styles.ackTick, { color: theme.accent }, theme.font.bodyMedium]}>{ack.text}</Text>
+              ) : null}
+              <Pressable onPress={() => void persist({ bmrFactor: 0 }, t('weight.burn.resetTick'), 'plan').then(() => setBmrFactor(0))} hitSlop={6} style={styles.whyToggle}>
+                <Text style={[styles.whyToggleText, { color: theme.primary }, theme.font.body]}>
+                  {t('weight.burn.reset')}
+                </Text>
+              </Pressable>
+            </>
+          ) : expenditure.confidence === 'good' ? (
+            <Pressable
+              onPress={() => void applyMeasuredBurn()}
+              style={({ pressed }) => [styles.applyBtn, { borderColor: theme.primary, opacity: pressed ? 0.6 : 1 }]}
+            >
+              <Text style={[styles.applyText, { color: theme.primary }, theme.font.bodySemiBold]}>
+                {t('weight.burn.apply')}
+              </Text>
+            </Pressable>
+          ) : null}
         </Card>
       ) : null}
 
@@ -951,6 +1089,8 @@ const styles = StyleSheet.create({
   planIntro: { fontSize: 14, lineHeight: 20, marginTop: 4 },
   assumedAge: { fontSize: 12, lineHeight: 17, marginTop: 8 },
   planKcal: { fontSize: 28, lineHeight: 32, marginTop: 8, marginBottom: 10 },
+  burnLabel: { fontSize: 12, letterSpacing: 1.44, marginBottom: 2 },
+  burnSub: { fontSize: 13, lineHeight: 18, marginTop: -4, marginBottom: 8 },
   macroRow: { flexDirection: 'row', gap: 8 },
   macroTile: { flex: 1, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 4, alignItems: 'center' },
   macroLabel: { fontSize: 11 },

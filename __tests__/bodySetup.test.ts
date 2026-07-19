@@ -6,6 +6,7 @@ import {
   goalWeightValid,
   heightValid,
   setupSteps,
+  waistValid,
   weightValid,
 } from '@/lib/core/insights/bodySetup';
 
@@ -19,6 +20,7 @@ describe('setupSteps (the wizard sequence)', () => {
       'height',
       'weight',
       'bodyFat',
+      'waist',
       'goal',
       'result',
     ]);
@@ -32,12 +34,18 @@ describe('setupSteps (the wizard sequence)', () => {
         'height',
         'weight',
         'bodyFat',
+        'waist',
         'goal',
         'goalWeight',
         'tempo',
         'result',
       ]);
     }
+  });
+
+  it('the waist step follows bodyFat (the device-free composition input)', () => {
+    const steps = setupSteps('maintain');
+    expect(steps.indexOf('waist')).toBe(steps.indexOf('bodyFat') + 1);
   });
 });
 
@@ -65,6 +73,13 @@ describe('field validation (mirrors suggestPlan gates)', () => {
     expect(bodyFatValid(25)).toBe(true);
     expect(bodyFatValid(1)).toBe(false);
     expect(bodyFatValid(80)).toBe(false);
+  });
+
+  it('waist is optional: 0 = skipped is fine, a provided value needs the adult band', () => {
+    expect(waistValid(0)).toBe(true);
+    expect(waistValid(85)).toBe(true);
+    expect(waistValid(39)).toBe(false);
+    expect(waistValid(201)).toBe(false);
   });
 
   it('goal weight is optional but must point where the goal goes', () => {
