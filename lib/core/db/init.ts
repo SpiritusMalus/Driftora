@@ -127,6 +127,8 @@ CREATE TABLE IF NOT EXISTS app_settings (
   goal_weight_kg REAL NOT NULL DEFAULT 0,
   deficit_tempo TEXT NOT NULL DEFAULT 'standard',
   body_fat_pct REAL NOT NULL DEFAULT 0,
+  waist_cm REAL NOT NULL DEFAULT 0,
+  bmr_factor REAL NOT NULL DEFAULT 0,
   targets_set_at INTEGER,
   reminder_times TEXT NOT NULL DEFAULT '[]',
   hide_calories INTEGER NOT NULL DEFAULT 0,
@@ -262,6 +264,13 @@ export const MIGRATIONS: string[] = [
   `ALTER TABLE steps_days ADD COLUMN workout_steps INTEGER NOT NULL DEFAULT 0`,
   // 2026-07-17: night/body signals (stage 3) — the new `health_days` table
   // needs no ALTER, CREATE TABLE IF NOT EXISTS above covers old installs.
+  // 2026-07-19: optional waist circumference (cm) for the device-free RFM
+  // body-fat estimate → composition-aware BMR without a scale (just a tape).
+  // 0 = not set; used only when body_fat_pct is unset (a measured % always wins).
+  `ALTER TABLE app_settings ADD COLUMN waist_cm REAL NOT NULL DEFAULT 0`,
+  // 2026-07-19: adaptive BMR calibration factor from the user's own energy
+  // balance (weight trend + food log). 0 = not set → formula BMR unchanged.
+  `ALTER TABLE app_settings ADD COLUMN bmr_factor REAL NOT NULL DEFAULT 0`,
 ];
 
 /// Runs each CREATE statement through [run], then the idempotent [MIGRATIONS].

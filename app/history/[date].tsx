@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -16,9 +17,13 @@ import { getWeightForDay } from '@/lib/core/db/weight';
 import { formatDayTitle, parseDayKey } from '@/lib/i18n/formatDay';
 import { useTheme } from '@/lib/theme/theme';
 
-/// One past day, read-only: the food log (each entry opens its normal edit
-/// screen), the mood check-ins, and the body facts (weight, steps) when they
-/// exist. Reached from the day-history list behind the «Сегодня ⌄» title.
+/// One past day: the food log (each entry is TAPPABLE — it opens the normal
+/// /food/[id] edit screen where the meal can be changed or deleted, so «закинул
+/// спеша вчера» is fixable), the mood check-ins, and the body facts (weight,
+/// steps) when they exist. Reached from the day-history list behind the
+/// «Сегодня ⌄» title. A chevron + a one-line hint make the edit affordance
+/// obvious — without them the kcal value sits where the chevron would, and the
+/// row reads as a dead label (tester: «нельзя что-то поменять»).
 export default function HistoryDayScreen() {
   const { t } = useTranslation();
   const theme = useTheme();
@@ -80,12 +85,17 @@ export default function HistoryDayScreen() {
     key: String(e.id),
     title: e.rawText.trim().length > 0 ? e.rawText : t('food.untitled'),
     subtitle: e.meal ? t(`food.meal.${e.meal}`) : formatTime(new Date(e.ts)),
+    // Keep the kcal (or protein) value, but pair it with a chevron so the row
+    // visibly invites a tap — ListGroup hides its own chevron once `right` is set.
     right: (
-      <Text style={[styles.rowValue, { color: theme.text }, theme.font.bodyMedium]}>
-        {hideCalories
-          ? `${t('macros.protein')} ${Math.round(e.proteinG)}`
-          : `${Math.round(e.kcal)} ${t('units.kcal')}`}
-      </Text>
+      <View style={styles.rowRight}>
+        <Text style={[styles.rowValue, { color: theme.text }, theme.font.bodyMedium]}>
+          {hideCalories
+            ? `${t('macros.protein')} ${Math.round(e.proteinG)}`
+            : `${Math.round(e.kcal)} ${t('units.kcal')}`}
+        </Text>
+        <Ionicons name="chevron-forward" size={theme.isIOS ? 16 : 18} color={theme.tertiary} />
+      </View>
     ),
     onPress: () => router.push(`/food/${e.id}`),
   }));
@@ -150,6 +160,9 @@ export default function HistoryDayScreen() {
           {hasFood ? (
             <>
               <SectionHeader>{t('history.foodSection')}</SectionHeader>
+              <Text style={[styles.editHint, { color: theme.subtle }, theme.font.body]}>
+                {t('history.foodEditHint')}
+              </Text>
               <ListGroup rows={foodRows} />
             </>
           ) : null}
@@ -194,6 +207,10 @@ const styles = StyleSheet.create({
   heroUnit: { fontSize: 15 },
   heroSub: { fontSize: 13, lineHeight: 18, marginTop: 6, marginHorizontal: 4 },
   section: { marginTop: 18 },
+  // Quiet one-liner under «Еда» so the tap-to-edit affordance is stated, not
+  // just implied by the chevron.
+  editHint: { fontSize: 12, lineHeight: 16, marginHorizontal: 4, marginBottom: 8 },
+  rowRight: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   rowValue: { fontSize: 14 },
   bodyLine: { fontSize: 15, lineHeight: 21, marginHorizontal: 4 },
 });

@@ -202,11 +202,19 @@ export const en = {
     },
     bodyFat: {
       title: 'Body fat %',
-      hint: 'Optional. If you know your body fat %, the target gets more precise — computed from lean mass. Don’t know it? Just skip.',
+      hint: 'Optional — for those who have a measurement (impedance scale, calipers, DEXA). Most people don’t know theirs — just skip, and the next step estimates composition from your waist (a tape is all you need).',
       placeholder: 'e.g. 25',
       invalid: 'Realistic range: 3–70%. Leave empty if unsure.',
-      skip: 'Don’t know — skip',
+      skip: 'No measurement — skip',
       fromDevice: 'Prefilled from your scale’s measurement of {{date}} — feel free to correct it.',
+    },
+    waist: {
+      title: 'Waist circumference',
+      hint: 'Optional but useful. No body-fat scale? Just measure your waist with a tape at navel level — from your height and waist we estimate body composition (RFM) and sharpen the target beyond a population average.',
+      placeholder: 'e.g. 85',
+      invalid: 'Realistic range: 40–200 cm. Leave empty if unsure.',
+      skip: 'Skip',
+      haveFat: 'You already entered body fat % — it’s more accurate; waist is used only if % is unset.',
     },
     goal: {
       title: 'Your goal',
@@ -250,9 +258,13 @@ export const en = {
       howTitle: 'Where the number comes from',
       howTeaser: 'Resting metabolism, your goal, and how to raise it',
       bmr: 'Resting metabolism ≈ {{kcal}} kcal — expenditure at complete rest ({{method}}).',
+      overestimate:
+        'At your weight the formula averages and can overestimate burn by 10–15%. Tap “Edit” below and add your waist — it gets more accurate, no device needed.',
       method: {
         katch: 'from body composition, Katch–McArdle',
+        'katch-rfm': 'from body composition, estimated from waist (RFM)',
         mifflin: 'Mifflin–St Jeor formula',
+        measured: 'from your own data (weight trend + log)',
       },
       maintenance: 'A day with no sport and barely any walking ≈ {{kcal}} kcal.',
       delta: {
@@ -345,6 +357,7 @@ export const en = {
     empty: 'No entries yet — days will appear here as you log.',
     noFood: 'no food entries',
     foodSection: 'Food',
+    foodEditHint: 'Tap an entry to edit or delete it',
     macrosLine: 'P {{prot}} · F {{fat}} · C {{carb}}',
     moodSection: 'Mood',
     otherSection: 'Body',
@@ -548,7 +561,9 @@ export const en = {
         'Resting metabolism ≈ {{kcal}} kcal — what your body burns at complete rest, {{method}}. The day’s base sits above it: even a sedentary day burns more.',
       bmrMethod: {
         katch: 'computed from body composition (Katch–McArdle, lean mass)',
+        'katch-rfm': 'computed from body composition — fat estimated from waist (RFM), no device',
         mifflin: 'computed with the Mifflin–St Jeor formula',
+        measured: 'calibrated to your own data (weight trend + food log)',
       },
       maintenanceLine: 'Maintenance ≈ {{maintenance}} kcal — what it takes to hold your current weight. Not your target.',
       deltaLine: {
@@ -570,10 +585,32 @@ export const en = {
       needProfile: 'Run the quick body setup — height, sex, birth year — and the plan appears here.',
       setupCta: 'Set up my body',
       assumedAge: 'Age isn’t set — this plan is an estimate. Add your birth year in “Body parameters” below to firm up the numbers.',
+      overestimateNudge:
+        'At your weight the formula can overestimate burn by 10–15%. Measure your waist with a tape (1 minute, no device) → tap to sharpen it.',
       note:
         'Formulas estimate the “average” person — real needs differ. Start from these numbers and adjust by your weight trend and how you feel. The full math lives on the “How it works” page.',
       why: 'Why these numbers',
       whyHide: 'Hide explanation',
+    },
+    // Adaptive expenditure: measured from your own data, not a formula — the most
+    // accurate "no device" option. Appears only once there's enough history.
+    burn: {
+      title: 'From your data · {{days}} days',
+      value: '≈ {{kcal}} kcal',
+      caption: 'your real daily burn',
+      explain:
+        'You ate ≈{{intake}} kcal, weight {{dir}} {{trend}} kg/week — so that’s about what you burn. More reliable than a formula: measured, not averaged.',
+      explainFlat:
+        'You ate ≈{{intake}} kcal and weight held steady — so that’s about what you burn. More reliable than a formula: measured, not averaged.',
+      dirDown: '↓',
+      dirUp: '↑',
+      early: 'Still early — this number sharpens with every food log and weigh-in. The “Use this” button appears once there’s enough data.',
+      note: 'Accuracy depends on an honest log: track food consistently and weigh in under similar conditions (mornings, fasted).',
+      apply: 'Use my measured burn',
+      applied: '✓ Your burn is measured from your data, not a formula',
+      appliedTick: 'Done — the budget now rides your measured burn',
+      reset: 'Back to the formula',
+      resetTick: 'Reverted to the formula',
     },
     micros: {
       title: 'Vitamins & minerals',

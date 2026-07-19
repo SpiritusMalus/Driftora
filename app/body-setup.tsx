@@ -14,6 +14,7 @@ import { latestDeviceBodyFat, latestWeight, upsertWeight } from '@/lib/core/db/w
 import {
   DEFICIT_TEMPOS,
   GOAL_MODES,
+  bmiValue,
   restingPlan,
   type DeficitTempo,
   type GoalMode,
@@ -26,6 +27,7 @@ import {
   goalWeightValid,
   heightValid,
   setupSteps,
+  waistValid,
   weightValid,
   type SetupStep,
 } from '@/lib/core/insights/bodySetup';
@@ -49,6 +51,11 @@ export default function BodySetupScreen() {
   const [heightText, setHeightText] = useState('');
   const [weightText, setWeightText] = useState('');
   const [bodyFatText, setBodyFatText] = useState('');
+  const [waistText, setWaistText] = useState('');
+  // Preserved-but-not-edited here: if the user already calibrated BMR from their
+  // energy balance, the result preview should reflect it (the wizard write leaves
+  // bmrFactor untouched).
+  const [bmrFactor, setBmrFactor] = useState(0);
   // 'YYYY-MM-DD' of the scale measurement that prefilled bodyFat (no manual
   // value existed) — the step then names its source instead of staying silent.
   const [deviceFatDate, setDeviceFatDate] = useState<string | null>(null);
@@ -86,6 +93,8 @@ export default function BodySetupScreen() {
           setDeviceFatDate(df.date);
         }
       }
+      if (s.waistCm > 0) setWaistText(String(s.waistCm));
+      setBmrFactor(s.bmrFactor);
       if (s.goalWeightKg > 0) setGoalWeightText(String(s.goalWeightKg));
       setTempo(s.deficitTempo);
       const complete = (s.sex === 'male' || s.sex === 'female') && s.heightCm >= 100 && s.heightCm <= 250;
@@ -107,6 +116,7 @@ export default function BodySetupScreen() {
   const heightNum = toNumber(heightText);
   const weightNum = toNumber(weightText);
   const fatNum = toNumber(bodyFatText);
+  const waistNum = toNumber(waistText);
   const goalWeightNum = toNumber(goalWeightText);
 
   const stepOk = ((): boolean => {
@@ -121,6 +131,8 @@ export default function BodySetupScreen() {
         return weightValid(weightNum);
       case 'bodyFat':
         return bodyFatValid(fatNum);
+      case 'waist':
+        return waistValid(waistNum);
       case 'goal':
         return goal != null;
       case 'goalWeight':
@@ -144,9 +156,18 @@ export default function BodySetupScreen() {
   async function calc() {
     const mode = goal ?? 'maintain';
     const fat = bodyFatValid(fatNum) ? fatNum : 0;
+    const waist = waistValid(waistNum) ? waistNum : 0;
     const goalKg = goalWeightValid(goalWeightNum, weightNum, mode) ? goalWeightNum : 0;
     const p = restingPlan(
-      { sex, birthYear: yearNum, heightCm: heightNum, activityLevel: 'sedentary', bodyFatPct: fat },
+      {
+        sex,
+        birthYear: yearNum,
+        heightCm: heightNum,
+        activityLevel: 'sedentary',
+        bodyFatPct: fat,
+        waistCm: waist,
+        bmrFactor,
+      },
       weightNum,
       mode,
       new Date(),
@@ -162,6 +183,7 @@ export default function BodySetupScreen() {
           sex: sex as Sex,
           heightCm: heightNum,
           bodyFatPct: fat,
+          waistCm: waist,
           goalMode: mode,
           goalWeightKg: goalKg,
           deficitTempo: tempo,
@@ -284,6 +306,33 @@ export default function BodySetupScreen() {
         </StepCard>
       ) : null}
 
+      {step === 'waist' ? (
+        <StepCard title={t('bodySetup.waist.title')} hint={t('bodySetup.waist.hint')} theme={theme}>
+          <UnitField
+            value={waistText}
+            onChange={setWaistText}
+            unit={t('weight.heightUnit')}
+            placeholder={t('bodySetup.waist.placeholder')}
+            onSubmit={next}
+          />
+          {waistText.trim() !== '' && !stepOk ? <Invalid text={t('bodySetup.waist.invalid')} theme={theme} /> : null}
+          {/* Only meaningful when no measured % was given — a real % always wins,
+              so say so instead of letting the user think both are used. */}
+          {bodyFatValid(fatNum) ? (
+            <Text style={[styles.skip, { color: theme.subtle }, theme.font.body]}>{t('bodySetup.waist.haveFat')}</Text>
+          ) : null}
+          <Pressable
+            onPress={() => {
+              setWaistText('');
+              setIndex((i) => i + 1);
+            }}
+            hitSlop={8}
+          >
+            <Text style={[styles.skip, { color: theme.subtle }, theme.font.body]}>{t('bodySetup.waist.skip')}</Text>
+          </Pressable>
+        </StepCard>
+      ) : null}
+
       {step === 'goal' ? (
         <StepCard title={t('bodySetup.goal.title')} theme={theme}>
           {GOAL_MODES.map((m) => (
@@ -365,6 +414,16 @@ export default function BodySetupScreen() {
                   «записали как цель» then would be a false confirmation. */}
               {db != null ? t('bodySetup.result.applied') : t('bodySetup.result.notSaved')}
             </Text>
+            {/* High BMI + no composition → Mifflin overestimates; nudge to add a
+                waist measurement (the «Изменить» hint below lets them go back). */}
+            {plan.bmrMethod === 'mifflin' && (() => {
+              const b = bmiValue(weightNum, heightNum);
+              return b != null && b >= 30;
+            })() ? (
+              <Text style={[styles.overestimate, { color: theme.accent }, theme.font.bodyMedium]}>
+                {t('bodySetup.result.overestimate')}
+              </Text>
+            ) : null}
           </Card>
 
           <Card style={styles.card}>
@@ -628,6 +687,7 @@ const styles = StyleSheet.create({
   macroLabel: { fontSize: 11 },
   macroValue: { fontSize: 15, marginTop: 2 },
   appliedLine: { fontSize: 13, marginTop: 12 },
+  overestimate: { fontSize: 13, lineHeight: 19, marginTop: 8 },
   accHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   accTitle: { fontSize: 15, flex: 1, paddingRight: 12 },
   chevron: { fontSize: 15 },

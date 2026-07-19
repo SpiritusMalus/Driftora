@@ -129,6 +129,8 @@ export default function FoodDayScreen() {
         heightCm: settings.heightCm,
         activityLevel: settings.activityLevel,
         bodyFatPct: settings.bodyFatPct,
+        waistCm: settings.waistCm,
+        bmrFactor: settings.bmrFactor,
       },
       weightRow?.weightKg ?? 0,
       settings.goalMode,

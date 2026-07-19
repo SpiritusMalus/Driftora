@@ -238,6 +238,16 @@ export const appSettings = sqliteTable('app_settings', {
   // the plan's BMR to composition-aware Katch–McArdle so muscle vs fat at the
   // same weight diverges; otherwise Mifflin. Local-only, never synced.
   bodyFatPct: real('body_fat_pct').notNull().default(0),
+  // Optional waist circumference (cm) for the device-free RFM body-fat estimate.
+  // 0 = not set. Used ONLY when bodyFatPct is unset — a measured % always wins.
+  // A plausible value (40–200) lets Katch–McArdle run without a scale (just a
+  // tape), labeled 'katch-rfm' so it's never sold as a measurement. Local-only.
+  waistCm: real('waist_cm').notNull().default(0),
+  // Optional BMR calibration factor from the user's own energy balance (adaptive
+  // «Использовать мой обмен»). 0 = not set. A plausible value (~0.6–1.5) tilts the
+  // formula BMR to what the weight-trend-vs-intake actually measured — the most
+  // accurate signal, applied only on an explicit tap. Local-only, never synced.
+  bmrFactor: real('bmr_factor').notNull().default(0),
   // Epoch ms of the last DELIBERATE targets change (plan applied / manual edit).
   // Null = the 2000/120/70/200 defaults were never touched — progress UI must
   // stay hidden then, or it would pressure the user with an arbitrary number.

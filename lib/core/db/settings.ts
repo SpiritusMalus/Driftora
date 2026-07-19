@@ -39,6 +39,12 @@ export interface SettingsPatch {
   deficitTempo?: 'soft' | 'standard' | 'fast';
   // Measured body-fat % for composition-aware BMR; 0 clears back to "not set".
   bodyFatPct?: number;
+  // Waist circumference (cm) for the device-free RFM body-fat estimate; 0 clears
+  // back to "not set". Used only when bodyFatPct is unset (a measured % wins).
+  waistCm?: number;
+  // Adaptive BMR calibration factor from the user's energy balance; 0 clears
+  // back to "not set" (formula BMR unchanged).
+  bmrFactor?: number;
   // Epoch ms of the last deliberate targets edit; null = defaults never touched.
   targetsSetAt?: number | null;
   reminderTimes?: string[];
@@ -90,6 +96,8 @@ export async function updateSettings(
   if (patch.goalWeightKg != null) set.goalWeightKg = patch.goalWeightKg;
   if (patch.deficitTempo != null) set.deficitTempo = patch.deficitTempo;
   if (patch.bodyFatPct != null) set.bodyFatPct = patch.bodyFatPct;
+  if (patch.waistCm != null) set.waistCm = patch.waistCm;
+  if (patch.bmrFactor != null) set.bmrFactor = patch.bmrFactor;
   // Accepts an explicit null (reset to "never set") — probe for undefined.
   if (patch.targetsSetAt !== undefined) set.targetsSetAt = patch.targetsSetAt;
   if (patch.reminderTimes != null) set.reminderTimes = JSON.stringify(patch.reminderTimes);

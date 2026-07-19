@@ -11,6 +11,7 @@ import {
   mifflinBmr,
   MIN_PER_SET,
   restingPlan,
+  rfmBodyFatPct,
   setsToMinutes,
   stepsEarnedKcal,
   stepsOutsideWorkouts,
@@ -20,7 +21,9 @@ import {
   supportsIntensity,
   supportsSets,
   supportsSpeed,
+  validBmrFactor,
   validBodyFatPct,
+  validWaistCm,
   withWorkoutEnergy,
   workoutKcal,
   WORKOUT_TYPES,
@@ -82,6 +85,93 @@ describe('katchMcArdleBmr + validBodyFatPct (composition-aware BMR)', () => {
     expect(validBodyFatPct(80)).toBe(false); // implausibly high
     expect(validBodyFatPct(undefined)).toBe(false);
     expect(validBodyFatPct(NaN)).toBe(false);
+  });
+});
+
+describe('rfmBodyFatPct + validWaistCm (device-free composition from a tape)', () => {
+  it('matches the RFM formula for both sexes (64/76 − 20·height/waist)', () => {
+    // male 180 cm, waist 90 → 64 − 20·(180/90) = 64 − 40 = 24
+    expect(rfmBodyFatPct('male', 180, 90)).toBeCloseTo(24);
+    // female 180 cm, waist 90 → 76 − 40 = 36
+    expect(rfmBodyFatPct('female', 180, 90)).toBeCloseTo(36);
+  });
+
+  it('a smaller waist at the same height reads as less fat', () => {
+    expect(rfmBodyFatPct('male', 180, 80)!).toBeLessThan(rfmBodyFatPct('male', 180, 100)!);
+  });
+
+  it('clamps into the plausible band and rejects an unusable waist', () => {
+    // tall + very thin waist would go negative → clamped up to 3
+    expect(rfmBodyFatPct('male', 200, 45)).toBe(3);
+    expect(rfmBodyFatPct('male', 180, 0)).toBeNull(); // "not set"
+    expect(rfmBodyFatPct('male', 180, 39)).toBeNull(); // below band
+    expect(rfmBodyFatPct('male', 0, 90)).toBeNull(); // implausible height
+  });
+
+  it('validWaistCm gates the plausible adult band', () => {
+    expect(validWaistCm(85)).toBe(true);
+    expect(validWaistCm(0)).toBe(false);
+    expect(validWaistCm(39)).toBe(false);
+    expect(validWaistCm(201)).toBe(false);
+    expect(validWaistCm(undefined)).toBe(false);
+  });
+});
+
+describe('suggestPlan (waist → RFM → Katch–McArdle, device-free)', () => {
+  const base = { sex: 'male', birthYear: 1991, heightCm: 180, activityLevel: 'light' };
+
+  it('uses the waist RFM estimate when no measured % is present', () => {
+    const plan = suggestPlan({ ...base, waistCm: 90 }, 120, 'maintain', NOW)!;
+    // RFM 24% → LBM 91.2 → Katch 370 + 21.6·91.2 = 2339.92; method flagged apart.
+    expect(plan.bmrMethod).toBe('katch-rfm');
+    expect(plan.bmrKcal).toBe(Math.round(katchMcArdleBmr(120, 24)));
+  });
+
+  it('a MEASURED body-fat % always wins over the waist estimate', () => {
+    const plan = suggestPlan({ ...base, bodyFatPct: 15, waistCm: 90 }, 120, 'maintain', NOW)!;
+    expect(plan.bmrMethod).toBe('katch');
+    expect(plan.bmrKcal).toBe(Math.round(katchMcArdleBmr(120, 15)));
+  });
+
+  it('an implausible/absent waist leaves the plan on Mifflin', () => {
+    expect(suggestPlan({ ...base, waistCm: 0 }, 120, 'maintain', NOW)!.bmrMethod).toBe('mifflin');
+    expect(suggestPlan({ ...base, waistCm: 10 }, 120, 'maintain', NOW)!.bmrMethod).toBe('mifflin');
+  });
+
+  it('a waist RFM estimate makes a missing birth year not an assumption (age unused)', () => {
+    const plan = suggestPlan({ ...base, birthYear: 0, waistCm: 88 }, 120, 'maintain', NOW)!;
+    expect(plan.bmrMethod).toBe('katch-rfm');
+    expect(plan.assumedAge).toBe(false);
+  });
+});
+
+describe('suggestPlan (measured energy-balance factor overrides the formula)', () => {
+  const base = { sex: 'male', birthYear: 1991, heightCm: 180, activityLevel: 'light' };
+
+  it('tilts the formula BMR by the factor and labels it «measured»', () => {
+    const plain = suggestPlan(base, 120, 'maintain', NOW)!;
+    const tuned = suggestPlan({ ...base, bmrFactor: 1.1 }, 120, 'maintain', NOW)!;
+    expect(tuned.bmrMethod).toBe('measured');
+    expect(tuned.bmrKcal).toBe(Math.round(plain.bmrKcal * 1.1));
+  });
+
+  it('overrides even a measured body-fat % (the user’s own burn wins)', () => {
+    const tuned = suggestPlan({ ...base, bodyFatPct: 20, bmrFactor: 0.9 }, 120, 'maintain', NOW)!;
+    expect(tuned.bmrMethod).toBe('measured');
+    expect(tuned.bmrKcal).toBe(Math.round(katchMcArdleBmr(120, 20) * 0.9));
+  });
+
+  it('an unset/implausible factor is ignored (formula unchanged)', () => {
+    expect(suggestPlan({ ...base, bmrFactor: 0 }, 120, 'maintain', NOW)!.bmrMethod).toBe('mifflin');
+    expect(suggestPlan({ ...base, bmrFactor: 3 }, 120, 'maintain', NOW)!.bmrMethod).toBe('mifflin');
+  });
+
+  it('validBmrFactor gates the stored band', () => {
+    expect(validBmrFactor(1.0)).toBe(true);
+    expect(validBmrFactor(0)).toBe(false);
+    expect(validBmrFactor(0.4)).toBe(false);
+    expect(validBmrFactor(1.7)).toBe(false);
+    expect(validBmrFactor(undefined)).toBe(false);
   });
 });
 
