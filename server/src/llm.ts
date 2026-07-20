@@ -568,14 +568,10 @@ export async function readPackageLabel(
 ): Promise<LabelReading | undefined> {
   let data: unknown;
   try {
-<<<<<<< HEAD
     // Hedged like identification: the label pass is the other slow vision call
     // (stage_ms showed it at ~13 s avg, i.e. half the photo total), with the
     // same looping tail — so it gets the same duplicate-at-12s treatment.
     ({ data } = await completeHedged(
-=======
-    ({ data } = await completeWithRetry(
->>>>>>> origin/master
       [
         { role: 'system', content: READ_LABEL_SYSTEM_PROMPT },
         {
