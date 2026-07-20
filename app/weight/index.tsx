@@ -530,7 +530,7 @@ export default function WeightScreen() {
                   point at the one-minute tape fix — visible, since the number is
                   the least reliable exactly here. */}
               {plan.bmrMethod === 'mifflin' && bmi != null && bmi >= 30 ? (
-                <Pressable onPress={() => router.push('/body-setup')} hitSlop={6}>
+                <Pressable onPress={() => router.push('/body-setup?step=waist')} hitSlop={6}>
                   <Text style={[styles.assumedAge, { color: theme.accent }, theme.font.bodyMedium]}>
                     {t('weight.plan.overestimateNudge')}
                   </Text>
@@ -738,13 +738,33 @@ export default function WeightScreen() {
               label={t('weight.height')}
               value={heightCm > 0 ? `${Math.round(heightCm)} ${t('weight.heightUnit')}` : '—'}
               theme={theme}
+              onPress={() => router.push('/body-setup?step=height')}
             />
-            <ProfileLine label={t('weight.formula.sex')} value={sex ? t(`weight.formula.${sex}`) : '—'} theme={theme} />
-            <ProfileLine label={t('weight.formula.birthYear')} value={birthYearText || '—'} theme={theme} />
+            <ProfileLine
+              label={t('weight.formula.sex')}
+              value={sex ? t(`weight.formula.${sex}`) : '—'}
+              theme={theme}
+              onPress={() => router.push('/body-setup?step=sex')}
+            />
+            <ProfileLine
+              label={t('weight.formula.birthYear')}
+              value={birthYearText || '—'}
+              theme={theme}
+              onPress={() => router.push('/body-setup?step=birthYear')}
+            />
             <ProfileLine
               label={t('weight.formula.bodyFat')}
               value={bodyFatText ? `${bodyFatText}%` : t('weight.sections.body.fatUnset')}
               theme={theme}
+              onPress={() => router.push('/body-setup?step=bodyFat')}
+            />
+            {/* Waist — the device-free composition input; surfaced here so it's
+                visible and one tap from editing, not buried in the wizard. */}
+            <ProfileLine
+              label={t('weight.formula.waist')}
+              value={waistCm > 0 ? `${Math.round(waistCm)} ${t('weight.heightUnit')}` : t('weight.sections.body.waistUnset')}
+              theme={theme}
+              onPress={() => router.push('/body-setup?step=waist')}
             />
             {/* Scale-measured body fat NEVER feeds BMR silently — the plan uses
                 app_settings.bodyFatPct only, and this explicit tap is the single
@@ -1007,13 +1027,38 @@ function Field({
 }
 
 /// One read-only body fact: label left, value right (like the micro rows).
-function ProfileLine({ label, value, theme }: { label: string; value: string; theme: Theme }) {
-  return (
-    <View style={[styles.microRow, { borderBottomColor: theme.separator }]}>
+/// One body fact. With `onPress` it becomes a shortcut straight to that question
+/// in the wizard (`/body-setup?step=…`), so changing one value is tap → type →
+/// save, not a walk through the whole flow.
+function ProfileLine({
+  label,
+  value,
+  theme,
+  onPress,
+}: {
+  label: string;
+  value: string;
+  theme: Theme;
+  onPress?: () => void;
+}) {
+  const inner = (
+    <>
       <Text style={[styles.microName, { color: theme.subtle }, theme.font.body]}>{label}</Text>
       <Text style={[styles.microValue, { color: theme.text }, theme.font.bodySemiBold]}>{value}</Text>
-    </View>
+      {onPress ? <Ionicons name="chevron-forward" size={14} color={theme.tertiary} /> : null}
+    </>
   );
+  if (onPress) {
+    return (
+      <Pressable
+        onPress={onPress}
+        style={({ pressed }) => [styles.microRow, { borderBottomColor: theme.separator, opacity: pressed ? 0.6 : 1 }]}
+      >
+        {inner}
+      </Pressable>
+    );
+  }
+  return <View style={[styles.microRow, { borderBottomColor: theme.separator }]}>{inner}</View>;
 }
 
 function Chip({

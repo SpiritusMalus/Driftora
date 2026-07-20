@@ -145,6 +145,41 @@ describe('suggestPlan (waist → RFM → Katch–McArdle, device-free)', () => {
   });
 });
 
+describe('the deficit floor (BMR below BMI 30, clinical minimum at/above it)', () => {
+  // 133 kg / 184 cm male at 38.9% fat — BMI 39.3, the owner's own numbers.
+  const obese = { sex: 'male', birthYear: 1996, heightCm: 184, activityLevel: 'sedentary', bodyFatPct: 38.9 };
+
+  it('at BMI ≥ 30 the obese −20% actually applies (BMR floor no longer cancels it)', () => {
+    const plan = restingPlan(obese, 133, 'lose', NOW)!;
+    // maintenance = BMR×1.2; base = ×0.8 → BMR×0.96, which a BMR floor would eat.
+    expect(plan.baseKcal).toBe(Math.round((plan.bmrKcal * 1.2 * 0.8) / 10) * 10);
+    expect(plan.floored).toBe(false);
+    expect(plan.minDayKcal).toBe(1500); // clinical minimum, not the 2125 BMR
+  });
+
+  it('«fast» at BMI ≥ 30 is now steeper than «standard» (the lever is live again)', () => {
+    const std = restingPlan(obese, 133, 'lose', NOW, 0, 'standard')!;
+    const fast = restingPlan(obese, 133, 'lose', NOW, 0, 'fast')!;
+    expect(fast.baseKcal).toBeLessThan(std.baseKcal);
+  });
+
+  it('below BMI 30 the BMR floor is unchanged (cautious as before)', () => {
+    const lean = { sex: 'male', birthYear: 1996, heightCm: 180, activityLevel: 'sedentary' };
+    const plan = restingPlan(lean, 75, 'lose', NOW, 0, 'fast')!;
+    // fast = BMR×1.2×0.75 = BMR×0.9 < BMR → floored up to the BMR.
+    expect(plan.floored).toBe(true);
+    expect(plan.minDayKcal).toBe(Math.round(plan.bmrKcal / 10) * 10);
+  });
+
+  it('the clinical minimum still holds unconditionally at BMI ≥ 30', () => {
+    // A small obese body: the −20% base would dive under 1200, so it floors there.
+    const small = { sex: 'female', birthYear: 1996, heightCm: 150, activityLevel: 'sedentary' };
+    const plan = restingPlan(small, 70, 'lose', NOW, 0, 'fast')!;
+    expect(plan.minDayKcal).toBe(1200);
+    expect(Math.max(plan.baseKcal, plan.minDayKcal)).toBeGreaterThanOrEqual(1200);
+  });
+});
+
 describe('suggestPlan (measured energy-balance factor overrides the formula)', () => {
   const base = { sex: 'male', birthYear: 1991, heightCm: 180, activityLevel: 'light' };
 
@@ -651,31 +686,30 @@ describe('130 kg / 36 % fat / 10k steps — matches the by-hand clinical numbers
     expect(rest.kcal + earned).toBe(3055);
   });
 
-  it('earned movement adds on top of the floor; sub-floor tempos share the active-day budget', () => {
+  it('earned movement adds on top, and at BMI ≥ 30 every tempo stays distinct', () => {
     const earned = stepsEarnedKcal(10_000, 130);
     const soft = restingPlan(profile, 130, 'lose', NOW, 0, 'soft')!;
     const standard = restingPlan(profile, 130, 'lose', NOW, 0, 'standard')!;
     const fast = restingPlan(profile, 130, 'lose', NOW, 0, 'fast')!;
-    // −20 % and −25 % of the sedentary maintenance both sit below BMR, so the
-    // couch-day figure is floored for both…
-    expect(standard.floored).toBe(true);
-    expect(fast.floored).toBe(true);
-    expect(standard.kcal).toBe(2170);
-    expect(standard.minDayKcal).toBe(2170);
-    // …the bases still differ, but earned movement now adds ON TOP of the floored
-    // base instead of first paying back a deficit the floor already overrides —
-    // so ANY walking moves the number (device feedback 2026-07-13: «2170 без шагов
-    // и с 4000 шагами — так же»). Soft sits above the floor and keeps its own
-    // base; standard & fast both floor to 2170 and so share the active-day budget
-    // (they already shared the couch-day one — a steeper deficit than the clinical
-    // floor simply cannot happen).
+    // BMI 42.4 → the floor is the CLINICAL minimum (1500), not the BMR. Before
+    // 2026-07-19 a BMR floor (2170) swallowed both −20 % and −25 %, so the two
+    // steepest tempos collapsed onto the same number and the obese factor was
+    // inert — exactly the users it was written for felt no lever at all.
+    expect(standard.floored).toBe(false);
+    expect(fast.floored).toBe(false);
+    expect(standard.kcal).toBe(2080);
+    expect(standard.minDayKcal).toBe(1500);
+    // The bases are unchanged; what changed is that they now SURVIVE to the budget.
     expect(soft.baseKcal).toBe(2340);
     expect(standard.baseKcal).toBe(2080);
     expect(fast.baseKcal).toBe(1950);
+    // Earned movement adds ON TOP (device feedback 2026-07-13: «2170 без шагов и с
+    // 4000 шагами — так же»), and all three tempos now differ.
     const budgets = [soft, standard, fast].map((p) => dayBudgetKcal(p.baseKcal, p.minDayKcal, earned));
-    expect(budgets).toEqual([2795, 2625, 2625]);
-    // A zero-movement day still never dips below the healthy minimum.
-    expect(dayBudgetKcal(fast.baseKcal, fast.minDayKcal, 0)).toBe(2170);
+    expect(budgets).toEqual([2795, 2535, 2405]);
+    // A zero-movement day still never dips below the clinical minimum.
+    expect(dayBudgetKcal(fast.baseKcal, fast.minDayKcal, 0)).toBe(1950);
+    expect(dayBudgetKcal(fast.baseKcal, fast.minDayKcal, 0)).toBeGreaterThanOrEqual(1500);
   });
 
   it('for maintain/gain the minimum is absent (0) and base equals the target', () => {

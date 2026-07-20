@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -44,6 +44,13 @@ export default function BodySetupScreen() {
   const theme = useTheme();
   const router = useRouter();
   const db = useDatabase();
+
+  // «?step=waist» opens the wizard straight at one question — the nudges and the
+  // «Параметры тела» rows link that way, so changing ONE value no longer means
+  // paging through the whole flow (owner feedback 2026-07-19). In that mode the
+  // CTA becomes «Сохранить» and writes immediately, instead of marching to the end.
+  const { step: stepParam } = useLocalSearchParams<{ step?: string }>();
+  const [editStep, setEditStep] = useState<SetupStep | null>(null);
 
   const [index, setIndex] = useState(0);
   const [birthYearText, setBirthYearText] = useState('');
@@ -99,11 +106,21 @@ export default function BodySetupScreen() {
       setTempo(s.deficitTempo);
       const complete = (s.sex === 'male' || s.sex === 'female') && s.heightCm >= 100 && s.heightCm <= 250;
       if (complete) setGoal(s.goalMode);
+      // Land on the deep-linked question, using the goal we just read so the step
+      // list matches the one the wizard will actually render.
+      if (typeof stepParam === 'string') {
+        const list = setupSteps(complete ? s.goalMode : 'lose');
+        const i = list.indexOf(stepParam as SetupStep);
+        if (i >= 0) {
+          setEditStep(stepParam as SetupStep);
+          setIndex(i);
+        }
+      }
     })();
     return () => {
       active = false;
     };
-  }, [db]);
+  }, [db, stepParam]);
 
   // While no goal is chosen yet, assume the LONG sequence so the goal step's
   // button honestly reads «Далее» — it collapses to «Рассчитать» the moment
@@ -111,6 +128,9 @@ export default function BodySetupScreen() {
   const steps = setupSteps(goal ?? 'lose');
   const step: SetupStep = steps[Math.min(index, steps.length - 1)];
   const lastInput = index === steps.length - 2;
+  // Deep-linked edit: save this one answer and go straight to the recomputed
+  // result, instead of walking the remaining questions.
+  const editMode = editStep != null && step !== 'result';
 
   const yearNum = Math.round(toNumber(birthYearText));
   const heightNum = toNumber(heightText);
@@ -420,9 +440,17 @@ export default function BodySetupScreen() {
               const b = bmiValue(weightNum, heightNum);
               return b != null && b >= 30;
             })() ? (
-              <Text style={[styles.overestimate, { color: theme.accent }, theme.font.bodyMedium]}>
-                {t('bodySetup.result.overestimate')}
-              </Text>
+              <Pressable
+                onPress={() => {
+                  setEditStep('waist');
+                  setIndex(steps.indexOf('waist'));
+                }}
+                hitSlop={6}
+              >
+                <Text style={[styles.overestimate, { color: theme.accent }, theme.font.bodyMedium]}>
+                  {t('bodySetup.result.overestimate')}
+                </Text>
+              </Pressable>
             ) : null}
           </Card>
 
@@ -508,8 +536,8 @@ export default function BodySetupScreen() {
 
       {step !== 'result' ? (
         <PrimaryButton
-          label={lastInput ? t('bodySetup.calc') : t('bodySetup.next')}
-          onPress={next}
+          label={editMode ? t('bodySetup.save') : lastInput ? t('bodySetup.calc') : t('bodySetup.next')}
+          onPress={editMode ? () => void calc() : next}
           disabled={!stepOk || saving}
           style={styles.cta}
         />
