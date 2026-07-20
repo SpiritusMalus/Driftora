@@ -50,7 +50,7 @@ export default function RootLayout() {
           headerStyle: { backgroundColor: theme.background },
           headerTintColor: theme.text,
           headerShadowVisible: false,
-          headerTitleStyle: { fontFamily: 'Unbounded_600SemiBold', fontSize: 20, color: theme.text },
+          headerTitleStyle: { fontFamily: 'GolosText_600SemiBold', fontSize: 20, color: theme.text },
           contentStyle: { backgroundColor: theme.background },
         };
 

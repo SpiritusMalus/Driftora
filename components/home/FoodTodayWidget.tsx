@@ -1,15 +1,24 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { StyleSheet, Text, View } from 'react-native';
+import { Animated, StyleSheet, Text, View } from 'react-native';
 
 import { Card } from '@/components/ui/Card';
 import { FillBar } from '@/components/ui/FillBar';
+import { GridPaper } from '@/components/ui/GridPaper';
+import { DUR, EASE_OUT, useReducedMotion } from '@/lib/theme/motion';
 import { useTheme } from '@/lib/theme/theme';
 
 /// Home widget: today's food at a glance — kcal vs target + a compact КБЖУ row —
 /// tapping opens the full food day («Еда за сегодня»). This is the food entry
 /// point among the Home widgets (previously food was only reachable via the
 /// bottom bar); the bar stays for quick voice/text logging.
+///
+/// «Миллиметровка»: this hero card carries the graph-paper grid (Android — the
+/// brand world; iOS stays native-clean), the kcal figure is set in the mono
+/// instrument face, and a new total «prints» in with a 180ms fade instead of
+/// teleporting (animation pass 2026-07-20). No count-up rolling — the value is
+/// data being read, not a show.
 export function FoodTodayWidget({
   kcal,
   targetKcal,
@@ -42,6 +51,28 @@ export function FoodTodayWidget({
 }) {
   const { t } = useTranslation();
   const theme = useTheme();
+  const reduced = useReducedMotion();
+
+  // «Печать» нового значения: fade the figure back in when the rounded total
+  // actually changes (skip the mount and Reduce Motion — value lands instantly).
+  const shown = Math.round(kcal);
+  const prevShown = useRef(shown);
+  const fade = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (prevShown.current === shown) return;
+    prevShown.current = shown;
+    if (reduced) return;
+    fade.setValue(0.2);
+    const anim = Animated.timing(fade, {
+      toValue: 1,
+      duration: DUR.fade,
+      easing: EASE_OUT,
+      useNativeDriver: true,
+    });
+    anim.start();
+    return () => anim.stop();
+  }, [shown, reduced, fade]);
+
   const macros: { key: string; value: number; target: number }[] = [
     { key: 'protein', value: prot, target: targetProt },
     { key: 'fat', value: fat, target: targetFat },
@@ -50,6 +81,7 @@ export function FoodTodayWidget({
 
   return (
     <Card style={styles.card} onPress={onPress}>
+      {theme.isIOS ? null : <GridPaper radius={20} />}
       <View style={styles.head}>
         <View style={styles.headMain}>
           <Ionicons name="nutrition-outline" size={18} color={theme.primary} />
@@ -58,13 +90,13 @@ export function FoodTodayWidget({
         <Ionicons name="chevron-forward" size={16} color={theme.tertiary} />
       </View>
 
-      <Text style={[styles.kcal, { color: theme.heroAccent }, theme.font.bodySemiBold]}>
-        {Math.round(kcal)}
-        <Text style={[{ color: theme.subtle }, theme.font.body]}>
+      <Animated.Text style={[styles.kcal, { color: theme.heroAccent, opacity: fade }, theme.font.display]}>
+        {shown}
+        <Text style={[styles.kcalRest, { color: theme.subtle }, theme.font.body]}>
           {' '}
           / {targetKcal > 0 ? (targetApprox ? '≈' : '') + Math.round(targetKcal) : '—'} {t('units.kcal')}
         </Text>
-      </Text>
+      </Animated.Text>
       {targetKcal > 0 ? (
         <View style={styles.kcalBar}>
           <FillBar value={kcal} min={targetKcal} thickness={8} />
@@ -93,7 +125,8 @@ const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   headMain: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   title: { fontSize: 15 },
-  kcal: { fontSize: 28, marginTop: 8 },
+  kcal: { fontSize: 26, marginTop: 8, letterSpacing: -0.5 },
+  kcalRest: { fontSize: 14, letterSpacing: 0 },
   kcalBar: { marginTop: 8 },
   movementHint: { fontSize: 12, marginTop: 6, lineHeight: 17 },
   macros: { flexDirection: 'row', gap: 12, marginTop: 12 },

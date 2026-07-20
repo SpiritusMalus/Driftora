@@ -1,42 +1,44 @@
 import {
-  Manrope_400Regular,
-  Manrope_500Medium,
-  Manrope_600SemiBold,
-  Manrope_700Bold,
-} from '@expo-google-fonts/manrope';
+  GolosText_400Regular,
+  GolosText_500Medium,
+  GolosText_600SemiBold,
+  GolosText_700Bold,
+} from '@expo-google-fonts/golos-text';
 import {
-  Unbounded_600SemiBold,
-  Unbounded_700Bold,
-  Unbounded_800ExtraBold,
-} from '@expo-google-fonts/unbounded';
+  JetBrainsMono_600SemiBold,
+  JetBrainsMono_700Bold,
+  JetBrainsMono_800ExtraBold,
+} from '@expo-google-fonts/jetbrains-mono';
 
-/// Ember type system. Unbounded is the display/accent voice (hero figures,
-/// titles, eyebrows); Manrope carries body text. The handoff specifies system
-/// SF for body on iOS — Manrope is the cross-platform body face we ship so the
-/// look is consistent on Android/web too.
+/// «Миллиметровка» type system. JetBrains Mono is the instrument voice — hero
+/// figures and big numbers read as tabular lab-journal digits (native cyrillic,
+/// real 700/800 weights; PT Mono was rejected for having a single weight).
+/// Golos Text carries body copy and headings — native cyrillic, civil and
+/// neutral. The handoff keeps system SF for body on iOS; these are the
+/// cross-platform faces we ship so Android/web look consistent.
 ///
 /// `fontAssets` is the map handed to `useFonts` in the root layout; `fonts`
 /// holds the family-name strings to use in styles once they're loaded.
 export const fontAssets = {
-  Unbounded_800ExtraBold,
-  Unbounded_700Bold,
-  Unbounded_600SemiBold,
-  Manrope_400Regular,
-  Manrope_500Medium,
-  Manrope_600SemiBold,
-  Manrope_700Bold,
+  JetBrainsMono_800ExtraBold,
+  JetBrainsMono_700Bold,
+  JetBrainsMono_600SemiBold,
+  GolosText_400Regular,
+  GolosText_500Medium,
+  GolosText_600SemiBold,
+  GolosText_700Bold,
 };
 
 export const fonts = {
   /// Heaviest display — the hero "+gap" figure (HERO_BRIDGE_SPEC).
-  displayHeavy: 'Unbounded_800ExtraBold',
+  displayHeavy: 'JetBrainsMono_800ExtraBold',
   /// Big display — hero figures, large numbers.
-  display: 'Unbounded_700Bold',
+  display: 'JetBrainsMono_700Bold',
   /// Titles, section headers, eyebrows.
-  heading: 'Unbounded_600SemiBold',
+  heading: 'GolosText_600SemiBold',
   /// Body copy.
-  body: 'Manrope_400Regular',
-  bodyMedium: 'Manrope_500Medium',
-  bodySemiBold: 'Manrope_600SemiBold',
-  bodyBold: 'Manrope_700Bold',
+  body: 'GolosText_400Regular',
+  bodyMedium: 'GolosText_500Medium',
+  bodySemiBold: 'GolosText_600SemiBold',
+  bodyBold: 'GolosText_700Bold',
 } as const;

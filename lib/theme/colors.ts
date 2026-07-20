@@ -1,14 +1,18 @@
-/// "Ember Тёплый" — the approved visual reference (see Screens Ember.dc.html).
-/// Warm cream paper with a coral ember accent and an amber highlight; calm and
-/// editorial rather than clinical. The product still leads with one typographic
-/// insight, so the palette stays warm and quiet and lets the hero carry the
-/// screen. Non-judgmental — coral is the brand accent, never an "error red".
+/// «Миллиметровка» — the engineering-journal visual direction (pitched
+/// 2026-07-20, replaces the Ember cream/coral reference). The app reads as an
+/// honest lab sheet of the body: cool graph-paper white, tabular mono figures,
+/// graphite support ink, and ONE red-pencil accent for actions and «today».
+/// Dark mode is not a grey dark — it is a blueprint (цианотипия/синька): deep
+/// Prussian blue with chalk text and a signal-red accent. Non-judgmental as
+/// before: red is the brand accent and the «now» marker, never an "error red".
+/// Swapping the whole visual world again = editing THIS file (+ the derived
+/// tokens in theme.ts); every screen consumes tokens only.
 export interface ThemeColors {
   background: string;
   surface: string;
   card: string;
   border: string;
-  /// Coral ember — the brand/primary accent (buttons, icons, links).
+  /// Red pencil — the brand/primary accent (buttons, icons, links, «today»).
   primary: string;
   /// Readable text/label color to place on top of `primary` fills.
   onPrimary: string;
@@ -16,43 +20,44 @@ export interface ThemeColors {
   subtle: string;
   icon: string;
   iconBg: string;
-  /// Amber secondary accent (streaks, highlights, small flourishes).
+  /// Graphite secondary (streaks, quiet highlights). ≥4.5:1 as text on the
+  /// body background in BOTH schemes — the old amber failed that in light.
   accent: string;
-  /// Strong ink for the editorial hero sentence (near-espresso brown).
+  /// Strong ink for the editorial hero sentence (blue-black journal ink).
   heroText: string;
-  /// Coral accent for the emphasized part of the hero (the big figure).
+  /// Red-pencil accent for the emphasized part of the hero (the big figure).
   heroAccent: string;
 }
 
 export const colors: { light: ThemeColors; dark: ThemeColors } = {
   light: {
-    background: '#FBF4EE', // warm cream paper
+    background: '#FBFBF8', // graph-paper white
     surface: '#FFFFFF',
     card: '#FFFFFF',
-    border: '#EBD9CE', // warm sand hairline
-    primary: '#D8513A', // coral ember
+    border: '#DCE3E8', // cool grid hairline
+    primary: '#C93524', // red pencil (5.0:1 on the paper bg — small text safe)
     onPrimary: '#FFFFFF',
-    text: '#2A1A14', // espresso ink
-    subtle: '#8A6E63', // warm taupe
-    icon: '#D8513A',
-    iconBg: '#F6E9E2', // soft cream tint behind icons
-    accent: '#E8A53D', // amber
-    heroText: '#241813',
-    heroAccent: '#D8513A',
+    text: '#1F262B', // journal ink
+    subtle: '#5B6870', // graphite (5.5:1 on bg)
+    icon: '#3E5461', // graphite-blue glyphs; red stays for actions only
+    iconBg: '#EDF2F5', // pale grid tint behind icons
+    accent: '#44606E', // graphite highlight — replaces amber
+    heroText: '#1A2126',
+    heroAccent: '#C93524',
   },
   dark: {
-    background: '#17110E', // deep espresso
-    surface: '#241813',
-    card: '#241813',
-    border: '#3A2A22', // warm brown hairline
-    primary: '#F08365', // softened coral on dark
-    onPrimary: '#241813', // dark ink reads better on the lighter coral
-    text: '#F6E9E2', // warm cream
-    subtle: '#B89A8C', // muted taupe
-    icon: '#F08365',
-    iconBg: '#33261F',
-    accent: '#E8A53D', // amber holds on both themes
-    heroText: '#F6E9E2',
-    heroAccent: '#F08365',
+    background: '#12283C', // blueprint Prussian
+    surface: '#193853',
+    card: '#193853',
+    border: '#2B4C6C', // chalk hairline on the blueprint
+    primary: '#FF7E6B', // signal red, lifted for dark
+    onPrimary: '#2A130D', // dark ink reads better on the lighter red
+    text: '#E8EFF5', // chalk
+    subtle: '#9DB4C6', // faded chalk (7:1 on bg)
+    icon: '#BCD3E4',
+    iconBg: '#20415E',
+    accent: '#8FB4CE', // chalk-blue highlight
+    heroText: '#E8EFF5',
+    heroAccent: '#FF7E6B',
   },
 };

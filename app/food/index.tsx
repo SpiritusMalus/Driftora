@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/Card';
 import { FillBar } from '@/components/ui/FillBar';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
+import { animateLayout, useReducedMotion } from '@/lib/theme/motion';
 import {
   dayBudgetKcal,
   EATBACK_FRACTION,
@@ -63,6 +64,12 @@ export default function FoodDayScreen() {
   const router = useRouter();
   const db = useDatabase();
   const [entries, setEntries] = useState<FoodEntry[] | null>(null);
+  // Smooth the list when a meal is added or removed (see motion.ts). The ref
+  // mirrors useReducedMotion so the reload callback never goes stale.
+  const entriesLen = useRef(-1);
+  const reduced = useReducedMotion();
+  const reducedRef = useRef(reduced);
+  reducedRef.current = reduced;
   const [totals, setTotals] = useState<{ kcal: number; proteinG: number; fatG: number; carbG: number } | null>(null);
   const [goal, setGoal] = useState<DayGoal | null>(null);
   const [micros, setMicros] = useState<MicroTotals | null>(null);
@@ -112,6 +119,12 @@ export default function FoodDayScreen() {
       latestWeight(db),
       todayWorkoutKcal(db),
     ]);
+    // A changed row count means an insert or a delete — bridge it instead of
+    // teleporting (first load and unchanged reloads stay instant).
+    if (entriesLen.current >= 0 && entriesLen.current !== list.length) {
+      animateLayout(reducedRef.current);
+    }
+    entriesLen.current = list.length;
     setEntries(list);
     setTotals(tot);
     setMicros(mic);
@@ -437,7 +450,7 @@ function DayProgress({
           {/* Hero: the answer to «сколько ещё можно» — big and first. Over-plan
               stays calm (no red): the amber accent, «сверх плана» as the label. */}
           <View style={styles.dayHeroRow}>
-            <Text style={[styles.dayHeroNum, { color: onPlan ? theme.text : theme.accent }, theme.font.heading]}>
+            <Text style={[styles.dayHeroNum, { color: onPlan ? theme.text : theme.accent }, theme.font.display]}>
               {onPlan ? remaining : overBy}
             </Text>
             <Text style={[styles.dayHeroLabel, { color: theme.subtle }, theme.font.body]}>

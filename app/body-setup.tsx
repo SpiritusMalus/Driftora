@@ -4,10 +4,12 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { AccordionChevron } from '@/components/ui/AccordionChevron';
 import { Card } from '@/components/ui/Card';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
 import { TextField } from '@/components/ui/TextField';
+import { animateLayout, useReducedMotion } from '@/lib/theme/motion';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
 import { latestDeviceBodyFat, latestWeight, upsertWeight } from '@/lib/core/db/weight';
@@ -75,6 +77,7 @@ export default function BodySetupScreen() {
   // The result's «Откуда цифра» breakdown is collapsed by default: the hero
   // number + «записали как цель» is the finish; the derivation is on tap.
   const [howOpen, setHowOpen] = useState(false);
+  const reduced = useReducedMotion();
 
   // Prefill from the stored profile (edit runs); the goal is preselected only
   // when a complete profile says this is an edit, not a first setup.
@@ -461,7 +464,10 @@ export default function BodySetupScreen() {
 
           <Card style={styles.card}>
             <Pressable
-              onPress={() => setHowOpen((v) => !v)}
+              onPress={() => {
+                animateLayout(reduced);
+                setHowOpen((v) => !v);
+              }}
               accessibilityRole="button"
               accessibilityState={{ expanded: howOpen }}
               style={styles.accHead}
@@ -469,7 +475,7 @@ export default function BodySetupScreen() {
               <Text style={[styles.accTitle, { color: theme.text }, theme.font.bodySemiBold]}>
                 {t('bodySetup.result.howTitle')}
               </Text>
-              <Text style={[styles.chevron, { color: theme.subtle }]}>{howOpen ? '▾' : '▸'}</Text>
+              <AccordionChevron expanded={howOpen} size={16} color={theme.subtle} />
             </Pressable>
             {howOpen ? (
               <>

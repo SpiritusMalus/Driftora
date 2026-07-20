@@ -3,19 +3,22 @@ import { Platform, type TextStyle, useColorScheme } from 'react-native';
 import { colors } from './colors';
 
 /// Unified, platform-aware theme. The app ships two distinct looks from the
-/// "Ember" handoff (see Screens Ember.dc.html):
+/// «Миллиметровка» direction (engineering journal, pitched 2026-07-20;
+/// replaced the Ember cream/coral handoff):
 ///
-///   • Android — warm "Ember Тёплый": cream paper, gradient hero card, coral
-///     glow on the primary button/FAB, Unbounded+Manrope brand type.
+///   • Android — graph-paper white with journal ink, tabular JetBrains Mono
+///     figures, Golos Text body, ONE red-pencil accent; dark mode is a
+///     blueprint (синька): Prussian blue + chalk. The grid texture itself
+///     lives in hero components, not here.
 ///   • iOS — native grouped UI: systemGroupedBackground, inset white cards with
 ///     hairline row separators, large titles, liquid-glass header, SF system
-///     type (flat coral, no gradients/glow).
+///     type (flat red accent, no gradients/glow).
 ///
 /// `useTheme()` resolves the right surface/text/font tokens for the current
-/// platform and color scheme. Brand accents (coral, amber) are shared; only the
-/// surfaces, separators and typography diverge. Components spread `theme.font.*`
-/// into their text styles so weight maps to Unbounded/Manrope on Android and to
-/// SF system weights on iOS.
+/// platform and color scheme. Brand accents (red pencil, graphite) are shared;
+/// only the surfaces, separators and typography diverge. Components spread
+/// `theme.font.*` into their text styles so weight maps to JetBrains Mono/
+/// Golos Text on Android and to SF system weights on iOS.
 
 /// Native iOS grouped-list surface tokens (Apple HIG system colors), kept
 /// separate from the Ember/Android palette in `colors.ts`.
@@ -40,16 +43,17 @@ const iosSurfaces = {
   },
 };
 
-/// Font weight fragments. On Android they name the loaded Unbounded/Manrope
-/// faces; on iOS they carry only a weight so the system SF face is used.
+/// Font weight fragments. On Android they name the loaded JetBrains Mono /
+/// Golos Text faces (mono = figures, Golos = words); on iOS they carry only a
+/// weight so the system SF face is used.
 const androidFont = {
-  displayHeavy: { fontFamily: 'Unbounded_800ExtraBold' },
-  display: { fontFamily: 'Unbounded_700Bold' },
-  heading: { fontFamily: 'Unbounded_600SemiBold' },
-  body: { fontFamily: 'Manrope_400Regular' },
-  bodyMedium: { fontFamily: 'Manrope_500Medium' },
-  bodySemiBold: { fontFamily: 'Manrope_600SemiBold' },
-  bodyBold: { fontFamily: 'Manrope_700Bold' },
+  displayHeavy: { fontFamily: 'JetBrainsMono_800ExtraBold' },
+  display: { fontFamily: 'JetBrainsMono_700Bold' },
+  heading: { fontFamily: 'GolosText_600SemiBold' },
+  body: { fontFamily: 'GolosText_400Regular' },
+  bodyMedium: { fontFamily: 'GolosText_500Medium' },
+  bodySemiBold: { fontFamily: 'GolosText_600SemiBold' },
+  bodyBold: { fontFamily: 'GolosText_700Bold' },
 } satisfies Record<string, TextStyle>;
 
 const iosFont = {
@@ -133,16 +137,16 @@ export function resolveTheme(scheme: 'light' | 'dark'): Theme {
     accent: ember.accent,
     heroText: ember.heroText,
     heroAccent: ember.heroAccent,
-    primaryGradient: light ? ['#E86A4D', '#D8513A'] : ['#F08365', '#D8513A'],
-    bodyMindGradient: light ? ['#FFF1EC', '#FBE0D6'] : ['#2E1A13', '#3A1F16', '#4A271C'],
-    bodyMindBorder: light ? '#F6D7CB' : '#3E261C',
-    bodyMindEyebrow: light ? '#B89684' : '#C79885',
-    primarySoft: light ? '#FBE2D9' : '#3A241C',
-    accentSoft: light ? '#FBEFD9' : '#33291A',
-    labelCaps: light ? '#B89684' : '#9C7E70',
-    moodTrack: light ? '#F4E6DD' : '#33261F',
-    moodTrackNum: light ? '#B79C8F' : '#9C8175',
-    glow: 'rgba(216,81,58,0.4)',
+    primaryGradient: light ? ['#D8492F', '#C93524'] : ['#FF8E76', '#F4664D'],
+    bodyMindGradient: light ? ['#F4F8FA', '#E9F0F4'] : ['#17344F', '#1C3E5D', '#21496C'],
+    bodyMindBorder: light ? '#D7E1E8' : '#2B4C6C',
+    bodyMindEyebrow: light ? '#5E7B8D' : '#8FB4CE',
+    primarySoft: light ? '#F8DFDA' : '#4C2921',
+    accentSoft: light ? '#E6EEF3' : '#23445F',
+    labelCaps: light ? '#7A8B96' : '#7FA0B8',
+    moodTrack: light ? '#EDF2F5' : '#20415E',
+    moodTrackNum: light ? '#7E929E' : '#9DB4C6',
+    glow: 'rgba(201,53,36,0.35)',
 
     background: isIOS ? sys.background : ember.background,
     card: isIOS ? sys.card : ember.card,
