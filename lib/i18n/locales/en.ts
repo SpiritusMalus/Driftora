@@ -177,6 +177,7 @@ export const en = {
     back: 'Back',
     next: 'Next',
     calc: 'Compute my daily target',
+    save: 'Save and recompute',
     birthYear: {
       title: 'Birth year',
       hint: 'Age is part of the energy-expenditure formula.',
@@ -259,7 +260,7 @@ export const en = {
       howTeaser: 'Resting metabolism, your goal, and how to raise it',
       bmr: 'Resting metabolism ≈ {{kcal}} kcal — expenditure at complete rest ({{method}}).',
       overestimate:
-        'At your weight the formula averages and can overestimate burn by 10–15%. Tap “Edit” below and add your waist — it gets more accurate, no device needed.',
+        'At your weight the formula averages and can overestimate burn by 10–15%. Tap here and add your waist — it gets more accurate, no device needed.',
       method: {
         katch: 'from body composition, Katch–McArdle',
         'katch-rfm': 'from body composition, estimated from waist (RFM)',
@@ -649,6 +650,7 @@ export const en = {
         empty: 'Not filled in — needed for the plan and BMI',
         edit: 'Edit',
         fatUnset: 'not set',
+        waistUnset: 'not set',
       },
       history: { title: 'History', count: 'Entries: {{count}}' },
       manual: { title: 'Manual targets', summary: '{{kcal}} kcal · P {{prot}} · F {{fat}} · C {{carb}}' },
@@ -684,6 +686,7 @@ export const en = {
       female: 'Female',
       birthYear: 'Birth year',
       bodyFat: 'Body fat %',
+      waist: 'Waist',
     },
     // History-row provenance: typed by hand vs smart scale (via Health /
     // Health Connect). Always visible — no silent magic.

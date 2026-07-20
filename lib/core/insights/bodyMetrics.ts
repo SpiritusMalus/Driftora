@@ -658,7 +658,17 @@ export function suggestPlan(
   // floor guards the DAY's intake ([dayBudgetKcal]), so `kcal` here is the
   // zero-movement day: the deficit base lifted to the minimum. The unlifted
   // base is returned alongside — earned activity re-opens the chosen deficit.
-  const floor = mode === 'lose' ? Math.max(bmr, MIN_KCAL[sex]) : 0;
+  // The floor. Below BMI 30 it's max(BMR, clinical minimum) — the cautious
+  // «don't prescribe eating under resting needs» rule. At BMI ≥ 30 it drops to
+  // the CLINICAL minimum alone, for two reasons: (1) a large fat reserve supplies
+  // the gap — that IS how fat loss works — and it's the same «larger reserve makes
+  // a faster pace safe» logic that already justifies LOSE_FACTOR_OBESE; (2) the
+  // BMR floor otherwise CANCELS that factor outright — base = BMR×1.2×0.8 =
+  // BMR×0.96 is always under a BMR floor, so the obese −20% (and every 'fast'
+  // −25%, = BMR×0.90) silently collapsed back to exactly BMR. The tempo lever was
+  // inert for the very users it was designed for (owner feedback 2026-07-19).
+  // The clinical minimum (1500 м / 1200 ж) still holds unconditionally.
+  const floor = mode === 'lose' ? (bmi >= OBESE_BMI ? MIN_KCAL[sex] : Math.max(bmr, MIN_KCAL[sex])) : 0;
   const floored = mode === 'lose' && raw < floor;
   const kcal = Math.round(Math.max(raw, floor) / 10) * 10;
   const baseKcal = Math.round(raw / 10) * 10;
