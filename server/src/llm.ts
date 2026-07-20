@@ -157,7 +157,18 @@ async function complete(
   if (!res.ok) {
     throw new VisionUnavailableError(`OpenRouter returned ${res.status}`);
   }
-  return (await res.json().catch(() => null)) as unknown;
+  // The body is read AFTER fetch() resolved on headers, so the timeout can fire
+  // HERE — and a swallowed abort (`.catch(() => null)`) used to look exactly
+  // like a model that found no food: null → parseResponse → [] → «не распознал»
+  // with an HTTP 200, at a telltale flat 20.1 s. A body we cannot read is a
+  // transport failure, never an answer.
+  try {
+    return (await res.json()) as unknown;
+  } catch (err) {
+    throw new VisionUnavailableError(
+      err instanceof Error ? `OpenRouter body unreadable: ${err.message}` : 'OpenRouter body unreadable',
+    );
+  }
 }
 
 /** `choices[0].finish_reason`, when the provider reported one. */
