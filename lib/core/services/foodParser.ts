@@ -133,6 +133,11 @@ export interface MealDraft {
     // offline stub answered instead — the UI must say so, not pass degraded
     // numbers off as an AI parse.
     offline_fallback?: boolean;
+    // Also client-side, and a NARROWING of `offline_fallback`: the server was
+    // reached and answered with an error (503 — the model truncated or the
+    // provider refused). The connection is fine, so «нет интернета» would be a
+    // lie the user can see through; the remedy is to retry, not to find signal.
+    server_error?: boolean;
   };
 }
 

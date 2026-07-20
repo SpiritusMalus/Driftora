@@ -164,3 +164,62 @@ test('identify: a body that cannot be read is a failure, not an empty plate', as
 
   await assert.rejects(() => identifyFromText('банан', 'RU'), VisionUnavailableError);
 });
+
+test('identify: a first-attempt TIMEOUT is re-rolled, not surfaced as a failure', async () => {
+  // The decisive reliability fix. An overrun is this model's decode-loop
+  // signature (healthy 8–16s, looping 26–37s), so the short first deadline is a
+  // detector: abort early, re-roll, and the second attempt usually lands. Before
+  // this, a timeout went straight to 503 and the user saw «нет интернета».
+  let calls = 0;
+  globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+    calls += 1;
+    if (calls === 1) throw new DOMException('The operation was aborted.', 'AbortError');
+    // The re-roll must get the roomier deadline, not the short detector one.
+    assert.ok(init?.signal instanceof AbortSignal, 'retry still carries a timeout');
+    return new Response(
+      JSON.stringify({
+        choices: [
+          {
+            finish_reason: 'stop',
+            message: {
+              content: JSON.stringify({
+                items: [{ name_ru: 'банан', name_en: 'banana', est_grams: 120, confidence: 0.9 }],
+              }),
+            },
+          },
+        ],
+      }),
+      { headers: { 'Content-Type': 'application/json' } },
+    );
+  }) as typeof fetch;
+
+  const items = await identifyFromText('банан', 'RU');
+
+  assert.equal(calls, 2, 'timed-out first attempt must be retried');
+  assert.equal(items.length, 1, 'the re-roll result reaches the caller');
+  assert.equal(items[0]?.name_ru, 'банан');
+});
+
+test('identify: timing out TWICE is an honest failure, not an empty plate', async () => {
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls += 1;
+    throw new DOMException('The operation was aborted.', 'AbortError');
+  }) as typeof fetch;
+
+  await assert.rejects(() => identifyFromText('банан', 'RU'), VisionUnavailableError);
+  assert.equal(calls, 2, 'exactly one re-roll — never a retry storm');
+});
+
+test('identify: a non-timeout transport error is terminal, never retried', async () => {
+  // DNS / connection refused means the upstream is genuinely gone; re-rolling
+  // just doubles the user's wait before the same failure.
+  let calls = 0;
+  globalThis.fetch = (async () => {
+    calls += 1;
+    throw new TypeError('fetch failed');
+  }) as typeof fetch;
+
+  await assert.rejects(() => identifyFromText('банан', 'RU'), VisionUnavailableError);
+  assert.equal(calls, 1, 'a dead upstream is not retried');
+});

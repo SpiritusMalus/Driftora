@@ -12,15 +12,19 @@ import type {
 } from './foodParser';
 
 const SOURCES: readonly NutritionSource[] = ['usda', 'skurikhin', 'openfoodfacts', 'apininjas', 'fatsecret', 'label', 'ai_estimate', 'estimate'];
-/** Text/search: the fast path (one LLM turn over a short string). */
-const DEFAULT_TIMEOUT_MS = 12_000;
-/** Photo/audio uploads: vision/transcription is much slower than text, and the
- *  server's own OpenRouter call alone is bounded at 20s (server httpTimeout.ts)
- *  — a 12s client abort could hang up while the backend is still legitimately
- *  working, so a photo silently «failed to recognize» (device report
- *  2026-07-15: «2 фото грузанул, одно не захотело распознаваться»). Give the
- *  upload comfortably more than the server's 20s, mirroring the workout parser. */
-const UPLOAD_TIMEOUT_MS = 25_000;
+/** Text/search: a typed query is answered in 3–6 s and the user is actively
+ *  waiting on it, so the ceiling stays near the answer time — the server gives
+ *  this path a tight two-attempt budget of its own (10s + 12s, server
+ *  httpTimeout.ts). Better to fail at ~25 s and let them retype than to hold the
+ *  screen while a doomed re-roll plays out. */
+const DEFAULT_TIMEOUT_MS = 25_000;
+/** Photo/audio: the server may spend TWO OpenRouter attempts on one request —
+ *  17 s on the first, 26 s on the re-roll when the model falls into a decode
+ *  loop — and a packaged product adds a second pass that reads its printed
+ *  panel. Measured end-to-end on real photos: ~18 s median, worst observed 36 s.
+ *  Hanging up before the server answers is the worst outcome, because the client
+ *  then blames the network for what was really a slow but successful parse. */
+const UPLOAD_TIMEOUT_MS = 50_000;
 
 function isNutrientValues(v: unknown): v is NutrientValues {
   if (v === null || typeof v !== 'object') return false;
@@ -96,6 +100,17 @@ function isMealDraft(v: unknown): v is MealDraft {
  */
 function asOfflineFallback(draft: MealDraft): MealDraft {
   return { ...draft, flags: { ...draft.flags, offline_fallback: true } };
+}
+
+/**
+ * The server ANSWERED — it just could not parse (503 when the model truncates
+ * or the provider refuses). Telling the user «нет интернета» here is a lie they
+ * can check: the connection is obviously fine, so the app looks broken and the
+ * suggested remedy (wait for signal) is useless. Same degraded draft, honest
+ * label — retrying in a moment is the thing that actually helps.
+ */
+function asServerFallback(draft: MealDraft): MealDraft {
+  return { ...draft, flags: { ...draft.flags, offline_fallback: true, server_error: true } };
 }
 
 /** Derive a sibling endpoint from the text one (/food/parse → /food/parse-<kind>). */
@@ -184,7 +199,7 @@ export class HttpFoodParser implements FoodParser {
         body: JSON.stringify({ text, region }),
         signal: controller.signal,
       });
-      if (!res.ok) return asOfflineFallback(await this.fallback.parse(text, region));
+      if (!res.ok) return asServerFallback(await this.fallback.parse(text, region));
       const data: unknown = await res.json();
       if (!isMealDraft(data)) return asOfflineFallback(await this.fallback.parse(text, region));
       return data;
@@ -220,7 +235,7 @@ export class HttpFoodParser implements FoodParser {
         body: form,
         signal: controller.signal,
       });
-      if (!res.ok) return asOfflineFallback(await this.fallback.parsePhoto(photo, region));
+      if (!res.ok) return asServerFallback(await this.fallback.parsePhoto(photo, region));
       const data: unknown = await res.json();
       if (!isMealDraft(data)) return asOfflineFallback(await this.fallback.parsePhoto(photo, region));
       return data;
@@ -255,7 +270,7 @@ export class HttpFoodParser implements FoodParser {
         body: form,
         signal: controller.signal,
       });
-      if (!res.ok) return asOfflineFallback(await this.fallback.parseAudio(audio, region));
+      if (!res.ok) return asServerFallback(await this.fallback.parseAudio(audio, region));
       const data: unknown = await res.json();
       if (!isMealDraft(data)) return asOfflineFallback(await this.fallback.parseAudio(audio, region));
       return data;

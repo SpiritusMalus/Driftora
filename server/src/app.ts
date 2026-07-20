@@ -7,6 +7,7 @@ import {
   estimateFoodPer100,
   identifyFromAudio,
   identifyFromPhoto,
+  readPackageLabel,
   identifyFromText,
   parseWorkoutFromAudio,
   parseWorkoutFromPhoto,
@@ -149,7 +150,9 @@ export interface CreateAppOptions {
  * can be injected for tests; production wires it from env-configured providers.
  */
 export function createApp(
-  resolver: Resolver = new Resolver(buildProviders()),
+  // The estimator fills DB misses for the photo path, which no longer asks the
+  // vision model for nutrition numbers — see IDENTIFY_PHOTO_SYSTEM_PROMPT.
+  resolver: Resolver = new Resolver(buildProviders(), estimateFoodPer100),
   opts: CreateAppOptions = {},
 ): express.Express {
   const app = express();
@@ -366,7 +369,24 @@ export function createApp(
     // Trust the bytes over the client's label — see `sniffImageMime`.
     const mimeType = sniffImageMime(file.buffer) ?? (file.mimetype || 'image/jpeg');
     const base64 = file.buffer.toString('base64');
-    await respondWithDraft(res, 'photo', region, () => identifyFromPhoto(base64, mimeType, region));
+    await respondWithDraft(res, 'photo', region, async () => {
+      const items = await identifyFromPhoto(base64, mimeType, region);
+      // SECOND PASS, only for wrappers the first pass flagged: read the printed
+      // panel. Exact numbers beat any database average — the tester's turkey ham
+      // prints 100 kcal / 16 / 2 / 4 while the DB rows guessed 126 and 82. Runs
+      // concurrently across items and is best-effort: a package whose panel
+      // stays unreadable simply keeps its DB-resolved row.
+      const packaged = items.filter((it) => it.packaged === true);
+      if (packaged.length > 0) {
+        await Promise.all(
+          packaged.map(async (it) => {
+            const label = await readPackageLabel(base64, mimeType, it.name_ru);
+            if (label) it.label = label;
+          }),
+        );
+      }
+      return items;
+    });
   });
 
   // Voice input: multipart `audio` (a short spoken meal description) + `region` →

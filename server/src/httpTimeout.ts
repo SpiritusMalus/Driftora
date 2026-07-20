@@ -10,8 +10,30 @@
  * branching is needed at call sites.
  */
 export const TIMEOUT_MS = {
-  /** OpenRouter chat-completions (identify from text/photo/audio) — largest payloads. */
-  openrouter: 20_000,
+  /**
+   * OpenRouter, FIRST attempt. Deliberately shorter than a patient wait: a
+   * degenerate decode loop has a time signature. Measured on this model — a
+   * healthy identification lands in 8–16 s, a looping one runs 26–37 s before
+   * hitting the token ceiling and returning garbage anyway. Cutting at 17 s
+   * therefore costs almost no real answers while catching the loop early enough
+   * to re-roll inside the user's patience. Waiting longer buys a broken reply.
+   */
+  openrouter: 17_000,
+  /**
+   * OpenRouter, RETRY after a timeout or a truncation. Roomier: this attempt is
+   * the one that has to land, and a re-roll that is merely slow must not be
+   * killed for it. First + retry stays under the client's upload budget.
+   */
+  openrouterRetry: 26_000,
+  /**
+   * TEXT identification, both attempts. A typed query is answered in 3–6 s and
+   * the user is actively waiting on it, so the failure ceiling has to stay near
+   * the answer time: better to fail at 22 s and let them retype than to hold the
+   * screen for 43 s. Photos get the patient budget above — there the user has
+   * already committed a picture and a slow answer still beats none.
+   */
+  openrouterText: 10_000,
+  openrouterTextRetry: 12_000,
   /** USDA FoodData Central `/foods/search`. */
   usda: 8_000,
   /** API Ninjas `/v1/nutrition`. */

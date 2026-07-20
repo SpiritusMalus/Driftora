@@ -857,6 +857,7 @@ export const en = {
       offline: 'Looks like there’s no internet — this was counted from the built-in table, rougher numbers than usual. Try again once you’re back online.',
       offlineEmpty: 'Looks like there’s no internet, and the built-in table doesn’t know this food. Try again once you’re back online.',
       offlineMedia: 'Looks like there’s no internet. Photos and voice need a connection — try later, or describe the food in words.',
+      serverBusy: 'Recognition couldn’t handle this shot — your connection is fine. Try again, or describe the food in words.',
       failed: 'Couldn’t parse this. Check your connection and try again.',
     },
     entryGone: 'This entry has already been deleted.',
