@@ -8,6 +8,8 @@ import {
   isSugarFreeQuery,
   normalizeName,
   rankByName,
+  MIN_CHAIN_COVERAGE,
+  queryCoverage,
   scoreName,
   scoreToConfidence,
 } from '../src/nutrition/scoring.js';
@@ -102,4 +104,17 @@ test('demoteContradictions: an unrelated clean row is NOT promoted over the head
   assert.equal(out[0]!.name, 'Напиток энергетический Arctic');
   assert.ok(out[0]!.confidence <= 0.4);
   assert.equal(out[1]!.name, 'Конфеты без сахара с фундуком');
+});
+
+test('queryCoverage: unmatched query words count against the match', () => {
+  // The lemonade bug: one shared token of three. Jaccard flatters it (0.25 →
+  // floored to a respectable 0.4 confidence); coverage stays honest at 1/3.
+  assert.ok(Math.abs(queryCoverage('tarragon soda chernogolovka', 'Tarragon, dried') - 1 / 3) < 1e-9);
+  assert.ok(queryCoverage('tarragon soda chernogolovka', 'Tarragon, dried') < MIN_CHAIN_COVERAGE);
+  // A real match explains what was asked for.
+  assert.equal(queryCoverage('chicken breast', 'Chicken, breast, raw'), 1);
+  // A qualifier the DB omits costs a token but stays above the bar.
+  assert.ok(queryCoverage('куриная грудка варёная', 'куриная грудка') >= MIN_CHAIN_COVERAGE);
+  assert.equal(queryCoverage('', 'anything'), 0);
+  assert.equal(queryCoverage('anything', ''), 0);
 });

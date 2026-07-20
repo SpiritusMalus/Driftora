@@ -41,6 +41,42 @@ export function scoreName(query: string, candidate: string): number {
   return Math.min(1, jaccard + sub + covers);
 }
 
+/**
+ * Share of the QUERY's own words the candidate actually accounts for (0..1).
+ *
+ * Distinct from [scoreName] on purpose. Jaccard answers "how similar are these
+ * two names"; this answers "did we explain what the user asked for". They come
+ * apart exactly where the resolver used to break: «tarragon soda Chernogolovka»
+ * against USDA «Tarragon, dried» shares one token of three — Jaccard 0.25, which
+ * [scoreToConfidence] then floors to a respectable-looking 0.4, while `soda` and
+ * `chernogolovka` (the words that say what the thing IS) went unexplained. The
+ * result was a dried herb served as a bottle of lemonade: 295 kcal and 22.8 g
+ * protein per 100 g.
+ *
+ * Coverage stays honest there (0.33) because unmatched query tokens count
+ * against it directly.
+ */
+export function queryCoverage(query: string, candidate: string): number {
+  const q = normalizeName(query);
+  const c = normalizeName(candidate);
+  if (q.length === 0 || c.length === 0) return 0;
+  const qt = [...new Set(q.split(' '))].filter((w) => w.length > 0);
+  if (qt.length === 0) return 0;
+  const ct = new Set(c.split(' '));
+  let hit = 0;
+  for (const w of qt) if (ct.has(w)) hit++;
+  return hit / qt.length;
+}
+
+/**
+ * Below this share of the query's own words, a hit is too thin to STOP the
+ * provider chain. It is not thrown away — it is remembered as a fallback while
+ * the remaining sources (Open Food Facts for brands, FatSecret) get their turn.
+ * Half is deliberately lenient: qualifiers the DB omits («варёная», «домашний»)
+ * routinely cost a token or two without making the match wrong.
+ */
+export const MIN_CHAIN_COVERAGE = 0.5;
+
 /** Prefer generic/whole foods; lightly penalize branded products. */
 export function genericBonus(foodType?: string): number {
   if (!foodType) return 0;

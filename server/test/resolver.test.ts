@@ -304,3 +304,77 @@ test('graded query (молоко 1.8%) whose DB grade differs → AI estimate be
   assert.equal(r.alternatives[0].per100.source, 'openfoodfacts');
   assert.equal(r.alternatives[0].per100.kcal, 42);
 });
+
+test('weak match: a one-token DB hit loses to the AI estimate (тархун → «Tarragon, dried»)', async () => {
+  // The lemonade bug, end to end. USDA fuzzy-returns «Tarragon, dried» for
+  // «tarragon soda Chernogolovka»: it shares ONE token of three, so the row
+  // survives the relevance filter (overlap > 0) and used to stop the chain at
+  // confidence 0.4 — serving a dried herb, 295 kcal and 22.8 g protein, as a
+  // bottle of soda (974 kcal for 330 ml; the real drink is ~20-40 kcal/100 ml).
+  // Coverage 1/3 now marks it weak, so the model's class-level estimate wins.
+  const driedTarragon = {
+    foods: [
+      {
+        description: 'Tarragon, dried',
+        score: 100,
+        foodNutrients: [
+          { nutrientNumber: '1008', value: 295 },
+          { nutrientNumber: '1003', value: 22.8 },
+          { nutrientNumber: '1004', value: 7.2 },
+          { nutrientNumber: '1005', value: 50.2 },
+        ],
+      },
+    ],
+  };
+  mockFetch(() => json(driedTarragon));
+  const resolver = new Resolver([new UsdaProvider('KEY')]);
+  const r = await resolver.resolveItem(
+    item({
+      name_ru: 'лимонад тархун черноголовка',
+      name_en: 'tarragon soda Chernogolovka',
+      estimate: { kcal_100g: 30, prot_100g: 0, fat_100g: 0, carb_100g: 8 },
+    }),
+    'RU',
+  );
+  assert.equal(r.per100.source, 'ai_estimate', 'a thin herb match must not pass as the drink');
+  assert.equal(r.per100.kcal, 30);
+  assert.equal(r.per100.prot, 0);
+  assert.ok(
+    (r.alternatives ?? []).some((a) => a.per100.kcal === 295),
+    'the thin DB row stays available as a one-tap alternative',
+  );
+});
+
+test('weak match with NO estimate is demoted, not served as a confident hit', async () => {
+  // Same thin match, but the model gave no estimate to fall back on. We still
+  // must not present it as fact: confidence drops so the client opens the picker.
+  const driedTarragon = {
+    foods: [
+      {
+        description: 'Tarragon, dried',
+        score: 100,
+        foodNutrients: [
+          { nutrientNumber: '1008', value: 295 },
+          { nutrientNumber: '1003', value: 22.8 },
+          { nutrientNumber: '1004', value: 7.2 },
+          { nutrientNumber: '1005', value: 50.2 },
+        ],
+      },
+    ],
+  };
+  mockFetch(() => json(driedTarragon));
+  const resolver = new Resolver([new UsdaProvider('KEY')]);
+  const r = await resolver.resolveItem(
+    item({ name_ru: 'лимонад тархун черноголовка', name_en: 'tarragon soda Chernogolovka' }),
+    'RU',
+  );
+  assert.equal(r.confidence, 0.3, 'thin match is flagged, so the picker opens');
+});
+
+test('a covering match still stops the chain (no regression for normal foods)', async () => {
+  mockFetch(() => json(usdaChicken));
+  const resolver = new Resolver([new UsdaProvider('KEY'), new OpenFoodFactsProvider()]);
+  const r = await resolver.resolveItem(item(), 'US');
+  assert.equal(r.per100.source, 'usda', '«chicken breast» → «Chicken, breast, raw» covers the query');
+  assert.ok(r.confidence > 0.3);
+});
