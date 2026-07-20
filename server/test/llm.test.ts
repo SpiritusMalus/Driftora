@@ -151,3 +151,16 @@ test('identify: a provider error riding on HTTP 200 fails loudly, and is not ret
   await assert.rejects(() => identifyFromText('банан', 'RU'), VisionUnavailableError);
   assert.equal(calls, 1, 'a refusing provider must not be hammered with a retry');
 });
+
+test('identify: a body that cannot be read is a failure, not an empty plate', async () => {
+  // The timeout fires while the BODY is being read (fetch already resolved on
+  // headers), so the abort surfaces on res.json(). Swallowing it produced a
+  // silent «не распознал» on an HTTP 200 — the hardest strain to spot, because
+  // it is indistinguishable from an honest "no food here".
+  globalThis.fetch = (async () =>
+    new Response('{"choices":[{"message":{"content":"{\\"items\\"', {
+      headers: { 'Content-Type': 'application/json' },
+    })) as typeof fetch;
+
+  await assert.rejects(() => identifyFromText('банан', 'RU'), VisionUnavailableError);
+});
