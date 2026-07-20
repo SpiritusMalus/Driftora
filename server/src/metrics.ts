@@ -23,6 +23,8 @@ class MetricsRegistry {
   private empty = 0;
   private lowConfidence = 0;
   private escalations = 0;
+  /** Answers that hit the token ceiling mid-generation and were re-rolled. */
+  private truncationRetries = 0;
   private readonly latency: Record<string, { sum: number; count: number }> = {
     text: { sum: 0, count: 0 },
     photo: { sum: 0, count: 0 },
@@ -47,6 +49,11 @@ class MetricsRegistry {
     this.escalations += 1;
   }
 
+  /** A sustained non-zero count means the token ceiling needs another look. */
+  recordTruncationRetry(): void {
+    this.truncationRetries += 1;
+  }
+
   snapshot() {
     const latency_ms: Record<string, { avg: number; count: number }> = {};
     for (const [route, { sum, count }] of Object.entries(this.latency)) {
@@ -59,6 +66,7 @@ class MetricsRegistry {
       empty: this.empty,
       low_confidence: this.lowConfidence,
       escalations: this.escalations,
+      truncation_retries: this.truncationRetries,
       sources: { ...this.sources },
       latency_ms,
     };
