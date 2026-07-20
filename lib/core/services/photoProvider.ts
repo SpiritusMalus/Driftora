@@ -9,9 +9,15 @@ import { deleteTempFile } from './tempFiles';
 /// full resolution. Capping the longer edge (not just width) is what bounds the
 /// vision-model token cost: those tokens scale with width×height, so a tall
 /// photo with an uncapped height is the real cost leak — not the file's MB
-/// (device concern 2026-07-15: «ограничение, чтобы не съедали токены»). At 1024
-/// a photo is ≤ ~1.05 MP → ≈1.4k vision tokens worst case, a few hundred KB.
-const MAX_EDGE = 1024;
+/// (device concern 2026-07-15: «ограничение, чтобы не съедали токены»).
+///
+/// 1024 → 768 (2026-07-20): Gemini tiles images at ~768 px, so a 1024-long-side
+/// photo spills into extra tiles — more prefill, more fuel for reasoning, zero
+/// gain for the task. Measured before lowering: the hardest read we have (the
+/// small, rotated nutrition panel on the Индилайт pack) still transcribes
+/// EXACTLY — 100 kcal / Б16 Ж2 У4, 3 runs of 3 — at 768. Identification needs
+/// far less than the panel does, so it inherits the safety margin.
+const MAX_EDGE = 768;
 
 export type PhotoSource = 'camera' | 'library';
 

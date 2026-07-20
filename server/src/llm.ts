@@ -13,6 +13,8 @@ import {
   userReadLabelInstruction,
   IDENTIFY_SCHEMA,
   IDENTIFY_SYSTEM_PROMPT,
+  IDENTIFY_TEXT_SCHEMA,
+  IDENTIFY_TEXT_SYSTEM_PROMPT,
   PARSE_WORKOUT_PHOTO_SCHEMA,
   PARSE_WORKOUT_PHOTO_SYSTEM_PROMPT,
   PARSE_WORKOUT_SCHEMA,
@@ -265,8 +267,104 @@ async function completeWithRetry(
   return { data: second, truncated: finishReasonOf(second) === 'length' };
 }
 
-async function callModel(messages: ChatMessage[], model: string, schema: object = IDENTIFY_SCHEMA): Promise<IdentifiedItem[]> {
-  const { data, truncated } = await completeWithRetry(messages, model, schema);
+/**
+ * HEDGED variant of `completeWithRetry`, for the photo path (the slow one).
+ *
+ * The sequential retry has a built-in worst case: a looping first attempt burns
+ * its full 17 s deadline before the re-roll even starts (17 + 26 = 43 s
+ * observed). But a healthy answer lands in 8–16 s — so an attempt that is still
+ * silent past ~12 s is *probably* looping, and rather than diagnose it we just
+ * start the re-roll alongside and take whichever finishes first. The loser is
+ * discarded (a background completion is billed but harmless; it cannot be
+ * cancelled server-side anyway). Hedge cost: one duplicate call on the slow
+ * tail only, never on the healthy majority.
+ *
+ * `VISION_HEDGE_MS` overrides the trigger (read per call so tests can use tiny
+ * values); 0 disables hedging and falls back to the sequential retry.
+ */
+const DEFAULT_HEDGE_AFTER_MS = 12_000;
+
+async function completeHedged(
+  messages: ChatMessage[],
+  model: string,
+  schema: object,
+): Promise<{ data: unknown; truncated: boolean }> {
+  const hedgeAfterMs = process.env.VISION_HEDGE_MS !== undefined ? Number(process.env.VISION_HEDGE_MS) : DEFAULT_HEDGE_AFTER_MS;
+  if (!Number.isFinite(hedgeAfterMs) || hedgeAfterMs <= 0) {
+    return completeWithRetry(messages, model, schema);
+  }
+
+  type Outcome = { data: unknown; truncated: boolean };
+  type Tagged = { ok: true; out: Outcome } | { ok: false; err: unknown };
+
+  const attempt = async (temperature: number, timeoutMs: number): Promise<Outcome> => {
+    const data = await complete(messages, model, schema, temperature, timeoutMs);
+    const failed = providerErrorOf(data);
+    if (failed) throw new VisionUnavailableError(failed);
+    return { data, truncated: finishReasonOf(data) === 'length' };
+  };
+  const tag = (p: Promise<Outcome>): Promise<Tagged> =>
+    p.then(
+      (out) => ({ ok: true as const, out }),
+      (err) => ({ ok: false as const, err }),
+    );
+
+  let hedgeStarted = false;
+  let cancelled = false;
+  let timer: NodeJS.Timeout | undefined;
+  let hedgePromise: Promise<Tagged> | undefined;
+  let hedgeResolve!: (t: Promise<Tagged>) => void;
+  // Settles only if the hedge actually starts — a never-started hedge must not
+  // win (or block) any race.
+  const hedgeSlot = new Promise<Tagged>((resolve) => {
+    hedgeResolve = (p) => p.then(resolve);
+  });
+  const startHedge = (): void => {
+    if (hedgeStarted || cancelled) return;
+    hedgeStarted = true;
+    metrics.recordHedge();
+    hedgePromise = tag(attempt(RETRY_TEMPERATURE, TIMEOUT_MS.openrouterRetry));
+    hedgeResolve(hedgePromise);
+  };
+  timer = setTimeout(startHedge, hedgeAfterMs);
+  timer.unref?.();
+
+  const firstP = tag(attempt(0, TIMEOUT_MS.openrouter));
+  const lane = <L extends string>(name: L, p: Promise<Tagged>) => p.then((t) => ({ lane: name, t }));
+  try {
+    const r1 = await Promise.race([lane('first', firstP), lane('hedge', hedgeSlot)]);
+    if (r1.t.ok && !r1.t.out.truncated) return r1.t.out; // clean winner, either lane
+
+    // The race's loser lane is now the only hope. If the hedge hasn't started
+    // yet (first attempt failed fast, before the trigger), start it NOW — a
+    // timeout is a loop signature and an immediate re-roll usually lands.
+    startHedge();
+    const other = await (r1.lane === 'first' ? (hedgePromise as Promise<Tagged>) : firstP);
+
+    if (other.ok && !other.out.truncated) return other.out;
+    // Nothing clean: prefer a truncated payload (the caller decides how loud to
+    // fail) over rethrowing, and prefer the primary lane's error over the hedge's.
+    if (r1.t.ok) return r1.t.out;
+    if (other.ok) return other.out;
+    if (r1.t.err instanceof UpstreamTimeoutError && other.err instanceof UpstreamTimeoutError) {
+      throw new VisionUnavailableError('OpenRouter timed out on both attempts');
+    }
+    throw r1.lane === 'first' ? r1.t.err : other.err;
+  } finally {
+    cancelled = true;
+    clearTimeout(timer);
+  }
+}
+
+async function callModel(
+  messages: ChatMessage[],
+  model: string,
+  schema: object = IDENTIFY_SCHEMA,
+  opts: { hedge?: boolean } = {},
+): Promise<IdentifiedItem[]> {
+  const { data, truncated } = opts.hedge
+    ? await completeHedged(messages, model, schema)
+    : await completeWithRetry(messages, model, schema);
   const items = parseResponse(data);
   // A truncated answer that yielded nothing is a SERVER failure, not an honest
   // "no food here" — returning [] would render as «не распознал» and hide the
@@ -283,8 +381,12 @@ async function callModel(messages: ChatMessage[], model: string, schema: object 
  * only if `OPENROUTER_PRO_MODEL` is configured (§8.4). The stronger result is
  * kept only when it actually improves (more items or higher top confidence).
  */
-async function identifyWithEscalation(messages: ChatMessage[], schema: object = IDENTIFY_SCHEMA): Promise<IdentifiedItem[]> {
-  const base = await callModel(messages, MODEL, schema);
+async function identifyWithEscalation(
+  messages: ChatMessage[],
+  schema: object = IDENTIFY_SCHEMA,
+  opts: { hedge?: boolean } = {},
+): Promise<IdentifiedItem[]> {
+  const base = await callModel(messages, MODEL, schema, opts);
   if (!PRO_MODEL) return base;
 
   const weak = base.length === 0 || topConfidence(base) < CONFIDENCE_FLOOR;
@@ -414,10 +516,14 @@ export function parseTranslations(data: unknown, labels: string[]): string[] {
 
 /** Layer 2: free-text meal → identified foods + estimated grams (no numbers). */
 export async function identifyFromText(text: string, region: Region): Promise<IdentifiedItem[]> {
-  return identifyWithEscalation([
-    { role: 'system', content: IDENTIFY_SYSTEM_PROMPT },
-    { role: 'user', content: `${userInstruction(region)}\n\n${text}` },
-  ]);
+  // Slim contract (no `estimate`) — see IDENTIFY_TEXT_SYSTEM_PROMPT for why.
+  return identifyWithEscalation(
+    [
+      { role: 'system', content: IDENTIFY_TEXT_SYSTEM_PROMPT },
+      { role: 'user', content: `${userInstruction(region)}\n\n${text}` },
+    ],
+    IDENTIFY_TEXT_SCHEMA,
+  );
 }
 
 /** Layer 1: photo (base64) → identified foods + estimated grams (Phase 3). */
@@ -438,6 +544,9 @@ export async function identifyFromPhoto(
       },
     ],
     IDENTIFY_PHOTO_SCHEMA,
+    // The slow path gets the hedge: a duplicate re-roll fired at ~12 s cuts the
+    // looping tail from 43 s to ~25 s (see completeHedged).
+    { hedge: true },
   );
 }
 
@@ -459,7 +568,10 @@ export async function readPackageLabel(
 ): Promise<LabelReading | undefined> {
   let data: unknown;
   try {
-    ({ data } = await completeWithRetry(
+    // Hedged like identification: the label pass is the other slow vision call
+    // (stage_ms showed it at ~13 s avg, i.e. half the photo total), with the
+    // same looping tail — so it gets the same duplicate-at-12s treatment.
+    ({ data } = await completeHedged(
       [
         { role: 'system', content: READ_LABEL_SYSTEM_PROMPT },
         {

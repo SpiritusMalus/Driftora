@@ -1,16 +1,16 @@
 import { WORKOUT_TYPE_KEYS, type Region } from './types.js';
 
 /**
- * System prompt for IDENTIFICATION (BUILD SPEC §1/§4). The model's PRIMARY job
- * is still identification — WHICH foods and HOW MANY GRAMS. The authoritative
- * per-100g composition comes from the nutrition DB, server-side, and OVERRIDES
- * anything the model says whenever there is a good match.
+ * System prompt for AUDIO identification (BUILD SPEC §1/§4). The model's PRIMARY
+ * job is identification — WHICH foods and HOW MANY GRAMS; the authoritative
+ * per-100g composition comes from the nutrition DB, server-side.
  *
- * One deliberate addition (2026-07-08): the model may also give a rough per-100g
- * `estimate`. It is used ONLY (a) as a sanity-check band to catch a wrong DB
- * match (a confident lookup for the wrong food), and (b) as a last-resort
- * fallback for foods absent from every DB (e.g. regional dishes like плескавица).
- * It is always attributed as an AI estimate, never laundered as DB data.
+ * AUDIO-ONLY as of 2026-07-20: the text path moved to the slim
+ * IDENTIFY_TEXT_* contract below (no `estimate` — the numeric block is where
+ * the decode loop lives, and the resolver now fetches estimates on demand).
+ * Audio deliberately KEEPS the legacy contract: it proved the most fragile path
+ * in this session's experiments (a schema tweak that helped photos degraded
+ * voice 3/3), so it changes only WITH its own measurements, not alongside.
  */
 export const IDENTIFY_SYSTEM_PROMPT = `You identify the component foods in a meal description for a nutrition app. Your PRIMARY job is WHICH foods and HOW MANY GRAMS — identification, not nutrition scoring.
 
@@ -67,6 +67,55 @@ export const IDENTIFY_SCHEMA = {
 export function userInstruction(region: Region): string {
   return `Region: ${region}. Identify the foods and estimate grams for the meal below.`;
 }
+
+/**
+ * TEXT identification — slim contract, mirroring the photo one (2026-07-20).
+ *
+ * The legacy prompt asked every text parse for a per-100g `estimate` "just in
+ * case": four numeric literals per item that the DB overrides on any decent
+ * match. Measured cost of that habit on this model: the decode loop lives INSIDE
+ * numeric literals («"prot_100g": 29.02e0200000…»), and «борщ и два куска
+ * чёрного хлеба» failed 3/3 exactly like the photos did. The estimate still
+ * exists — the resolver fetches it on demand (`estimateFoodPer100`) for the few
+ * rows that actually need one (DB miss, weak match, unhonored grade), instead of
+ * every item paying for it up front. Prompt drops from ~620 to ~300 tokens.
+ */
+export const IDENTIFY_TEXT_SYSTEM_PROMPT = `You identify the component foods in a meal description for a nutrition app. Your ONLY job is WHICH foods and HOW MANY GRAMS — identification, not nutrition scoring. The app looks up every nutrition number itself, from a database.
+
+For each distinct food or drink in the input, output:
+- name_ru: a short, normalized Russian food name (e.g. "куриная грудка", "тост").
+- name_en: the same food as a short, normalized English name suitable for a USDA database search (e.g. "chicken breast", "white bread toast").
+- est_grams: your best estimate of the eaten weight in grams, from explicit quantities or typical portions.
+- confidence: 0..1, how sure you are about the food identity and portion.
+- prepared: true when the named item is an already-prepared dish eaten as-is — soups, stews, salads, casseroles, ready composite meals (суп харчо, жаркое, плов, оливье). false for ingredients and simple products that may still be cooked or re-cooked at home (raw meat or fish, vegetables, eggs, pasta, rice, dumplings, bread).
+
+Rules:
+- Split a dish into its meaningful components (e.g. "омлет из трёх яиц" → eggs ~165 g; "кофе с молоком" → milk ~30 g; ignore water/black coffee with ~0 nutrition unless asked).
+- Multiple foods in one phrase → multiple items.
+- Strip filler words; never invent foods that were not mentioned. KEEP brand and grade words in name_ru («творог 5%», «лимонад Тархун Черноголовка») — they are what lets the database find the right row.
+- If nothing food-like is present, return an empty items array.`;
+
+/** Slim text schema: identification only, no numeric blocks for a loop to live in. */
+export const IDENTIFY_TEXT_SCHEMA = {
+  type: 'object',
+  properties: {
+    items: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          name_ru: { type: 'string' },
+          name_en: { type: 'string' },
+          est_grams: { type: 'number' },
+          confidence: { type: 'number' },
+          prepared: { type: 'boolean' },
+        },
+        required: ['name_ru', 'name_en', 'est_grams', 'confidence', 'prepared'],
+      },
+    },
+  },
+  required: ['items'],
+} as const;
 
 /**
  * MANUAL-SEARCH AI ESTIMATE. The user typed a food name into the search box and

@@ -54,10 +54,44 @@ class MetricsRegistry {
     this.truncationRetries += 1;
   }
 
+  /**
+   * Per-STAGE timings inside one parse (identify_* / label / resolve /
+   * estimator). The per-route latency above says a photo took 19 s; only this
+   * says WHERE those seconds went — without it every tuning decision is a
+   * reconstruction from ad-hoc logs (which is exactly how this session started).
+   */
+  private readonly stages: Record<string, { sum: number; count: number }> = {};
+
+  recordStage(stage: string, ms: number): void {
+    const s = (this.stages[stage] ??= { sum: 0, count: 0 });
+    s.sum += ms;
+    s.count += 1;
+  }
+
+  /** Packaged product whose panel was served from cache — no second vision call. */
+  private labelCacheHits = 0;
+
+  /** Duplicate vision calls fired because the first was still silent past the
+   *  hedge trigger — the price of cutting the slow tail. Sustained growth here
+   *  means the trigger sits below the healthy answer time and needs raising. */
+  private hedges = 0;
+
+  recordHedge(): void {
+    this.hedges += 1;
+  }
+
+  recordLabelCacheHit(): void {
+    this.labelCacheHits += 1;
+  }
+
   snapshot() {
     const latency_ms: Record<string, { avg: number; count: number }> = {};
     for (const [route, { sum, count }] of Object.entries(this.latency)) {
       latency_ms[route] = { avg: count > 0 ? Math.round(sum / count) : 0, count };
+    }
+    const stage_ms: Record<string, { avg: number; count: number }> = {};
+    for (const [stage, { sum, count }] of Object.entries(this.stages)) {
+      stage_ms[stage] = { avg: count > 0 ? Math.round(sum / count) : 0, count };
     }
     return {
       uptime_s: Math.round((Date.now() - this.startedAt) / 1000),
@@ -67,8 +101,11 @@ class MetricsRegistry {
       low_confidence: this.lowConfidence,
       escalations: this.escalations,
       truncation_retries: this.truncationRetries,
+      label_cache_hits: this.labelCacheHits,
+      hedges: this.hedges,
       sources: { ...this.sources },
       latency_ms,
+      stage_ms,
     };
   }
 }
