@@ -209,6 +209,23 @@ export function averageEarnedKcal(days: EarnedDay[], weightKg: number): number {
   return total / days.length;
 }
 
+/// The one way this measurement lies: UNDER-LOGGED FOOD. The weight trend sees
+/// everything you ate; the intake average only sees what you wrote down. Eat 2500
+/// and log 2000 and the equation hands back an expenditure 500 too LOW — and the
+/// error is invisible, because a consistently under-logged diary looks exactly
+/// like a consistently small one. Missed WORKOUTS are harmless (the scale already
+/// counted them), missed FOOD is not.
+///
+/// The one thing we can catch: a total daily expenditure below the resting BMR is
+/// physiologically implausible for someone walking around — living costs more than
+/// lying still. So when the measurement comes out under the formula's resting
+/// figure, it's almost certainly a diary gap, not a slow metabolism. Callers warn
+/// instead of offering to calibrate on it.
+export function looksUnderLogged(measuredKcalPerDay: number, formulaBmr: number): boolean {
+  if (!(formulaBmr > 0) || !Number.isFinite(measuredKcalPerDay)) return false;
+  return measuredKcalPerDay < formulaBmr;
+}
+
 /// Clamp band for the stored factor — a real metabolism (plus the resting-base
 /// absorption of un-logged activity) rarely sits outside ±35–50% of a
 /// composition estimate; the band stops a data glitch from wrecking the budget.

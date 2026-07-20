@@ -5,6 +5,7 @@ import {
   bmrFactorFromMeasured,
   BMR_FACTOR_MAX,
   BMR_FACTOR_MIN,
+  looksUnderLogged,
   measuredExpenditure,
   type IntakeDay,
 } from '@/lib/core/insights/adaptiveExpenditure';
@@ -160,6 +161,23 @@ describe('averageEarnedKcal (per-day steps + workout eat-back)', () => {
 
   it('empty list → 0 (a no-movement-data user folds all TDEE into resting)', () => {
     expect(averageEarnedKcal([], 100)).toBe(0);
+  });
+});
+
+describe('looksUnderLogged (the one way the measurement lies)', () => {
+  it('a burn under the resting BMR means missed meals, not a slow metabolism', () => {
+    // Ate 2500, logged 2000 → the equation hands back ~500 too little.
+    expect(looksUnderLogged(1900, 2125)).toBe(true);
+  });
+
+  it('a plausible burn above resting is fine', () => {
+    expect(looksUnderLogged(2800, 2125)).toBe(false);
+    expect(looksUnderLogged(2125, 2125)).toBe(false); // exactly at rest, not below
+  });
+
+  it('shrugs off an unusable formula BMR instead of crying wolf', () => {
+    expect(looksUnderLogged(1900, 0)).toBe(false);
+    expect(looksUnderLogged(Number.NaN, 2125)).toBe(false);
   });
 });
 

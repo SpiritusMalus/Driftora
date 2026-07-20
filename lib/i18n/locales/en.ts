@@ -203,7 +203,7 @@ export const en = {
     },
     bodyFat: {
       title: 'Body fat %',
-      hint: 'Optional — for those who have a measurement (impedance scale, calipers, DEXA). Most people don’t know theirs — just skip, and the next step estimates composition from your waist (a tape is all you need).',
+      hint: 'If you know it from a measurement — impedance scale, calipers, DEXA. If not, skip: the next step estimates it from your waist.',
       placeholder: 'e.g. 25',
       invalid: 'Realistic range: 3–70%. Leave empty if unsure.',
       skip: 'No measurement — skip',
@@ -211,11 +211,11 @@ export const en = {
     },
     waist: {
       title: 'Waist circumference',
-      hint: 'Optional but useful. No body-fat scale? Just measure your waist with a tape at navel level — from your height and waist we estimate body composition (RFM) and sharpen the target beyond a population average.',
+      hint: 'With a tape at navel level. From your height and waist we estimate composition — the target gets sharper, no device needed.',
       placeholder: 'e.g. 85',
-      invalid: 'Realistic range: 40–200 cm. Leave empty if unsure.',
+      invalid: 'Realistic range: 40–200 cm.',
       skip: 'Skip',
-      haveFat: 'You already entered body fat % — it’s more accurate; waist is used only if % is unset.',
+      haveFat: 'Body fat % is already set — it’s more accurate, so waist isn’t needed.',
     },
     goal: {
       title: 'Your goal',
@@ -260,10 +260,11 @@ export const en = {
       howTeaser: 'Resting metabolism, your goal, and how to raise it',
       bmr: 'Resting metabolism ≈ {{kcal}} kcal — expenditure at complete rest ({{method}}).',
       overestimate:
-        'At your weight the formula averages and can overestimate burn by 10–15%. Tap here and add your waist — it gets more accurate, no device needed.',
+        'At your weight the formula overestimates burn by 10–15%. Tap here and add your waist — it gets sharper.',
+      willRefine: 'This is a starting point. After 2–3 weeks of logging the app measures your real burn and sharpens it on its own.',
       method: {
         katch: 'from body composition, Katch–McArdle',
-        'katch-rfm': 'from body composition, estimated from waist (RFM)',
+        'katch-rfm': 'from body composition, estimated from waist',
         mifflin: 'Mifflin–St Jeor formula',
         measured: 'from your own data (weight trend + log)',
       },
@@ -293,7 +294,7 @@ export const en = {
     norm: {
       title: 'Your daily target',
       teaser: 'Resting metabolism + your weight goal',
-      body: 'The foundation is resting metabolism: what the body burns at complete rest. We compute it from sex, height, weight and age (Mifflin–St Jeor), or from lean mass when your body-fat % is set (Katch–McArdle) — that’s more precise.\n\nThen the goal: losing — minus 10–25% of maintenance (you pick the pace), gaining — plus 5–15%, maintaining — no shift. The plan never drops below the healthy minimum.\n\nProtein — 1.6–1.8 g per kg (at a high BMI — from the goal weight), fat — about 30% of calories, carbs — the rest, fiber — 14 g per 1000 kcal.',
+      body: 'The foundation is resting metabolism: what the body burns at complete rest. Accuracy climbs a ladder, and climbing it is optional:\n\n· nothing set — from sex, height, weight and age (Mifflin–St Jeor). A population average: at a high weight it overestimates by 10–15%, because it treats fat as active as muscle;\n· waist set — we estimate composition from height and waist and compute from lean mass (Katch–McArdle). A tape is all it takes;\n· measured body-fat % set — the same, only sharper than the estimate;\n· 2–3 weeks of logging — the app measures your real burn from the weight trend and your food, and uses that. Nothing to measure.\n\nThen the goal: losing — minus 10–25% of maintenance (you pick the pace), gaining — plus 5–15%, maintaining — no shift. The plan never drops below the healthy minimum.\n\nProtein — 1.6–1.8 g per kg (at a high BMI — from the goal weight), fat — about 30% of calories, carbs — the rest, fiber — 14 g per 1000 kcal.',
     },
     budget: {
       title: 'The day’s budget: base + steps + workouts',
@@ -318,7 +319,7 @@ export const en = {
     honesty: {
       title: 'About accuracy — honestly',
       teaser: 'Estimates with “≈”, not the truth',
-      body: 'So next to the numbers you get “≈”, a source and the assumptions — not a promise of precision. What to do: if your weight moves the wrong way for 2–3 weeks, adjust the target by 5–10% and keep watching. The app is not medical advice.',
+      body: 'So next to the numbers you get “≈”, a source and the assumptions — not a promise of precision.\n\nMeasuring burn from your log is exactly as honest as the log: the scale sees everything you ate, the maths only sees what you wrote down, so unlogged food lowers the burn. Workouts need no logging for this — their share already shows up in the weight. If the number lands below your resting rate, the app says so and won’t let you lean on it.\n\nWhat to do: if your weight moves the wrong way for 2–3 weeks, adjust the target by 5–10% and keep watching. The app is not medical advice.',
     },
   },
   more: {
@@ -562,9 +563,9 @@ export const en = {
         'Resting metabolism ≈ {{kcal}} kcal — what your body burns at complete rest, {{method}}. The day’s base sits above it: even a sedentary day burns more.',
       bmrMethod: {
         katch: 'computed from body composition (Katch–McArdle, lean mass)',
-        'katch-rfm': 'computed from body composition — fat estimated from waist (RFM), no device',
+        'katch-rfm': 'computed from body composition: fat estimated from waist',
         mifflin: 'computed with the Mifflin–St Jeor formula',
-        measured: 'calibrated to your own data (weight trend + food log)',
+        measured: 'computed from your own data: weight trend and log',
       },
       maintenanceLine: 'Maintenance ≈ {{maintenance}} kcal — what it takes to hold your current weight. Not your target.',
       deltaLine: {
@@ -587,7 +588,7 @@ export const en = {
       setupCta: 'Set up my body',
       assumedAge: 'Age isn’t set — this plan is an estimate. Add your birth year in “Body parameters” below to firm up the numbers.',
       overestimateNudge:
-        'At your weight the formula can overestimate burn by 10–15%. Measure your waist with a tape (1 minute, no device) → tap to sharpen it.',
+        'At your weight the formula overestimates burn by 10–15%. Tap and add your waist — it gets sharper.',
       note:
         'Formulas estimate the “average” person — real needs differ. Start from these numbers and adjust by your weight trend and how you feel. The full math lives on the “How it works” page.',
       why: 'Why these numbers',
@@ -599,19 +600,18 @@ export const en = {
       title: 'From your data · {{days}} days',
       value: '≈ {{kcal}} kcal',
       caption: 'your real daily burn',
-      explain:
-        'You ate ≈{{intake}} kcal, weight {{dir}} {{trend}} kg/week — so that’s about what you burn. More reliable than a formula: measured, not averaged.',
-      explainFlat:
-        'You ate ≈{{intake}} kcal and weight held steady — so that’s about what you burn. More reliable than a formula: measured, not averaged.',
+      explain: 'You ate ≈{{intake}} kcal, weight {{dir}} {{trend}} kg/week. That’s where the burn comes from — measured, not a formula.',
+      explainFlat: 'You ate ≈{{intake}} kcal and weight held steady. So that’s about what you burn.',
       dirDown: '↓',
       dirUp: '↑',
-      early: 'Still early — this number sharpens with every food log and weigh-in. The “Use this” button appears once there’s enough data.',
-      note: 'Accuracy depends on an honest log: track food consistently and weigh in under similar conditions (mornings, fasted).',
-      apply: 'Use my measured burn',
-      applied: '✓ Your burn is measured from your data, not a formula',
-      appliedTick: 'Done — the budget now rides your measured burn',
+      early: 'Not enough data yet. The button appears once there is.',
+      note: 'Computed from your log: unlogged food lowers the burn. Workouts need no logging — the scale already sees them. Weigh in under similar conditions.',
+      underLogged: 'The burn came out below your resting rate, which isn’t possible. Most likely some food went unlogged. Log more consistently and this becomes usable.',
+      apply: 'Use my own data',
+      applied: 'Burn is computed from your data',
+      appliedTick: 'Saved',
       reset: 'Back to the formula',
-      resetTick: 'Reverted to the formula',
+      resetTick: 'Formula restored',
     },
     micros: {
       title: 'Vitamins & minerals',
