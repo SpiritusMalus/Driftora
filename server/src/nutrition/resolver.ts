@@ -14,7 +14,7 @@ import {
 import { looksDryBasis } from './dryBasis.js';
 import type { NutritionProvider, ProviderResult } from './provider.js';
 import { hasCyrillic } from './ruSearch.js';
-import { demoteContradictions } from './scoring.js';
+import { demoteContradictions, MIN_CHAIN_COVERAGE, queryCoverage } from './scoring.js';
 
 /** How many runner-up matches to carry as switchable alternatives. */
 const MAX_ALTERNATIVES = 4;
@@ -29,6 +29,10 @@ interface LookupResult {
   name?: string; // primary candidate's display name (for manual search results)
   prepared?: boolean; // primary match is a finished dish (curated-table flag)
   microsEstimated?: boolean; // vitamins/minerals were back-filled from a USDA proxy
+  // No source explained even half the query's own words — every provider was
+  // tried and this was merely the least-bad row. The caller prefers the model's
+  // estimate over it (see the weak-match branch in `resolve`).
+  weak?: boolean;
   alternatives: NutritionAlternative[];
 }
 
@@ -205,8 +209,19 @@ export class Resolver {
     return one ? [one] : [];
   }
 
-  /** Walk the region chain, querying each provider by its own name choice. */
+  /**
+   * Walk the region chain, querying each provider by its own name choice.
+   *
+   * A hit only STOPS the chain when it actually explains the query (see
+   * [MIN_CHAIN_COVERAGE]). Thin hits are remembered and the walk continues, so a
+   * weak early source can no longer shut out a better later one: USDA sits second
+   * in the RU chain, and its one-token «tarragon» match on «лимонад тархун
+   * черноголовка» used to return before Open Food Facts — where the branded drink
+   * actually lives — was ever asked. If nothing stronger turns up, the best thin
+   * hit comes back flagged `weak` so the caller can prefer the model's estimate.
+   */
   private async runChain(region: Region, nameFor: (p: NutritionProvider) => string): Promise<LookupResult | null> {
+    let weakFallback: LookupResult | null = null;
     for (const provider of chainFor(this.providers, region)) {
       const name = nameFor(provider);
       if (name.length === 0) continue;
@@ -219,20 +234,26 @@ export class Resolver {
       // order and honestly drops confidence when only contradictions exist.
       const results = demoteContradictions(name, candidates);
       const primary = results[0];
-      if (primary) {
-        return {
-          per100: coercePer100(primary.per100),
-          matchConfidence: clamp01(primary.confidence),
-          name: primary.name,
-          ...(primary.prepared === true ? { prepared: true } : {}),
-          alternatives: results.slice(1, 1 + MAX_ALTERNATIVES).map((r) => ({
-            name: r.name ?? name,
-            per100: coercePer100(r.per100),
-          })),
-        };
+      if (!primary) continue;
+      const hit: LookupResult = {
+        per100: coercePer100(primary.per100),
+        matchConfidence: clamp01(primary.confidence),
+        name: primary.name,
+        ...(primary.prepared === true ? { prepared: true } : {}),
+        alternatives: results.slice(1, 1 + MAX_ALTERNATIVES).map((r) => ({
+          name: r.name ?? name,
+          per100: coercePer100(r.per100),
+        })),
+      };
+      if (queryCoverage(name, primary.name ?? name) < MIN_CHAIN_COVERAGE) {
+        // Keep the FIRST thin hit: the chain is ordered by trustworthiness, so an
+        // early source's weak row still beats a later source's weak row.
+        if (!weakFallback) weakFallback = { ...hit, weak: true };
+        continue;
       }
+      return hit;
     }
-    return null;
+    return weakFallback;
   }
 
   /** Item lookup: providers may be queried by name_ru or name_en (queryLang). */
@@ -411,6 +432,31 @@ export class Resolver {
       };
     }
 
+    // WEAK MATCH → AI ESTIMATE IS PRIMARY. Every source was tried and none
+    // explained even half the query's own words; this row is just the least-bad
+    // one. For a branded or regional product that is the normal outcome (the DB
+    // simply doesn't carry «лимонад тархун черноголовка»), and a confidently
+    // wrong row is far worse than an honest ≈: the herb match said 974 kcal and
+    // 75 g protein for a 330 ml bottle whose real figure is ~66 kcal. The model's
+    // class-level estimate is primary; the thin row stays a one-tap alternative.
+    if (found.weak && aiFull) {
+      return {
+        name_ru: item.name_ru,
+        name_en: item.name_en,
+        grams,
+        grams_source: 'estimated',
+        confidence: item.confidence,
+        per100: aiFull,
+        scaled: scaleToGrams(aiFull, grams),
+        approximate: true,
+        ...(prepared ? { prepared: true } : {}),
+        alternatives: [{ name: found.name ?? item.name_ru, per100: found.per100 }, ...found.alternatives].slice(
+          0,
+          MAX_ALTERNATIVES,
+        ),
+      };
+    }
+
     // DB HIT → the DB is authoritative, but the REFEREE cross-checks it against
     // the model's expectation. A gross divergence (skyr's protein 0.3 vs ~11)
     // means the match is probably the wrong food: keep the DB number primary but
@@ -419,7 +465,10 @@ export class Resolver {
     // GRADE CHECK (grade HONORED but loose): a graded query that landed on a
     // crowd hit (<0.9) — offer the model's clean estimate as an alternative too.
     const gradeSuspect = !!aiFull && graded && found.matchConfidence < 0.9;
-    const suspect = (aiFull ? estimateMismatch(found.per100, item.estimate!) : false) || gradeSuspect;
+    // A thin match with NO estimate to fall back on still can't pass as fact —
+    // demote it so the client opens the picker instead of reading it as a hit.
+    const suspect =
+      (aiFull ? estimateMismatch(found.per100, item.estimate!) : false) || gradeSuspect || !!found.weak;
     const confidence = suspect
       ? REFEREE_DEMOTED_CONFIDENCE
       : Math.min(item.confidence, found.matchConfidence);

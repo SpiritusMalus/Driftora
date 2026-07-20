@@ -98,6 +98,28 @@ export const CURATED_RU: SkurikhinEntry[] = [
     per100: { kcal: 60, prot: 0.8, fat: 0, carb: 14.2, minerals: {} } },
   { name: 'кисель', aliases: ['кисель'], source: 'skurikhin', prepared: true,
     per100: { kcal: 78, prot: 0.2, fat: 0, carb: 18.9, minerals: {} } },
+  // Сладкая газировка. Класс отсутствовал целиком, и на «лимонад тархун
+  // черноголовка» цепочка уходила в USDA, где «тархун» матчился в СУШЁНЫЙ
+  // ЭСТРАГОН (295 ккал, 22.8 г белка) — бутылка лимонада выходила на 974 ккал.
+  // Названия сортов («тархун», «дюшес», «байкал», «саяны») — это травы и ягоды,
+  // поэтому именно они и ловят травяные строки из англоязычных баз; держим их
+  // здесь, первыми в цепочке. Бренд в запросе («черноголовка») не мешает: строка
+  // берётся по названию сорта. Значения — типовая сладкая газировка; конкретный
+  // продукт пользователь поправит через «Другой вариант».
+  { name: 'лимонад', aliases: ['лимонад', 'газировка', 'ситро'], source: 'skurikhin', prepared: true,
+    per100: { kcal: 38, prot: 0, fat: 0, carb: 9.5, minerals: {} } },
+  { name: 'лимонад тархун', aliases: ['тархун', 'лимонад тархун', 'напиток тархун'], source: 'skurikhin', prepared: true,
+    per100: { kcal: 35, prot: 0, fat: 0, carb: 8.7, minerals: {} } },
+  { name: 'лимонад дюшес', aliases: ['дюшес', 'лимонад дюшес'], source: 'skurikhin', prepared: true,
+    per100: { kcal: 38, prot: 0, fat: 0, carb: 9.4, minerals: {} } },
+  { name: 'лимонад байкал', aliases: ['байкал', 'лимонад байкал'], source: 'skurikhin', prepared: true,
+    per100: { kcal: 36, prot: 0, fat: 0, carb: 9, minerals: {} } },
+  { name: 'лимонад саяны', aliases: ['саяны', 'лимонад саяны'], source: 'skurikhin', prepared: true,
+    per100: { kcal: 37, prot: 0, fat: 0, carb: 9.2, minerals: {} } },
+  { name: 'квас', aliases: ['квас', 'квас хлебный'], source: 'skurikhin', prepared: true,
+    per100: { kcal: 27, prot: 0.2, fat: 0, carb: 5.2, minerals: {} } },
+  { name: 'морс', aliases: ['морс', 'морс клюквенный', 'морс брусничный'], source: 'skurikhin', prepared: true,
+    per100: { kcal: 41, prot: 0.1, fat: 0, carb: 10.1, minerals: {} } },
 
   // — Выпечка / сладкое —
   { name: 'пончик', aliases: ['пончик', 'пончики', 'пышка', 'пышки'], source: 'skurikhin', prepared: true,
