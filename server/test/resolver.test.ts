@@ -4,7 +4,8 @@ import { afterEach, beforeEach, test } from 'node:test';
 import { OpenFoodFactsProvider } from '../src/nutrition/openfoodfacts.js';
 import { Resolver } from '../src/nutrition/resolver.js';
 import { UsdaProvider } from '../src/nutrition/usda.js';
-import type { IdentifiedItem } from '../src/types.js';
+import type { NutritionProvider } from '../src/nutrition/provider.js';
+import { coercePer100, type IdentifiedItem } from '../src/types.js';
 
 const realFetch = globalThis.fetch;
 
@@ -377,4 +378,107 @@ test('a covering match still stops the chain (no regression for normal foods)', 
   const r = await resolver.resolveItem(item(), 'US');
   assert.equal(r.per100.source, 'usda', '«chicken breast» → «Chicken, breast, raw» covers the query');
   assert.ok(r.confidence > 0.3);
+});
+
+test('resolve: a DB miss is filled by the text-only estimator, not left coarse', async () => {
+  // The photo path carries no `estimate` of its own any more (the numeric fields
+  // were where the vision model's decode loop lived), so the fallback moved into
+  // its own cheap call over the food NAME. Without it, every DB miss from a
+  // photo would render as the flat 150/5/5/20 placeholder.
+  let asked = '';
+  const resolver = new Resolver([], async (name) => {
+    asked = name;
+    return { name, kcal: 480, prot: 4.5, fat: 25, carb: 61 };
+  });
+
+  const r = await resolver.resolveItem(
+    { name_ru: 'шоколад Бабаевский', name_en: 'Babaevsky chocolate', est_grams: 50, confidence: 0.9 },
+    'RU',
+  );
+
+  assert.equal(asked, 'шоколад Бабаевский', 'estimator is asked with the region-native name');
+  assert.equal(r.per100.source, 'ai_estimate');
+  assert.equal(r.per100.kcal, 480);
+});
+
+test('resolve: a failing estimator degrades to the placeholder, never throws', async () => {
+  const resolver = new Resolver([], async () => {
+    throw new Error('upstream down');
+  });
+
+  const r = await resolver.resolveItem(
+    { name_ru: 'нечто', name_en: 'something', est_grams: 100, confidence: 0.5 },
+    'RU',
+  );
+
+  assert.equal(r.per100.source, 'estimate', 'coarse placeholder, not a crash');
+});
+
+test('resolve: a WEAK match is refereed by the on-demand estimate, which becomes primary', async () => {
+  // The regression this closes: dropping `estimate` from the photo schema left
+  // thin matches with nothing to be checked against, so «Бабаевский» passed a
+  // 329 kcal USDA row off as fact for a ~490 kcal bar. The referee now fetches
+  // its band on demand — but only for matches already under suspicion.
+  let asked = 0;
+  const thin: NutritionProvider = {
+    name: 'usda',
+    regions: ['RU', 'US'],
+    queryLang: 'en',
+    async search() {
+      return {
+        name: 'cocoa mass',
+        per100: coercePer100({ source: 'usda', kcal: 329, prot: 4.4, fat: 23.9, carb: 25.2 }),
+        confidence: 0.9,
+      };
+    },
+  };
+
+  const resolver = new Resolver([thin], async () => {
+    asked += 1;
+    return { name: 'шоколад', kcal: 490, prot: 4.5, fat: 25, carb: 61 };
+  });
+
+  const r = await resolver.resolveItem(
+    { name_ru: 'шоколад Бабаевский с помадно-сливочной начинкой', name_en: 'Babaevsky chocolate', est_grams: 50, confidence: 0.9 },
+    'RU',
+  );
+
+  assert.equal(asked, 1, 'the band is fetched for the suspicious row');
+  assert.equal(r.per100.source, 'ai_estimate', 'estimate is primary over a thin row');
+  assert.equal(r.per100.kcal, 490);
+  assert.ok(
+    r.alternatives?.some((a) => a.per100.kcal === 329),
+    'the thin DB row survives as a one-tap alternative',
+  );
+});
+
+test('resolve: a CLEAN match costs no extra estimate call', async () => {
+  // The referee must not turn a good five-component plate into five extra LLM
+  // round-trips — that was the whole point of moving numbers out of the photo call.
+  let asked = 0;
+  const solid: NutritionProvider = {
+    name: 'usda',
+    regions: ['RU', 'US'],
+    queryLang: 'en',
+    async search() {
+      return {
+        name: 'cherry tomatoes',
+        per100: coercePer100({ source: 'usda', kcal: 18, prot: 0.9, fat: 0.2, carb: 3.9 }),
+        confidence: 0.95,
+      };
+    },
+  };
+
+  const resolver = new Resolver([solid], async () => {
+    asked += 1;
+    return { name: 'x', kcal: 1, prot: 1, fat: 1, carb: 1 };
+  });
+
+  const r = await resolver.resolveItem(
+    { name_ru: 'помидоры черри', name_en: 'cherry tomatoes', est_grams: 100, confidence: 0.9 },
+    'RU',
+  );
+
+  assert.equal(asked, 0, 'a confident row is not second-guessed');
+  assert.equal(r.per100.kcal, 18);
 });

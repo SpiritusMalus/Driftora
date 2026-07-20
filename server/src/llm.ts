@@ -8,6 +8,9 @@ import {
   userTranslateLabelsInstruction,
   IDENTIFY_PHOTO_SCHEMA,
   IDENTIFY_PHOTO_SYSTEM_PROMPT,
+  READ_LABEL_SCHEMA,
+  READ_LABEL_SYSTEM_PROMPT,
+  userReadLabelInstruction,
   IDENTIFY_SCHEMA,
   IDENTIFY_SYSTEM_PROMPT,
   PARSE_WORKOUT_PHOTO_SCHEMA,
@@ -22,11 +25,15 @@ import {
   userWorkoutPhotoInstruction,
 } from './prompt.js';
 import {
+  coerceLabel,
+  crossCheckLabel,
+  parsePanelText,
   normalizeIdentified,
   normalizeParsedWorkouts,
   normalizeParsedWorkoutPhoto,
   round1,
   type IdentifiedItem,
+  type LabelReading,
   type ParsedWorkout,
   type ParsedWorkoutPhoto,
   type Region,
@@ -124,12 +131,25 @@ export function parseResponse(data: unknown): IdentifiedItem[] {
   return normalizeIdentified(payload);
 }
 
+/**
+ * The upstream ran out of time. Distinct from VisionUnavailableError because it
+ * is RETRYABLE: on this model an overrun is the signature of a degenerate decode
+ * loop, and a fresh roll usually lands. Never leaves this module.
+ */
+class UpstreamTimeoutError extends Error {}
+
+/** Did this rejection come from our own AbortSignal.timeout()? */
+function isTimeout(err: unknown): boolean {
+  return err instanceof Error && (err.name === 'AbortError' || err.name === 'TimeoutError');
+}
+
 /** POST one chat-completions request and return the raw parsed JSON (or throw). */
 async function complete(
   messages: ChatMessage[],
   model: string,
   schema: object,
   temperature = 0,
+  timeoutMs: number = TIMEOUT_MS.openrouter,
 ): Promise<unknown> {
   const key = process.env.OPENROUTER_API_KEY || '';
   if (!key) {
@@ -147,11 +167,10 @@ async function complete(
       body: JSON.stringify(buildPayload(messages, model, schema, temperature)),
       // A hung OpenRouter call must not hold a /food/parse* request (or an
       // escalation retry) open indefinitely — same treatment as a network error.
-      signal: AbortSignal.timeout(TIMEOUT_MS.openrouter),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (err) {
-    // AbortSignal.timeout() rejects with a DOMException named 'AbortError' —
-    // treated the same as any other unreachable-upstream failure.
+    if (isTimeout(err)) throw new UpstreamTimeoutError(`OpenRouter timed out after ${timeoutMs}ms`);
     throw new VisionUnavailableError(err instanceof Error ? err.message : 'OpenRouter request failed');
   }
   if (!res.ok) {
@@ -165,6 +184,7 @@ async function complete(
   try {
     return (await res.json()) as unknown;
   } catch (err) {
+    if (isTimeout(err)) throw new UpstreamTimeoutError(`OpenRouter body timed out after ${timeoutMs}ms`);
     throw new VisionUnavailableError(
       err instanceof Error ? `OpenRouter body unreadable: ${err.message}` : 'OpenRouter body unreadable',
     );
@@ -214,15 +234,32 @@ async function completeWithRetry(
   model: string,
   schema: object,
 ): Promise<{ data: unknown; truncated: boolean }> {
-  const first = await complete(messages, model, schema);
-  // A provider error rides in on HTTP 200 — fail now rather than retry into a
-  // rate limit that is already refusing us.
-  const failed = providerErrorOf(first);
-  if (failed) throw new VisionUnavailableError(failed);
-  if (finishReasonOf(first) !== 'length') return { data: first, truncated: false };
+  let first: unknown;
+  try {
+    first = await complete(messages, model, schema);
+    // A provider error rides in on HTTP 200 — fail now rather than retry into a
+    // rate limit that is already refusing us.
+    const failed = providerErrorOf(first);
+    if (failed) throw new VisionUnavailableError(failed);
+    if (finishReasonOf(first) !== 'length') return { data: first, truncated: false };
+  } catch (err) {
+    // A timeout is a loop signature, not a dead upstream — fall through to the
+    // re-roll. Anything else (auth, 5xx, unreadable body) is terminal.
+    if (!(err instanceof UpstreamTimeoutError)) throw err;
+  }
 
+  // Second and final attempt: a different sampling path, and a roomier deadline
+  // because this is the one that has to land.
   metrics.recordTruncationRetry();
-  const second = await complete(messages, model, schema, RETRY_TEMPERATURE);
+  let second: unknown;
+  try {
+    second = await complete(messages, model, schema, RETRY_TEMPERATURE, TIMEOUT_MS.openrouterRetry);
+  } catch (err) {
+    if (err instanceof UpstreamTimeoutError) {
+      throw new VisionUnavailableError('OpenRouter timed out on both attempts');
+    }
+    throw err;
+  }
   const failedAgain = providerErrorOf(second);
   if (failedAgain) throw new VisionUnavailableError(failedAgain);
   return { data: second, truncated: finishReasonOf(second) === 'length' };
@@ -402,6 +439,46 @@ export async function identifyFromPhoto(
     ],
     IDENTIFY_PHOTO_SCHEMA,
   );
+}
+
+/**
+ * SECOND PASS over the same photo, for an item the identification flagged
+ * `packaged`: read the printed nutrition panel. Separate on purpose — a plate of
+ * soup never triggers it, and when it does run it has the whole budget for one
+ * job instead of competing with identification.
+ *
+ * Returns the reconciled reading (`crossCheckLabel`): the model's field mapping
+ * and the server's own parse of its verbatim transcription must agree, or the
+ * composition is dropped. Best-effort throughout — a failure here costs the
+ * exact numbers, never the meal, so the caller keeps its DB-resolved row.
+ */
+export async function readPackageLabel(
+  base64: string,
+  mimeType: string,
+  productName: string,
+): Promise<LabelReading | undefined> {
+  let data: unknown;
+  try {
+    ({ data } = await completeWithRetry(
+      [
+        { role: 'system', content: READ_LABEL_SYSTEM_PROMPT },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: userReadLabelInstruction(productName) },
+            { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } },
+          ],
+        },
+      ],
+      MODEL,
+      READ_LABEL_SCHEMA,
+    ));
+  } catch {
+    return undefined; // panel unreadable → the DB row stands, as before
+  }
+  const payload = completionPayload(data) as { panel_text?: unknown; label?: unknown } | null;
+  if (!payload) return undefined;
+  return crossCheckLabel(coerceLabel(payload.label), parsePanelText(payload.panel_text));
 }
 
 /**

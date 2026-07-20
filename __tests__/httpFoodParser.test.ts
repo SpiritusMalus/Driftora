@@ -23,6 +23,13 @@ const OFFLINE_SENTINEL: MealDraft = {
   flags: { ...SENTINEL.flags, offline_fallback: true },
 };
 
+/// A non-2xx means the server ANSWERED and could not parse — degraded the same
+/// way, but the cause is not the network and the UI must not say it is.
+const SERVER_ERROR_SENTINEL: MealDraft = {
+  ...SENTINEL,
+  flags: { ...SENTINEL.flags, offline_fallback: true, server_error: true },
+};
+
 class SpyFallback implements FoodParser {
   calls = 0;
   photoCalls = 0;
@@ -94,11 +101,11 @@ describe('HttpFoodParser', () => {
     expect(captured.body).toEqual({ text: 'банан', region: 'US' });
   });
 
-  it('falls back when the response is not ok — flagged as offline', async () => {
+  it('falls back when the response is not ok — flagged as a server error', async () => {
     mockFetch(async () => ({ ok: false, json: async () => ({}) }) as unknown);
     const fallback = new SpyFallback();
     const r = await new HttpFoodParser(ENDPOINT, fallback).parse('банан', 'US');
-    expect(r).toEqual(OFFLINE_SENTINEL);
+    expect(r).toEqual(SERVER_ERROR_SENTINEL);
     expect(fallback.calls).toBe(1);
   });
 
@@ -163,11 +170,11 @@ describe('HttpFoodParser', () => {
     expect(captured.isForm).toBe(true);
   });
 
-  it('parsePhoto falls back to the offline photo path on a non-2xx', async () => {
+  it('parsePhoto falls back to the offline photo path on a non-2xx — as a server error', async () => {
     mockFetch(async () => ({ ok: false, json: async () => ({}) }) as unknown);
     const fallback = new SpyFallback();
     const r = await new HttpFoodParser(ENDPOINT, fallback).parsePhoto(PHOTO, 'US');
-    expect(r).toEqual(OFFLINE_SENTINEL);
+    expect(r).toEqual(SERVER_ERROR_SENTINEL);
     expect(fallback.photoCalls).toBe(1);
   });
 
@@ -221,5 +228,46 @@ describe('HttpFoodParser', () => {
     for (const h of headers) {
       expect(h).not.toHaveProperty('Authorization');
     }
+  });
+});
+
+/// A reachable server that answers 503 is NOT an offline device. Device report
+/// 2026-07-20: «Пишет интернета нет, но он есть» — the connection was fine, the
+/// model had simply failed to parse. Blaming the network sends the user to check
+/// a wifi that plainly works, and hides the real (retryable) cause.
+describe('server error vs offline', () => {
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('marks a 503 photo parse as a server error, not merely offline', async () => {
+    global.fetch = jest.fn(async () =>
+      new Response(JSON.stringify({ error: { code: 'llm_unavailable' } }), { status: 503 }),
+    ) as unknown as typeof fetch;
+    const fallback = new SpyFallback();
+
+    const r = await new HttpFoodParser(ENDPOINT, fallback, 50, { photoEndpoint: PHOTO_ENDPOINT }).parsePhoto(
+      PHOTO,
+      'US',
+    );
+
+    expect(r.flags.server_error).toBe(true);
+    expect(r.flags.offline_fallback).toBe(true); // still degraded — the draft is a stub
+    expect(fallback.photoCalls).toBe(1);
+  });
+
+  it('leaves a genuine network failure unmarked as a server error', async () => {
+    global.fetch = jest.fn(async () => {
+      throw new Error('Network request failed');
+    }) as unknown as typeof fetch;
+    const fallback = new SpyFallback();
+
+    const r = await new HttpFoodParser(ENDPOINT, fallback, 50, { photoEndpoint: PHOTO_ENDPOINT }).parsePhoto(
+      PHOTO,
+      'US',
+    );
+
+    expect(r.flags.offline_fallback).toBe(true);
+    expect(r.flags.server_error).toBeUndefined();
   });
 });

@@ -5,7 +5,9 @@ import {
   assembleMealDraft,
   coercePer100,
   emptyMealDraft,
+  crossCheckLabel,
   normalizeIdentified,
+  parsePanelText,
   normalizeParsedWorkoutPhoto,
   normalizeParsedWorkouts,
   scaleToGrams,
@@ -289,4 +291,92 @@ test('normalizeParsedWorkouts: clamps minutes to 10 h and caps the array', () =>
     workouts: Array.from({ length: 50 }, () => ({ type: 'run', minutes: 10, confidence: 1 })),
   });
   assert.equal(many.length, 20);
+});
+
+// ---- panel transcription: words decide the mapping, not the model ----------
+
+// Verbatim panel from the tester's «Индилайт филе грудки индейки» pack.
+// Ground truth, read off the package: 100 kcal, P16, F2, C4 per 100 g, net 120 g.
+const INDEYKA_PANEL =
+  'Пищевая и энергетическая ценность в 100 г продукта (средние значения): ' +
+  'белки - 16 г; жиры - 2 г; углеводы - 4 г; 100 ккал / 410 кДж. Масса нетто: 120 г';
+
+test('parsePanelText: the Russian phrase maps each number by its own word', () => {
+  assert.deepEqual(parsePanelText(INDEYKA_PANEL), {
+    kcal_100g: 100,
+    prot_100g: 16,
+    fat_100g: 2,
+    carb_100g: 4,
+    net_weight_g: 120,
+  });
+});
+
+test('parsePanelText: dash variants, decimal commas and «жиров/углеводов» endings', () => {
+  const p = parsePanelText('белков — 6,5 г, жиров – 3,2 г, углеводов - 12,8 г, 118 ккал');
+  assert.equal(p?.prot_100g, 6.5);
+  assert.equal(p?.fat_100g, 3.2);
+  assert.equal(p?.carb_100g, 12.8);
+  assert.equal(p?.kcal_100g, 118);
+});
+
+test('parsePanelText: nothing to parse stays undefined, never zero-filled', () => {
+  assert.equal(parsePanelText(''), undefined);
+  assert.equal(parsePanelText('просто тарелка супа'), undefined);
+  assert.equal(parsePanelText(null), undefined);
+});
+
+test('crossCheckLabel: agreeing readings earn the label source', () => {
+  const model = { kcal_100g: 100, prot_100g: 16, fat_100g: 2, carb_100g: 4, net_weight_g: 120 };
+  const out = crossCheckLabel(model, parsePanelText(INDEYKA_PANEL));
+  assert.deepEqual(out, model);
+});
+
+test('crossCheckLabel: a transposed macro pair is DROPPED, not averaged', () => {
+  // The exact failure this cross-check exists for: fat and carbs swapped between
+  // the two readings. Both pass an Atwater check (98 vs 108 against a stated
+  // 100 kcal), so only disagreement — not arithmetic — can catch it. Better a
+  // generic DB row than a wrong number wearing the «по упаковке» badge.
+  const swapped = { kcal_100g: 100, prot_100g: 16, fat_100g: 4, carb_100g: 2 };
+  const out = crossCheckLabel(swapped, parsePanelText(INDEYKA_PANEL));
+  assert.equal(out?.kcal_100g, undefined, 'composition must not survive a conflict');
+  assert.equal(out?.fat_100g, undefined);
+  assert.equal(out?.net_weight_g, 120, 'net weight is a separate, far easier read — keep it');
+});
+
+test('crossCheckLabel: one reading alone still counts', () => {
+  const only = { kcal_100g: 92, prot_100g: 10, fat_100g: 1.5, carb_100g: 7 };
+  assert.deepEqual(crossCheckLabel(only, undefined), only);
+  assert.deepEqual(crossCheckLabel(undefined, only), only);
+  assert.equal(crossCheckLabel(undefined, undefined), undefined);
+});
+
+test('normalizeIdentified: panel_text reconciles into the item label end-to-end', () => {
+  const items = normalizeIdentified({
+    items: [
+      {
+        name_ru: 'ветчина из грудки индейки',
+        name_en: 'turkey breast ham',
+        est_grams: 120,
+        confidence: 0.8,
+        label: { kcal_100g: 100, prot_100g: 16, fat_100g: 2, carb_100g: 4 },
+        panel_text: INDEYKA_PANEL,
+      },
+    ],
+  });
+  assert.equal(items[0]?.label?.fat_100g, 2);
+  assert.equal(items[0]?.label?.carb_100g, 4);
+  assert.equal(items[0]?.label?.net_weight_g, 120, 'net weight comes from the phrase');
+});
+
+test('normalizeIdentified: packaged rides through only as a strict boolean true', () => {
+  const [pack, plate, junk] = normalizeIdentified({
+    items: [
+      { name_ru: 'ветчина', name_en: 'ham', est_grams: 120, confidence: 0.8, packaged: true },
+      { name_ru: 'борщ', name_en: 'borscht', est_grams: 350, confidence: 0.9, packaged: false },
+      { name_ru: 'хлеб', name_en: 'bread', est_grams: 40, confidence: 0.7, packaged: 'yes' },
+    ],
+  });
+  assert.equal(pack?.packaged, true, 'a wrapper triggers the dedicated label pass');
+  assert.equal(plate?.packaged, undefined, 'a plate must never pay for panel work');
+  assert.equal(junk?.packaged, undefined, 'a loose truthy value is not a flag');
 });

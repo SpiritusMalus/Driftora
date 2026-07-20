@@ -130,43 +130,54 @@ export function userTranslateLabelsInstruction(labels: string[]): string {
 }
 
 /**
- * PHOTO system prompt. Identification works exactly as above, PLUS one addition
- * that only makes sense for an image: reading a printed nutrition panel.
+ * PHOTO system prompt — identification ONLY, deliberately narrower than the text
+ * one (2026-07-20).
  *
- * This does NOT break THE HONESTY RULE. The rule forbids the model from
- * *estimating* nutrition numbers. Transcribing numbers that are printed on the
- * package in the photo is not estimation — it is reading ground truth, and it
- * is strictly better than looking up a generic database average. The rule still
- * holds for everything the model cannot read off a label.
+ * It used to inherit the text prompt wholesale and ask for per-100g `estimate`
+ * numbers plus a transcribed `label` on top of naming the food. Measured on the
+ * tester's own photos, that combination failed 5 requests out of 10: the model
+ * fell into a degenerate decode loop INSIDE the numeric literals
+ * («"prot_100g": 29.02e0200000…»), burned the whole token ceiling and returned
+ * nothing. Dropping the numbers from the photo contract took the same photos to
+ * 10/10 — and identification got BETTER, not worse: the composite lunch box
+ * resolved into all five components instead of four, with brand names intact
+ * («Ветчина из грудки индейки Индилайт»), because the budget goes to seeing
+ * rather than to inventing nutrition it does not know.
+ *
+ * So the split is now clean: the photo call SEES, the database KNOWS. A food the
+ * DB misses gets its estimate from a separate, text-only call over the name
+ * (`estimateFoodPer100`) — cheap, and it cannot take the vision call down with
+ * it. Label transcription returns as its own dedicated call once a package is
+ * detected; a plate of soup no longer pays for it.
  */
-export const IDENTIFY_PHOTO_SYSTEM_PROMPT = `${IDENTIFY_SYSTEM_PROMPT}
+export const IDENTIFY_PHOTO_SYSTEM_PROMPT = `You identify the component foods in a meal PHOTO for a nutrition app. Your ONLY job is WHICH foods and HOW MANY GRAMS — identification, not nutrition scoring. The app looks up every nutrition number itself, from a database.
 
-PACKAGED PRODUCTS — READING THE LABEL (photos only):
-Some photos show a packaged product (a tub, cup, bottle, wrapper) with a printed
-nutrition panel ("Пищевая ценность на 100 г", "Nutrition Facts") and/or a net
-weight ("масса нетто", "нетто", printed grams). When such a product is present:
-- Add a "label" object to that food item with the values PRINTED ON THE PACKAGE,
-  per 100 g: kcal_100g, prot_100g, fat_100g, carb_100g, and net_weight_g from the
-  net weight. Front-of-pack callouts count too (e.g. "14 г белки" per 100 g,
-  "34 г белка в упаковке" — but only put PER-100g numbers in the *_100g fields).
-- TRANSCRIBE ONLY. Copy the exact printed digits. If a number is not clearly
-  legible, OMIT that field — never guess, never round to a "typical" value, never
-  fill it from what you think the product usually contains. A partial label (only
-  protein legible) is fine: include what you can read, omit the rest.
-- Do this ONLY for a genuine printed panel/weight. A plate of food, a menu, or a
-  product with no visible numbers gets NO label object — those go through the
-  normal database path.
-Non-packaged foods and every field you cannot read stay identification-only, per
-the rules above.`;
+For each distinct food or drink visible, output:
+- name_ru: a short, normalized Russian food name ("куриная грудка", "макароны отварные").
+- name_en: the same food as a short, normalized English name suitable for a USDA database search.
+- est_grams: your best estimate of the eaten weight in grams, from the visible portion.
+- confidence: 0..1, how sure you are about the food identity and portion.
+- prepared: true when the item is an already-prepared dish eaten as-is (soup, stew, salad, casserole, ready meal); false for ingredients and simple products.
+
+Rules:
+- Split a composite plate into its meaningful COMPONENTS — name every distinct food you can see, including the ones hidden under a sauce or a topping.
+- Never invent foods that are not visible.
+- If the photo shows a packaged product, name the PRODUCT, brand included when it is legible («Ветчина из грудки индейки Индилайт») — the brand is what lets the database find the right row.
+- packaged: true ONLY when that item is a packaged product whose wrapper carries a PRINTED nutrition panel or net weight — a tub, pack, bottle or bar, whether or not you can read the small print from here. A plate, a bowl, a restaurant dish or loose fruit is false. The app runs a second, dedicated pass to read the panel on anything you mark, so flag it and let that pass do the reading; you do NOT transcribe any numbers here.
+- If nothing food-like is present, return an empty items array.`;
 
 export function userPhotoInstruction(region: Region): string {
-  return `Region: ${region}. Identify the foods and estimate grams. If the photo shows a packaged product with a legible nutrition panel or net weight, also transcribe those printed numbers into the item's "label".`;
+  return `Region: ${region}. Identify the foods and estimate grams.`;
 }
 
 /**
- * Photo JSON schema: identification + an OPTIONAL per-item `label` block for
- * numbers read off the package. Every label field is optional (nullable): the
- * model fills only what it can actually read.
+ * Photo JSON schema — identification only, NO nutrition numbers.
+ *
+ * The absent `estimate`/`label` blocks are the point, not an omission: those
+ * numeric fields were where the decode loop lived, and every long numeric
+ * literal the model has to produce is another chance to fall into it. Nutrition
+ * comes from the database; a DB miss is filled by a separate text-only estimate
+ * over the name. See IDENTIFY_PHOTO_SYSTEM_PROMPT for the measurements.
  */
 export const IDENTIFY_PHOTO_SCHEMA = {
   type: 'object',
@@ -181,26 +192,10 @@ export const IDENTIFY_PHOTO_SCHEMA = {
           est_grams: { type: 'number' },
           confidence: { type: 'number' },
           prepared: { type: 'boolean' },
-          estimate: {
-            type: 'object',
-            description: 'Rough per-100g figures from the model — a sanity-check / last-resort fallback, never authoritative. Provide ALL FOUR fields together (kcal_100g, prot_100g, fat_100g, carb_100g) or omit the whole object — never a partial estimate.',
-            properties: {
-              kcal_100g: { type: ['number', 'null'] },
-              prot_100g: { type: ['number', 'null'] },
-              fat_100g: { type: ['number', 'null'] },
-              carb_100g: { type: ['number', 'null'] },
-            },
-          },
-          label: {
-            type: 'object',
-            description: 'Numbers transcribed off a printed package label, when visible. Omit entirely for non-packaged food.',
-            properties: {
-              kcal_100g: { type: ['number', 'null'] },
-              prot_100g: { type: ['number', 'null'] },
-              fat_100g: { type: ['number', 'null'] },
-              carb_100g: { type: ['number', 'null'] },
-              net_weight_g: { type: ['number', 'null'] },
-            },
+          packaged: {
+            type: 'boolean',
+            description:
+              'This item is a packaged product whose wrapper carries a printed nutrition panel or net weight. Triggers a second, dedicated pass that reads the panel; no numbers are transcribed in this response.',
           },
         },
         required: ['name_ru', 'name_en', 'est_grams', 'confidence', 'prepared'],
@@ -209,6 +204,57 @@ export const IDENTIFY_PHOTO_SCHEMA = {
   },
   required: ['items'],
 } as const;
+
+/**
+ * DEDICATED LABEL PASS. Runs only when the identification pass flagged a
+ * `packaged` item, so a plate of soup never pays for it — and, having one job,
+ * it can afford to look hard at small rotated print.
+ *
+ * It asks for the SAME numbers twice, by two different routes: `panel_text` (the
+ * phrase copied verbatim) and `label` (the model's own mapping). The server
+ * re-derives the numbers from the phrase, where the Russian WORD decides which
+ * field a digit belongs to, and keeps them only when both readings agree —
+ * see `crossCheckLabel`. Two independent readings are the only defence against
+ * a confidently mis-assigned macro, which an Atwater check cannot catch (fat 2 /
+ * carb 4 and fat 4 / carb 2 both land within a few kcal of a stated 100).
+ */
+export const READ_LABEL_SYSTEM_PROMPT = `You read the printed NUTRITION PANEL off a packaged food product in a photo. You do not identify food, estimate anything, or judge portions — you TRANSCRIBE what is printed.
+
+Return, for the package in the photo:
+- panel_text: the panel copied VERBATIM — the Russian words together with their numbers and units, in the order printed, net weight included. For example: "Пищевая и энергетическая ценность в 100 г продукта (средние значения): белки — 16 г; жиры — 2 г; углеводы — 4 г; 100 ккал/410 кДж. Масса нетто: 120 г". Copy; never reorder, convert, round or interpret. The panel is often small, low-contrast, and printed sideways along an edge — read it anyway, rotating your attention as needed.
+- label: the same numbers placed into fields, per 100 g — kcal_100g, prot_100g, fat_100g, carb_100g — plus net_weight_g from «масса нетто».
+
+Rules:
+- TRANSCRIBE ONLY. Copy the exact printed digits. Never guess a number, never round to a "typical" value for the product, never fill a field from what you think this food usually contains.
+- The Russian block prints белки / жиры / углеводы as a trio beside the ккал figure. Read the whole block, and take care that each number keeps its own word — жиры and углеводы are easy to swap and the app cannot tell which way is right.
+- If a figure genuinely is not legible, omit that field. An honest gap is fine; an invented number is not.
+- If there is no printed panel at all, return an empty panel_text and no label.`;
+
+export const READ_LABEL_SCHEMA = {
+  type: 'object',
+  properties: {
+    panel_text: {
+      type: 'string',
+      description: 'The nutrition panel copied verbatim, words and numbers together, in printed order. Empty when no panel is visible.',
+    },
+    label: {
+      type: 'object',
+      description: 'The same printed numbers placed into fields, per 100 g. Omit any field that is not legible.',
+      properties: {
+        kcal_100g: { type: ['number', 'null'] },
+        prot_100g: { type: ['number', 'null'] },
+        fat_100g: { type: ['number', 'null'] },
+        carb_100g: { type: ['number', 'null'] },
+        net_weight_g: { type: ['number', 'null'] },
+      },
+    },
+  },
+  required: ['panel_text'],
+} as const;
+
+export function userReadLabelInstruction(productName: string): string {
+  return `The package in this photo is «${productName}». Transcribe its printed nutrition panel and net weight.`;
+}
 
 /**
  * Instruction for AUDIO input: a person describing, in Russian, what they ate.

@@ -100,7 +100,7 @@ export default function FoodLogScreen() {
   // offline table knows nothing of this text; 'offlineMedia' = photo/voice
   // can't be parsed offline at all; 'failed' = the parse itself threw locally.
   const [parseIssue, setParseIssue] = useState<
-    'offline' | 'offlineEmpty' | 'offlineMedia' | 'failed' | null
+    'offline' | 'offlineEmpty' | 'offlineMedia' | 'serverBusy' | 'failed' | null
   >(null);
   const [savedAck, setSavedAck] = useState<string | null>(null);
   // The DB write itself threw. Without a visible line the tap looks ignored and
@@ -384,11 +384,15 @@ export default function FoodLogScreen() {
     setParseIssue(
       !offline
         ? null
-        : kind !== 'text'
-          ? 'offlineMedia'
-          : parsed.items.length === 0
-            ? 'offlineEmpty'
-            : 'offline',
+        : // The server answered, it just couldn't parse — blaming the connection
+          // sends the user to check a wifi that is plainly working.
+          parsed.flags.server_error
+          ? 'serverBusy'
+          : kind !== 'text'
+            ? 'offlineMedia'
+            : parsed.items.length === 0
+              ? 'offlineEmpty'
+              : 'offline',
     );
   }
 

@@ -101,6 +101,82 @@ export interface LabelReading {
 }
 
 /**
+ * A Russian panel is a fixed phrase — «белки — 16 г; жиры — 2 г; углеводы — 4 г;
+ * 100 ккал/410 кДж» — so the WORDS can decide which number is which, instead of
+ * the model deciding. Parsing the verbatim transcription gives a second, fully
+ * independent reading of the same photo: `crossCheckLabel` keeps the numbers
+ * only when both readings agree, which is the difference between validating a
+ * transcription and merely hoping it is right.
+ *
+ * Deliberately literal: no unit conversion, no inference, no filling gaps. A
+ * field the phrase does not state stays absent.
+ */
+export function parsePanelText(text: unknown): LabelReading | undefined {
+  if (typeof text !== 'string' || text.trim().length === 0) return undefined;
+  // Decimal commas → dots, and every dash variant the packaging uses (-, –, —).
+  const t = text.toLowerCase().replace(/(\d),(\d)/g, '$1.$2');
+  const grab = (re: RegExp): number | undefined => {
+    const m = t.match(re);
+    if (!m) return undefined;
+    const n = Number(m[1]);
+    return Number.isFinite(n) ? n : undefined;
+  };
+  // «белки — 16 г»: allow the label word, any dash/colon filler, then the number.
+  const macro = (word: string) => grab(new RegExp(`${word}[^\\d]{0,15}(\\d+(?:\\.\\d+)?)`));
+  return coerceLabel({
+    prot_100g: macro('белк\\w*'),
+    fat_100g: macro('жир\\w*'),
+    carb_100g: macro('углевод\\w*'),
+    kcal_100g: grab(/(\d+(?:\.\d+)?)\s*ккал/),
+    net_weight_g: grab(/(?:масса\s+)?нетто[^\d]{0,15}(\d+(?:\.\d+)?)\s*г/),
+  });
+}
+
+/** Do two readings of the same field agree? Panels print whole-ish numbers, so
+ *  an exact match is the norm; 1 unit of slack absorbs rounding only. */
+function agrees(a: number | undefined, b: number | undefined, slack: number): boolean {
+  if (a === undefined || b === undefined) return false;
+  return Math.abs(a - b) <= slack;
+}
+
+/**
+ * Reconcile the model's structured `label` with the panel parsed from its own
+ * verbatim transcription. Agreement on all four per-100g fields is what earns
+ * the `label` source (shown to the user as «по упаковке» — a claim of fact).
+ * Disagreement means one of the two readings is wrong and we cannot tell which,
+ * so BOTH are dropped and the normal database path decides: an honest average
+ * beats a confident wrong number.
+ *
+ * Net weight rides along separately — it is a single large digit group, far
+ * easier to read than the macro block, and useful even when the macros are lost.
+ */
+export function crossCheckLabel(
+  modelLabel: LabelReading | undefined,
+  parsed: LabelReading | undefined,
+): LabelReading | undefined {
+  const weight = parsed?.net_weight_g ?? modelLabel?.net_weight_g;
+  const withWeight = (l: LabelReading | undefined): LabelReading | undefined => {
+    if (!l && weight === undefined) return undefined;
+    const out: LabelReading = { ...(l ?? {}) };
+    if (weight !== undefined) out.net_weight_g = weight;
+    return Object.keys(out).length > 0 ? out : undefined;
+  };
+
+  if (!modelLabel || !parsed) return withWeight(modelLabel ?? parsed);
+
+  const macrosAgree =
+    agrees(modelLabel.prot_100g, parsed.prot_100g, 1) &&
+    agrees(modelLabel.fat_100g, parsed.fat_100g, 1) &&
+    agrees(modelLabel.carb_100g, parsed.carb_100g, 1) &&
+    agrees(modelLabel.kcal_100g, parsed.kcal_100g, 5);
+  if (macrosAgree) return withWeight(parsed); // words decided the mapping — prefer them
+
+  // The two readings conflict on at least one macro. Keep the weight, drop the
+  // composition: a mislabelled macro block is worse than no label at all.
+  return withWeight(undefined);
+}
+
+/**
  * The model's own ROUGH per-100g figures (all optional). Two uses only:
  * a referee band to catch a wrong DB match, and a fallback for foods absent
  * from every DB. Never authoritative — a good DB hit always overrides it.
@@ -124,6 +200,10 @@ export interface IdentifiedItem {
   prepared?: boolean;
   // Photo path only: numbers read off the product's own label, when visible.
   // The resolver prefers these over a name-based DB lookup (source: 'label').
+  // The identification pass saw a wrapper with printed numbers on it. Only a
+  // flag — the reading itself happens in a second, dedicated pass over the same
+  // photo (`readPackageLabel`), so a plate of food never pays for panel work.
+  packaged?: boolean;
   label?: LabelReading;
   // The model's rough per-100g guess — referee band + DB-miss fallback.
   estimate?: AiEstimate;
@@ -380,7 +460,7 @@ function posNum(value: unknown): number | undefined {
  * ceiling — no food exceeds 900 kcal or 100 g of any macro per 100 g, so an
  * OCR misread like "1050" is dropped rather than trusted.
  */
-function coerceLabel(raw: unknown): LabelReading | undefined {
+export function coerceLabel(raw: unknown): LabelReading | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
   const r = raw as Record<string, unknown>;
   const macro = (v: unknown): number | undefined => {
@@ -487,8 +567,11 @@ export function normalizeIdentified(payload: unknown): IdentifiedItem[] {
     };
     // Strictly boolean true — "false"/1/garbage from a loose model stays off.
     if (r.prepared === true) item.prepared = true;
-    // Photo label read-out, when the model transcribed a legible panel.
-    const label = coerceLabel(r.label);
+    if (r.packaged === true) item.packaged = true;
+    // Photo label read-out: the model's structured guess, reconciled against the
+    // panel parsed from its own verbatim transcription. Only agreeing readings
+    // survive — see `crossCheckLabel`.
+    const label = crossCheckLabel(coerceLabel(r.label), parsePanelText(r.panel_text));
     if (label) item.label = label;
     // The model's rough per-100g guess (referee band + DB-miss fallback).
     const estimate = coerceEstimate(r.estimate);

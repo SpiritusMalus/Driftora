@@ -11,6 +11,7 @@ import {
   type Region,
   type Vitamins,
 } from '../types.js';
+import type { FoodEstimate } from '../llm.js';
 import { looksDryBasis } from './dryBasis.js';
 import type { NutritionProvider, ProviderResult } from './provider.js';
 import { hasCyrillic } from './ruSearch.js';
@@ -180,8 +181,25 @@ export class Resolver {
    *  also the donor for micronutrient back-fill onto curated-RU / OFF matches. */
   private readonly usda?: NutritionProvider;
 
-  constructor(private readonly providers: NutritionProvider[]) {
+  /**
+   * Fills a DB miss with a per-100g guess for a FOOD NAME — a short, text-only
+   * model call. Injected rather than imported so the resolver stays testable
+   * without a network, and optional so a caller can run fully offline.
+   *
+   * This exists because the PHOTO path no longer asks the vision model for
+   * nutrition numbers (see IDENTIFY_PHOTO_SYSTEM_PROMPT): the numeric fields
+   * were where its decode loop lived. The estimate still happens — just in its
+   * own cheap call, over a name instead of an image, where a failure costs one
+   * row rather than the whole photo.
+   */
+  private readonly estimator?: (name: string, region: Region) => Promise<FoodEstimate | null>;
+
+  constructor(
+    private readonly providers: NutritionProvider[],
+    estimator?: (name: string, region: Region) => Promise<FoodEstimate | null>,
+  ) {
     this.usda = providers.find((p) => p.name === 'usda');
+    this.estimator = estimator;
   }
 
   /** US uses the English name; RU uses the Russian name (BUILD SPEC §6). */
@@ -371,11 +389,43 @@ export class Resolver {
 
     const grams = labelWeight ?? estGrams;
     const found = await this.lookupItem(item, region);
-    const aiFull = item.estimate ? aiEstimatePer100(item.estimate) : null;
+    let aiFull = item.estimate ? aiEstimatePer100(item.estimate) : null;
     const prepared = found.prepared === true || item.prepared === true;
     // DB MISS → fall back to the model's own estimate (source 'ai_estimate',
-    // counted but flagged) if it's complete; else the coarse placeholder.
+    // counted but flagged) if it's complete; else ask the text-only estimator
+    // for one (the photo path carries no `estimate` of its own); else the
+    // coarse placeholder.
     if (found.matchConfidence === 0) {
+      let filled = aiFull;
+      if (!filled && this.estimator) {
+        try {
+          const est = await this.estimator(this.nativeName(item, region), region);
+          if (est) {
+            filled = coercePer100({
+              source: 'ai_estimate',
+              kcal: est.kcal,
+              prot: est.prot,
+              fat: est.fat,
+              carb: est.carb,
+            });
+          }
+        } catch {
+          // Best-effort: a failed estimate just leaves the coarse placeholder.
+        }
+      }
+      if (filled) {
+        return {
+          name_ru: item.name_ru,
+          name_en: item.name_en,
+          grams,
+          grams_source: 'estimated',
+          confidence: item.confidence,
+          per100: filled,
+          scaled: scaleToGrams(filled, grams),
+          approximate: true,
+          ...(prepared ? { prepared: true } : {}),
+        };
+      }
       if (aiFull) {
         return {
           name_ru: item.name_ru,
@@ -408,6 +458,30 @@ export class Resolver {
     const dryBasis = !prepared && looksDryBasis([item.name_ru, item.name_en, found.name], found.per100);
 
     const graded = /\d/.test(item.name_ru);
+    // The model's own estimate is the REFEREE that catches a confidently wrong
+    // DB row (see the weak-match and mismatch branches below). Photo items no
+    // longer carry one — the numeric fields were where the vision model's decode
+    // loop lived — so a thin match had nothing to be checked against and passed
+    // as fact: «Бабаевский» settled on a 329 kcal USDA row for a ~490 kcal bar.
+    // Fetch the band on demand, but ONLY for matches already under suspicion, so
+    // a clean five-component plate still costs zero extra calls.
+    let refereeEstimate: AiEstimate | undefined = item.estimate;
+    if (!aiFull && this.estimator && (found.weak || (graded && found.matchConfidence < 0.9))) {
+      try {
+        const est = await this.estimator(this.nativeName(item, region), region);
+        if (est) {
+          refereeEstimate = {
+            kcal_100g: est.kcal,
+            prot_100g: est.prot,
+            fat_100g: est.fat,
+            carb_100g: est.carb,
+          };
+          aiFull = aiEstimatePer100(refereeEstimate);
+        }
+      } catch {
+        // Best-effort: without a band the row simply stays unrefereed, as before.
+      }
+    }
 
     // WRONG GRADE → AI ESTIMATE IS PRIMARY. The user named a specific grade
     // (молоко 1.8%) but the DB only has a DIFFERENT one (молоко 3.2%) — defaulting
@@ -468,7 +542,7 @@ export class Resolver {
     // A thin match with NO estimate to fall back on still can't pass as fact —
     // demote it so the client opens the picker instead of reading it as a hit.
     const suspect =
-      (aiFull ? estimateMismatch(found.per100, item.estimate!) : false) || gradeSuspect || !!found.weak;
+      (aiFull && refereeEstimate ? estimateMismatch(found.per100, refereeEstimate) : false) || gradeSuspect || !!found.weak;
     const confidence = suspect
       ? REFEREE_DEMOTED_CONFIDENCE
       : Math.min(item.confidence, found.matchConfidence);
