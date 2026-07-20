@@ -46,8 +46,19 @@ const BASE_URL = process.env.OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v
 const MODEL = process.env.OPENROUTER_MODEL || 'google/gemini-3.5-flash';
 /** Optional stronger model for low-confidence escalation (§8.4). Off if unset. */
 const PRO_MODEL = process.env.OPENROUTER_PRO_MODEL || '';
-/** Identification output is tiny (a short item list) — cap defensively. */
-const MAX_TOKENS = 1024;
+/**
+ * Output cap. The identification JSON itself is tiny (a short item list), but on
+ * a REASONING model the budget is spent on hidden reasoning tokens FIRST and the
+ * JSON only starts afterwards — `google/gemini-3.5-flash` burns 1000–2500 of them
+ * on a photo. At the old 1024 the budget was exhausted mid-reasoning, so every
+ * photo came back truncated (`finish_reason: 'length'`), failed `JSON.parse`, and
+ * surfaced as a silent "не распознал". Reasoning cannot be disabled on this
+ * endpoint ("Reasoning is mandatory for this endpoint and cannot be disabled"),
+ * so the ceiling has to clear reasoning + payload with room to spare.
+ */
+const MAX_TOKENS = 6144;
+/** Sampling for the truncation retry — a different path out of a decode loop. */
+const RETRY_TEMPERATURE = 0.3;
 const CONFIDENCE_FLOOR = 0.5;
 
 /** Raised when the model is unreachable/failing — routes map it to 503. */
@@ -77,11 +88,12 @@ export function buildPayload(
   messages: ChatMessage[],
   model: string,
   schema: object = IDENTIFY_SCHEMA,
+  temperature = 0,
 ): Record<string, unknown> {
   return {
     model,
     messages,
-    temperature: 0,
+    temperature,
     max_tokens: MAX_TOKENS,
     response_format: {
       type: 'json_schema',
@@ -113,7 +125,12 @@ export function parseResponse(data: unknown): IdentifiedItem[] {
 }
 
 /** POST one chat-completions request and return the raw parsed JSON (or throw). */
-async function complete(messages: ChatMessage[], model: string, schema: object): Promise<unknown> {
+async function complete(
+  messages: ChatMessage[],
+  model: string,
+  schema: object,
+  temperature = 0,
+): Promise<unknown> {
   const key = process.env.OPENROUTER_API_KEY || '';
   if (!key) {
     throw new VisionUnavailableError('OPENROUTER_API_KEY is not configured');
@@ -127,7 +144,7 @@ async function complete(messages: ChatMessage[], model: string, schema: object):
         Authorization: `Bearer ${key}`,
         'X-Title': 'Driftora', // OpenRouter dashboard attribution (optional, harmless)
       },
-      body: JSON.stringify(buildPayload(messages, model, schema)),
+      body: JSON.stringify(buildPayload(messages, model, schema, temperature)),
       // A hung OpenRouter call must not hold a /food/parse* request (or an
       // escalation retry) open indefinitely — same treatment as a network error.
       signal: AbortSignal.timeout(TIMEOUT_MS.openrouter),
@@ -143,8 +160,73 @@ async function complete(messages: ChatMessage[], model: string, schema: object):
   return (await res.json().catch(() => null)) as unknown;
 }
 
+/** `choices[0].finish_reason`, when the provider reported one. */
+export function finishReasonOf(data: unknown): string | undefined {
+  const d = data as { choices?: { finish_reason?: unknown }[] } | null;
+  const reason = d?.choices?.[0]?.finish_reason;
+  return typeof reason === 'string' ? reason : undefined;
+}
+
+/**
+ * An upstream failure dressed up as a normal choice: OpenRouter reports a
+ * provider error (rate limit, provider outage) as `finish_reason: 'error'` with
+ * a null content and HTTP 200 — so it slips past the `res.ok` check, parses to
+ * an empty item list, and reaches the user as «не распознал». Observed shape:
+ * `{"finish_reason":"error","error":{"code":429,...},"message":{"content":null}}`.
+ *
+ * Retrying would just hammer whatever is already refusing us, so this surfaces
+ * as VisionUnavailableError (→ 503) instead: an honest "try again in a moment".
+ */
+export function providerErrorOf(data: unknown): string | undefined {
+  const d = data as { choices?: { error?: { code?: unknown; message?: unknown } }[] } | null;
+  const err = d?.choices?.[0]?.error;
+  if (!err) return finishReasonOf(data) === 'error' ? 'provider error' : undefined;
+  const code = typeof err.code === 'number' || typeof err.code === 'string' ? String(err.code) : '?';
+  return `provider error ${code}`;
+}
+
+/**
+ * `complete`, plus ONE retry when the model ran out of budget mid-answer.
+ *
+ * Truncation here is rarely "the answer was too long" — it is the model falling
+ * into a degenerate decode loop (observed tails: `312312312…`, `000000000…`,
+ * `29.0e0000…`) and spending the whole ceiling on repeated digits. Greedy
+ * sampling cannot escape such a loop, so the retry re-rolls at a non-zero
+ * temperature to take a different path.
+ *
+ * Returns the response AND whether it is still truncated, so identification can
+ * fail loudly while best-effort callers (estimate, translate) keep degrading
+ * gracefully on whatever came back.
+ */
+async function completeWithRetry(
+  messages: ChatMessage[],
+  model: string,
+  schema: object,
+): Promise<{ data: unknown; truncated: boolean }> {
+  const first = await complete(messages, model, schema);
+  // A provider error rides in on HTTP 200 — fail now rather than retry into a
+  // rate limit that is already refusing us.
+  const failed = providerErrorOf(first);
+  if (failed) throw new VisionUnavailableError(failed);
+  if (finishReasonOf(first) !== 'length') return { data: first, truncated: false };
+
+  metrics.recordTruncationRetry();
+  const second = await complete(messages, model, schema, RETRY_TEMPERATURE);
+  const failedAgain = providerErrorOf(second);
+  if (failedAgain) throw new VisionUnavailableError(failedAgain);
+  return { data: second, truncated: finishReasonOf(second) === 'length' };
+}
+
 async function callModel(messages: ChatMessage[], model: string, schema: object = IDENTIFY_SCHEMA): Promise<IdentifiedItem[]> {
-  return parseResponse(await complete(messages, model, schema));
+  const { data, truncated } = await completeWithRetry(messages, model, schema);
+  const items = parseResponse(data);
+  // A truncated answer that yielded nothing is a SERVER failure, not an honest
+  // "no food here" — returning [] would render as «не распознал» and hide the
+  // breakage (exactly how the 1024-token ceiling went unnoticed for weeks).
+  if (items.length === 0 && truncated) {
+    throw new VisionUnavailableError('model response truncated (max_tokens) after retry');
+  }
+  return items;
 }
 
 /**
@@ -190,7 +272,9 @@ export interface FoodEstimate {
  * failed model response (the caller just omits the AI row).
  */
 export async function estimateFoodPer100(name: string, region: Region): Promise<FoodEstimate | null> {
-  const raw = await complete(
+  // Best-effort: a still-truncated retry just parses to null and the caller
+  // omits the AI row — never a 503 for the whole search.
+  const { data } = await completeWithRetry(
     [
       { role: 'system', content: ESTIMATE_SEARCH_SYSTEM_PROMPT },
       { role: 'user', content: userEstimateSearchInstruction(region, name) },
@@ -198,7 +282,7 @@ export async function estimateFoodPer100(name: string, region: Region): Promise<
     MODEL,
     ESTIMATE_SEARCH_SCHEMA,
   );
-  return parseEstimate(raw, name);
+  return parseEstimate(data, name);
 }
 
 /** Parse the estimate model's `choices[0].message.content` → FoodEstimate | null. */
@@ -243,14 +327,14 @@ export async function translateFoodLabels(labels: string[]): Promise<string[]> {
   if (labels.length === 0) return [];
   let raw: unknown;
   try {
-    raw = await complete(
+    ({ data: raw } = await completeWithRetry(
       [
         { role: 'system', content: TRANSLATE_LABELS_SYSTEM_PROMPT },
         { role: 'user', content: userTranslateLabelsInstruction(labels) },
       ],
       MODEL,
       TRANSLATE_LABELS_SCHEMA,
-    );
+    ));
   } catch {
     return labels; // upstream failure → keep English, never throw into a parse
   }
@@ -352,7 +436,7 @@ function completionPayload(data: unknown): unknown {
  * returned — the model only maps text → type/minutes/pace (+ a MET for 'other').
  */
 export async function parseWorkoutFromText(text: string): Promise<ParsedWorkout[]> {
-  const data = await complete(
+  const { data } = await completeWithRetry(
     [
       { role: 'system', content: PARSE_WORKOUT_SYSTEM_PROMPT },
       { role: 'user', content: `${userWorkoutInstruction()}\n\n${text}` },
@@ -369,7 +453,7 @@ export async function parseWorkoutFromText(text: string): Promise<ParsedWorkout[
  * prompt, schema, honesty split (kcal stays client-side) — is identical.
  */
 export async function parseWorkoutFromAudio(base64: string, format: string): Promise<ParsedWorkout[]> {
-  const data = await complete(
+  const { data } = await completeWithRetry(
     [
       { role: 'system', content: PARSE_WORKOUT_SYSTEM_PROMPT },
       {
@@ -394,7 +478,7 @@ export async function parseWorkoutFromAudio(base64: string, format: string): Pro
  * measurements passing through, not model arithmetic.
  */
 export async function parseWorkoutFromPhoto(base64: string, mimeType: string): Promise<ParsedWorkoutPhoto> {
-  const data = await complete(
+  const { data } = await completeWithRetry(
     [
       { role: 'system', content: PARSE_WORKOUT_PHOTO_SYSTEM_PROMPT },
       {
