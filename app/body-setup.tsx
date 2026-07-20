@@ -452,6 +452,11 @@ export default function BodySetupScreen() {
                 </Text>
               </Pressable>
             ) : null}
+            {/* The number isn't a verdict — say plainly that it sharpens itself as
+                the diary fills, so nobody reads the start as the final word. */}
+            <Text style={[styles.willRefine, { color: theme.subtle }, theme.font.body]}>
+              {t('bodySetup.result.willRefine')}
+            </Text>
           </Card>
 
           <Card style={styles.card}>
@@ -716,6 +721,7 @@ const styles = StyleSheet.create({
   macroValue: { fontSize: 15, marginTop: 2 },
   appliedLine: { fontSize: 13, marginTop: 12 },
   overestimate: { fontSize: 13, lineHeight: 19, marginTop: 8 },
+  willRefine: { fontSize: 12, lineHeight: 17, marginTop: 10 },
   accHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   accTitle: { fontSize: 15, flex: 1, paddingRight: 12 },
   chevron: { fontSize: 15 },

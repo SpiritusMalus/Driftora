@@ -22,6 +22,7 @@ import {
   ADAPTIVE_WINDOW_DAYS,
   averageEarnedKcal,
   bmrFactorFromMeasured,
+  looksUnderLogged,
   measuredExpenditure,
   type EarnedDay,
   type MeasuredExpenditure,
@@ -187,6 +188,8 @@ export default function WeightScreen() {
     if (!db || expenditure == null || expenditure.confidence !== 'good') return;
     const formula = suggestPlan({ ...profile, bmrFactor: 0 }, latestKg, 'maintain');
     if (formula == null) return;
+    // Belt-and-braces: never calibrate onto a number that implies missed meals.
+    if (looksUnderLogged(expenditure.kcalPerDay, formula.bmrKcal)) return;
     const stepsRows = await listStepsDays(db, ADAPTIVE_WINDOW_DAYS + 2);
     const startKey = dayKey(new Date(Date.now() - (ADAPTIVE_WINDOW_DAYS - 1) * 86_400_000));
     const todayK = dayKey();
@@ -269,6 +272,10 @@ export default function WeightScreen() {
   const profileComplete = suggestPlan(profile, 70, 'maintain') != null;
   const goalWeightKg = toNumber(goalWeightText);
   const plan = suggestPlan(profile, latestKg, goalMode, new Date(), goalWeightKg, deficitTempo);
+  // A measured burn UNDER the resting BMR means food went unlogged, not that the
+  // metabolism is slow — warn instead of offering to calibrate on a diary gap.
+  const burnUnderLogged =
+    expenditure != null && plan != null && looksUnderLogged(expenditure.kcalPerDay, plan.bmrKcal);
   // ETA copy: short horizons read best in weeks, long ones in months.
   const eta = (() => {
     if (plan?.etaWeeks == null) return null;
@@ -694,7 +701,11 @@ export default function WeightScreen() {
           {/* Opt-in, never silent: the user decides to let the measurement drive
               the budget (mirrors «Использовать измерение весов»). Offered only at
               'good' confidence; once applied, it says so and can be reset. */}
-          {burnApplied ? (
+          {burnUnderLogged ? (
+            <Text style={[styles.appliedLine, { color: theme.accent }, theme.font.bodyMedium]}>
+              {t('weight.burn.underLogged')}
+            </Text>
+          ) : burnApplied ? (
             <>
               <Text style={[styles.appliedLine, { color: theme.accent }, theme.font.bodyMedium]}>
                 {t('weight.burn.applied')}
