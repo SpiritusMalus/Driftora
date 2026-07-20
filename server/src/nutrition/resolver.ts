@@ -14,6 +14,7 @@ import {
 import type { FoodEstimate } from '../llm.js';
 import { looksDryBasis } from './dryBasis.js';
 import type { NutritionProvider, ProviderResult } from './provider.js';
+import { kcalBandViolated } from './plausibility.js';
 import { hasCyrillic } from './ruSearch.js';
 import { demoteContradictions, MIN_CHAIN_COVERAGE, queryCoverage } from './scoring.js';
 
@@ -466,7 +467,16 @@ export class Resolver {
     // Fetch the band on demand, but ONLY for matches already under suspicion, so
     // a clean five-component plate still costs zero extra calls.
     let refereeEstimate: AiEstimate | undefined = item.estimate;
-    if (!aiFull && this.estimator && (found.weak || (graded && found.matchConfidence < 0.9))) {
+    // Grade unhonored at HIGH confidence («творог 5%» → a 0.95 hit on «творог
+    // 2%») also needs the band: the text path no longer ships an estimate, so
+    // without this fetch the wrong-grade branch below would starve and the
+    // mislabelled row would pass as a clean hit.
+    const gradeMiss = graded && unhonoredGrade(item.name_ru, found.name);
+    // Zero-latency referee: a CONFIDENT row whose kcal is impossible for the
+    // food's class («кабачки» at 306/100 g) — the one error a name match can't
+    // see and the LLM referee never inspects. Treated exactly like a weak match.
+    const bandViolated = found.matchConfidence > 0 && kcalBandViolated(item.name_ru, item.name_en, found.per100.kcal);
+    if (!aiFull && this.estimator && (found.weak || gradeMiss || bandViolated || (graded && found.matchConfidence < 0.9))) {
       try {
         const est = await this.estimator(this.nativeName(item, region), region);
         if (est) {
@@ -513,7 +523,7 @@ export class Resolver {
     // wrong row is far worse than an honest ≈: the herb match said 974 kcal and
     // 75 g protein for a 330 ml bottle whose real figure is ~66 kcal. The model's
     // class-level estimate is primary; the thin row stays a one-tap alternative.
-    if (found.weak && aiFull) {
+    if ((found.weak || bandViolated) && aiFull) {
       return {
         name_ru: item.name_ru,
         name_en: item.name_en,
@@ -542,7 +552,10 @@ export class Resolver {
     // A thin match with NO estimate to fall back on still can't pass as fact —
     // demote it so the client opens the picker instead of reading it as a hit.
     const suspect =
-      (aiFull && refereeEstimate ? estimateMismatch(found.per100, refereeEstimate) : false) || gradeSuspect || !!found.weak;
+      (aiFull && refereeEstimate ? estimateMismatch(found.per100, refereeEstimate) : false) ||
+      gradeSuspect ||
+      bandViolated ||
+      !!found.weak;
     const confidence = suspect
       ? REFEREE_DEMOTED_CONFIDENCE
       : Math.min(item.confidence, found.matchConfidence);

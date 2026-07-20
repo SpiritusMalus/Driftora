@@ -23,6 +23,7 @@ import {
   coercePer100,
   emptyMealDraft,
   type IdentifiedItem,
+  type LabelReading,
   type MealDraft,
   type NutritionAlternative,
   type Region,
@@ -81,6 +82,24 @@ function audioFormat(mime: string | undefined, name: string | undefined): string
   if (s.includes('aac')) return 'aac';
   // expo-audio defaults to m4a (AAC in an MP4 container) on iOS + Android.
   return 'm4a';
+}
+
+/**
+ * `product name → panel reading` cache for the dedicated label pass. Insertion-
+ * ordered Map as a tiny LRU (same idiom as the resolver's lookup caches).
+ * Process-local and reset on restart — a panel is stable per product, so even a
+ * short-lived cache absorbs the common case: the same «Бабаевский» logged for
+ * the third time this week.
+ */
+const labelCache = new Map<string, LabelReading>();
+const LABEL_CACHE_MAX = 300;
+function rememberLabel(key: string, value: LabelReading): void {
+  if (labelCache.has(key)) labelCache.delete(key); // refresh recency
+  labelCache.set(key, value);
+  if (labelCache.size > LABEL_CACHE_MAX) {
+    const oldest = labelCache.keys().next().value;
+    if (oldest !== undefined) labelCache.delete(oldest);
+  }
 }
 
 function defaultRegion(): Region {
@@ -152,7 +171,16 @@ export interface CreateAppOptions {
 export function createApp(
   // The estimator fills DB misses for the photo path, which no longer asks the
   // vision model for nutrition numbers — see IDENTIFY_PHOTO_SYSTEM_PROMPT.
-  resolver: Resolver = new Resolver(buildProviders(), estimateFoodPer100),
+  resolver: Resolver = new Resolver(buildProviders(), async (name, region) => {
+    // Timed wrapper: the on-demand estimator is a whole extra model call per
+    // suspicious row — stage_ms.estimator is how we notice it getting greedy.
+    const t0 = Date.now();
+    try {
+      return await estimateFoodPer100(name, region);
+    } finally {
+      metrics.recordStage('estimator', Date.now() - t0);
+    }
+  }),
   opts: CreateAppOptions = {},
 ): express.Express {
   const app = express();
@@ -216,8 +244,14 @@ export function createApp(
     const startedAt = Date.now();
     try {
       const identified = await identify();
+      // Stage split: everything up to here is model work (identification and,
+      // for photos, the label pass); everything after is DB resolution. The
+      // per-route total alone can't say which side a slow day comes from.
+      metrics.recordStage(`identify_${route}`, Date.now() - startedAt);
+      const resolveStart = Date.now();
       const draft: MealDraft =
         identified.length === 0 ? emptyMealDraft(region) : await buildMealDraft(resolver, identified, region);
+      metrics.recordStage('resolve', Date.now() - resolveStart);
       metrics.recordParse(route, region, draft, Date.now() - startedAt);
       // Display-only: localize English DB row labels to Russian for RU (behind
       // the TRANSLATE_DB_LABELS flag; a no-op / English fallback otherwise).
@@ -378,12 +412,31 @@ export function createApp(
       // stays unreadable simply keeps its DB-resolved row.
       const packaged = items.filter((it) => it.packaged === true);
       if (packaged.length > 0) {
+        const labelStart = Date.now();
         await Promise.all(
           packaged.map(async (it) => {
+            // A product's printed panel doesn't change between purchases, so a
+            // package we've already read never pays the second vision call (or
+            // the repeat ~200 KB image upload) again. Keyed by the identified
+            // name, which carries the brand («Ветчина … Индилайт») — distinct
+            // products rarely collide on the full name.
+            const key = it.name_ru.trim().toLowerCase();
+            const cached = labelCache.get(key);
+            if (cached) {
+              it.label = cached;
+              metrics.recordLabelCacheHit();
+              return;
+            }
             const label = await readPackageLabel(base64, mimeType, it.name_ru);
-            if (label) it.label = label;
+            if (label) {
+              it.label = label;
+              // Cache only complete readings — a failed/partial read should be
+              // retried on the next photo, not remembered forever.
+              rememberLabel(key, label);
+            }
           }),
         );
+        metrics.recordStage('label', Date.now() - labelStart);
       }
       return items;
     });

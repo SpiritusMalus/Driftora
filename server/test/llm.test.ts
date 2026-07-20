@@ -223,3 +223,24 @@ test('identify: a non-timeout transport error is terminal, never retried', async
   await assert.rejects(() => identifyFromText('банан', 'RU'), VisionUnavailableError);
   assert.equal(calls, 1, 'a dead upstream is not retried');
 });
+
+test('identifyFromText: the slim contract ships NO numeric estimate block', async () => {
+  // The decode loop lives inside numeric literals, and the text path used to ask
+  // for four of them per item «just in case» — «борщ и два куска чёрного хлеба»
+  // failed 3/3 on exactly that. Estimates are fetched on demand by the resolver
+  // now; if `estimate` ever creeps back into this schema, this test is the alarm.
+  let sentBody = '';
+  globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+    sentBody = String(init?.body ?? '');
+    return new Response(JSON.stringify({ choices: [{ finish_reason: 'stop', message: { content: JSON.stringify({ items: [] }) } }] }), {
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }) as typeof fetch;
+
+  await identifyFromText('банан', 'RU');
+
+  const schema = JSON.stringify(JSON.parse(sentBody).response_format.json_schema.schema);
+  assert.ok(!schema.includes('estimate'), 'text schema must stay free of numeric estimate fields');
+  assert.ok(!schema.includes('kcal_100g'), 'no per-100g literals for a decode loop to live in');
+  assert.ok(schema.includes('est_grams'), 'grams estimation itself stays — it is the job');
+});

@@ -207,7 +207,6 @@ export interface IdentifiedItem {
   label?: LabelReading;
   // The model's rough per-100g guess — referee band + DB-miss fallback.
   estimate?: AiEstimate;
-  raw_text?: string;
 }
 
 export interface Identified {
@@ -576,9 +575,6 @@ export function normalizeIdentified(payload: unknown): IdentifiedItem[] {
     // The model's rough per-100g guess (referee band + DB-miss fallback).
     const estimate = coerceEstimate(r.estimate);
     if (estimate) item.estimate = estimate;
-    if (typeof r.raw_text === 'string' && r.raw_text.trim().length > 0) {
-      item.raw_text = r.raw_text.trim();
-    }
     items.push(item);
   }
   return items;
