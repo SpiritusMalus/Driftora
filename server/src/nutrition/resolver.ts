@@ -467,6 +467,7 @@ export class Resolver {
     // Fetch the band on demand, but ONLY for matches already under suspicion, so
     // a clean five-component plate still costs zero extra calls.
     let refereeEstimate: AiEstimate | undefined = item.estimate;
+<<<<<<< HEAD
     // Grade unhonored at HIGH confidence («творог 5%» → a 0.95 hit on «творог
     // 2%») also needs the band: the text path no longer ships an estimate, so
     // without this fetch the wrong-grade branch below would starve and the
@@ -477,6 +478,9 @@ export class Resolver {
     // see and the LLM referee never inspects. Treated exactly like a weak match.
     const bandViolated = found.matchConfidence > 0 && kcalBandViolated(item.name_ru, item.name_en, found.per100.kcal);
     if (!aiFull && this.estimator && (found.weak || gradeMiss || bandViolated || (graded && found.matchConfidence < 0.9))) {
+=======
+    if (!aiFull && this.estimator && (found.weak || (graded && found.matchConfidence < 0.9))) {
+>>>>>>> origin/master
       try {
         const est = await this.estimator(this.nativeName(item, region), region);
         if (est) {
@@ -552,10 +556,14 @@ export class Resolver {
     // A thin match with NO estimate to fall back on still can't pass as fact —
     // demote it so the client opens the picker instead of reading it as a hit.
     const suspect =
+<<<<<<< HEAD
       (aiFull && refereeEstimate ? estimateMismatch(found.per100, refereeEstimate) : false) ||
       gradeSuspect ||
       bandViolated ||
       !!found.weak;
+=======
+      (aiFull && refereeEstimate ? estimateMismatch(found.per100, refereeEstimate) : false) || gradeSuspect || !!found.weak;
+>>>>>>> origin/master
     const confidence = suspect
       ? REFEREE_DEMOTED_CONFIDENCE
       : Math.min(item.confidence, found.matchConfidence);

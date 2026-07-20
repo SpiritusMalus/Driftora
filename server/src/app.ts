@@ -171,6 +171,7 @@ export interface CreateAppOptions {
 export function createApp(
   // The estimator fills DB misses for the photo path, which no longer asks the
   // vision model for nutrition numbers — see IDENTIFY_PHOTO_SYSTEM_PROMPT.
+<<<<<<< HEAD
   resolver: Resolver = new Resolver(buildProviders(), async (name, region) => {
     // Timed wrapper: the on-demand estimator is a whole extra model call per
     // suspicious row — stage_ms.estimator is how we notice it getting greedy.
@@ -181,6 +182,9 @@ export function createApp(
       metrics.recordStage('estimator', Date.now() - t0);
     }
   }),
+=======
+  resolver: Resolver = new Resolver(buildProviders(), estimateFoodPer100),
+>>>>>>> origin/master
   opts: CreateAppOptions = {},
 ): express.Express {
   const app = express();
@@ -412,6 +416,7 @@ export function createApp(
       // stays unreadable simply keeps its DB-resolved row.
       const packaged = items.filter((it) => it.packaged === true);
       if (packaged.length > 0) {
+<<<<<<< HEAD
         const labelStart = Date.now();
         await Promise.all(
           packaged.map(async (it) => {
@@ -437,6 +442,14 @@ export function createApp(
           }),
         );
         metrics.recordStage('label', Date.now() - labelStart);
+=======
+        await Promise.all(
+          packaged.map(async (it) => {
+            const label = await readPackageLabel(base64, mimeType, it.name_ru);
+            if (label) it.label = label;
+          }),
+        );
+>>>>>>> origin/master
       }
       return items;
     });
