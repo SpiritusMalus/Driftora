@@ -262,10 +262,15 @@ export function createApp(
       const draft: MealDraft =
         identified.length === 0 ? emptyMealDraft(region) : await buildMealDraft(resolver, identified, region);
       metrics.recordStage('resolve', Date.now() - resolveStart);
-      metrics.recordParse(route, region, draft, Date.now() - startedAt);
       // Display-only: localize English DB row labels to Russian for RU (behind
       // the TRANSLATE_DB_LABELS flag; a no-op / English fallback otherwise).
-      res.json(await localizeDraft(draft, region));
+      // Timed as its own stage — it is an LLM round-trip on cache-cold labels
+      // and was the last untimed chunk of the user-visible wait.
+      const translateStart = Date.now();
+      const localized = await localizeDraft(draft, region);
+      metrics.recordStage('translate', Date.now() - translateStart);
+      metrics.recordParse(route, region, draft, Date.now() - startedAt);
+      res.json(localized);
     } catch (err) {
       if (err instanceof VisionUnavailableError) {
         fail(res, 503, 'llm_unavailable', 'The parsing service is temporarily unavailable.');
