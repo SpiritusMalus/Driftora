@@ -20,9 +20,11 @@ import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import {
   deleteFoodEntry,
   listEntriesForDay,
+  microDonor,
   repeatFoodEntry,
   todayMacroTotals,
   todayMicroTotals,
+  type MicroDonorCallout,
   type MicroTotals,
 } from '@/lib/core/db/food';
 import { syncDayHealth } from '@/lib/core/db/healthSync';
@@ -511,10 +513,14 @@ function MicroDay({
   theme: Theme;
 }) {
   const { t } = useTranslation();
+  const router = useRouter();
+  // Alongside each intake: the donor call-out — the one meal carrying most of an
+  // anomalous sum (see [microDonor]). Null on normal days, so nothing extra renders.
   const measured = dailyMicroNorms(sex)
-    .map((row) => ({ row, intake: microIntake(micros, row) }))
-    .filter((x): x is { row: MicroRow; intake: number } => x.intake != null);
+    .map((row) => ({ row, intake: microIntake(micros, row), donor: microDonor(micros, row) }))
+    .filter((x): x is { row: MicroRow; intake: number; donor: MicroDonorCallout | null } => x.intake != null);
   const summary = measured.length > 0 ? t('food.micros.count', { n: measured.length }) : t('food.micros.none');
+  const anyDonor = measured.some((x) => x.donor != null);
 
   return (
     <Card style={styles.dayCard}>
@@ -551,7 +557,7 @@ function MicroDay({
                   <Text style={[styles.microGroupHeading, { color: theme.subtle }, theme.font.bodySemiBold]}>
                     {t(`weight.micros.groups.${group}`)}
                   </Text>
-                  {rows.map(({ row, intake }) => {
+                  {rows.map(({ row, intake, donor }) => {
                     const pct = row.value > 0 ? Math.round((intake / row.value) * 100) : 0;
                     return (
                       <View key={row.key} style={styles.microRow}>
@@ -565,12 +571,40 @@ function MicroDay({
                           </Text>
                         </View>
                         <FillBar value={intake} min={row.value} max={row.limit} thickness={8} />
+                        {/* An outlier percentage names its meal: quiet line, the
+                            name is the link into the entry card («Как в базе» +
+                            «Другой вариант» live there — a mismatched DB row is
+                            fixed at the source, not feared at the sum). */}
+                        {donor != null ? (
+                          <Pressable
+                            onPress={() => router.push(`/food/${donor.entryId}`)}
+                            hitSlop={6}
+                            accessibilityRole="button"
+                          >
+                            <Text
+                              style={[styles.microDonor, { color: theme.subtle }, theme.font.body]}
+                              numberOfLines={1}
+                            >
+                              {t('food.micros.donorLead')}{' '}
+                              <Text style={[styles.microDonorName, { color: theme.primary }]}>
+                                {t('food.micros.donorName', { name: donor.rawText || t('food.untitled') })}
+                              </Text>
+                            </Text>
+                          </Pressable>
+                        ) : null}
                       </View>
                     );
                   })}
                 </View>
               );
             })}
+            {/* Only on anomaly days (some bar shows a donor): what the tap leads
+                to and why the number may simply be a wrong DB match. */}
+            {anyDonor ? (
+              <Text style={[styles.microNote, { color: theme.subtle }, theme.font.body]}>
+                {t('food.micros.donorHint')}
+              </Text>
+            ) : null}
             <Text style={[styles.microNote, { color: theme.subtle }, theme.font.body]}>
               {t('food.micros.coverageNote')}
             </Text>
@@ -680,5 +714,7 @@ const styles = StyleSheet.create({
   microRowHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 5, gap: 8 },
   microName: { fontSize: 13, flexShrink: 1 },
   microVal: { fontSize: 12, textAlign: 'right' },
+  microDonor: { fontSize: 12, marginTop: 4, lineHeight: 17 },
+  microDonorName: { textDecorationLine: 'underline' },
   microNote: { fontSize: 12, marginTop: 8, lineHeight: 17 },
 });

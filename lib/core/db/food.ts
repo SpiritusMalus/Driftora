@@ -13,6 +13,7 @@ import type {
 import { displayItemName } from '../services/foodChoice';
 import { recomputeDraft } from '../services/mealDraft';
 import type { MealType } from '../insights/mealType';
+import type { MicroRow } from '../insights/microNutrients';
 import { foodEntries, foodItems, type FoodEntry, type FoodItem } from './schema';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -30,12 +31,28 @@ export const zeroTotals: MacroTotals = { kcal: 0, proteinG: 0, fatG: 0, carbG: 0
 const MINERAL_KEYS: readonly (keyof Minerals)[] = ['na', 'k', 'ca', 'mg', 'fe', 'zn'];
 const VITAMIN_KEYS: readonly (keyof Vitamins)[] = ['a', 'd', 'e', 'c', 'b1', 'b2', 'b6', 'b9', 'b12'];
 
+/// The one entry contributing most of a nutrient's day sum. Kept per key so an
+/// outlier percentage can point back at its source meal: a cluster like
+/// «A 686% · B12 1053% · железо 263%» is the signature of ONE mismatched DB row
+/// (liver/fortified food matched instead of a plain dish), and the pure sum
+/// can't say which of the day's meals to open and fix.
+export interface MicroDonor {
+  entryId: number;
+  rawText: string;
+  /// That entry's own amount of the nutrient (same unit as the day sum).
+  value: number;
+}
+
 /// The day's summed micronutrients + honest coverage: `entriesWithData` of
 /// `entriesTotal` meals actually carried micro data (most RU dishes carry none),
 /// so the UI can say what the numbers are — and aren't — measured from.
 export interface MicroTotals {
   minerals: Minerals;
   vitamins: Vitamins;
+  /// Largest single-entry contribution per measured key. Filled only from rows
+  /// that carried an entry id — callers passing bare `{micros}` still get sums.
+  mineralsTop: Partial<Record<keyof Minerals, MicroDonor>>;
+  vitaminsTop: Partial<Record<keyof Vitamins, MicroDonor>>;
   entriesWithData: number;
   entriesTotal: number;
 }
@@ -342,9 +359,15 @@ export async function todayMacroTotals(
 /// blob, and reports coverage (how many of the day's meals actually carried
 /// data). Pure aggregation over stored facts — no norms, no judgement; the UI
 /// compares against the reference norms and says what's still unmeasured.
-export function sumMicroRows(rows: { micros?: string | null }[]): MicroTotals {
+/// Alongside each sum it keeps the largest single-entry contribution (id +
+/// name), so an anomalous total stays attributable to the meal behind it.
+export function sumMicroRows(
+  rows: { id?: number; rawText?: string | null; micros?: string | null }[],
+): MicroTotals {
   const minerals: Minerals = {};
   const vitamins: Vitamins = {};
+  const mineralsTop: Partial<Record<keyof Minerals, MicroDonor>> = {};
+  const vitaminsTop: Partial<Record<keyof Vitamins, MicroDonor>> = {};
   let entriesWithData = 0;
   for (const r of rows) {
     const decoded = decodeMicros(r.micros);
@@ -352,14 +375,56 @@ export function sumMicroRows(rows: { micros?: string | null }[]): MicroTotals {
     entriesWithData += 1;
     for (const key of MINERAL_KEYS) {
       const v = decoded.minerals[key];
-      if (typeof v === 'number') minerals[key] = round2((minerals[key] ?? 0) + v);
+      if (typeof v !== 'number') continue;
+      minerals[key] = round2((minerals[key] ?? 0) + v);
+      const top = mineralsTop[key];
+      if (r.id != null && (top == null || v > top.value)) {
+        mineralsTop[key] = { entryId: r.id, rawText: r.rawText ?? '', value: v };
+      }
     }
     for (const key of VITAMIN_KEYS) {
       const v = decoded.vitamins[key];
-      if (typeof v === 'number') vitamins[key] = round2((vitamins[key] ?? 0) + v);
+      if (typeof v !== 'number') continue;
+      vitamins[key] = round2((vitamins[key] ?? 0) + v);
+      const top = vitaminsTop[key];
+      if (r.id != null && (top == null || v > top.value)) {
+        vitaminsTop[key] = { entryId: r.id, rawText: r.rawText ?? '', value: v };
+      }
     }
   }
-  return { minerals, vitamins, entriesWithData, entriesTotal: rows.length };
+  return { minerals, vitamins, mineralsTop, vitaminsTop, entriesWithData, entriesTotal: rows.length };
+}
+
+/// Donor call-out gates: the day's sum must itself look anomalous (≥150 % of
+/// the norm — the only defined upper limit, sodium's 2300 vs the 1500 norm,
+/// sits just past this line too) AND one entry must carry more than half of the
+/// sum. Both together keep ordinary well-fed days silent.
+const DONOR_MIN_OF_NORM = 1.5;
+const DONOR_MIN_SHARE = 0.5;
+
+export interface MicroDonorCallout {
+  entryId: number;
+  rawText: string;
+  /// The donor's share of the day's sum, 0..1 (already past the ½ gate).
+  share: number;
+}
+
+/// The single meal behind an outlier percentage, or null on a normal day.
+/// `row.value` is the same norm the visible «N % нормы» is computed against,
+/// so the call-out fires exactly for the percentages the user finds scary.
+export function microDonor(totals: MicroTotals, row: MicroRow): MicroDonorCallout | null {
+  const sums = (row.group === 'mineral' ? totals.minerals : totals.vitamins) as Record<string, number | undefined>;
+  const tops = (row.group === 'mineral' ? totals.mineralsTop : totals.vitaminsTop) as Record<
+    string,
+    MicroDonor | undefined
+  >;
+  const intake = sums[row.key];
+  const top = tops[row.key];
+  if (intake == null || top == null) return null;
+  if (!(row.value > 0) || intake < row.value * DONOR_MIN_OF_NORM) return null;
+  const share = top.value / intake;
+  if (share <= DONOR_MIN_SHARE) return null;
+  return { entryId: top.entryId, rawText: top.rawText, share };
 }
 
 function round2(n: number): number {
@@ -371,9 +436,13 @@ function round2(n: number): number {
 export async function todayMicroTotals(db: AnyDb, date: Date = new Date()): Promise<MicroTotals> {
   const { start, end } = dayBounds(date);
   const rows = (await db
-    .select({ micros: foodEntries.micros })
+    .select({ id: foodEntries.id, rawText: foodEntries.rawText, micros: foodEntries.micros })
     .from(foodEntries)
-    .where(and(gte(foodEntries.ts, start), lt(foodEntries.ts, end)))) as { micros: string | null }[];
+    .where(and(gte(foodEntries.ts, start), lt(foodEntries.ts, end)))) as {
+    id: number;
+    rawText: string;
+    micros: string | null;
+  }[];
   return sumMicroRows(rows);
 }
 

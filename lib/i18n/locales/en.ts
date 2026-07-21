@@ -1025,6 +1025,12 @@ export const en = {
       empty:
         'Today’s foods carry no micronutrient data — common for many local dishes. Log foods with data and the bars appear.',
       ofNorm: '{{pct}}% of norm',
+      // Quiet outlier attribution: the meal carrying almost all of an anomalous
+      // sum, named and linked into its entry card (“In database” + “Other option”).
+      donorLead: 'almost all from',
+      donorName: '“{{name}}”',
+      donorHint:
+        'Implausibly high? Open that meal: “In database” shows what it was counted as, “Other option” replaces it.',
       normsHint: 'The dark tick is the daily norm, the amber tick the safe upper limit. The full norm table is on the Weight screen.',
     },
     detail: {
