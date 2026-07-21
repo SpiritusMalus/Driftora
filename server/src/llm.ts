@@ -218,6 +218,19 @@ export function providerErrorOf(data: unknown): string | undefined {
   return `provider error ${code}`;
 }
 
+/** Timeout pair for one `completeWithRetry` run: first attempt + the re-roll. */
+type RetryTimeouts = { first: number; retry: number };
+/** Patient default — photo/audio calls, where a slow answer still beats none. */
+const PATIENT_TIMEOUTS: RetryTimeouts = { first: TIMEOUT_MS.openrouter, retry: TIMEOUT_MS.openrouterRetry };
+/**
+ * Typed-text calls (text identify, search estimate, label translate, workout
+ * text): the user is actively waiting on a typed query, so both attempts get
+ * the short budget — see `TIMEOUT_MS.openrouterText` for the measured
+ * rationale. Vision/audio keep the patient pair; the hedged photo path has its
+ * own schedule in `completeHedged`.
+ */
+const TEXT_TIMEOUTS: RetryTimeouts = { first: TIMEOUT_MS.openrouterText, retry: TIMEOUT_MS.openrouterTextRetry };
+
 /**
  * `complete`, plus ONE retry when the model ran out of budget mid-answer.
  *
@@ -235,10 +248,11 @@ async function completeWithRetry(
   messages: ChatMessage[],
   model: string,
   schema: object,
+  timeouts: RetryTimeouts = PATIENT_TIMEOUTS,
 ): Promise<{ data: unknown; truncated: boolean }> {
   let first: unknown;
   try {
-    first = await complete(messages, model, schema);
+    first = await complete(messages, model, schema, 0, timeouts.first);
     // A provider error rides in on HTTP 200 — fail now rather than retry into a
     // rate limit that is already refusing us.
     const failed = providerErrorOf(first);
@@ -255,7 +269,7 @@ async function completeWithRetry(
   metrics.recordTruncationRetry();
   let second: unknown;
   try {
-    second = await complete(messages, model, schema, RETRY_TEMPERATURE, TIMEOUT_MS.openrouterRetry);
+    second = await complete(messages, model, schema, RETRY_TEMPERATURE, timeouts.retry);
   } catch (err) {
     if (err instanceof UpstreamTimeoutError) {
       throw new VisionUnavailableError('OpenRouter timed out on both attempts');
@@ -360,11 +374,11 @@ async function callModel(
   messages: ChatMessage[],
   model: string,
   schema: object = IDENTIFY_SCHEMA,
-  opts: { hedge?: boolean } = {},
+  opts: { hedge?: boolean; text?: boolean } = {},
 ): Promise<IdentifiedItem[]> {
   const { data, truncated } = opts.hedge
     ? await completeHedged(messages, model, schema)
-    : await completeWithRetry(messages, model, schema);
+    : await completeWithRetry(messages, model, schema, opts.text ? TEXT_TIMEOUTS : PATIENT_TIMEOUTS);
   const items = parseResponse(data);
   // A truncated answer that yielded nothing is a SERVER failure, not an honest
   // "no food here" — returning [] would render as «не распознал» and hide the
@@ -384,7 +398,7 @@ async function callModel(
 async function identifyWithEscalation(
   messages: ChatMessage[],
   schema: object = IDENTIFY_SCHEMA,
-  opts: { hedge?: boolean } = {},
+  opts: { hedge?: boolean; text?: boolean } = {},
 ): Promise<IdentifiedItem[]> {
   const base = await callModel(messages, MODEL, schema, opts);
   if (!PRO_MODEL) return base;
@@ -431,6 +445,7 @@ export async function estimateFoodPer100(name: string, region: Region): Promise<
     ],
     MODEL,
     ESTIMATE_SEARCH_SCHEMA,
+    TEXT_TIMEOUTS,
   );
   return parseEstimate(data, name);
 }
@@ -484,6 +499,7 @@ export async function translateFoodLabels(labels: string[]): Promise<string[]> {
       ],
       MODEL,
       TRANSLATE_LABELS_SCHEMA,
+      TEXT_TIMEOUTS,
     ));
   } catch {
     return labels; // upstream failure → keep English, never throw into a parse
@@ -523,6 +539,7 @@ export async function identifyFromText(text: string, region: Region): Promise<Id
       { role: 'user', content: `${userInstruction(region)}\n\n${text}` },
     ],
     IDENTIFY_TEXT_SCHEMA,
+    { text: true },
   );
 }
 
@@ -643,6 +660,7 @@ export async function parseWorkoutFromText(text: string): Promise<ParsedWorkout[
     ],
     MODEL,
     PARSE_WORKOUT_SCHEMA,
+    TEXT_TIMEOUTS,
   );
   return normalizeParsedWorkouts(completionPayload(data));
 }
