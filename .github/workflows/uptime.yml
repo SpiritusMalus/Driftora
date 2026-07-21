@@ -1,0 +1,39 @@
+name: Uptime (food server)
+
+# Free external uptime monitor with zero new accounts: every ~15 min a GitHub
+# runner probes food.family-pie.ru/health, and a failed run makes GitHub email
+# the workflow author. The server cannot report its own death, /metrics is
+# token-gated, and /health is deliberately public and never rate-limited — so
+# this is the one probe that works from outside without secrets.
+#
+# GitHub cron is best-effort (delays of 3–15 min are normal), so detection is
+# "within ~half an hour", not "within a minute" — fine for a single-VPS setup.
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Probe /health
+        run: |
+          # 3 attempts over ~40 s: a single dropped packet or a deploy-window
+          # restart (Restart=on-failure, RestartSec=3) must not page anyone.
+          for i in 1 2 3; do
+            body="$(curl -sS -m 10 https://food.family-pie.ru/health || true)"
+            if [ "$body" = '{"status":"ok"}' ]; then
+              echo "OK (attempt $i)"
+              exit 0
+            fi
+            echo "attempt $i failed: ${body:-<no response>}"
+            sleep 20
+          done
+          echo "::error::food.family-pie.ru/health is down (3 attempts over 40s)"
+          exit 1
