@@ -244,6 +244,88 @@ export async function updateFoodEntry(
   });
 }
 
+/// ——— Background (adopted) parses: entries that exist BEFORE their parse ———
+
+/// A placeholder entry for a photo whose parse is still running after the user
+/// left the log screen. Zero macros on purpose: the day's sums stay honest
+/// while the row renders as «разбирается…» off `parse_status`.
+export async function savePendingEntry(
+  db: AnyDb,
+  opts: { source: 'voice' | 'text' | 'photo'; meal?: MealType | null; ts?: Date },
+): Promise<number> {
+  const inserted = await db
+    .insert(foodEntries)
+    .values({
+      ts: opts.ts ?? new Date(),
+      rawText: '',
+      source: opts.source,
+      kcal: 0,
+      proteinG: 0,
+      fatG: 0,
+      carbG: 0,
+      confirmed: false,
+      micros: null,
+      meal: opts.meal ?? null,
+      parseStatus: 'pending',
+    })
+    .returning({ id: foodEntries.id });
+  return inserted[0].id as number;
+}
+
+/// The adopted parse landed: fill the placeholder with the draft — but leave it
+/// UNCONFIRMED, unlike updateFoodEntry (which records a user-reviewed edit).
+/// Hybrid review by design: the day list shows «≈ проверьте» until the entry is
+/// opened — review is deferred, never skipped.
+export async function applyDraftToPendingEntry(
+  db: AnyDb,
+  id: number,
+  opts: { rawText: string; draft: MealDraft },
+): Promise<void> {
+  const d = opts.draft;
+  await withTx(db, async () => {
+    await db
+      .update(foodEntries)
+      .set({
+        rawText: opts.rawText,
+        kcal: d.totals.kcal,
+        proteinG: d.totals.prot,
+        fatG: d.totals.fat,
+        carbG: d.totals.carb,
+        micros: encodeMicros(d.totals),
+        parseStatus: null,
+      })
+      .where(eq(foodEntries.id, id));
+    await db.delete(foodItems).where(eq(foodItems.entryId, id));
+    await insertDraftItems(db, id, d);
+  });
+}
+
+export async function markPendingFailed(db: AnyDb, id: number): Promise<void> {
+  await db.update(foodEntries).set({ parseStatus: 'failed' }).where(eq(foodEntries.id, id));
+}
+
+export async function markPendingRetrying(db: AnyDb, id: number): Promise<void> {
+  await db.update(foodEntries).set({ parseStatus: 'pending' }).where(eq(foodEntries.id, id));
+}
+
+/// Opening an entry IS the deferred review — flip the flag so the «≈ проверьте»
+/// pill rests once a human has actually looked at the numbers.
+export async function confirmFoodEntry(db: AnyDb, id: number): Promise<void> {
+  await db.update(foodEntries).set({ confirmed: true }).where(eq(foodEntries.id, id));
+}
+
+/// App-start hygiene: a 'pending' row can only finish while its process lives —
+/// the photo is never persisted (privacy §2) — so anything still pending after
+/// `maxAgeMin` belongs to a dead process and becomes an honest, retry-visible
+/// 'failed' («снимите заново») instead of spinning forever.
+export async function sweepStalePendingEntries(db: AnyDb, maxAgeMin = 15): Promise<void> {
+  const cutoff = new Date(Date.now() - maxAgeMin * 60_000);
+  await db
+    .update(foodEntries)
+    .set({ parseStatus: 'failed' })
+    .where(and(eq(foodEntries.parseStatus, 'pending'), lt(foodEntries.ts, cutoff)));
+}
+
 /// Delete an entry and its items. Items are removed explicitly first so there
 /// are never orphan `food_items` rows regardless of the FK-cascade pragma.
 export async function deleteFoodEntry(db: AnyDb, id: number): Promise<void> {

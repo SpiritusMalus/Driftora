@@ -13,6 +13,7 @@ import { TextField } from '@/components/ui/TextField';
 import { needsAiConsent } from '@/lib/core/consent/consent';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import {
+  confirmFoodEntry,
   deleteFoodEntry,
   draftFromStoredEntry,
   getFoodEntry,
@@ -87,6 +88,10 @@ export default function FoodEntryScreen() {
       setAiConsent(settings.aiFoodParseConsent);
       setAiConsentVersion(settings.aiFoodParseConsentVersion);
       setHideCalories(settings.hideCalories);
+      // Opening the entry IS the deferred review of an adopted (background)
+      // parse — rest the «≈ проверьте» pill. Fire-and-forget: reading must not
+      // wait on a write.
+      if (!detail.entry.confirmed && detail.entry.parseStatus == null) void confirmFoodEntry(db, entryId);
     })();
     return () => {
       active = false;

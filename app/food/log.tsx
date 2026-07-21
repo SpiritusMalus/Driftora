@@ -35,6 +35,12 @@ import {
   lookupNameForItem,
 } from '@/lib/core/services/foodChoice';
 import { getAiQuotaRemaining } from '@/lib/core/services/aiQuota';
+import {
+  adoptOnUnmount,
+  clearInFlight,
+  isAdopted,
+  registerInFlight,
+} from '@/lib/core/services/backgroundParses';
 import { deleteTempFile } from '@/lib/core/services/tempFiles';
 import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
 import { mealPromptKeyForHour } from '@/lib/core/insights/mealPrompt';
@@ -157,6 +163,16 @@ export default function FoodLogScreen() {
   // mount-time (empty) queue and leak the downscaled JPEGs still waiting in it.
   const photoQueueRef = useRef<PhotoInput[]>([]);
   photoQueueRef.current = photoQueue;
+  // Same live-mirror idiom for the background hand-off (adoptOnUnmount): the
+  // unmount cleanup runs once, where state would be frozen at mount time.
+  const mealRef = useRef<MealType | null>(null);
+  mealRef.current = meal;
+  const consentRef = useRef(false);
+  consentRef.current = aiConsent;
+  const regionRef = useRef<Region>(region);
+  regionRef.current = region;
+  const dbRef = useRef(db);
+  dbRef.current = db;
   const [listening, setListening] = useState(false);
   // Why on-device recognition last failed (localized) — shown under the mic so a
   // dropped session explains itself instead of silently resetting. Cleared on a
@@ -207,9 +223,24 @@ export default function FoodLogScreen() {
       void speech.stop();
       void recRef.current?.cancel();
       if (exitTimerRef.current != null) clearTimeout(exitTimerRef.current);
+      // Leaving mid-parse or mid-batch: hand the work to the background service
+      // FIRST — the in-flight request and queued shots become «разбирается…»
+      // entries that finish on their own (hybrid confirm: unconfirmed until
+      // opened). Only the consented online path adopts — the offline stub
+      // can't parse a photo, so adopting it would just mint failed rows.
+      if (dbRef.current && consentRef.current && AI_CONFIGURED) {
+        adoptOnUnmount(dbRef.current, {
+          queued: photoQueueRef.current,
+          region: regionRef.current,
+          meal: mealRef.current,
+          consent: consentRef.current,
+        });
+      }
       // Batch leftovers that never reached their parse are downscaled JPEGs in
-      // cache — sweep them so an abandoned batch doesn't accumulate files.
-      for (const p of photoQueueRef.current) deleteTempFile(p.uri);
+      // cache — sweep whatever the service did NOT adopt (offline/consent-less
+      // exits) so an abandoned batch doesn't accumulate files. Adoption marks
+      // its uris synchronously, so this order is race-free.
+      for (const p of photoQueueRef.current) if (!isAdopted(p.uri)) deleteTempFile(p.uri);
     };
   }, []);
 
@@ -424,16 +455,28 @@ export default function FoodLogScreen() {
   async function runPhotoParse(photo: PhotoInput, consentNow: boolean) {
     setParsing(true);
     setParseIssue(null);
+    // The promise is captured BEFORE the await so that leaving the screen
+    // mid-parse can hand this exact in-flight request to the background
+    // service — adoption must not re-bill a parse that is seconds from landing.
+    const parseP = getFoodParser(consentNow).parsePhoto(photo, region);
+    registerInFlight({ promise: parseP, photo });
     try {
-      acceptDraft(await applyMemory(await getFoodParser(consentNow).parsePhoto(photo, region)), consentNow, 'photo');
+      const parsed = await parseP;
+      // Screen died mid-parse and the service took over: it writes the entry
+      // itself — this (possibly unmounted) closure stands down.
+      if (isAdopted(photo.uri)) return;
+      acceptDraft(await applyMemory(parsed), consentNow, 'photo');
     } catch {
-      setParseIssue('failed');
+      if (!isAdopted(photo.uri)) setParseIssue('failed');
     } finally {
+      clearInFlight(photo.uri);
       setParsing(false);
       // The downscaled JPEG in `prepare()` (photoProvider.ts) was only ever
       // needed to reach the backend — clean it up on every path (success,
       // failure, offline stub) so cache doesn't accumulate one file per photo.
-      deleteTempFile(photo.uri);
+      // An ADOPTED photo is the exception: the service still needs the file
+      // for its retry affordance and cleans up after itself.
+      if (!isAdopted(photo.uri)) deleteTempFile(photo.uri);
     }
   }
 

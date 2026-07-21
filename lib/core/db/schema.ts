@@ -20,6 +20,10 @@ export const foodEntries = sqliteTable('food_entries', {
   // entries and paths with no picker (one-tap «Повторить») store none and the
   // day view falls back to the keyword/clock heuristic in insights/mealType.
   meal: text('meal', { enum: ['breakfast', 'lunch', 'snack', 'dinner'] }),
+  // Background-parse lifecycle for entries saved BEFORE their parse finished
+  // (user left the log screen mid-photo): 'pending' → still parsing, 'failed'
+  // → parse lost (retry/reshoot). Null = a normal, fully parsed entry.
+  parseStatus: text('parse_status', { enum: ['pending', 'failed'] }),
 });
 
 /// The LLM breakdown of a food entry into individual items.

@@ -923,6 +923,13 @@ export const en = {
     photo: '📷 Camera',
     photoLibrary: '🖼 From gallery',
     photoError: 'Couldn’t process that photo. Try another one, or type the meal instead.',
+    bg: {
+      parsing: 'Parsing…',
+      failed: 'Couldn’t parse — tap to retry',
+      review: '≈ review',
+      reshootTitle: 'Photo not kept',
+      reshoot: 'The parse was interrupted and the shot is already deleted — we don’t store photos. Take the picture again.',
+    },
     // Multi-select photos: each dish its own entry, reviewed one at a time.
     batchProgress: 'Photo {{index}} of {{total}}',
     batchSkip: 'Skip photo',
