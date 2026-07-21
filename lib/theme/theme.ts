@@ -104,6 +104,9 @@ export interface Theme {
   cardBorder: string;
   /// iOS inset row separator (0.5px). Android uses `cardBorder` hairlines.
   separator: string;
+  /// Glyph ink for secondary icons (graphite on paper, chalk on the
+  /// blueprint) — red stays reserved for actions and the hero.
+  icon: string;
   /// Tinted tile behind a row icon (Android). iOS uses small filled glyphs.
   iconBg: string;
   /// Neutral fill for inactive controls (iOS mood pills, input wells).
@@ -156,6 +159,7 @@ export function resolveTheme(scheme: 'light' | 'dark'): Theme {
     card: isIOS ? sys.card : ember.card,
     cardBorder: isIOS ? 'transparent' : ember.border,
     separator: isIOS ? sys.separator : ember.border,
+    icon: ember.icon,
     iconBg: ember.iconBg,
     fill: isIOS ? sys.fill : ember.iconBg,
 
