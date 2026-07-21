@@ -2,6 +2,7 @@ import * as Localization from 'expo-localization';
 
 import type { FoodParser, Region } from './foodParser';
 import { HttpFoodParser } from './httpFoodParser';
+import { getCachedInstallId } from './installId';
 import { pickRegion } from './region';
 import { StubFoodParser } from './stubFoodParser';
 
@@ -33,6 +34,9 @@ export function getFoodParser(aiConsent: boolean): FoodParser {
   if (!base || !aiConsent) return stub();
   return (_online ??= new HttpFoodParser(base, stub(), undefined, {
     token: process.env.EXPO_PUBLIC_FOOD_API_TOKEN,
+    // Lazy: the per-install id (AI-quota meter) is minted async at DB init and
+    // may appear after this singleton is built.
+    installId: getCachedInstallId,
   }));
 }
 

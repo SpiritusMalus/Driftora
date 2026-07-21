@@ -138,6 +138,11 @@ export interface MealDraft {
     // provider refused). The connection is fine, so «нет интернета» would be a
     // lie the user can see through; the remedy is to retry, not to find signal.
     server_error?: boolean;
+    // Client-side narrowing too: the server answered 429 `ai_quota_exceeded` —
+    // today's per-install AI budget is spent. Retrying now is pointless and the
+    // connection is fine; the honest message is «дневной лимит», with the
+    // manual/chip paths as the remedy until the UTC-day reset.
+    quota_exceeded?: boolean;
   };
 }
 
