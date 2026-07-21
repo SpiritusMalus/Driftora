@@ -68,6 +68,19 @@ const PRO_MODEL = process.env.OPENROUTER_PRO_MODEL || '';
 const MAX_TOKENS = 6144;
 /** Sampling for the truncation retry — a different path out of a decode loop. */
 const RETRY_TEMPERATURE = 0.3;
+/**
+ * Reasoning throttle for typed-TEXT calls. The model's reasoning became
+ * mandatory upstream (#164) and cannot be disabled — but its BUDGET can be
+ * lowered. Measured on the PROD prompt (2026-07-21, A/B ×2 meals ×2 reps):
+ * effort=low answers in 3–5.5 s against 13–27 s at default effort, with the
+ * same parsed items — the extra thinking was latency the user stares at, not
+ * visible quality. Applied ONLY to text identify / workout text / label
+ * translate; vision keeps the default effort (reading a nutrition panel is
+ * exactly where deliberation earns its keep), and so does the estimator (its
+ * numbers ARE the answer). 'off' sends no reasoning field at all — a
+ * restart-only rollback, no deploy.
+ */
+const REASONING_EFFORT_TEXT = process.env.REASONING_EFFORT_TEXT ?? 'low';
 const CONFIDENCE_FLOOR = 0.5;
 
 /** Raised when the model is unreachable/failing — routes map it to 503. */
@@ -98,8 +111,9 @@ export function buildPayload(
   model: string,
   schema: object = IDENTIFY_SCHEMA,
   temperature = 0,
+  reasoningEffort?: string,
 ): Record<string, unknown> {
-  return {
+  const payload: Record<string, unknown> = {
     model,
     messages,
     temperature,
@@ -109,6 +123,12 @@ export function buildPayload(
       json_schema: { name: 'identification', strict: false, schema },
     },
   };
+  // OpenRouter unified reasoning control; omitted entirely for 'off'/unset so
+  // providers keep their default behavior. NB: a tiny reasoning.max_tokens
+  // budget is NOT an alternative — measured 2026-07-21, it drives this model
+  // straight into the decode loop (2/2 runs hit the 6144 ceiling).
+  if (reasoningEffort && reasoningEffort !== 'off') payload.reasoning = { effort: reasoningEffort };
+  return payload;
 }
 
 /** Some models wrap structured output in ```json fences — strip before parsing. */
@@ -152,6 +172,7 @@ async function complete(
   schema: object,
   temperature = 0,
   timeoutMs: number = TIMEOUT_MS.openrouter,
+  reasoningEffort?: string,
 ): Promise<unknown> {
   const key = process.env.OPENROUTER_API_KEY || '';
   if (!key) {
@@ -166,7 +187,7 @@ async function complete(
         Authorization: `Bearer ${key}`,
         'X-Title': 'Driftora', // OpenRouter dashboard attribution (optional, harmless)
       },
-      body: JSON.stringify(buildPayload(messages, model, schema, temperature)),
+      body: JSON.stringify(buildPayload(messages, model, schema, temperature, reasoningEffort)),
       // A hung OpenRouter call must not hold a /food/parse* request (or an
       // escalation retry) open indefinitely — same treatment as a network error.
       signal: AbortSignal.timeout(timeoutMs),
@@ -253,10 +274,11 @@ async function completeWithRetry(
   model: string,
   schema: object,
   timeouts: RetryTimeouts = PATIENT_TIMEOUTS,
+  reasoningEffort?: string,
 ): Promise<{ data: unknown; truncated: boolean }> {
   let first: unknown;
   try {
-    first = await complete(messages, model, schema, 0, timeouts.first);
+    first = await complete(messages, model, schema, 0, timeouts.first, reasoningEffort);
     // A provider error rides in on HTTP 200 — fail now rather than retry into a
     // rate limit that is already refusing us.
     const failed = providerErrorOf(first);
@@ -273,7 +295,7 @@ async function completeWithRetry(
   metrics.recordTruncationRetry();
   let second: unknown;
   try {
-    second = await complete(messages, model, schema, RETRY_TEMPERATURE, timeouts.retry);
+    second = await complete(messages, model, schema, RETRY_TEMPERATURE, timeouts.retry, reasoningEffort);
   } catch (err) {
     if (err instanceof UpstreamTimeoutError) {
       throw new VisionUnavailableError('OpenRouter timed out on both attempts');
@@ -382,7 +404,13 @@ async function callModel(
 ): Promise<IdentifiedItem[]> {
   const { data, truncated } = opts.hedge
     ? await completeHedged(messages, model, schema)
-    : await completeWithRetry(messages, model, schema, opts.text ? TEXT_TIMEOUTS : PATIENT_TIMEOUTS);
+    : await completeWithRetry(
+        messages,
+        model,
+        schema,
+        opts.text ? TEXT_TIMEOUTS : PATIENT_TIMEOUTS,
+        opts.text ? REASONING_EFFORT_TEXT : undefined,
+      );
   const items = parseResponse(data);
   // A truncated answer that yielded nothing is a SERVER failure, not an honest
   // "no food here" — returning [] would render as «не распознал» and hide the
@@ -506,6 +534,7 @@ export async function translateFoodLabels(labels: string[]): Promise<string[]> {
       MODEL,
       TRANSLATE_LABELS_SCHEMA,
       TEXT_TIMEOUTS,
+      REASONING_EFFORT_TEXT,
     ));
   } catch {
     return labels; // upstream failure → keep English, never throw into a parse
@@ -667,6 +696,7 @@ export async function parseWorkoutFromText(text: string): Promise<ParsedWorkout[
     MODEL,
     PARSE_WORKOUT_SCHEMA,
     TEXT_TIMEOUTS,
+    REASONING_EFFORT_TEXT,
   );
   return normalizeParsedWorkouts(completionPayload(data));
 }
