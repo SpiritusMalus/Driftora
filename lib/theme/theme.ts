@@ -137,7 +137,7 @@ export function resolveTheme(scheme: 'light' | 'dark'): Theme {
     accent: ember.accent,
     heroText: ember.heroText,
     heroAccent: ember.heroAccent,
-    primaryGradient: light ? ['#D8492F', '#C93524'] : ['#FF7A5F', '#F04B33'],
+    primaryGradient: light ? ['#D8492F', '#C93524'] : ['#F86A54', '#DC3D2B'],
     bodyMindGradient: light ? ['#F4F8FA', '#E9F0F4'] : ['#17344F', '#1C3E5D', '#21496C'],
     bodyMindBorder: light ? '#D7E1E8' : '#2B4C6C',
     bodyMindEyebrow: light ? '#5E7B8D' : '#8FB4CE',
