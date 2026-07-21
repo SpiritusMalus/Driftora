@@ -417,7 +417,7 @@ export const en = {
     // «By tracker» — the optional import: kcal straight off a watch/tracker, kept
     // verbatim (no MET, no afterburn), marked «by tracker».
     tracker: {
-      head: 'Or enter kcal from your watch',
+      head: 'Kcal your watch or band already counted.',
       kcalPlaceholder: 'e.g. 300',
       hint: 'A tracker number is kept as-is, with no recalculation.',
     },
@@ -431,6 +431,7 @@ export const en = {
     aiHead: 'Or describe it — AI will parse',
     weightFallback: 'Estimated from {{kg}} kg — log your weight on the Weight screen for accuracy.',
     describeHint: 'e.g. 100 push-ups, then a 20-min run',
+    describeMedia: 'The buttons nearby: dictate it, or attach a screenshot from your tracker app.',
     describeAction: 'Parse',
     parsing: 'Parsing…',
     parseAdded: 'Added {{count}} entr(ies). Check the time and burn.',
