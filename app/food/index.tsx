@@ -22,11 +22,13 @@ import {
   listEntriesForDay,
   microDonor,
   repeatFoodEntry,
+  sweepStalePendingEntries,
   todayMacroTotals,
   todayMicroTotals,
   type MicroDonorCallout,
   type MicroTotals,
 } from '@/lib/core/db/food';
+import { retryParse, subscribeBackgroundParses } from '@/lib/core/services/backgroundParses';
 import { syncDayHealth } from '@/lib/core/db/healthSync';
 import { ensureSettings } from '@/lib/core/db/settings';
 import { typicalSteps } from '@/lib/core/db/steps';
@@ -114,6 +116,9 @@ export default function FoodDayScreen() {
     // Order matters: settings (the extended flag) → sync (may import today's
     // watch sessions) → ONLY THEN todayWorkoutKcal, or the budget misses the
     // sessions imported a moment ago.
+    // Orphaned «разбирается…» rows from a killed process become retry-visible
+    // 'failed' before the list renders — they can never finish on their own.
+    await sweepStalePendingEntries(db);
     const settings = await ensureSettings(db);
     const health = await syncDayHealth(db, getHealthService(), new Date(), settings.healthImportExtended);
     const todaySteps = health.steps;
@@ -211,6 +216,10 @@ export default function FoodDayScreen() {
   // app resumes on.
   useAppActiveEffect(() => void reload());
 
+  // A background parse settling while this screen is visible surfaces at once —
+  // the «разбирается…» row becomes the real meal without a manual refresh.
+  useEffect(() => subscribeBackgroundParses(() => void reload()), [reload]);
+
   // Ref, not state: the ack below is the visible feedback — this only has to
   // stop a double-tap on ↻ from writing the same meal twice.
   const repeatingRef = useRef(false);
@@ -232,6 +241,18 @@ export default function FoodDayScreen() {
   /// Quick ✕ on a day row — an accidental quick-pick/repeat shouldn't take a
   /// trip into the detail screen to undo. Same confirm as the detail delete:
   /// one habitual tap must not silently erase data.
+  /// Tap on a failed background parse: rerun it while this process still holds
+  /// the photo; after a restart the shot is gone (never persisted) — say so.
+  async function onRetryParse(id: number) {
+    if (!db) return;
+    const ok = await retryParse(db, id);
+    if (!ok) {
+      Alert.alert(t('food.bg.reshootTitle'), t('food.bg.reshoot'));
+      return;
+    }
+    await reload();
+  }
+
   function onDelete(id: number) {
     Alert.alert(t('food.deleteTitle'), t('food.deleteConfirm'), [
       { text: t('food.deleteCancel'), style: 'cancel' },
@@ -314,6 +335,40 @@ export default function FoodDayScreen() {
               </View>
               {group.entries.map((e) => (
                 <RiseIn key={e.id} enabled={seenIds.current != null && !seenIds.current.has(e.id)}>
+                {e.parseStatus != null ? (
+                  // Background-parse rows: a pending shot waits quietly; a
+                  // failed one is tap-to-retry (or an honest «снимите заново»
+                  // alert once the photo died with its process).
+                  <Card
+                    style={styles.row}
+                    onPress={e.parseStatus === 'failed' ? () => void onRetryParse(e.id) : undefined}
+                  >
+                    <View style={styles.rowHead}>
+                      <Ionicons
+                        name={e.parseStatus === 'pending' ? 'hourglass-outline' : 'refresh-outline'}
+                        size={16}
+                        color={e.parseStatus === 'pending' ? theme.subtle : theme.accent}
+                        style={{ marginRight: 6 }}
+                      />
+                      <Text
+                        style={[styles.rowText, { color: e.parseStatus === 'pending' ? theme.subtle : theme.text }, theme.font.body]}
+                        numberOfLines={1}
+                      >
+                        {e.parseStatus === 'pending' ? t('food.bg.parsing') : t('food.bg.failed')}
+                      </Text>
+                      <Text style={[styles.rowTime, { color: theme.subtle }, theme.font.body]}>{formatTime(e.ts)}</Text>
+                      <Pressable
+                        onPress={() => onDelete(e.id)}
+                        hitSlop={10}
+                        accessibilityRole="button"
+                        accessibilityLabel={t('food.delete')}
+                        style={({ pressed }) => [styles.repeatBtn, { opacity: pressed ? 0.5 : 1 }]}
+                      >
+                        <Ionicons name="close" size={18} color={theme.tertiary} />
+                      </Pressable>
+                    </View>
+                  </Card>
+                ) : (
                 <Card style={styles.row} onPress={() => router.push(`/food/${e.id}`)}>
                   <View style={styles.rowHead}>
                     <Text style={[styles.rowText, { color: theme.text }, theme.font.bodySemiBold]} numberOfLines={1}>
@@ -340,11 +395,17 @@ export default function FoodDayScreen() {
                     </Pressable>
                   </View>
                   <Text style={[styles.rowMacros, { color: theme.subtle }, theme.font.body]}>
+                    {!e.confirmed ? (
+                      // Adopted parse the user hasn't looked at yet — opening
+                      // the row is the review, so the pill rests on first tap.
+                      <Text style={{ color: theme.accent }}>{t('food.bg.review')} · </Text>
+                    ) : null}
                     {Math.round(e.kcal)} {t('units.kcal')} · {t('macros.protShort')} {Math.round(e.proteinG)} ·{' '}
                     {t('macros.fatShort')} {Math.round(e.fatG)} · {t('macros.carbShort')} {Math.round(e.carbG)}{' '}
                     {t('units.g')}
                   </Text>
                 </Card>
+                )}
                 </RiseIn>
               ))}
             </View>

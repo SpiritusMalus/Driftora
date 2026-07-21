@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS food_entries (
   carb_g REAL NOT NULL DEFAULT 0,
   confirmed INTEGER NOT NULL DEFAULT 0,
   micros TEXT,
-  meal TEXT
+  meal TEXT,
+  parse_status TEXT
 );
 CREATE TABLE IF NOT EXISTS food_items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -227,6 +228,7 @@ export const MIGRATIONS: string[] = [
   // heuristic mislabeled a late breakfast as «обед» (device feedback). Null =
   // not chosen; the day view keeps the keyword/clock fallback for old rows.
   `ALTER TABLE food_entries ADD COLUMN meal TEXT`,
+  `ALTER TABLE food_entries ADD COLUMN parse_status TEXT`,
   // 2026-07-12: the Home mood row became a left-swipe gesture. Shown-once
   // interactive coach flag + how many times the swipe actually opened the mood
   // screen (the subtle Home hint retires after 3).
