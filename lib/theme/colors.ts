@@ -50,14 +50,16 @@ export const colors: { light: ThemeColors; dark: ThemeColors } = {
     surface: '#193853',
     card: '#193853',
     border: '#2B4C6C', // chalk hairline on the blueprint
-    primary: '#FF7E6B', // signal red, lifted for dark
-    onPrimary: '#2A130D', // dark ink reads better on the lighter red
+    primary: '#FF6250', // signal red, lifted for dark (5:1 on the blueprint bg;
+    // deliberately REDDER than Ember's #F08365 salmon — the first device build
+    // read as «старый коралл», device feedback 2026-07-20)
+    onPrimary: '#2A0F09', // dark ink reads better on the lighter red
     text: '#E8EFF5', // chalk
     subtle: '#9DB4C6', // faded chalk (7:1 on bg)
     icon: '#BCD3E4',
     iconBg: '#20415E',
     accent: '#8FB4CE', // chalk-blue highlight
     heroText: '#E8EFF5',
-    heroAccent: '#FF7E6B',
+    heroAccent: '#FF6250',
   },
 };

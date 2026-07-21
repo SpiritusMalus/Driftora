@@ -137,16 +137,20 @@ export function resolveTheme(scheme: 'light' | 'dark'): Theme {
     accent: ember.accent,
     heroText: ember.heroText,
     heroAccent: ember.heroAccent,
-    primaryGradient: light ? ['#D8492F', '#C93524'] : ['#FF8E76', '#F4664D'],
+    primaryGradient: light ? ['#D8492F', '#C93524'] : ['#FF7A5F', '#F04B33'],
     bodyMindGradient: light ? ['#F4F8FA', '#E9F0F4'] : ['#17344F', '#1C3E5D', '#21496C'],
     bodyMindBorder: light ? '#D7E1E8' : '#2B4C6C',
     bodyMindEyebrow: light ? '#5E7B8D' : '#8FB4CE',
-    primarySoft: light ? '#F8DFDA' : '#4C2921',
-    accentSoft: light ? '#E6EEF3' : '#23445F',
+    // Soft tiles. Light keeps a faint red-pencil shading; DARK tiles are cool
+    // steel — on the blueprint a warm-brown tile reads as un-repainted Ember
+    // (device feedback 2026-07-20: «не всё покрасилось»). On синька the
+    // identity lives in the GLYPH color (red vs chalk), never the tile.
+    primarySoft: light ? '#F8DFDA' : '#24425C',
+    accentSoft: light ? '#E6EEF3' : '#1E3A52',
     labelCaps: light ? '#7A8B96' : '#7FA0B8',
     moodTrack: light ? '#EDF2F5' : '#20415E',
     moodTrackNum: light ? '#7E929E' : '#9DB4C6',
-    glow: 'rgba(201,53,36,0.35)',
+    glow: light ? 'rgba(201,53,36,0.35)' : 'rgba(220,60,40,0.38)',
 
     background: isIOS ? sys.background : ember.background,
     card: isIOS ? sys.card : ember.card,
