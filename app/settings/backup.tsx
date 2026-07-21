@@ -5,10 +5,12 @@ import { ActivityIndicator, Alert, Modal, Pressable, StyleSheet, Switch, Text, V
 import { decodeBase64, encodeBase64 } from 'tweetnacl-util';
 
 import { RecoverySaveGate } from '@/components/backup/RecoverySaveGate';
+import { AccordionChevron } from '@/components/ui/AccordionChevron';
 import { Card } from '@/components/ui/Card';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen, ScreenBackground } from '@/components/ui/Screen';
 import { SectionHeader } from '@/components/ui/SectionHeader';
+import { Collapsible } from '@/components/ui/Collapsible';
 import { TextField } from '@/components/ui/TextField';
 import { grantSyncConsent, revokeSyncConsent } from '@/lib/core/consent/consent';
 import { generateRecoveryPhrase, parseKeyFile, RecoveryFileError, serializeKeyFile } from '@/lib/core/crypto/recovery';
@@ -463,21 +465,20 @@ export default function BackupScreen() {
           <Text style={[styles.advTitle, { color: theme.text }, theme.font.bodyBold]}>
             {t('recovery.keyFile.title')}
           </Text>
-          <Text style={[styles.advChevron, { color: theme.subtle }]}>{keyFileOpen ? '▾' : '▸'}</Text>
+          <AccordionChevron expanded={keyFileOpen} size={16} color={theme.subtle} />
         </Pressable>
-        {keyFileOpen ? (
-          <>
-            <Text style={[styles.advBody, { color: theme.subtle }, theme.font.body]}>
-              {t('recovery.keyFile.explainer')}
-            </Text>
-            <PrimaryButton label={t('recovery.keyFile.exportCta')} onPress={onExportKeyFile} disabled={working} style={styles.btn} />
-            <PrimaryButton label={t('recovery.keyFile.importCta')} onPress={onImportKeyFile} disabled={working} style={styles.btn} />
-          </>
-        ) : (
+        <Collapsible open={keyFileOpen}>
+          <Text style={[styles.advBody, { color: theme.subtle }, theme.font.body]}>
+            {t('recovery.keyFile.explainer')}
+          </Text>
+          <PrimaryButton label={t('recovery.keyFile.exportCta')} onPress={onExportKeyFile} disabled={working} style={styles.btn} />
+          <PrimaryButton label={t('recovery.keyFile.importCta')} onPress={onImportKeyFile} disabled={working} style={styles.btn} />
+        </Collapsible>
+        <Collapsible open={!keyFileOpen}>
           <Text style={[styles.advTeaser, { color: theme.subtle }, theme.font.body]} numberOfLines={1}>
             {t('recovery.keyFile.teaser')}
           </Text>
-        )}
+        </Collapsible>
       </Card>
 
       {/* Between-device sync — hidden until a real transport ships (SYNC_UI_ENABLED).

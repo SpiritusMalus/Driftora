@@ -1,9 +1,10 @@
-import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { AccordionChevron } from '@/components/ui/AccordionChevron';
 import { Card } from '@/components/ui/Card';
+import { Collapsible } from '@/components/ui/Collapsible';
 import { Screen } from '@/components/ui/Screen';
 import { useTheme } from '@/lib/theme/theme';
 
@@ -43,15 +44,16 @@ export default function HowItWorksScreen() {
               <Text style={[styles.title, { color: theme.text }, theme.font.bodyBold]}>
                 {t(`howItWorks.${key}.title`)}
               </Text>
-              <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={16} color={theme.tertiary} />
+              <AccordionChevron expanded={expanded} size={16} color={theme.tertiary} />
             </Pressable>
-            {expanded ? (
+            <Collapsible open={expanded}>
               <Text style={[styles.body, { color: theme.subtle }, theme.font.body]}>{t(`howItWorks.${key}.body`)}</Text>
-            ) : (
+            </Collapsible>
+            <Collapsible open={!expanded}>
               <Text style={[styles.teaser, { color: theme.subtle }, theme.font.body]} numberOfLines={1}>
                 {t(`howItWorks.${key}.teaser`)}
               </Text>
-            )}
+            </Collapsible>
           </Card>
         );
       })}

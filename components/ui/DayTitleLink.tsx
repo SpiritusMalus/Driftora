@@ -28,7 +28,7 @@ export function DayTitleLink({ label }: { label: string }) {
         style={
           theme.isIOS
             ? { color: theme.text, fontSize: 17, fontWeight: '600' }
-            : { color: theme.text, fontSize: 20, fontFamily: 'Unbounded_600SemiBold' }
+            : { color: theme.text, fontSize: 20, fontFamily: 'GolosText_600SemiBold' }
         }
       >
         {label}

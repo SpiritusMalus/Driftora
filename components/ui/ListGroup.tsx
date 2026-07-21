@@ -120,7 +120,7 @@ function Row({ spec, theme, last }: { spec: RowSpec; theme: Theme; last: boolean
 }
 
 const shadow = {
-  shadowColor: '#2A1A14',
+  shadowColor: '#14212E',
   shadowOpacity: 0.05,
   shadowRadius: 16,
   shadowOffset: { width: 0, height: 6 },

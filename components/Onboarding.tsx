@@ -96,7 +96,7 @@ export function Onboarding({ children }: { children: ReactNode }) {
         <View style={[styles.iconTile, { backgroundColor: theme.primarySoft }]}>
           <Ionicons name={slide.icon} size={34} color={theme.primary} />
         </View>
-        <Text style={[styles.title, { color: theme.text }, theme.font.display]}>
+        <Text style={[styles.title, { color: theme.text }, theme.font.heading]}>
           {t(`onboarding.${slide.key}.title`)}
         </Text>
         <Text style={[styles.lead, { color: theme.subtle }, theme.font.body]}>

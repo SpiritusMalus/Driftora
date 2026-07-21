@@ -202,7 +202,7 @@ export default function ActivityScreen() {
         {today != null ? (
           <>
             <View style={styles.heroRow}>
-              <Text style={[styles.heroNum, { color: theme.text }, theme.font.heading]}>
+              <Text style={[styles.heroNum, { color: theme.text }, theme.font.display]}>
                 {formatStepCount(today.steps)}
               </Text>
               <Text style={[styles.heroLabel, { color: theme.subtle }, theme.font.body]}>

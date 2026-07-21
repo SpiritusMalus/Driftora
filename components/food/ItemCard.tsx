@@ -29,8 +29,9 @@ export function ItemCard({
   onSelectAlternative: (altIndex: number) => void;
   onSearch: (query: string) => Promise<NutritionAlternative[]>;
   onReplace: (replacement: NutritionAlternative) => void;
-  // Edit screen only: drop this dish from a saved entry. Absent on the log
-  // screen (a fresh parse), so the × header control shows only when passed.
+  // Drop this dish: on the edit screen — from the saved entry; on the log
+  // screen — from the fresh parse draft (device feedback 2026-07-20:
+  // «добавил лишнее и удалить нельзя»). The × shows only when passed.
   onRemove?: () => void;
 }) {
   const { t } = useTranslation();

@@ -7,6 +7,7 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card } from '@/components/ui/Card';
 import { FillBar } from '@/components/ui/FillBar';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
+import { RiseIn } from '@/components/ui/RiseIn';
 import { Screen } from '@/components/ui/Screen';
 import {
   dayBudgetKcal,
@@ -63,6 +64,16 @@ export default function FoodDayScreen() {
   const router = useRouter();
   const db = useDatabase();
   const [entries, setEntries] = useState<FoodEntry[] | null>(null);
+  // Rows already seen on this screen — a row NOT in the set is a fresh insert
+  // and enters with a RiseIn (the LayoutAnimation take was a silent no-op on
+  // Fabric Android). The set fills in an effect AFTER render, so a new row
+  // animates exactly once; the first load marks everything seen, no motion.
+  const seenIds = useRef<Set<FoodEntry['id']> | null>(null);
+  useEffect(() => {
+    if (entries == null) return;
+    const seen = seenIds.current ?? (seenIds.current = new Set());
+    for (const e of entries) seen.add(e.id);
+  }, [entries]);
   const [totals, setTotals] = useState<{ kcal: number; proteinG: number; fatG: number; carbG: number } | null>(null);
   const [goal, setGoal] = useState<DayGoal | null>(null);
   const [micros, setMicros] = useState<MicroTotals | null>(null);
@@ -300,7 +311,8 @@ export default function FoodDayScreen() {
                 </Text>
               </View>
               {group.entries.map((e) => (
-                <Card key={e.id} style={styles.row} onPress={() => router.push(`/food/${e.id}`)}>
+                <RiseIn key={e.id} enabled={seenIds.current != null && !seenIds.current.has(e.id)}>
+                <Card style={styles.row} onPress={() => router.push(`/food/${e.id}`)}>
                   <View style={styles.rowHead}>
                     <Text style={[styles.rowText, { color: theme.text }, theme.font.bodySemiBold]} numberOfLines={1}>
                       {e.rawText || t('food.untitled')}
@@ -331,6 +343,7 @@ export default function FoodDayScreen() {
                     {t('units.g')}
                   </Text>
                 </Card>
+                </RiseIn>
               ))}
             </View>
             );
@@ -437,7 +450,7 @@ function DayProgress({
           {/* Hero: the answer to «сколько ещё можно» — big and first. Over-plan
               stays calm (no red): the amber accent, «сверх плана» as the label. */}
           <View style={styles.dayHeroRow}>
-            <Text style={[styles.dayHeroNum, { color: onPlan ? theme.text : theme.accent }, theme.font.heading]}>
+            <Text style={[styles.dayHeroNum, { color: onPlan ? theme.text : theme.accent }, theme.font.display]}>
               {onPlan ? remaining : overBy}
             </Text>
             <Text style={[styles.dayHeroLabel, { color: theme.subtle }, theme.font.body]}>

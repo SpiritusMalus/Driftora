@@ -43,7 +43,7 @@ export function Markdown({ source }: { source: string }) {
         }
         if (line.startsWith('# ')) {
           return (
-            <Text key={i} style={[styles.h1, { color: theme.text }, theme.font.display]}>
+            <Text key={i} style={[styles.h1, { color: theme.text }, theme.font.heading]}>
               {line.slice(2)}
             </Text>
           );

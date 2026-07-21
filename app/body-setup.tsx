@@ -4,7 +4,9 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { AccordionChevron } from '@/components/ui/AccordionChevron';
 import { Card } from '@/components/ui/Card';
+import { Collapsible } from '@/components/ui/Collapsible';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
 import { TextField } from '@/components/ui/TextField';
@@ -469,9 +471,9 @@ export default function BodySetupScreen() {
               <Text style={[styles.accTitle, { color: theme.text }, theme.font.bodySemiBold]}>
                 {t('bodySetup.result.howTitle')}
               </Text>
-              <Text style={[styles.chevron, { color: theme.subtle }]}>{howOpen ? '▾' : '▸'}</Text>
+              <AccordionChevron expanded={howOpen} size={16} color={theme.subtle} />
             </Pressable>
-            {howOpen ? (
+            <Collapsible open={howOpen}>
               <>
                 <Text style={[styles.note, { color: theme.subtle }, theme.font.body]}>
                   {t('bodySetup.result.bmr', {
@@ -516,11 +518,12 @@ export default function BodySetupScreen() {
                   </Text>
                 ) : null}
               </>
-            ) : (
+            </Collapsible>
+            <Collapsible open={!howOpen}>
               <Text style={[styles.teaser, { color: theme.subtle }, theme.font.body]} numberOfLines={1}>
                 {t('bodySetup.result.howTeaser')}
               </Text>
-            )}
+            </Collapsible>
           </Card>
 
           <Pressable

@@ -79,7 +79,7 @@ export function WeightWidget({
             { borderColor: theme.separator, backgroundColor: theme.card, opacity: pressed ? 0.6 : 1 },
           ]}
         >
-          <Ionicons name={open ? 'remove' : 'add'} size={18} color={theme.primary} />
+          <Ionicons name={open ? 'remove' : 'add'} size={18} color={theme.icon} />
         </Pressable>
         <Pressable onPress={() => router.push('/weight')} hitSlop={8}>
           <Ionicons name="chevron-forward" size={16} color={theme.tertiary} />

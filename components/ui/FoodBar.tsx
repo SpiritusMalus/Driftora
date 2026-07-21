@@ -37,7 +37,7 @@ export function FoodBar({
           borderColor: theme.cardBorder,
           opacity: pressed ? 0.9 : 1,
         },
-        !theme.isIOS && { shadowColor: '#2A1A14' },
+        !theme.isIOS && { shadowColor: '#14212E' },
       ]}
     >
       <Ionicons name="create-outline" size={18} color={theme.tertiary} />
@@ -88,7 +88,7 @@ const styles = StyleSheet.create({
   barIOS: {
     borderRadius: 22,
     shadowOpacity: 0.12,
-    shadowColor: '#2A1A14',
+    shadowColor: '#14212E',
     shadowRadius: 24,
     shadowOffset: { width: 0, height: 10 },
   },

@@ -7,8 +7,9 @@ import { type Theme, useTheme } from '@/lib/theme/theme';
 
 import { Sparkline } from './Sparkline';
 
-/// The editorial Body↔Mind hero — the centerpiece of Home. Android paints it on
-/// a soft coral gradient with a warm border; iOS uses a flat white grouped card.
+/// The editorial Body↔Mind hero — the product's bridge motif, living on the
+/// Mind pane (/mood). Android paints it on a soft blueprint gradient; iOS uses
+/// a flat grouped card.
 ///
 /// PRESENTATIONAL ONLY — the caller resolves the BodyMindResult into localized
 /// strings. When `accent` is present (a real finding) the body/mind columns and
@@ -39,11 +40,11 @@ export function BodyMindCard({
   bodyIcon?: React.ComponentProps<typeof Ionicons>['name'];
   mindLabel: string;
   mindValue: string;
-  /// Compact recap for the Mind pane (/mood), where the check-in is the hero and
-  /// the bridge is only context: the two body/mind columns and the headline stay
-  /// (the motif is still on screen), but the decorative sparkline and the
-  /// "association, not cause" caption drop, so the card is shorter and no longer
-  /// duplicates Home's full hero. Defaults to false → Home is unchanged.
+  /// Compact recap for the Mind pane (/mood), where the check-in is the hero:
+  /// only the "association, not cause" caption drops so the card stays short.
+  /// The arc is NOT dropped — /mood is the card's only home now, so hiding it
+  /// there erased the bridge from the whole app (device feedback 2026-07-21:
+  /// «мост между шагами и настроением пропал»). Defaults to false.
   compact?: boolean;
 }) {
   const theme = useTheme();
@@ -78,9 +79,10 @@ export function BodyMindCard({
           <Text style={[styles.accent, { color: theme.heroAccent }, theme.font.displayHeavy]}>
             {accent ?? ' '}
           </Text>
-          {/* The sparkline is decorative (it carries no data). On the compact
-              Mind-pane recap we drop it rather than imply a real trend. */}
-          {compact ? null : <Sparkline coral={theme.primary} amber={theme.accent} />}
+          {/* The arc carries no data, but it IS the bridge motif («не декор —
+              ядро идеи») — it draws in every variant; compact trims only the
+              caption below. */}
+          <Sparkline coral={theme.primary} amber={theme.accent} />
         </View>
         <Column
           theme={theme}

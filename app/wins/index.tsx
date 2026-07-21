@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from 'expo-router';
-import { type ComponentProps, useCallback, useState } from 'react';
+import { type ComponentProps, useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, Share, StyleSheet, Text, View } from 'react-native';
+import { Animated, Pressable, Share, StyleSheet, Text, View } from 'react-native';
 
 import { ListGroup, type RowSpec } from '@/components/ui/ListGroup';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
@@ -12,6 +13,7 @@ import { AUTO_WIN_PROTEIN_GOAL, AUTO_WIN_STEPS_GOAL } from '@/lib/core/db/autoWi
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import type { Win } from '@/lib/core/db/schema';
 import { addWin, listWins } from '@/lib/core/db/settings';
+import { DUR, EASE_OUT, useReducedMotion } from '@/lib/theme/motion';
 import { useTheme } from '@/lib/theme/theme';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -32,6 +34,41 @@ export default function WinsScreen() {
   const [items, setItems] = useState<Win[] | null>(null);
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // The delight budget lives HERE (rare, high-emotion screen): the hero count
+  // rises in first, the list rides ~60ms behind. One Animated value, staggered
+  // by interpolation ranges; instant under Reduce Motion.
+  const reduced = useReducedMotion();
+  const intro = useRef(new Animated.Value(0)).current;
+  const introStarted = useRef(false);
+  useEffect(() => {
+    if (items == null || introStarted.current) return;
+    introStarted.current = true;
+    if (reduced) {
+      intro.setValue(1);
+      return;
+    }
+    const anim = Animated.timing(intro, {
+      toValue: 1,
+      duration: DUR.enter + 120,
+      easing: EASE_OUT,
+      useNativeDriver: true,
+    });
+    anim.start();
+    return () => anim.stop();
+  }, [items, reduced, intro]);
+  const heroIn = {
+    opacity: intro.interpolate({ inputRange: [0, 0.7], outputRange: [0, 1], extrapolate: 'clamp' as const }),
+    transform: [
+      { translateY: intro.interpolate({ inputRange: [0, 0.7], outputRange: [8, 0], extrapolate: 'clamp' as const }) },
+    ],
+  };
+  const listIn = {
+    opacity: intro.interpolate({ inputRange: [0.25, 1], outputRange: [0, 1], extrapolate: 'clamp' as const }),
+    transform: [
+      { translateY: intro.interpolate({ inputRange: [0.25, 1], outputRange: [10, 0], extrapolate: 'clamp' as const }) },
+    ],
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -57,8 +94,12 @@ export default function WinsScreen() {
     setSaving(true);
     try {
       await addWin(db, 'manual', message);
+      // A saved win is the rare celebratory beat — a success tap plus the new
+      // row sliding in instead of teleporting.
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      const list = await listWins(db);
       setText('');
-      setItems(await listWins(db));
+      setItems(list);
     } finally {
       setSaving(false);
     }
@@ -97,12 +138,12 @@ export default function WinsScreen() {
   return (
     <Screen>
       {hasWins ? (
-        <View style={styles.hero}>
+        <Animated.View style={[styles.hero, heroIn]}>
           <Text style={[styles.heroLabel, { color: theme.labelCaps }, theme.font.bodyBold]}>
             {t('wins.totalLabel').toUpperCase()}
           </Text>
           <View style={styles.heroRow}>
-            <Text style={[styles.heroNum, { color: theme.heroAccent }, theme.font.heading]}>
+            <Text style={[styles.heroNum, { color: theme.heroAccent }, theme.font.display]}>
               {items.length}
             </Text>
             {streak >= 2 ? (
@@ -111,7 +152,7 @@ export default function WinsScreen() {
               </Text>
             ) : null}
           </View>
-        </View>
+        </Animated.View>
       ) : items != null ? (
         <Text style={[styles.emptyHero, { color: theme.subtle }, theme.font.body]}>
           {t('wins.empty')}
@@ -152,9 +193,9 @@ export default function WinsScreen() {
       {db == null ? (
         <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('wins.dbUnavailable')}</Text>
       ) : hasWins ? (
-        <View style={styles.list}>
+        <Animated.View style={[styles.list, listIn]}>
           <ListGroup rows={rows} />
-        </View>
+        </Animated.View>
       ) : null}
     </Screen>
   );

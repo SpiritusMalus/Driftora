@@ -410,11 +410,12 @@ export function WorkoutSection({
           {budgetAck ? (
             <Text style={[styles.budgetAck, { color: theme.accent }, theme.font.bodyMedium]}>{budgetAck}</Text>
           ) : null}
-          {/* One input path at a time. The segmented control replaces three
-              stacked, equally-loud boxes so the card no longer overflows the
-              screen; the three processes stay separate (device feedback
-              2026-07-10). */}
-          <View style={styles.segments}>
+          {/* One input path at a time. The switcher is ONE steel track with the
+              segments inside (no per-segment borders) — earlier the three
+              segments were free-floating pills and read as a second row of the
+              type chips below (device feedback 2026-07-21: «визуально не
+              отделены»). The connected track is what says «это переключатель». */}
+          <View style={[styles.segments, { backgroundColor: theme.iconBg }]}>
             {WORKOUT_MODES.map((m) => {
               if (m === 'ai' && !AI_CONFIGURED) return null;
               const active = mode === m;
@@ -423,19 +424,22 @@ export function WorkoutSection({
                   key={m}
                   onPress={() => setMode(m)}
                   accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
                   style={({ pressed }) => [
                     styles.segment,
                     {
-                      // Inactive segments sit on `iconBg`, a step lighter than the
-                      // card, so the switcher reads as a filled track instead of
-                      // vanishing into the card (both share `theme.card`).
-                      backgroundColor: active ? theme.primary : theme.iconBg,
-                      borderColor: active ? theme.primary : theme.separator,
+                      backgroundColor: active ? theme.primary : 'transparent',
                       opacity: pressed ? 0.7 : 1,
                     },
                   ]}
                 >
-                  <Text style={[styles.segmentText, { color: active ? theme.onPrimary : theme.text }, theme.font.body]}>
+                  <Text
+                    style={[
+                      styles.segmentText,
+                      { color: active ? theme.onPrimary : theme.subtle },
+                      active ? theme.font.bodySemiBold : theme.font.body,
+                    ]}
+                  >
                     {t(`workouts.mode.${m}`)}
                   </Text>
                 </Pressable>
@@ -584,6 +588,12 @@ export function WorkoutSection({
               app stays standalone; this just lets a measured number in. */}
           {mode === 'tracker' ? (
             <View style={styles.modeSection}>
+              {/* What this mode IS — the locale line existed but never rendered,
+                  so the mode read as a bare mystery field (device feedback
+                  2026-07-21: «что имеется в виду „с трекера“»). */}
+              <Text style={[styles.trackerHead, { color: theme.subtle }, theme.font.body]}>
+                {t('workouts.tracker.head')}
+              </Text>
               <View style={styles.addRow}>
                 <TextField
                   value={trackerKcal}
@@ -688,6 +698,14 @@ export function WorkoutSection({
                   </Pressable>
                 ) : null}
               </View>
+              {micReady || photoReady ? (
+                /* The mic/photo buttons are icon-only — say out loud that voice
+                   and a tracker screenshot work here (device feedback
+                   2026-07-21: «не очевидно, что можно фото приложить»). */
+                <Text style={[styles.setsHint, { color: theme.tertiary }, theme.font.body]}>
+                  {t('workouts.describeMedia')}
+                </Text>
+              ) : null}
               {recording ? (
                 <Text style={[styles.parseNote, { color: theme.primary }, theme.font.bodyMedium]}>
                   {t('workouts.voiceRecording')}
@@ -776,8 +794,8 @@ export function WorkoutSection({
 const styles = StyleSheet.create({
   card: { marginBottom: 16 },
   head: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  segments: { flexDirection: 'row', gap: 6 },
-  segment: { flex: 1, paddingVertical: 9, borderRadius: 10, borderWidth: 1, alignItems: 'center' },
+  segments: { flexDirection: 'row', gap: 3, padding: 3, borderRadius: 12 },
+  segment: { flex: 1, paddingVertical: 8, borderRadius: 9, alignItems: 'center' },
   segmentText: { fontSize: 13 },
   modeSection: { marginTop: 14 },
   exactAddBtn: { marginTop: 14, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
@@ -799,7 +817,8 @@ const styles = StyleSheet.create({
   addRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 },
   speedRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
   setsHint: { fontSize: 12, lineHeight: 16, marginTop: 6 },
-  minInput: { width: 90 },
+  minInput: { width: 112 },
+  trackerHead: { fontSize: 13, lineHeight: 18 },
   unit: { fontSize: 13 },
   speedOptional: { fontSize: 12, flex: 1, lineHeight: 16 },
   addBtn: { marginLeft: 'auto', paddingVertical: 9, paddingHorizontal: 16, borderRadius: 12 },

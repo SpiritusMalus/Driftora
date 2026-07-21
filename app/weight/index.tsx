@@ -349,7 +349,7 @@ export default function WeightScreen() {
         {latestKg > 0 ? (
           <>
             <View style={styles.heroRow}>
-              <Text style={[styles.heroNum, { color: theme.text }, theme.font.heading]}>
+              <Text style={[styles.heroNum, { color: theme.text }, theme.font.display]}>
                 {latestKg.toFixed(1)}
               </Text>
               <Text style={[styles.heroUnit, { color: theme.subtle }, theme.font.body]}>{t('weight.unit')}</Text>
