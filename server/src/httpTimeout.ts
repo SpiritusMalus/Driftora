@@ -26,8 +26,10 @@ export const TIMEOUT_MS = {
    */
   openrouterRetry: 26_000,
   /**
-   * Typed-TEXT calls (identify, search estimate, label translate, workout
-   * parse), both attempts. A typed query is answered in 3–6 s and
+   * Typed-TEXT calls where failing fast is acceptable (identify, workout
+   * parse, label translate — NOT the estimator, whose timeout erases the
+   * answer; it keeps the patient pair above), both attempts. A typed query is
+   * answered in 3–6 s and
    * the user is actively waiting on it, so the failure ceiling has to stay near
    * the answer time: better to fail at 22 s and let them retype than to hold the
    * screen for 43 s. Photos get the patient budget above — there the user has
