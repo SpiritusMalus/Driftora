@@ -81,6 +81,17 @@ const RETRY_TEMPERATURE = 0.3;
  * restart-only rollback, no deploy.
  */
 const REASONING_EFFORT_TEXT = process.env.REASONING_EFFORT_TEXT ?? 'low';
+/**
+ * Same throttle for the MEDIA paths (photo identify, package-label read,
+ * workout photo/audio, voice meal). A/B on the prod photo prompt 2026-07-21:
+ * identical items at every effort, latency −30% on a simple plate and the
+ * heavy scenes are exactly where default effort burns 1000–2500 hidden tokens
+ * (device metrics: identify_photo avg 20 s). The label pass keeps its own
+ * safety net regardless of effort — `crossCheckLabel` drops any reading whose
+ * two independent parses disagree, so a shallow misread degrades to the DB
+ * row, never to wrong numbers. 'off' restores default effort via env.
+ */
+const REASONING_EFFORT_MEDIA = process.env.REASONING_EFFORT_MEDIA ?? 'low';
 const CONFIDENCE_FLOOR = 0.5;
 
 /** Raised when the model is unreachable/failing — routes map it to 503. */
@@ -425,23 +436,27 @@ async function callModel(
   messages: ChatMessage[],
   model: string,
   schema: object = IDENTIFY_SCHEMA,
-  opts: { hedge?: boolean; text?: boolean } = {},
+  opts: { hedge?: boolean; text?: boolean; effort?: string } = {},
 ): Promise<IdentifiedItem[]> {
+  // Explicit per-caller effort wins; the text flag implies the text throttle.
+  // No opts at all (e.g. the PRO-model escalation) keeps the provider default —
+  // the rescue attempt deliberately thinks at full depth.
+  const effort = opts.effort ?? (opts.text ? REASONING_EFFORT_TEXT : undefined);
   const { data, truncated } = opts.hedge
     ? await completeHedged(
         messages,
         model,
         schema,
         opts.text
-          ? { timeouts: TEXT_HEDGE_TIMEOUTS, hedgeAfterMs: TEXT_HEDGE_AFTER_MS, reasoningEffort: REASONING_EFFORT_TEXT }
-          : {},
+          ? { timeouts: TEXT_HEDGE_TIMEOUTS, hedgeAfterMs: TEXT_HEDGE_AFTER_MS, reasoningEffort: effort }
+          : { reasoningEffort: effort },
       )
     : await completeWithRetry(
         messages,
         model,
         schema,
         opts.text ? TEXT_TIMEOUTS : PATIENT_TIMEOUTS,
-        opts.text ? REASONING_EFFORT_TEXT : undefined,
+        effort,
       );
   const items = parseResponse(data);
   // A truncated answer that yielded nothing is a SERVER failure, not an honest
@@ -462,7 +477,7 @@ async function callModel(
 async function identifyWithEscalation(
   messages: ChatMessage[],
   schema: object = IDENTIFY_SCHEMA,
-  opts: { hedge?: boolean; text?: boolean } = {},
+  opts: { hedge?: boolean; text?: boolean; effort?: string } = {},
 ): Promise<IdentifiedItem[]> {
   const base = await callModel(messages, MODEL, schema, opts);
   if (!PRO_MODEL) return base;
@@ -632,7 +647,7 @@ export async function identifyFromPhoto(
     IDENTIFY_PHOTO_SCHEMA,
     // The slow path gets the hedge: a duplicate re-roll fired at ~12 s cuts the
     // looping tail from 43 s to ~25 s (see completeHedged).
-    { hedge: true },
+    { hedge: true, effort: REASONING_EFFORT_MEDIA },
   );
 }
 
@@ -670,6 +685,9 @@ export async function readPackageLabel(
       ],
       MODEL,
       READ_LABEL_SCHEMA,
+      // Misreads at low effort are caught by crossCheckLabel (two independent
+      // parses must agree) — the failure mode is «no label», never wrong numbers.
+      { reasoningEffort: REASONING_EFFORT_MEDIA },
     ));
   } catch {
     return undefined; // panel unreadable → the DB row stands, as before
@@ -690,16 +708,20 @@ export async function identifyFromAudio(
   format: string,
   region: Region,
 ): Promise<IdentifiedItem[]> {
-  return identifyWithEscalation([
-    { role: 'system', content: IDENTIFY_SYSTEM_PROMPT },
-    {
-      role: 'user',
-      content: [
-        { type: 'text', text: userAudioInstruction(region) },
-        { type: 'input_audio', input_audio: { data: base64, format } },
-      ],
-    },
-  ]);
+  return identifyWithEscalation(
+    [
+      { role: 'system', content: IDENTIFY_SYSTEM_PROMPT },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: userAudioInstruction(region) },
+          { type: 'input_audio', input_audio: { data: base64, format } },
+        ],
+      },
+    ],
+    IDENTIFY_SCHEMA,
+    { effort: REASONING_EFFORT_MEDIA },
+  );
 }
 
 /** `choices[0].message.content` → parsed JSON payload, or null on any malformation. */
@@ -754,6 +776,8 @@ export async function parseWorkoutFromAudio(base64: string, format: string): Pro
     ],
     MODEL,
     PARSE_WORKOUT_SCHEMA,
+    PATIENT_TIMEOUTS,
+    REASONING_EFFORT_MEDIA,
   );
   return normalizeParsedWorkouts(completionPayload(data));
 }
@@ -779,6 +803,8 @@ export async function parseWorkoutFromPhoto(base64: string, mimeType: string): P
     ],
     MODEL,
     PARSE_WORKOUT_PHOTO_SCHEMA,
+    PATIENT_TIMEOUTS,
+    REASONING_EFFORT_MEDIA,
   );
   return normalizeParsedWorkoutPhoto(completionPayload(data));
 }
