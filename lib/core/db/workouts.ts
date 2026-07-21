@@ -3,6 +3,7 @@ import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
 import {
   kcalFromMet,
+  STRENGTH_INTENSITIES,
   workoutKcal,
   WORKOUT_TYPES,
   type StrengthIntensity,
@@ -180,6 +181,159 @@ export async function tombstonedIds(db: AnyDb, ids: string[]): Promise<Set<strin
     .from(workoutImportTombstones)
     .where(inArray(workoutImportTombstones.externalId, ids))) as { externalId: string }[];
   return new Set(rows.map((r) => r.externalId));
+}
+
+/// A workout the user already logged once, re-loggable in one tap — the same
+/// idea as the food log's [QuickMeal], carrying everything the form would have
+/// asked for so a repeat is a single insert with no typing and no AI call.
+export interface QuickWorkout {
+  type: string; // WorkoutType key or 'other'
+  label: string | null;
+  minutes: number;
+  sets: number | null;
+  speedKmh: number | null;
+  intensity: StrengthIntensity | null;
+  /// kcal of the latest occurrence. Reused VERBATIM only for an unknown
+  /// ('other') activity — its MET came from the model and was never stored, so
+  /// there is nothing to recompute. Known types recompute from today's weight.
+  kcal: number;
+  source: 'manual' | 'ai';
+  /// Times this exact workout appears in the scanned window — drives the order
+  /// (what you repeat most is what you reach for first).
+  count: number;
+}
+
+/// One past row as the quick-repeat ranking sees it.
+interface QuickWorkoutSource {
+  type: string;
+  label: string | null;
+  minutes: number;
+  sets: number | null;
+  speedKmh: number | null;
+  intensity: string | null;
+  kcal: number;
+  source: string;
+  ts: Date;
+}
+
+/// Derives the one-tap repeat list from past rows: identical workouts collapse
+/// into one entry, repeated ones (count ≥ 2) lead — a repeat is what's worth
+/// one-tapping — and the rest follow by recency. Pure (grouping/ordering only)
+/// so it's unit-testable and independent of row order.
+///
+/// MEASURED rows are excluded on purpose. A watch session and a tracker
+/// screenshot are readings of THAT session, not templates: re-logging one would
+/// invent a measurement that never happened (and device rows re-import
+/// themselves anyway). Only what the user entered can be entered again.
+export function deriveQuickWorkouts(rows: QuickWorkoutSource[], limit = 8): QuickWorkout[] {
+  const groups = new Map<string, { quick: QuickWorkout; latestTs: number }>();
+  for (const r of rows) {
+    if (r.source !== 'manual' && r.source !== 'ai') continue;
+    const minutes = Math.round(Math.max(0, r.minutes));
+    const sets = r.sets != null && r.sets > 0 ? Math.round(r.sets) : null;
+    // Nothing to repeat without a duration or a set count.
+    if (minutes <= 0 && sets == null) continue;
+    const label = r.label?.trim() || null;
+    const speedKmh = r.speedKmh != null && r.speedKmh > 0 ? r.speedKmh : null;
+    const intensity =
+      r.intensity != null && (STRENGTH_INTENSITIES as readonly string[]).includes(r.intensity)
+        ? (r.intensity as StrengthIntensity)
+        : null;
+    // Everything that shapes the entry is in the key: «ходьба 30 мин» and
+    // «ходьба 45 мин» are two different things to tap.
+    const key = [r.type, label?.toLowerCase() ?? '', minutes, sets ?? '', speedKmh ?? '', intensity ?? ''].join('|');
+    const ts = r.ts.getTime();
+    const existing = groups.get(key);
+    if (!existing) {
+      groups.set(key, {
+        latestTs: ts,
+        quick: {
+          type: r.type,
+          label,
+          minutes,
+          sets,
+          speedKmh,
+          intensity,
+          kcal: Math.round(r.kcal),
+          source: r.source,
+          count: 1,
+        },
+      });
+      continue;
+    }
+    existing.quick.count += 1;
+    // Keep kcal from the most recent occurrence (order-independent).
+    if (ts > existing.latestTs) {
+      existing.latestTs = ts;
+      existing.quick.kcal = Math.round(r.kcal);
+      existing.quick.source = r.source;
+    }
+  }
+  const all = [...groups.values()];
+  const byRecency = (a: { latestTs: number }, b: { latestTs: number }) => b.latestTs - a.latestTs;
+  const repeated = all
+    .filter((g) => g.quick.count >= 2)
+    .sort((a, b) => b.quick.count - a.quick.count || byRecency(a, b));
+  const once = all.filter((g) => g.quick.count < 2).sort(byRecency);
+  return [...repeated, ...once].slice(0, limit).map((g) => g.quick);
+}
+
+/// The one-tap repeat list, drawn from the last [scan] logged workouts.
+export async function quickWorkouts(
+  db: AnyDb,
+  opts: { limit?: number; scan?: number } = {},
+): Promise<QuickWorkout[]> {
+  const rows = (await db
+    .select({
+      type: workouts.type,
+      label: workouts.label,
+      minutes: workouts.minutes,
+      sets: workouts.sets,
+      speedKmh: workouts.speedKmh,
+      intensity: workouts.intensity,
+      kcal: workouts.kcal,
+      source: workouts.source,
+      ts: workouts.ts,
+    })
+    .from(workouts)
+    .orderBy(desc(workouts.ts))
+    .limit(opts.scan ?? 120)) as QuickWorkoutSource[];
+  return deriveQuickWorkouts(rows, opts.limit ?? 8);
+}
+
+/// What repeating [q] would cost TODAY: a known type is recomputed from the
+/// current weight (so a user who lost 10 kg doesn't keep re-logging the old
+/// burn), an unknown activity keeps the stored number — see [QuickWorkout.kcal].
+export function quickWorkoutKcal(q: QuickWorkout, weightKg: number): number {
+  const known = (WORKOUT_TYPES as readonly string[]).includes(q.type);
+  return known
+    ? workoutKcal(q.type as WorkoutType, q.minutes, weightKg, q.speedKmh, q.intensity)
+    : Math.round(Math.max(0, q.kcal));
+}
+
+/// Log a past workout again for [when], exactly as it was entered. Returns the
+/// stored kcal.
+export async function repeatWorkout(
+  db: AnyDb,
+  q: QuickWorkout,
+  weightKg: number,
+  when: Date = new Date(),
+): Promise<number> {
+  const kcal = quickWorkoutKcal(q, weightKg);
+  await db.insert(workouts).values({
+    ts: when,
+    date: dayKey(when),
+    type: q.type,
+    minutes: Math.round(Math.max(0, q.minutes)),
+    kcal,
+    speedKmh: q.speedKmh,
+    label: q.label,
+    sets: q.sets,
+    // Effort is a strength-only lever, same rule as [addWorkout].
+    intensity: q.type === 'strength' ? q.intensity : null,
+    source: q.source,
+  });
+  return kcal;
 }
 
 /// A day's logged workouts, newest-first.

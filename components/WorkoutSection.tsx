@@ -16,6 +16,10 @@ import {
   addWorkout,
   deleteWorkout,
   listWorkoutsForDay,
+  quickWorkoutKcal,
+  quickWorkouts,
+  repeatWorkout,
+  type QuickWorkout,
 } from '@/lib/core/db/workouts';
 import {
   EATBACK_FRACTION,
@@ -73,6 +77,10 @@ export function WorkoutSection({
   const { t } = useTranslation();
   const theme = useTheme();
   const [rows, setRows] = useState<WorkoutRow[]>([]);
+  // «Повторить»: what the user has already logged, one tap away — the fast path
+  // past the whole form (device feedback 2026-07-21: «чтобы заново не вписывать»).
+  const [quick, setQuick] = useState<QuickWorkout[]>([]);
+  const [repeating, setRepeating] = useState(false);
   const [weightKg, setWeightKg] = useState(70);
   // Whether a real weigh-in backs the kcal math. Without one we fall back to
   // 70 kg — say so instead of silently mis-scaling a 100 kg user by 30%.
@@ -134,8 +142,13 @@ export function WorkoutSection({
 
   const reload = useCallback(async () => {
     if (!db) return;
-    const [list, w] = await Promise.all([listWorkoutsForDay(db), latestWeight(db)]);
+    const [list, w, repeats] = await Promise.all([
+      listWorkoutsForDay(db),
+      latestWeight(db),
+      quickWorkouts(db),
+    ]);
     setRows(list);
+    setQuick(repeats);
     const weighed = w != null && w.weightKg > 0;
     if (weighed) setWeightKg(w.weightKg);
     setHasWeight(weighed);
@@ -169,6 +182,43 @@ export function WorkoutSection({
     },
     [recording],
   );
+
+  /// One line describing a workout — «Силовая · 12 подх. · Средняя». Shared by
+  /// the day's list and the repeat chips, so a chip reads exactly like the row
+  /// it came from.
+  function describeWorkout(w: {
+    type: string;
+    label?: string | null;
+    minutes: number;
+    sets?: number | null;
+    speedKmh?: number | null;
+    intensity?: string | null;
+    source?: string;
+  }): string {
+    const parts = [w.label ? w.label : t(`workouts.type.${w.type}`)];
+    if (w.sets != null && w.sets > 0) parts.push(t('workouts.setsCount', { count: w.sets }));
+    // Skip a «0 мин» tail: a «по часам» entry has kcal but no duration.
+    else if (w.minutes > 0) parts.push(`${w.minutes} ${t('workouts.min')}`);
+    if (w.speedKmh) parts.push(`${Math.round(w.speedKmh * 10) / 10} ${t('workouts.kmh')}`);
+    if (w.intensity) parts.push(t(`workouts.intensity.${w.intensity}`));
+    // Provenance tag for auto-imported sessions — «с часов».
+    if (w.source === 'device') parts.push(t('workouts.fromDevice'));
+    return parts.join(' · ');
+  }
+
+  /// One tap logs a past workout again for today — no form, no typing. kcal is
+  /// recomputed from the CURRENT weight for known types (see [repeatWorkout]),
+  /// so the chip's number and the stored one agree.
+  async function onRepeat(q: QuickWorkout) {
+    if (!db || repeating) return;
+    setRepeating(true);
+    try {
+      ackBudget(await repeatWorkout(db, q, weightKg));
+      await reload();
+    } finally {
+      setRepeating(false);
+    }
+  }
 
   async function add() {
     if (!db) return;
@@ -410,6 +460,54 @@ export function WorkoutSection({
           {budgetAck ? (
             <Text style={[styles.budgetAck, { color: theme.accent }, theme.font.bodyMedium]}>{budgetAck}</Text>
           ) : null}
+          {/* «Повторить» — the fast path, above the form: what's already been
+              logged goes in with one tap instead of being re-entered. Its own
+              uppercase label (the food log's «Быстро» idiom) keeps it from
+              reading as a third row of the chips/segments below. */}
+          {quick.length > 0 ? (
+            <View style={styles.repeat}>
+              <Text style={[styles.repeatLabel, { color: theme.labelCaps }, theme.font.bodyBold]}>
+                {t('workouts.repeat.label').toUpperCase()}
+              </Text>
+              <View style={styles.repeatWrap}>
+                {quick.map((q, i) => {
+                  const name = describeWorkout(q);
+                  return (
+                    <Pressable
+                      key={i}
+                      onPress={() => void onRepeat(q)}
+                      disabled={repeating}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('workouts.repeat.a11y', { name })}
+                      style={({ pressed }) => [
+                        styles.repeatChip,
+                        {
+                          backgroundColor: theme.card,
+                          borderColor: theme.separator,
+                          opacity: repeating ? 0.5 : pressed ? 0.6 : 1,
+                        },
+                      ]}
+                    >
+                      <Text
+                        numberOfLines={1}
+                        style={[styles.repeatChipText, { color: theme.text }, theme.font.bodySemiBold]}
+                      >
+                        {name}
+                      </Text>
+                      <Text style={[styles.repeatChipKcal, { color: theme.subtle }, theme.font.body]}>
+                        {/* Same «≈» rule as the log rows: an unknown activity's
+                            burn is the model's MET estimate. */}
+                        {q.type === 'other' ? '≈ ' : ''}
+                        {quickWorkoutKcal(q, weightKg)} {t('units.kcal')}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <View style={[styles.repeatRule, { backgroundColor: theme.separator }]} />
+            </View>
+          ) : null}
+
           {/* One input path at a time. The switcher is ONE steel track with the
               segments inside (no per-segment borders) — earlier the three
               segments were free-floating pills and read as a second row of the
@@ -723,17 +821,7 @@ export function WorkoutSection({
                 <View key={r.id}>
                   <View style={styles.item}>
                     <Text style={[styles.itemName, { color: theme.text }, theme.font.body]} numberOfLines={1}>
-                      {(() => {
-                        const parts = [r.label ? r.label : t(`workouts.type.${r.type}`)];
-                        if (r.sets != null && r.sets > 0) parts.push(t('workouts.setsCount', { count: r.sets }));
-                        // Skip a «0 мин» tail: a «по часам» entry has kcal but no duration.
-                        else if (r.minutes > 0) parts.push(`${r.minutes} ${t('workouts.min')}`);
-                        if (r.speedKmh) parts.push(`${Math.round(r.speedKmh * 10) / 10} ${t('workouts.kmh')}`);
-                        if (r.intensity) parts.push(t(`workouts.intensity.${r.intensity}`));
-                        // Provenance tag for auto-imported sessions — «с часов».
-                        if (r.source === 'device') parts.push(t('workouts.fromDevice'));
-                        return parts.join(' · ');
-                      })()}
+                      {describeWorkout(r)}
                     </Text>
                     <Text style={[styles.itemKcal, { color: theme.subtle }, theme.font.body]}>
                       {/* «≈» = estimated: device rows only when their kcal fell
@@ -806,6 +894,14 @@ const styles = StyleSheet.create({
   summary: { fontSize: 13, flex: 1, textAlign: 'right' },
   body: { marginTop: 12 },
   budgetAck: { fontSize: 13, lineHeight: 18, marginBottom: 10 },
+  repeat: { marginBottom: 14 },
+  repeatLabel: { fontSize: 12, letterSpacing: 1.44, marginBottom: 8 },
+  repeatWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  repeatChip: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 9 },
+  repeatChipText: { fontSize: 14, maxWidth: 240 },
+  repeatChipKcal: { fontSize: 11, marginTop: 2 },
+  // Closes the fast-path group off from the form below it.
+  repeatRule: { height: StyleSheet.hairlineWidth, marginTop: 14 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { paddingVertical: 7, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1 },
   chipText: { fontSize: 13 },

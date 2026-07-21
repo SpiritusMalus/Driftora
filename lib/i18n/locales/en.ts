@@ -421,6 +421,12 @@ export const en = {
       kcalPlaceholder: 'e.g. 300',
       hint: 'A tracker number is kept as-is, with no recalculation.',
     },
+    // One-tap repeat of what's already been logged — no re-typing. Own entries
+    // only: a number off a watch measured THAT session, it isn't a template.
+    repeat: {
+      label: 'Repeat',
+      a11y: 'Repeat: {{name}}',
+    },
     add: 'Add',
     remove: 'Remove',
     // Same confirm pattern as food and diary deletes: this reshapes the day budget.
