@@ -333,7 +333,12 @@ async function completeWithRetry(
  * `VISION_HEDGE_MS` overrides the trigger (read per call so tests can use tiny
  * values); 0 disables hedging and falls back to the sequential retry.
  */
-const DEFAULT_HEDGE_AFTER_MS = 12_000;
+// 12 s matched the pre-throttle vision profile (healthy 8–16 s). With
+// REASONING_EFFORT_MEDIA=low a healthy photo answer lands in 5–10 s, so a lane
+// still silent at 7 s is already suspicious — hedging 5 s earlier trims the
+// storm tail by the same amount for the price of a few duplicate calls on the
+// slow-but-healthy 7–10 s band. VISION_HEDGE_MS still overrides.
+const DEFAULT_HEDGE_AFTER_MS = 7_000;
 
 /**
  * Text-identify hedge. Healthy answers land in 3–7 s at effort=low, so a lane
