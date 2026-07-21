@@ -324,21 +324,42 @@ async function completeWithRetry(
  */
 const DEFAULT_HEDGE_AFTER_MS = 12_000;
 
+/**
+ * Text-identify hedge. Healthy answers land in 3–7 s at effort=low, so a lane
+ * silent past ~6 s is probably stalling — duplicate early and keep BOTH lanes
+ * patient (17 s each): two independent samples beat one fail-fast lane in a
+ * flaky window. Measured 2026-07-21 during a provider degradation: the
+ * sequential 10+12 s text budget went 503 on ~half of compound meals, while
+ * probes of the same prompt succeeded in 5–7 s on a fresh roll. Wall stays
+ * ≤ ~23 s (6 + 17) — inside the client's 25 s text budget.
+ */
+const TEXT_HEDGE_AFTER_MS = 6_000;
+const TEXT_HEDGE_TIMEOUTS: RetryTimeouts = { first: TIMEOUT_MS.openrouter, retry: TIMEOUT_MS.openrouter };
+
 async function completeHedged(
   messages: ChatMessage[],
   model: string,
   schema: object,
+  // Per-path knobs: the photo path runs the patient defaults; the text path
+  // passes its own earlier trigger + lane budgets (+ the low reasoning effort).
+  opts: { timeouts?: RetryTimeouts; hedgeAfterMs?: number; reasoningEffort?: string } = {},
 ): Promise<{ data: unknown; truncated: boolean }> {
-  const hedgeAfterMs = process.env.VISION_HEDGE_MS !== undefined ? Number(process.env.VISION_HEDGE_MS) : DEFAULT_HEDGE_AFTER_MS;
+  // VISION_HEDGE_MS keeps global precedence (tests set tiny values; 0 = off) —
+  // despite the name it now governs every hedged path, text included.
+  const hedgeAfterMs =
+    process.env.VISION_HEDGE_MS !== undefined
+      ? Number(process.env.VISION_HEDGE_MS)
+      : (opts.hedgeAfterMs ?? DEFAULT_HEDGE_AFTER_MS);
   if (!Number.isFinite(hedgeAfterMs) || hedgeAfterMs <= 0) {
-    return completeWithRetry(messages, model, schema);
+    return completeWithRetry(messages, model, schema, opts.timeouts, opts.reasoningEffort);
   }
+  const lanes = opts.timeouts ?? PATIENT_TIMEOUTS;
 
   type Outcome = { data: unknown; truncated: boolean };
   type Tagged = { ok: true; out: Outcome } | { ok: false; err: unknown };
 
   const attempt = async (temperature: number, timeoutMs: number): Promise<Outcome> => {
-    const data = await complete(messages, model, schema, temperature, timeoutMs);
+    const data = await complete(messages, model, schema, temperature, timeoutMs, opts.reasoningEffort);
     const failed = providerErrorOf(data);
     if (failed) throw new VisionUnavailableError(failed);
     return { data, truncated: finishReasonOf(data) === 'length' };
@@ -363,21 +384,25 @@ async function completeHedged(
     if (hedgeStarted || cancelled) return;
     hedgeStarted = true;
     metrics.recordHedge();
-    hedgePromise = tag(attempt(RETRY_TEMPERATURE, TIMEOUT_MS.openrouterRetry));
+    hedgePromise = tag(attempt(RETRY_TEMPERATURE, lanes.retry));
     hedgeResolve(hedgePromise);
   };
   timer = setTimeout(startHedge, hedgeAfterMs);
   timer.unref?.();
 
-  const firstP = tag(attempt(0, TIMEOUT_MS.openrouter));
+  const firstP = tag(attempt(0, lanes.first));
   const lane = <L extends string>(name: L, p: Promise<Tagged>) => p.then((t) => ({ lane: name, t }));
   try {
     const r1 = await Promise.race([lane('first', firstP), lane('hedge', hedgeSlot)]);
     if (r1.t.ok && !r1.t.out.truncated) return r1.t.out; // clean winner, either lane
 
     // The race's loser lane is now the only hope. If the hedge hasn't started
-    // yet (first attempt failed fast, before the trigger), start it NOW — a
-    // timeout is a loop signature and an immediate re-roll usually lands.
+    // yet (first attempt failed fast, before the trigger), start it NOW — but
+    // only for a TIMEOUT (the loop signature) or a truncated payload. A clean
+    // refusal (provider error in a 200, dead transport) is terminal: re-rolling
+    // would hammer whatever is already refusing us (llm.test.ts pins this), so
+    // it propagates without spending a second call.
+    if (!r1.t.ok && !hedgeStarted && !(r1.t.err instanceof UpstreamTimeoutError)) throw r1.t.err;
     startHedge();
     const other = await (r1.lane === 'first' ? (hedgePromise as Promise<Tagged>) : firstP);
 
@@ -403,7 +428,14 @@ async function callModel(
   opts: { hedge?: boolean; text?: boolean } = {},
 ): Promise<IdentifiedItem[]> {
   const { data, truncated } = opts.hedge
-    ? await completeHedged(messages, model, schema)
+    ? await completeHedged(
+        messages,
+        model,
+        schema,
+        opts.text
+          ? { timeouts: TEXT_HEDGE_TIMEOUTS, hedgeAfterMs: TEXT_HEDGE_AFTER_MS, reasoningEffort: REASONING_EFFORT_TEXT }
+          : {},
+      )
     : await completeWithRetry(
         messages,
         model,
@@ -574,7 +606,9 @@ export async function identifyFromText(text: string, region: Region): Promise<Id
       { role: 'user', content: `${userInstruction(region)}\n\n${text}` },
     ],
     IDENTIFY_TEXT_SCHEMA,
-    { text: true },
+    // Hedged like the photo path, with text-sized knobs (duplicate at 6 s,
+    // patient lanes): one fail-fast lane went 503 on flaky afternoons.
+    { text: true, hedge: true },
   );
 }
 
