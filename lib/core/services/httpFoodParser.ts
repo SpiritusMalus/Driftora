@@ -11,6 +11,8 @@ import type {
   Region,
 } from './foodParser';
 
+import { setAiQuotaRemaining } from './aiQuota';
+
 const SOURCES: readonly NutritionSource[] = ['usda', 'skurikhin', 'openfoodfacts', 'apininjas', 'fatsecret', 'label', 'ai_estimate', 'estimate'];
 /** Text/search: a typed query is answered in 3–6 s and the user is actively
  *  waiting on it, so the ceiling stays near the answer time — the server gives
@@ -113,6 +115,38 @@ function asServerFallback(draft: MealDraft): MealDraft {
   return { ...draft, flags: { ...draft.flags, offline_fallback: true, server_error: true } };
 }
 
+/**
+ * 429 `ai_quota_exceeded`: today's per-install AI budget is spent. A narrowing
+ * of `offline_fallback` (same pattern as `server_error`) — the connection is
+ * fine and an immediate retry is pointless, so the honest message is «дневной
+ * лимит», with the manual/chip paths as the remedy.
+ */
+function asQuotaFallback(draft: MealDraft): MealDraft {
+  return { ...draft, flags: { ...draft.flags, offline_fallback: true, quota_exceeded: true } };
+}
+
+/** Detect the quota envelope without assuming a readable body. */
+async function isQuotaExceeded(res: Response): Promise<boolean> {
+  if (res.status !== 429) return false;
+  try {
+    const body = (await res.json()) as { error?: { code?: string } };
+    return body?.error?.code === 'ai_quota_exceeded';
+  } catch {
+    return false;
+  }
+}
+
+/** Surface the server's remaining-budget header for the quiet «осталось N» line.
+ *  Best-effort BY DESIGN: minimal response doubles (tests, exotic polyfills) may
+ *  lack `headers` — a telemetry helper must never flip a good parse into a
+ *  fallback, so it degrades to «no report» instead of throwing. */
+function captureQuotaRemaining(res: Response): void {
+  const raw = typeof res.headers?.get === 'function' ? res.headers.get('x-ai-quota-remaining') : null;
+  if (raw === null) return;
+  const n = Number(raw);
+  if (Number.isFinite(n) && n >= 0) setAiQuotaRemaining(n);
+}
+
 /** Derive a sibling endpoint from the text one (/food/parse → /food/parse-<kind>). */
 function deriveEndpoint(endpoint: string, kind: 'photo' | 'audio'): string {
   return /\/food\/parse$/.test(endpoint)
@@ -132,6 +166,9 @@ export interface HttpFoodParserOptions {
   searchEndpoint?: string;
   /** When set, every request carries `Authorization: Bearer <token>`. */
   token?: string;
+  /** Lazy getter for the per-install id (`X-Install-Id`) — lazy because the id
+   *  is minted async at DB init and may appear after this parser is built. */
+  installId?: () => string | null;
   /** Override the photo/audio upload timeout (defaults to `UPLOAD_TIMEOUT_MS`). */
   uploadTimeoutMs?: number;
 }
@@ -142,6 +179,8 @@ export class HttpFoodParser implements FoodParser {
   private readonly searchEndpoint: string;
   /** Extra headers on every request — `Authorization` when a token is set. */
   private readonly authHeaders: Record<string, string>;
+  /** Lazy per-install id for the server's AI-quota meter (may appear late). */
+  private readonly installId?: () => string | null;
   /** Longer timeout for the slow multipart uploads (photo/audio). */
   private readonly uploadTimeoutMs: number;
 
@@ -155,7 +194,14 @@ export class HttpFoodParser implements FoodParser {
     this.audioEndpoint = opts.audioEndpoint ?? deriveEndpoint(endpoint, 'audio');
     this.searchEndpoint = opts.searchEndpoint ?? deriveSearchEndpoint(endpoint);
     this.authHeaders = opts.token ? { Authorization: `Bearer ${opts.token}` } : {};
+    this.installId = opts.installId;
     this.uploadTimeoutMs = opts.uploadTimeoutMs ?? UPLOAD_TIMEOUT_MS;
+  }
+
+  /** Per-request headers: static auth + the current install id, if minted yet. */
+  private headers(): Record<string, string> {
+    const id = this.installId?.();
+    return id ? { ...this.authHeaders, 'X-Install-Id': id } : { ...this.authHeaders };
   }
 
   /**
@@ -170,7 +216,7 @@ export class HttpFoodParser implements FoodParser {
     try {
       const res = await fetch(this.searchEndpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...this.authHeaders },
+        headers: { 'Content-Type': 'application/json', ...this.headers() },
         // `ai: true` — reaching THIS (online) parser already means AI consent was
         // granted (getFoodParser returns the offline stub otherwise), so the
         // server may add an ai_estimate row when the DBs come up empty.
@@ -195,11 +241,18 @@ export class HttpFoodParser implements FoodParser {
     try {
       const res = await fetch(this.endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...this.authHeaders },
+        headers: { 'Content-Type': 'application/json', ...this.headers() },
         body: JSON.stringify({ text, region }),
         signal: controller.signal,
       });
-      if (!res.ok) return asServerFallback(await this.fallback.parse(text, region));
+      if (!res.ok) {
+        if (await isQuotaExceeded(res)) {
+          setAiQuotaRemaining(0);
+          return asQuotaFallback(await this.fallback.parse(text, region));
+        }
+        return asServerFallback(await this.fallback.parse(text, region));
+      }
+      captureQuotaRemaining(res);
       const data: unknown = await res.json();
       if (!isMealDraft(data)) return asOfflineFallback(await this.fallback.parse(text, region));
       return data;
@@ -231,11 +284,18 @@ export class HttpFoodParser implements FoodParser {
 
       const res = await fetch(this.photoEndpoint, {
         method: 'POST',
-        headers: this.authHeaders,
+        headers: this.headers(),
         body: form,
         signal: controller.signal,
       });
-      if (!res.ok) return asServerFallback(await this.fallback.parsePhoto(photo, region));
+      if (!res.ok) {
+        if (await isQuotaExceeded(res)) {
+          setAiQuotaRemaining(0);
+          return asQuotaFallback(await this.fallback.parsePhoto(photo, region));
+        }
+        return asServerFallback(await this.fallback.parsePhoto(photo, region));
+      }
+      captureQuotaRemaining(res);
       const data: unknown = await res.json();
       if (!isMealDraft(data)) return asOfflineFallback(await this.fallback.parsePhoto(photo, region));
       return data;
@@ -266,11 +326,18 @@ export class HttpFoodParser implements FoodParser {
 
       const res = await fetch(this.audioEndpoint, {
         method: 'POST',
-        headers: this.authHeaders,
+        headers: this.headers(),
         body: form,
         signal: controller.signal,
       });
-      if (!res.ok) return asServerFallback(await this.fallback.parseAudio(audio, region));
+      if (!res.ok) {
+        if (await isQuotaExceeded(res)) {
+          setAiQuotaRemaining(0);
+          return asQuotaFallback(await this.fallback.parseAudio(audio, region));
+        }
+        return asServerFallback(await this.fallback.parseAudio(audio, region));
+      }
+      captureQuotaRemaining(res);
       const data: unknown = await res.json();
       if (!isMealDraft(data)) return asOfflineFallback(await this.fallback.parseAudio(audio, region));
       return data;

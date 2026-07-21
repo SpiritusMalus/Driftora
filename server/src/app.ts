@@ -18,6 +18,7 @@ import { metrics } from './metrics.js';
 import { Resolver } from './nutrition/resolver.js';
 import { buildMealDraft, buildProviders } from './orchestrator.js';
 import { localizeAlternatives, localizeDraft } from './nutrition/translateNames.js';
+import { createInstallQuota } from './installQuota.js';
 import { buildLimiters, type RateLimits, resolveLimits } from './rateLimit.js';
 import {
   coercePer100,
@@ -162,6 +163,8 @@ async function aiSearchCard(query: string, region: Region): Promise<NutritionAlt
 export interface CreateAppOptions {
   /** Override per-IP rate limits (tests set tiny, deterministic caps). */
   limits?: Partial<RateLimits>;
+  /** Override the per-install daily AI quota (tests set tiny caps; 0 disables). */
+  aiQuotaPerDay?: number;
 }
 
 /**
@@ -199,6 +202,11 @@ export function createApp(
   app.set('trust proxy', 1);
 
   const limiters = buildLimiters(resolveLimits(opts.limits), fail);
+  // Per-install daily AI budget (the CGNAT-safe layer; per-IP caps stay as the
+  // abuse backstop). Mounted on the six LLM-burning parse routes only — the DB
+  // search stays under the per-IP caps, so a quota'd-out user can still look
+  // things up by hand.
+  const aiQuota = createInstallQuota(fail, { perDay: opts.aiQuotaPerDay });
 
   // Global per-IP burst guard, before body parsing/routes so abuse is cheap to
   // reject; /health is never limited (skip lives in the limiter).
@@ -230,7 +238,9 @@ export function createApp(
   // every route) is public — operational counts become visible to anyone. That's
   // acceptable only if running behind a network boundary; set APP_TOKEN otherwise.
   app.get('/metrics', requireToken, (_req: Request, res: Response) => {
-    res.json(metrics.snapshot());
+    // `ai_quota` rides alongside the registry snapshot: the anonymous usage
+    // histogram that will size the free tier / fair-use cap from real behavior.
+    res.json({ ...metrics.snapshot(), ai_quota: aiQuota.snapshot() });
   });
 
   // Shared tail for both inputs: identified items → resolved MealDraft, with the
@@ -268,7 +278,7 @@ export function createApp(
     }
   }
 
-  app.post('/food/parse', requireToken, limiters.textDaily, async (req: Request, res: Response) => {
+  app.post('/food/parse', requireToken, limiters.textDaily, aiQuota.middleware, async (req: Request, res: Response) => {
     const body = (req.body ?? {}) as { text?: unknown; region?: unknown };
     const text = typeof body.text === 'string' ? body.text.trim() : '';
     const region = regionOf(body);
@@ -322,7 +332,7 @@ export function createApp(
   // model only maps text → structured activities (type/minutes/pace); kcal is
   // computed client-side from the user's weight, so no energy numbers cross the
   // wire. Reuses the text daily cap (one cheap LLM call, same cost profile).
-  app.post('/workout/parse', requireToken, limiters.textDaily, async (req: Request, res: Response) => {
+  app.post('/workout/parse', requireToken, limiters.textDaily, aiQuota.middleware, async (req: Request, res: Response) => {
     const body = (req.body ?? {}) as { text?: unknown };
     const text = typeof body.text === 'string' ? body.text.trim() : '';
     if (text.length === 0) {
@@ -355,7 +365,7 @@ export function createApp(
 
   // Spoken WORKOUT: multipart `audio` → `{ workouts }`. Same honesty split as
   // the text parse (kcal client-side); the clip stays in memory, never persisted.
-  app.post('/workout/parse-audio', requireToken, limiters.photoDaily, uploadAudio.single('audio'), async (req: Request, res: Response) => {
+  app.post('/workout/parse-audio', requireToken, limiters.photoDaily, aiQuota.middleware, uploadAudio.single('audio'), async (req: Request, res: Response) => {
     const file = req.file;
     if (!file || file.size === 0) {
       fail(res, 400, 'empty_input', 'Field "audio" is required.');
@@ -373,7 +383,7 @@ export function createApp(
   // Fitness-tracker SCREENSHOT: multipart `image` → `{ workouts, device_kcal?,
   // device_minutes? }`. The tracker's own printed totals are transcribed and,
   // when present, the client logs THEM («по трекеру») instead of re-deriving.
-  app.post('/workout/parse-photo', requireToken, limiters.photoDaily, upload.single('image'), async (req: Request, res: Response) => {
+  app.post('/workout/parse-photo', requireToken, limiters.photoDaily, aiQuota.middleware, upload.single('image'), async (req: Request, res: Response) => {
     const file = req.file;
     if (!file || file.size === 0) {
       fail(res, 400, 'empty_input', 'Field "image" is required.');
@@ -393,7 +403,7 @@ export function createApp(
   // stays in memory and is never persisted (privacy §2).
   // Daily cap runs before multer buffers the (up to 8 MB) upload and before the
   // vision call, so an over-limit request is rejected cheaply.
-  app.post('/food/parse-photo', requireToken, limiters.photoDaily, upload.single('image'), async (req: Request, res: Response) => {
+  app.post('/food/parse-photo', requireToken, limiters.photoDaily, aiQuota.middleware, upload.single('image'), async (req: Request, res: Response) => {
     const region = regionOf((req.body ?? {}) as { region?: unknown });
     const file = req.file;
     if (!file || file.size === 0) {
@@ -445,7 +455,7 @@ export function createApp(
   // Voice input: multipart `audio` (a short spoken meal description) + `region` →
   // MealDraft via the multimodal model. The clip stays in memory and is never
   // persisted (privacy §2). Reuses the photo daily cap (similar cost profile).
-  app.post('/food/parse-audio', requireToken, limiters.photoDaily, uploadAudio.single('audio'), async (req: Request, res: Response) => {
+  app.post('/food/parse-audio', requireToken, limiters.photoDaily, aiQuota.middleware, uploadAudio.single('audio'), async (req: Request, res: Response) => {
     const region = regionOf((req.body ?? {}) as { region?: unknown });
     const file = req.file;
     if (!file || file.size === 0) {

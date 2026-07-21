@@ -271,6 +271,9 @@ export const MIGRATIONS: string[] = [
   // 2026-07-19: adaptive BMR calibration factor from the user's own energy
   // balance (weight trend + food log). 0 = not set → formula BMR unchanged.
   `ALTER TABLE app_settings ADD COLUMN bmr_factor REAL NOT NULL DEFAULT 0`,
+  // 2026-07-21: random per-install id for the server's AI-quota meter
+  // (X-Install-Id). Null until installId.ts mints one on first launch.
+  `ALTER TABLE app_settings ADD COLUMN install_id TEXT`,
 ];
 
 /// Runs each CREATE statement through [run], then the idempotent [MIGRATIONS].

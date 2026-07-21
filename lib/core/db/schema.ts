@@ -272,6 +272,11 @@ export const appSettings = sqliteTable('app_settings', {
   moodSwipeOpens: integer('mood_swipe_opens').notNull().default(0),
   // "Take a break" — mutes auto-wins and target pressure without losing data.
   paused: integer('paused', { mode: 'boolean' }).notNull().default(false),
+  // Random per-install id (32 hex chars) sent as X-Install-Id with AI parse
+  // requests, so the server meters a daily AI budget per install instead of
+  // per CGNAT-shared IP. Not an account, not a device identifier — a coin
+  // flip minted on first launch (lib/core/services/installId.ts). Null until then.
+  installId: text('install_id'),
   // Opt-in (default off): gentle context (JITAI) nudges — e.g. "behind your
   // usual pace this afternoon, fancy a short walk?". Rules are pure + on-device
   // (lib/core/insights/nudgeRules.ts); delivery is local notifications only,

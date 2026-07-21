@@ -860,7 +860,9 @@ export const en = {
       offlineMedia: 'Looks like there’s no internet. Photos and voice need a connection — try later, or describe the food in words.',
       serverBusy: 'Recognition couldn’t handle this shot — your connection is fine. Try again, or describe the food in words.',
       failed: 'Couldn’t parse this. Check your connection and try again.',
+      quota: 'Today’s AI-parse limit is used up — it resets tomorrow. You can still log by hand, with chips, or via “Repeat”.',
     },
+    quotaLeft: 'AI parses left today: {{n}}.',
     entryGone: 'This entry has already been deleted.',
     prompt: {
       morning: 'What was breakfast?',

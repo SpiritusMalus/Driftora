@@ -25,12 +25,16 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
     let mounted = true;
     void (async () => {
       try {
-        const [{ openDatabase }, { ensureSettings }] = await Promise.all([
+        const [{ openDatabase }, { ensureSettings }, { ensureInstallId }] = await Promise.all([
           import('./client'),
           import('./settings'),
+          import('../services/installId'),
         ]);
         const opened = await openDatabase();
         await ensureSettings(opened);
+        // Fire-and-forget: the AI-quota meter id must never block (or fail) DB
+        // provisioning — without it requests just use the server's ip bucket.
+        void ensureInstallId(opened).catch((e) => console.warn('install id init failed:', e));
         if (mounted) setDb(opened);
       } catch (e) {
         console.warn('DB init failed:', e);

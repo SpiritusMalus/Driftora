@@ -223,10 +223,14 @@ type RetryTimeouts = { first: number; retry: number };
 /** Patient default — photo/audio calls, where a slow answer still beats none. */
 const PATIENT_TIMEOUTS: RetryTimeouts = { first: TIMEOUT_MS.openrouter, retry: TIMEOUT_MS.openrouterRetry };
 /**
- * Typed-text calls (text identify, search estimate, label translate, workout
- * text): the user is actively waiting on a typed query, so both attempts get
- * the short budget — see `TIMEOUT_MS.openrouterText` for the measured
- * rationale. Vision/audio keep the patient pair; the hedged photo path has its
+ * Typed-text calls where a fast FAILURE is an acceptable answer (text
+ * identify, workout text — the user retypes; label translate — English
+ * fallback, cosmetic): both attempts get the short budget, see
+ * `TIMEOUT_MS.openrouterText`. NOT the estimator: its failure silently costs
+ * the whole answer («в базе нет» instead of ≈), and live metrics put it at
+ * ~14 s avg on this reasoning model — cutting it at 10 s was a measured
+ * regression (device feedback 2026-07-21, «томат черри»), so it keeps the
+ * patient pair. Vision/audio are patient too; the hedged photo path has its
  * own schedule in `completeHedged`.
  */
 const TEXT_TIMEOUTS: RetryTimeouts = { first: TIMEOUT_MS.openrouterText, retry: TIMEOUT_MS.openrouterTextRetry };
@@ -438,6 +442,9 @@ export interface FoodEstimate {
 export async function estimateFoodPer100(name: string, region: Region): Promise<FoodEstimate | null> {
   // Best-effort: a still-truncated retry just parses to null and the caller
   // omits the AI row — never a 503 for the whole search.
+  // Patient budget on purpose: this call is the LAST line before an honest
+  // «в базе нет» — a timeout here erases the answer, unlike identify where the
+  // user can just retype. Measured at ~14 s avg on the reasoning model.
   const { data } = await completeWithRetry(
     [
       { role: 'system', content: ESTIMATE_SEARCH_SYSTEM_PROMPT },
@@ -445,7 +452,6 @@ export async function estimateFoodPer100(name: string, region: Region): Promise<
     ],
     MODEL,
     ESTIMATE_SEARCH_SCHEMA,
-    TEXT_TIMEOUTS,
   );
   return parseEstimate(data, name);
 }

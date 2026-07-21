@@ -34,6 +34,7 @@ import {
   displayItemName,
   lookupNameForItem,
 } from '@/lib/core/services/foodChoice';
+import { getAiQuotaRemaining } from '@/lib/core/services/aiQuota';
 import { deleteTempFile } from '@/lib/core/services/tempFiles';
 import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
 import { mealPromptKeyForHour } from '@/lib/core/insights/mealPrompt';
@@ -98,10 +99,14 @@ export default function FoodLogScreen() {
   // feedback 2026-07-12): 'offline' = server silent, the offline table still
   // produced items (rougher numbers); 'offlineEmpty' = server silent AND the
   // offline table knows nothing of this text; 'offlineMedia' = photo/voice
-  // can't be parsed offline at all; 'failed' = the parse itself threw locally.
+  // can't be parsed offline at all; 'quota' = today's per-install AI budget is
+  // spent (manual/chip paths remain); 'failed' = the parse itself threw locally.
   const [parseIssue, setParseIssue] = useState<
-    'offline' | 'offlineEmpty' | 'offlineMedia' | 'serverBusy' | 'failed' | null
+    'offline' | 'offlineEmpty' | 'offlineMedia' | 'serverBusy' | 'quota' | 'failed' | null
   >(null);
+  // Server-reported remaining daily AI budget (X-AI-Quota-Remaining) — drives
+  // the quiet «осталось N» line once it runs low. Null = never reported.
+  const [quotaLeft, setQuotaLeft] = useState<number | null>(null);
   const [savedAck, setSavedAck] = useState<string | null>(null);
   // The DB write itself threw. Without a visible line the tap looks ignored and
   // the user walks away sure the meal was logged.
@@ -384,16 +389,22 @@ export default function FoodLogScreen() {
     setParseIssue(
       !offline
         ? null
-        : // The server answered, it just couldn't parse — blaming the connection
-          // sends the user to check a wifi that is plainly working.
-          parsed.flags.server_error
-          ? 'serverBusy'
-          : kind !== 'text'
-            ? 'offlineMedia'
-            : parsed.items.length === 0
-              ? 'offlineEmpty'
-              : 'offline',
+        : // Today's per-install AI budget is spent (429) — «нет интернета» would
+          // be a lie the user can see through; the remedy is the manual/chip
+          // paths until the daily reset, not hunting for signal.
+          parsed.flags.quota_exceeded
+          ? 'quota'
+          : // The server answered, it just couldn't parse — blaming the connection
+            // sends the user to check a wifi that is plainly working.
+            parsed.flags.server_error
+            ? 'serverBusy'
+            : kind !== 'text'
+              ? 'offlineMedia'
+              : parsed.items.length === 0
+                ? 'offlineEmpty'
+                : 'offline',
     );
+    setQuotaLeft(getAiQuotaRemaining());
   }
 
   async function runTextParse(consentNow: boolean) {
@@ -964,6 +975,12 @@ export default function FoodLogScreen() {
       {parseIssue ? (
         <Text style={[styles.parseIssue, { color: theme.subtle }, theme.font.body]}>
           {t(`food.parseIssue.${parseIssue}`)}
+        </Text>
+      ) : quotaLeft !== null && quotaLeft <= 3 ? (
+        /* Honest heads-up instead of a surprise «лимит» at the day's fifth
+           meal — rendered only once the server-reported budget runs low. */
+        <Text style={[styles.parseIssue, { color: theme.subtle }, theme.font.body]}>
+          {t('food.quotaLeft', { n: quotaLeft })}
         </Text>
       ) : null}
 
