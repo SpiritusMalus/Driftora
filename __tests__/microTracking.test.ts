@@ -1,6 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
 
-import { encodeMicros, sumMicroRows } from '@/lib/core/db/food';
+import { encodeMicros, microDonor, sumMicroRows } from '@/lib/core/db/food';
+import { dailyMicroNorms } from '@/lib/core/insights/microNutrients';
 import { nutrientDetailRows } from '@/lib/core/insights/nutrientDetail';
 import type { NutrientValues } from '@/lib/core/services/foodParser';
 import { scaleToGrams, sumNutrients } from '@/lib/core/services/mealDraft';
@@ -69,6 +70,67 @@ describe('encodeMicros / sumMicroRows (daily roll-up)', () => {
     expect(totals.minerals).toEqual({});
     expect(totals.vitamins).toEqual({});
     expect(totals.entriesWithData).toBe(0);
+  });
+});
+
+/// The owner-fright scenario (2026-07-21): «A 686% · B12 1053% · железо 263%»
+/// turned out to be one mismatched DB row (liver instead of a plain гуляш). The
+/// day sum must stay attributable to the meal behind an outlier.
+describe('micro donor attribution (outlier → its meal)', () => {
+  const liverish = {
+    id: 1,
+    rawText: 'гуляш из говядины',
+    micros: JSON.stringify({ minerals: { fe: 18 }, vitamins: { a: 6000 } }),
+  };
+  const porridge = {
+    id: 2,
+    rawText: 'каша',
+    micros: JSON.stringify({ minerals: { fe: 3 }, vitamins: { a: 200 } }),
+  };
+  const norm = (key: string) => dailyMicroNorms('male').find((r) => r.key === key)!;
+
+  it('keeps the largest per-entry contribution per nutrient, sums intact', () => {
+    const totals = sumMicroRows([liverish, porridge]);
+    expect(totals.vitaminsTop.a).toEqual({ entryId: 1, rawText: 'гуляш из говядины', value: 6000 });
+    expect(totals.mineralsTop.fe).toEqual({ entryId: 1, rawText: 'гуляш из говядины', value: 18 });
+    expect(totals.vitamins.a).toBe(6200);
+    expect(totals.minerals.fe).toBe(21);
+  });
+
+  it('calls out the donor past both gates: sum ≥150% of norm AND >½ from one entry', () => {
+    const totals = sumMicroRows([liverish, porridge]);
+    // Vitamin A: 6200/900 ≈ 689 % of the norm, ~97 % of it from the гуляш.
+    const a = microDonor(totals, norm('a'));
+    expect(a?.entryId).toBe(1);
+    expect(a?.rawText).toBe('гуляш из говядины');
+    expect(a!.share).toBeGreaterThan(0.9);
+    // Iron: 21/8 ≈ 262 %, 18/21 ≈ 86 % from the same row → called out too.
+    expect(microDonor(totals, norm('fe'))?.entryId).toBe(1);
+  });
+
+  it('stays silent on a normal day (sum under 150% of the norm)', () => {
+    const totals = sumMicroRows([
+      { id: 1, rawText: 'апельсин', micros: JSON.stringify({ vitamins: { c: 60 } }) },
+      { id: 2, rawText: 'киви', micros: JSON.stringify({ vitamins: { c: 50 } }) },
+    ]);
+    // 110/90 ≈ 122 % — a dominant share alone must not fire the call-out.
+    expect(microDonor(totals, norm('c'))).toBeNull();
+  });
+
+  it('stays silent when no single entry dominates the anomalous sum', () => {
+    const totals = sumMicroRows([
+      { id: 1, rawText: 'морковь', micros: JSON.stringify({ vitamins: { a: 700 } }) },
+      { id: 2, rawText: 'тыква', micros: JSON.stringify({ vitamins: { a: 700 } }) },
+    ]);
+    // 1400/900 ≈ 155 %, but an exact 50/50 split — «почти всё» would be a lie.
+    expect(microDonor(totals, norm('a'))).toBeNull();
+  });
+
+  it('yields no donor for rows without ids (legacy callers keep plain sums)', () => {
+    const totals = sumMicroRows([{ micros: JSON.stringify({ vitamins: { a: 6000 } }) }]);
+    expect(totals.vitamins.a).toBe(6000);
+    expect(totals.vitaminsTop.a).toBeUndefined();
+    expect(microDonor(totals, norm('a'))).toBeNull();
   });
 });
 
