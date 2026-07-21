@@ -10,8 +10,8 @@ import { Card } from '@/components/ui/Card';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen, ScreenBackground } from '@/components/ui/Screen';
 import { SectionHeader } from '@/components/ui/SectionHeader';
+import { Collapsible } from '@/components/ui/Collapsible';
 import { TextField } from '@/components/ui/TextField';
-import { animateLayout, useReducedMotion } from '@/lib/theme/motion';
 import { grantSyncConsent, revokeSyncConsent } from '@/lib/core/consent/consent';
 import { generateRecoveryPhrase, parseKeyFile, RecoveryFileError, serializeKeyFile } from '@/lib/core/crypto/recovery';
 import { exportAllTables, importAllTables, type BackupDocument } from '@/lib/core/db/backup';
@@ -104,7 +104,6 @@ export default function BackupScreen() {
   // the two hero actions (Create / Restore). Same accordion idiom as «Как это
   // работает».
   const [keyFileOpen, setKeyFileOpen] = useState(false);
-  const reduced = useReducedMotion();
 
   const working = status.kind === 'working';
 
@@ -458,10 +457,7 @@ export default function BackupScreen() {
           export (backup-ish, also offered inside the save-gate) live here. */}
       <Card style={styles.advCard}>
         <Pressable
-          onPress={() => {
-            animateLayout(reduced);
-            setKeyFileOpen((v) => !v);
-          }}
+          onPress={() => setKeyFileOpen((v) => !v)}
           accessibilityRole="button"
           accessibilityState={{ expanded: keyFileOpen }}
           style={styles.advHead}
@@ -471,19 +467,18 @@ export default function BackupScreen() {
           </Text>
           <AccordionChevron expanded={keyFileOpen} size={16} color={theme.subtle} />
         </Pressable>
-        {keyFileOpen ? (
-          <>
-            <Text style={[styles.advBody, { color: theme.subtle }, theme.font.body]}>
-              {t('recovery.keyFile.explainer')}
-            </Text>
-            <PrimaryButton label={t('recovery.keyFile.exportCta')} onPress={onExportKeyFile} disabled={working} style={styles.btn} />
-            <PrimaryButton label={t('recovery.keyFile.importCta')} onPress={onImportKeyFile} disabled={working} style={styles.btn} />
-          </>
-        ) : (
+        <Collapsible open={keyFileOpen}>
+          <Text style={[styles.advBody, { color: theme.subtle }, theme.font.body]}>
+            {t('recovery.keyFile.explainer')}
+          </Text>
+          <PrimaryButton label={t('recovery.keyFile.exportCta')} onPress={onExportKeyFile} disabled={working} style={styles.btn} />
+          <PrimaryButton label={t('recovery.keyFile.importCta')} onPress={onImportKeyFile} disabled={working} style={styles.btn} />
+        </Collapsible>
+        <Collapsible open={!keyFileOpen}>
           <Text style={[styles.advTeaser, { color: theme.subtle }, theme.font.body]} numberOfLines={1}>
             {t('recovery.keyFile.teaser')}
           </Text>
-        )}
+        </Collapsible>
       </Card>
 
       {/* Between-device sync — hidden until a real transport ships (SYNC_UI_ENABLED).

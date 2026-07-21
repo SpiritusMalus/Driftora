@@ -6,10 +6,10 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AccordionChevron } from '@/components/ui/AccordionChevron';
 import { Card } from '@/components/ui/Card';
+import { Collapsible } from '@/components/ui/Collapsible';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
 import { TextField } from '@/components/ui/TextField';
-import { animateLayout, useReducedMotion } from '@/lib/theme/motion';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
 import { latestDeviceBodyFat, latestWeight, upsertWeight } from '@/lib/core/db/weight';
@@ -77,7 +77,6 @@ export default function BodySetupScreen() {
   // The result's «Откуда цифра» breakdown is collapsed by default: the hero
   // number + «записали как цель» is the finish; the derivation is on tap.
   const [howOpen, setHowOpen] = useState(false);
-  const reduced = useReducedMotion();
 
   // Prefill from the stored profile (edit runs); the goal is preselected only
   // when a complete profile says this is an edit, not a first setup.
@@ -464,10 +463,7 @@ export default function BodySetupScreen() {
 
           <Card style={styles.card}>
             <Pressable
-              onPress={() => {
-                animateLayout(reduced);
-                setHowOpen((v) => !v);
-              }}
+              onPress={() => setHowOpen((v) => !v)}
               accessibilityRole="button"
               accessibilityState={{ expanded: howOpen }}
               style={styles.accHead}
@@ -477,7 +473,7 @@ export default function BodySetupScreen() {
               </Text>
               <AccordionChevron expanded={howOpen} size={16} color={theme.subtle} />
             </Pressable>
-            {howOpen ? (
+            <Collapsible open={howOpen}>
               <>
                 <Text style={[styles.note, { color: theme.subtle }, theme.font.body]}>
                   {t('bodySetup.result.bmr', {
@@ -522,11 +518,12 @@ export default function BodySetupScreen() {
                   </Text>
                 ) : null}
               </>
-            ) : (
+            </Collapsible>
+            <Collapsible open={!howOpen}>
               <Text style={[styles.teaser, { color: theme.subtle }, theme.font.body]} numberOfLines={1}>
                 {t('bodySetup.result.howTeaser')}
               </Text>
-            )}
+            </Collapsible>
           </Card>
 
           <Pressable

@@ -1,17 +1,16 @@
 import { useEffect, useState } from 'react';
-import { AccessibilityInfo, Easing, LayoutAnimation, Platform, UIManager } from 'react-native';
+import { AccessibilityInfo, Easing } from 'react-native';
 
 /// «Миллиметровка» motion vocabulary — the printing/drafting language: short
 /// ease-out moves under 300ms, no bounce. One shared set of timings so screens
 /// never invent parallel values (animation pass, 2026-07-20).
+///
+/// Deliberately NO LayoutAnimation here: it is a silent no-op on Fabric
+/// Android (device feedback 2026-07-20 — «не вижу этих анимаций»). Everything
+/// animates through the Animated API: transforms/opacity on the native driver,
+/// measured height for fold/unfold (see ui/Collapsible, ui/RiseIn).
 export const EASE_OUT = Easing.bezier(0.23, 1, 0.32, 1);
 export const DUR = { press: 120, select: 160, fade: 180, layout: 220, enter: 240 } as const;
-
-// Legacy Android needs the experimental switch for LayoutAnimation; on the new
-// architecture the call is a harmless no-op.
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 /// System «Reduce Motion»: animations degrade to instant, haptics stay.
 export function useReducedMotion(): boolean {
@@ -28,17 +27,4 @@ export function useReducedMotion(): boolean {
     };
   }, []);
   return reduced;
-}
-
-/// Smooth the NEXT layout change (accordion unfold, list insert/remove, the
-/// mood pill growing). Call right before the state update; no-op under Reduce
-/// Motion so content still lands instantly.
-export function animateLayout(reduced: boolean, duration: number = DUR.layout): void {
-  if (reduced) return;
-  LayoutAnimation.configureNext({
-    duration,
-    create: { type: 'easeInEaseOut', property: 'opacity' },
-    update: { type: 'easeInEaseOut' },
-    delete: { type: 'easeInEaseOut', property: 'opacity' },
-  });
 }

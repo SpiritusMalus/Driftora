@@ -7,8 +7,8 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card } from '@/components/ui/Card';
 import { FillBar } from '@/components/ui/FillBar';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
+import { RiseIn } from '@/components/ui/RiseIn';
 import { Screen } from '@/components/ui/Screen';
-import { animateLayout, useReducedMotion } from '@/lib/theme/motion';
 import {
   dayBudgetKcal,
   EATBACK_FRACTION,
@@ -64,12 +64,16 @@ export default function FoodDayScreen() {
   const router = useRouter();
   const db = useDatabase();
   const [entries, setEntries] = useState<FoodEntry[] | null>(null);
-  // Smooth the list when a meal is added or removed (see motion.ts). The ref
-  // mirrors useReducedMotion so the reload callback never goes stale.
-  const entriesLen = useRef(-1);
-  const reduced = useReducedMotion();
-  const reducedRef = useRef(reduced);
-  reducedRef.current = reduced;
+  // Rows already seen on this screen — a row NOT in the set is a fresh insert
+  // and enters with a RiseIn (the LayoutAnimation take was a silent no-op on
+  // Fabric Android). The set fills in an effect AFTER render, so a new row
+  // animates exactly once; the first load marks everything seen, no motion.
+  const seenIds = useRef<Set<FoodEntry['id']> | null>(null);
+  useEffect(() => {
+    if (entries == null) return;
+    const seen = seenIds.current ?? (seenIds.current = new Set());
+    for (const e of entries) seen.add(e.id);
+  }, [entries]);
   const [totals, setTotals] = useState<{ kcal: number; proteinG: number; fatG: number; carbG: number } | null>(null);
   const [goal, setGoal] = useState<DayGoal | null>(null);
   const [micros, setMicros] = useState<MicroTotals | null>(null);
@@ -119,12 +123,6 @@ export default function FoodDayScreen() {
       latestWeight(db),
       todayWorkoutKcal(db),
     ]);
-    // A changed row count means an insert or a delete — bridge it instead of
-    // teleporting (first load and unchanged reloads stay instant).
-    if (entriesLen.current >= 0 && entriesLen.current !== list.length) {
-      animateLayout(reducedRef.current);
-    }
-    entriesLen.current = list.length;
     setEntries(list);
     setTotals(tot);
     setMicros(mic);
@@ -313,7 +311,8 @@ export default function FoodDayScreen() {
                 </Text>
               </View>
               {group.entries.map((e) => (
-                <Card key={e.id} style={styles.row} onPress={() => router.push(`/food/${e.id}`)}>
+                <RiseIn key={e.id} enabled={seenIds.current != null && !seenIds.current.has(e.id)}>
+                <Card style={styles.row} onPress={() => router.push(`/food/${e.id}`)}>
                   <View style={styles.rowHead}>
                     <Text style={[styles.rowText, { color: theme.text }, theme.font.bodySemiBold]} numberOfLines={1}>
                       {e.rawText || t('food.untitled')}
@@ -344,6 +343,7 @@ export default function FoodDayScreen() {
                     {t('units.g')}
                   </Text>
                 </Card>
+                </RiseIn>
               ))}
             </View>
             );

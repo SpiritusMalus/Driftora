@@ -13,7 +13,7 @@ import { AUTO_WIN_PROTEIN_GOAL, AUTO_WIN_STEPS_GOAL } from '@/lib/core/db/autoWi
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import type { Win } from '@/lib/core/db/schema';
 import { addWin, listWins } from '@/lib/core/db/settings';
-import { animateLayout, DUR, EASE_OUT, useReducedMotion } from '@/lib/theme/motion';
+import { DUR, EASE_OUT, useReducedMotion } from '@/lib/theme/motion';
 import { useTheme } from '@/lib/theme/theme';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
@@ -99,7 +99,6 @@ export default function WinsScreen() {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       const list = await listWins(db);
       setText('');
-      animateLayout(reduced);
       setItems(list);
     } finally {
       setSaving(false);

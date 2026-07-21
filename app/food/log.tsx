@@ -672,6 +672,17 @@ export default function FoodLogScreen() {
   // dictation is available; the segment only lists methods the device actually
   // has, so it collapses to nothing when text is the only path.
   const voiceMode = (AI_CONFIGURED && recordingAvailable) || speechAvailable;
+  /// Drop one dish from the parse draft — the «добавил лишнее, а удалить
+  /// нельзя» gap (device feedback 2026-07-20). Removing the last item closes
+  /// the draft entirely: an empty result must not pretend to be a meal.
+  function onItemRemove(index: number) {
+    setDraft((prev) => {
+      if (!prev) return prev;
+      const items = prev.items.filter((_, i) => i !== index);
+      return items.length > 0 ? recomputeDraft(prev.region, items) : null;
+    });
+  }
+
   const visibleModes = (['text', 'voice', 'photo'] as const).filter(
     (m) => m === 'text' || (m === 'voice' ? voiceMode : photoAvailable),
   );
@@ -1037,6 +1048,7 @@ export default function FoodLogScreen() {
               onSelectAlternative={(altIndex) => onItemSelectAlternative(i, altIndex)}
               onSearch={onItemSearch}
               onReplace={(alt) => onItemReplace(i, alt)}
+              onRemove={() => onItemRemove(i)}
             />
           ))}
 

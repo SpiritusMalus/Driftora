@@ -4,8 +4,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AccordionChevron } from '@/components/ui/AccordionChevron';
 import { Card } from '@/components/ui/Card';
+import { Collapsible } from '@/components/ui/Collapsible';
 import { Screen } from '@/components/ui/Screen';
-import { animateLayout, useReducedMotion } from '@/lib/theme/motion';
 import { useTheme } from '@/lib/theme/theme';
 
 /// «Как это работает» — the honesty page: where every number in the app comes
@@ -21,7 +21,6 @@ const SECTIONS = ['norm', 'budget', 'food', 'workouts', 'boost', 'honesty'] as c
 export default function HowItWorksScreen() {
   const { t } = useTranslation();
   const theme = useTheme();
-  const reduced = useReducedMotion();
   const [open, setOpen] = useState<Record<string, boolean>>({ norm: true });
 
   return (
@@ -37,10 +36,7 @@ export default function HowItWorksScreen() {
         return (
           <Card key={key} style={styles.card}>
             <Pressable
-              onPress={() => {
-                animateLayout(reduced);
-                setOpen((o) => ({ ...o, [key]: !o[key] }));
-              }}
+              onPress={() => setOpen((o) => ({ ...o, [key]: !o[key] }))}
               accessibilityRole="button"
               accessibilityState={{ expanded }}
               style={styles.head}
@@ -50,13 +46,14 @@ export default function HowItWorksScreen() {
               </Text>
               <AccordionChevron expanded={expanded} size={16} color={theme.tertiary} />
             </Pressable>
-            {expanded ? (
+            <Collapsible open={expanded}>
               <Text style={[styles.body, { color: theme.subtle }, theme.font.body]}>{t(`howItWorks.${key}.body`)}</Text>
-            ) : (
+            </Collapsible>
+            <Collapsible open={!expanded}>
               <Text style={[styles.teaser, { color: theme.subtle }, theme.font.body]} numberOfLines={1}>
                 {t(`howItWorks.${key}.teaser`)}
               </Text>
-            )}
+            </Collapsible>
           </Card>
         );
       })}

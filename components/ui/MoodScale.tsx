@@ -1,8 +1,8 @@
 import * as Haptics from 'expo-haptics';
-import { useRef } from 'react';
-import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { Animated, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { animateLayout, DUR, EASE_OUT, useReducedMotion } from '@/lib/theme/motion';
+import { DUR, EASE_OUT, useReducedMotion } from '@/lib/theme/motion';
 import { type Theme, useTheme } from '@/lib/theme/theme';
 
 /// The 0–10 mood picker. Android draws a tight space-between row of small cool
@@ -11,11 +11,16 @@ import { type Theme, useTheme } from '@/lib/theme/theme';
 /// calls `onPick`. When `selected` is set it stays highlighted (Home shows the
 /// latest check-in; the Mood screen re-highlights after a tap).
 ///
-/// Motion (animation pass 2026-07-20): press-in scales the pill to 0.92 over
-/// 120ms, a light selection haptic confirms the tap, and on the Android compact
-/// row the 26→34 growth of the chosen disc is smoothed by a LayoutAnimation
-/// instead of teleporting. Reduce Motion keeps everything instant (haptics
-/// stay). Pills also carry button role + selected state for screen readers.
+/// Motion (animation pass 2026-07-20, reworked after device feedback — the
+/// LayoutAnimation take was a silent no-op on Fabric Android): press-in scales
+/// the pill to 0.92 over 120ms, and on the Android compact row the selected
+/// disc GROWS via a pure transform (layout boxes stay 26×26, so neighbours
+/// never move and no layout pass is involved). A light impact haptic confirms
+/// the tap (selection-tick was imperceptible on the test device). Reduce
+/// Motion keeps everything instant; haptics stay. Pills carry button role +
+/// selected state for screen readers.
+const COMPACT_GROW = 34 / 26;
+
 export function MoodScale({
   selected,
   onPick,
@@ -35,17 +40,28 @@ export function MoodScale({
   const grid = variant === 'grid';
 
   const pick = (n: number) => {
-    void Haptics.selectionAsync().catch(() => {});
-    // Android compact: the selected pill CHANGES SIZE — smooth the row's
-    // re-layout instead of letting neighbours jump.
-    if (!grid && !theme.isIOS) animateLayout(reduced, DUR.select);
+    // A selection-tick is the right semantic, but on Android it is barely
+    // perceptible — a light impact is the honest «услышал вас».
+    void (Platform.OS === 'android'
+      ? Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light)
+      : Haptics.selectionAsync()
+    ).catch(() => {});
     onPick(n);
   };
 
   return (
     <View style={grid ? styles.gridRow : theme.isIOS ? styles.iosRow : styles.androidRow}>
       {Array.from({ length: 11 }, (_, n) => (
-        <MoodPill key={n} n={n} active={selected === n} disabled={disabled} grid={grid} theme={theme} onPick={pick} />
+        <MoodPill
+          key={n}
+          n={n}
+          active={selected === n}
+          disabled={disabled}
+          grid={grid}
+          theme={theme}
+          reduced={reduced}
+          onPick={pick}
+        />
       ))}
     </View>
   );
@@ -57,6 +73,7 @@ function MoodPill({
   disabled,
   grid,
   theme,
+  reduced,
   onPick,
 }: {
   n: number;
@@ -64,11 +81,32 @@ function MoodPill({
   disabled?: boolean;
   grid: boolean;
   theme: Theme;
+  reduced: boolean;
   onPick: (value: number) => void;
 }) {
   const press = useRef(new Animated.Value(1)).current;
   const pressTo = (v: number) =>
     Animated.timing(press, { toValue: v, duration: DUR.press, easing: EASE_OUT, useNativeDriver: true }).start();
+
+  // Android compact: the chosen disc grows 26→34 as a TRANSFORM — the row's
+  // layout never changes, so this works on every architecture.
+  const compactAndroid = !grid && !theme.isIOS;
+  const targetGrow = compactAndroid && active ? COMPACT_GROW : 1;
+  const grow = useRef(new Animated.Value(targetGrow)).current;
+  useEffect(() => {
+    if (reduced) {
+      grow.setValue(targetGrow);
+      return;
+    }
+    const anim = Animated.timing(grow, {
+      toValue: targetGrow,
+      duration: DUR.select,
+      easing: EASE_OUT,
+      useNativeDriver: true,
+    });
+    anim.start();
+    return () => anim.stop();
+  }, [targetGrow, reduced, grow]);
 
   const base = grid
     ? theme.isIOS
@@ -76,9 +114,7 @@ function MoodPill({
       : styles.gridSquare
     : theme.isIOS
       ? styles.iosPill
-      : active
-        ? styles.androidActive
-        : styles.androidPill;
+      : styles.androidPill;
 
   // Android compact uses the cool moodTrack pills; the Android grid uses
   // bordered card tiles; iOS uses the neutral system fill.
@@ -92,8 +128,10 @@ function MoodPill({
       onPressOut={() => pressTo(1)}
       disabled={disabled}
       // Compact pills sit shoulder to shoulder: generous slop vertically, tiny
-      // horizontally so neighbouring hit areas never overlap.
+      // horizontally so neighbouring hit areas never overlap. The grown disc
+      // overhangs its box — active rides above siblings.
       hitSlop={grid || theme.isIOS ? 4 : { top: 11, bottom: 11, left: 2, right: 2 }}
+      style={compactAndroid && active ? styles.onTop : undefined}
       accessibilityRole="button"
       accessibilityLabel={String(n)}
       accessibilityState={{ selected: active, disabled: !!disabled }}
@@ -106,7 +144,7 @@ function MoodPill({
           {
             backgroundColor: active ? theme.primary : inactiveBg,
             shadowColor: theme.primary,
-            transform: [{ scale: press }],
+            transform: [{ scale: Animated.multiply(press, grow) }],
           },
         ]}
       >
@@ -134,8 +172,8 @@ const glow = {
 const styles = StyleSheet.create({
   androidRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   androidPill: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
-  androidActive: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
   androidLabel: { fontSize: 11 },
+  onTop: { zIndex: 1 },
 
   iosRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   iosPill: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
