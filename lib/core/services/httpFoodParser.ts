@@ -136,9 +136,12 @@ async function isQuotaExceeded(res: Response): Promise<boolean> {
   }
 }
 
-/** Surface the server's remaining-budget header for the quiet «осталось N» line. */
+/** Surface the server's remaining-budget header for the quiet «осталось N» line.
+ *  Best-effort BY DESIGN: minimal response doubles (tests, exotic polyfills) may
+ *  lack `headers` — a telemetry helper must never flip a good parse into a
+ *  fallback, so it degrades to «no report» instead of throwing. */
 function captureQuotaRemaining(res: Response): void {
-  const raw = res.headers.get('x-ai-quota-remaining');
+  const raw = typeof res.headers?.get === 'function' ? res.headers.get('x-ai-quota-remaining') : null;
   if (raw === null) return;
   const n = Number(raw);
   if (Number.isFinite(n) && n >= 0) setAiQuotaRemaining(n);
