@@ -159,11 +159,15 @@ export const WORKOUT_TYPES: readonly WorkoutType[] = [
 
 /// MET (metabolic equivalent) per type — moderate intensity, rounded from the
 /// Compendium of Physical Activities. This is the FALLBACK used when the user
-/// doesn't know / doesn't enter a pace. kcal = MET × weightKg × hours.
+/// doesn't know / doesn't enter a pace. These are the Compendium's own
+/// resting-inclusive values; [kcalFromMet] nets the resting hour back out.
 const WORKOUT_MET: Record<WorkoutType, number> = {
-  walk: 4.3, // deliberate exercise walk, brisk (~5.6 km/h; Compendium 17190)
-  run: 9.8, // ~9.7 km/h (Compendium 12050)
-  cycle: 7.5, // ~19–22 km/h
+  // 2024 Adult Compendium 17200, «3.5–3.9 mph, level, brisk, firm surface,
+  // walking for exercise». Was 4.3 (a 2011-edition value, cited against a code
+  // that in 2024 means the slower 2.8–3.4 mph bracket) — 10% low.
+  walk: 4.8,
+  run: 9.3, // 12050, «6–6.3 mph (10 min/mile)» — was 9.8, 5% high
+  cycle: 8.0, // 01030, «12–13.9 mph, leisure, moderate effort» — was 7.5, 6% low
   swim: 7.0,
   // Compendium 02050 «resistance training, multiple exercises, 8–15 reps» = 3.5
   // — the typical gym session INCLUDING inter-set rest, which our sets→minutes
@@ -171,13 +175,17 @@ const WORKOUT_MET: Record<WorkoutType, number> = {
   // on top of rest-inclusive minutes — it overshot trackers ~40% (device
   // feedback 2026-07-10: «подсчёт тренировок не очень точный»).
   strength: 3.5,
-  hiit: 8.0, // circuit / HIIT
-  elliptical: 5.0,
+  // 02040, «circuit training, including kettlebells, some aerobic movement with
+  // minimal rest» — the most demanding circuit entry there is. Was 8.0, which no
+  // circuit entry in the 2024 edition reaches; the only ≥8 interval code (8.8)
+  // is cycling-specific, and true burpee-style intervals are 11.0 (02214).
+  hiit: 7.5,
+  elliptical: 5.0, // 02048, moderate effort — matches exactly
   row: 7.0,
   sport: 7.0, // football / basketball / etc.
   dance: 5.0,
   martial: 7.5,
-  yoga: 2.8, // hatha / stretching
+  yoga: 2.3, // 02150 «Yoga, Hatha» (and 02175 «Yoga, General») — was 2.8, 22% high
 };
 
 /// Types whose energy cost scales cleanly with speed — for these the UI offers an
@@ -210,9 +218,9 @@ const WALK_MET_ANCHORS: readonly (readonly [number, number])[] = [
   [2.0, 2.0], // strolling
   [3.2, 2.8], // 2.0 mph
   [4.0, 3.0], // 2.5 mph
-  [4.8, 3.5], // 3.0 mph
-  [5.6, 4.3], // 3.5 mph, brisk
-  [6.4, 5.0], // 4.0 mph, very brisk
+  [4.8, 3.8], // 2.8–3.4 mph bracket (17190) — was 3.5
+  [5.6, 4.8], // 3.5–3.9 mph, brisk, walking for exercise (17200) — was 4.3
+  [6.4, 5.5], // 4.0–4.4 mph, very brisk (17220) — was 5.0
   [7.2, 7.0], // 4.5 mph
   [8.0, 8.3], // 5.0 mph
 ];
@@ -222,8 +230,8 @@ const WALK_MET_ANCHORS: readonly (readonly [number, number])[] = [
 /// and matches the published per-speed entries exactly.
 const RUN_MET_ANCHORS: readonly (readonly [number, number])[] = [
   [6.4, 6.0], // 4 mph
-  [8.0, 8.3], // 5 mph
-  [9.7, 9.8], // 6 mph
+  [8.0, 8.5], // 5 mph (12030) — was 8.3
+  [9.7, 9.3], // 6–6.3 mph, 10 min/mile (12050) — was 9.8
   [10.8, 10.5], // 6.7 mph
   [11.3, 11.0], // 7 mph
   [12.9, 11.8], // 8 mph
@@ -313,52 +321,186 @@ export function setsToMinutes(sets: number): number {
   return Math.min(Math.max(0, Math.round(sets)), 60) * MIN_PER_SET;
 }
 
-/// «Дожиг» (EPOC): after resistance / interval work the body burns above rest
-/// for 24–48 h — glycogen restock, fiber repair, protein synthesis. Studies put
-/// it around 6–15% of the session's cost, so a conservative +10% is credited
-/// for these types ONLY; steady cardio's afterburn is small enough that adding
-/// it would be false precision.
-export const EPOC_BONUS: Partial<Record<WorkoutType, number>> = {
-  strength: 0.1,
-  hiit: 0.1,
-};
+/// NO EPOC («дожиг») TERM — deliberately, after checking the literature the old
+/// +10% for strength/HIIT was resting on. What the evidence actually says:
+///  - the 6–15%-of-session figure (Børsheim & Bahr, Sports Med 2003) is an UPPER
+///    bound for demanding protocols — submaximal ≥50 min at ≥70% VO₂max, or
+///    supramaximal ≥6 min at ≥105% VO₂max. The reviewers note untrained people
+///    are unlikely to tolerate those, so a typical user never reaches them;
+///  - for RESISTANCE training the intensity/duration relationships are
+///    explicitly UNESTABLISHED — «no data», not «confirmed»;
+///  - the systematic review that does exist (Farinatti 2013, 16 studies, 155
+///    mostly-trained young adults) found EPOC spanning 4.1–114 kcal, a 28-fold
+///    spread with most protocols at 10–60 min. No single constant lives there;
+///  - the widely-quoted «~10%» refers to metabolic rate sitting 10% above
+///    baseline for 2 h — roughly 12–15 kcal — NOT 10% of the session's cost.
+///    Different denominator, off by about an order of magnitude;
+///  - a controlled crossover (Paoli 2012, n=8, indirect calorimetry) found NO
+///    significant RMR elevation at 12/24/36/48 h after resistance work up to
+///    20,000 kg of load-volume;
+///  - measured duration for ordinary sessions is ~28 min, and statistically
+///    identical after HIIT and steady running — the «24–48 hours» story the old
+///    comment told does not survive direct measurement;
+///  - EPOC after steady cardio is NOT zero either (Panissa 2021: ~24–38 kcal vs
+///    ~32–69 for intervals), so the old strength-and-HIIT-only split was the
+///    wrong shape as well as the wrong size;
+///  - worst of all, a flat percentage on top of a MET estimate DOUBLE-COUNTS for
+///    short-rest circuit work: shorter rests raise EPOC precisely by lowering
+///    in-session expenditure, while the MET table assumes continuous work.
+/// The honest magnitude left over is tens of kcal — smaller than this model's
+/// own error bars and far smaller than [EATBACK_FRACTION]'s correction. Adding a
+/// number that the evidence cannot size is theatre, so it is gone.
+
+/// The body's resting cost in the units the MET model works in (kcal per kg per
+/// hour). The Compendium's convention is 1 MET = 3.5 ml O₂·kg⁻¹·min⁻¹ ≈ 1
+/// kcal·kg⁻¹·h⁻¹, and that convention is measurably too high:
+///  - Byrne 2005, 769 weight-stable adults aged 18–74, 35–186 kg: measured
+///    0.84 ± 0.16 kcal·kg⁻¹·h⁻¹, i.e. the 1.0 convention overstates rest by
+///    ~19%. Body composition explained 62% of the variance, age only 14%;
+///  - a 2021 systematic review (23 studies, 1091 adults aged 60+) put the
+///    measured value at 2.7 ± 0.6 ml O₂·kg⁻¹·min⁻¹ against the standard 3.5;
+///  - in 1331 adults averaging BMI 42.5 the figure falls monotonically as BMI
+///    rises (p<0.001, both sexes), so the error is worst exactly for the users
+///    the RFM and adaptive-BMR work was built for;
+///  - the Compendium's own authors call 3.5 «a proxy value» with known potential
+///    to overestimate RMR.
+/// 0.84 is therefore the population fallback, not 1.0. Byrne's own stated
+/// recommendation is to use each person's measured or predicted RMR as the
+/// correction factor — see [restingRateFor], which does exactly that whenever
+/// the caller knows the user's BMR.
+///
+/// WHY PERSONAL AND NOT A BETTER CONSTANT — the mechanism, from indirect
+/// calorimetry in 205 adults across BMI 17.5–43.2. Two things move in opposite
+/// directions as adiposity rises: the GROSS cost of walking per kg falls (4.37 →
+/// 4.12 W/kg from normal weight to obese, p = 0.02) while the resting rate falls
+/// too (standing 4.1 → 3.2 ml·kg⁻¹·min⁻¹). Net cost comes out invariant across
+/// body types ONLY because those two cancel — and they cancel only when the
+/// resting term is that person's own. Subtracting a fixed population figure
+/// breaks the cancellation and re-introduces the body-composition bias that a
+/// correct net calculation exists to remove. A separate trial (n=103, BMI 31.0 ±
+/// 4.5) measured the damage: at light walking the GROSS estimate was already
+/// almost exact (offset 99.0% ± 3.8%), while the fixed-1-MET NET estimate
+/// overshot by 18.5% — the whole error being the gap between the assumed 3.5 and
+/// the measured 2.54. So the personal rate is not a refinement here; it is the
+/// thing that makes the subtraction legitimate at all.
+///
+/// Honest counterweight: the Compendium's own obesity citation (Browning et al.,
+/// women with obesity at BMI 33.9) found energy expenditure 8–15% HIGHER than in
+/// women without. The direction of error at BMI ≥ 30 is therefore not a settled
+/// one-way overestimate, which is another reason this subtracts a measured-ish
+/// personal quantity rather than applying a blanket high-BMI coefficient.
+export const POPULATION_RESTING_KCAL_PER_KG_H = 0.84;
+
+/// Plausible band for a personal resting rate, kcal·kg⁻¹·h⁻¹. The measured range
+/// runs from ~0.71 (severely obese adults, n=1331 at mean BMI 42.5) up past 1.0
+/// for lean young adults, so the band is that with headroom on both sides.
+const RESTING_RATE_MIN = 0.5;
+const RESTING_RATE_MAX = 1.2;
+
+/// This user's own resting cost per kg per hour, from the BMR the plan already
+/// computes (Mifflin, Katch–McArdle, RFM or the adaptive `bmr_factor`).
+///
+/// An out-of-band result is CLAMPED, never swapped for the population value.
+/// That distinction matters and it was wrong here first: a 130 kg user whose
+/// adaptive factor put their BMR at 1539 came out at 0.49, just under the floor,
+/// and the old code answered 0.84 — handing the person with the LOWEST measured
+/// metabolism the LARGEST resting subtraction, with a discontinuous jump from
+/// 0.56 to 0.84 as the factor crossed 0.7. Clamping keeps the function monotone
+/// in BMR, which is the property that actually protects heavy users.
+///
+/// The population value stands in only when there is no personal number at all —
+/// an incomplete profile — so a walk logged before body setup still gets a
+/// defensible estimate, just not a personal one.
+export function restingRateFor(bmrKcalPerDay?: number | null, weightKg?: number | null): number {
+  if (!Number.isFinite(bmrKcalPerDay ?? NaN) || !Number.isFinite(weightKg ?? NaN)) {
+    return POPULATION_RESTING_KCAL_PER_KG_H;
+  }
+  const kg = weightKg as number;
+  const bmr = bmrKcalPerDay as number;
+  if (kg < 20 || kg > 400 || bmr <= 0) return POPULATION_RESTING_KCAL_PER_KG_H;
+  const rate = bmr / (kg * 24);
+  return Math.min(RESTING_RATE_MAX, Math.max(RESTING_RATE_MIN, rate));
+}
 
 /// Whole-kcal from an explicit MET, minutes and weight — the shared core of the
-/// MET model. Clamps garbage (minutes ≤ 10 h, weight to a sane band, MET must be
-/// positive) so it never returns NaN. Used directly for a free-text "other"
-/// activity whose MET the model supplied (no entry in [WORKOUT_MET]); note no
-/// EPOC is added here — an unknown activity has no type to hang the bonus on.
-export function kcalFromMet(met: number, minutes: number, weightKg: number): number {
+/// MET model. Returns the ACTIVE (above-resting) cost: an hour of any activity
+/// contains an hour of merely existing, and the budget's resting base already
+/// paid for it. `restingRate` is the user's own cost of existing when known (see
+/// [restingRateFor]); the population value stands in otherwise.
+///
+/// Clamps garbage (minutes ≤ 10 h, weight to a sane band, MET must be positive)
+/// so it never returns NaN, and a sub-resting MET floors at 0 rather than going
+/// negative. Used directly for a free-text "other" activity whose MET the model
+/// supplied (no entry in [WORKOUT_MET]).
+export function kcalFromMet(
+  met: number,
+  minutes: number,
+  weightKg: number,
+  restingRate: number = POPULATION_RESTING_KCAL_PER_KG_H,
+): number {
   if (!Number.isFinite(met) || met <= 0) return 0;
   const min = Math.min(Math.max(0, minutes), 600);
   const kg = Math.min(Math.max(20, weightKg || 0), 400);
-  return Math.round(met * kg * (min / 60));
+  const rest = Number.isFinite(restingRate) ? restingRate : POPULATION_RESTING_KCAL_PER_KG_H;
+  return Math.round(Math.max(0, met - rest) * kg * (min / 60));
 }
 
-/// Calories burned by one workout: MET × kg × hours plus the type's afterburn
-/// ([EPOC_BONUS]), whole kcal. If a pace (km/h) is given for a speed-capable type
-/// it refines the MET; for strength an effort level ([intensity]) picks the MET;
-/// otherwise the fixed moderate MET is used.
+/// Calories burned by one workout — the ACTIVE cost, whole kcal. If a pace (km/h)
+/// is given for a speed-capable type it refines the MET; for strength an effort
+/// level ([intensity]) picks the MET; otherwise the fixed moderate MET is used.
+/// `restingRate` personalises the resting subtraction — see [restingRateFor].
+/// No afterburn is added; the reasoning is above [POPULATION_RESTING_KCAL_PER_KG_H].
 export function workoutKcal(
   type: WorkoutType,
   minutes: number,
   weightKg: number,
   speedKmh?: number | null,
   intensity?: StrengthIntensity | null,
+  restingRate: number = POPULATION_RESTING_KCAL_PER_KG_H,
 ): number {
   const fixed = WORKOUT_MET[type];
   if (fixed == null) return 0;
   const paced = speedKmh != null ? metForSpeed(type, speedKmh) : null;
   const byEffort = type === 'strength' && intensity != null ? STRENGTH_MET[intensity] : null;
   const met = paced ?? byEffort ?? fixed;
-  const session = kcalFromMet(met, minutes, weightKg);
-  return Math.round(session * (1 + (EPOC_BONUS[type] ?? 0)));
+  return kcalFromMet(met, minutes, weightKg, restingRate);
 }
 
-/// Share of burned exercise calories added back to the day's budget. Predictive
-/// formulas overestimate expenditure ~20–30%, so only part is counted — this
-/// guards against overeating on training days.
-export const EATBACK_FRACTION = 0.75;
+/// Share of a workout's burn added back to the day's eating budget.
+///
+/// 0.72 is not a safety margin picked for feel — it is the measured ADDITIVITY
+/// of activity energy. In the largest paired doubly-labelled-water dataset
+/// (Careau 2021, n = 1754 adults, 692 men / 1062 women, 18–96 y, BMI 12.5–61.7)
+/// only ~72% of the energy burned in extra activity shows up as extra total
+/// daily expenditure; the rest is offset by a fall in basal expenditure. The
+/// regression of total on basal expenditure, adjusted for age, sex, fat-free and
+/// fat mass, gives a slope of 0.723 ± 0.049, 95% CI [0.626, 0.820] — an interval
+/// that excludes 1, and whose upper bound sits below the 0.9 this used to be.
+/// The same compensation shows up WITHIN people: in 68 adults measured twice
+/// about seven years apart, activity and basal expenditure correlated r = −0.58.
+///
+/// Three honesty notes, because this number is less settled than it looks:
+///  - the literature disagrees. A 2025 DLW study spanning sedentary adults to
+///    ultraendurance runners (n = 75) found activity related to total expenditure
+///    LINEARLY with no plateau and explicitly rejected the compensated model;
+///  - a 24-week RCT (n = 29, BMI 34, DLW) found compensation is BIMODAL, not a
+///    uniform discount: 48% of participants came in 308 ± 158 kcal/day below the
+///    additive prediction while the rest came in 94 ± 124 above, with no way to
+///    tell in advance who is which. A single coefficient is wrong for everyone
+///    individually and right only on average;
+///  - compensation scales with adiposity (29.7% at the 10th BMI percentile,
+///    45.7% at the 90th), which is a real gradient — a user at the top of it
+///    nets only ~54%, not 72%. It is deliberately NOT indexed here anyway: the
+///    same dataset leaves the direction of causality unresolved (does fat drive
+///    compensation, or compensation drive fat?), and the RCT above found no
+///    difference in BMI between compensators and non-compensators at all. A
+///    gradient you cannot attribute is not a coefficient you can key on.
+///
+/// What it is NOT: a claim that MET tables overstate expenditure. That was the
+/// old justification here and no source supports it — the measured bias of the
+/// MET approach is about 209 kcal per WEEK (~30/day) in the worst subgroup. The
+/// correction belongs to additivity, which acts on the DAY, not on the session.
+export const EATBACK_FRACTION = 0.72;
 
 /// Layer a day's raw workout burn onto a base kcal figure (maintenance or a
 /// target), counting EATBACK_FRACTION of it. Rounded to 10 kcal like the plan.
@@ -387,6 +529,42 @@ export function suggestActivityLevel(avgStepsPerDay: number): ActivityLevel {
 const STEP_REST_BASELINE = 3000;
 /// Real walking energy per step per kg (~0.035 kcal/step at 70 kg) — the honest
 /// cost of a step, kept transparent (shown as-is in the day's «шаги +N» line).
+/// KNOWN-WEAK, and no better constant exists — the MODEL SHAPE is what's wrong.
+/// A controlled validation (n=100, treadmill, five fixed cadences, metabolic-cart
+/// reference) found a pedometer's step→kcal conversion missed at EVERY cadence
+/// and, worse, flipped sign: it underestimated at 80 steps/min and overestimated
+/// at 90, 100, 110 and 120. The authors traced the error to the conversion model
+/// itself, not to step detection or stride length — so a per-step constant is
+/// falsified as a cadence-invariant model, and tuning this number cannot fix it.
+/// Two further cracks: step COUNTING itself was unreliable below 100 steps/min
+/// (slow walkers — older and heavier users — feed a biased count in), and the
+/// energy cost of walking is U-shaped in speed with a minimum near 4 km/h, which
+/// a per-step figure ignores entirely. Cadence also maps to intensity differently
+/// by sex, so «per step, scaled only by mass» cannot be universal.
+///
+/// The one part that IS validated is scaling by body mass. Measured by indirect
+/// calorimetry in 205 adults spanning BMI 17.5–43.2 and 3.0–52.8% body fat, the
+/// NET cost of walking per kg per metre is statistically independent of fatness,
+/// BMI and sex: 2.23 / 2.18 / 2.26 J·kg⁻¹·m⁻¹ for normal weight / overweight /
+/// obese (p = 0.54). A 120 kg person and a 60 kg person really do cost the same
+/// joules per kg per metre, so the linear-in-mass form is sound even though the
+/// per-STEP form is not.
+///
+/// AND IT IS A GROSS FIGURE, which is the live inconsistency in this file. The
+/// same n=205 calorimetry study measured walking at 1.34 m/s as 3.18 J·kg⁻¹·m⁻¹
+/// gross against 2.22 J·kg⁻¹·m⁻¹ net — net is ~70% of gross. Converted at a
+/// typical 0.65–0.75 m stride, 0.0005 kcal·step⁻¹·kg⁻¹ works out to 2.79–3.22
+/// J·kg⁻¹·m⁻¹: it brackets the measured GROSS cost and sits 26–45% ABOVE the
+/// measured NET one. At 70 kg that is 0.035 kcal/step here versus 0.026 measured
+/// net. So steps enter the budget as a resting-inclusive number while workouts
+/// now enter as an above-resting one — the very split [POPULATION_RESTING_KCAL_PER_KG_H]
+/// exists to fix, still open on this side. The net-consistent value would be
+/// ~0.00037; changing it cuts every user's step credit by about a quarter, so it
+/// is left as an owner decision rather than slipped in here.
+///
+/// This also explains the residual gap between the two paths: the step model is
+/// gross, the MET model is net, and the tests in bodyMetrics.test.ts bound that
+/// gap at ~25% rather than asserting agreement.
 const KCAL_PER_STEP_PER_KG = 0.0005;
 
 /// «Base + earned» model: kcal EARNED by today's steps above the resting baseline,
@@ -719,6 +897,21 @@ export function suggestPlan(
     assumedAge: !hasBirthYear && !usesComposition && !usesMeasured,
     bmrMethod,
   };
+}
+
+/// This user's resting rate straight from their stored profile — the practical
+/// entry point for the workout math, which knows the weight but not the BMR.
+/// Runs the same formula ladder the plan uses (measured factor → Katch–McArdle →
+/// RFM → Mifflin), so the resting hour subtracted from a workout is the very
+/// number the rest of the app calls their metabolism. An incomplete profile
+/// yields the population value rather than nothing — see [restingRateFor].
+export function restingRateForProfile(
+  profile: BodyProfile,
+  weightKg: number,
+  now: Date = new Date(),
+): number {
+  const plan = suggestPlan(profile, weightKg, 'maintain', now);
+  return restingRateFor(plan?.bmrKcal, weightKg);
 }
 
 /// Maintenance КБЖУ (the pre-goal-modes API; kept for existing callers/tests).

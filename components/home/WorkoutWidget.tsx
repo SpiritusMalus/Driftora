@@ -12,13 +12,25 @@ import { useTheme } from '@/lib/theme/theme';
 /// plain invitation. Tapping (or the [+]) opens the standalone «Тренировки»
 /// screen with the log unfolded — a workout is logged there, never inline (it
 /// needs the type/minutes/AI card), so this row is a doorway, not an input.
-export function WorkoutWidget({ countedKcal }: { countedKcal: number }) {
+export function WorkoutWidget({
+  countedKcal,
+  hideCalories = false,
+}: {
+  countedKcal: number;
+  hideCalories?: boolean;
+}) {
   const { t } = useTranslation();
   const theme = useTheme();
   const router = useRouter();
 
+  // With «не показывать калории» on, the row still confirms that today has a
+  // workout in it — the setting hides the number, not the fact.
   const subtitle =
-    countedKcal > 0 ? t('home.feeders.workoutsToday', { kcal: countedKcal }) : t('home.feeders.workoutsCta');
+    countedKcal <= 0
+      ? t('home.feeders.workoutsCta')
+      : hideCalories
+        ? t('home.feeders.workoutsTodayNoKcal')
+        : t('home.feeders.workoutsToday', { kcal: countedKcal });
 
   return (
     <Card style={styles.card}>

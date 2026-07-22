@@ -607,12 +607,23 @@ export const WORKOUT_TYPE_KEYS = [
 export type WorkoutTypeKey = (typeof WORKOUT_TYPE_KEYS)[number];
 
 /**
+ * Effort level for resistance work — mirrors the client's `StrengthIntensity`.
+ * A heavy squat and a light isolation set are not the same MET (3.5 / 5.0 / 6.0
+ * in the app's table), so a description that names the effort must carry it
+ * through: the manual form has a chip for this, and free text said it in words.
+ */
+export const STRENGTH_INTENSITY_KEYS = ['light', 'moderate', 'heavy'] as const;
+export type StrengthIntensityKey = (typeof STRENGTH_INTENSITY_KEYS)[number];
+
+/**
  * One activity parsed from a free-text workout description. `speed_kmh` is only
  * meaningful for walk/run/cycle; `met` is the model's rough MET estimate carried
  * ONLY for `type: 'other'` (the app has its own MET for the known types and
  * ignores the model's there). Reps → `minutes` is estimated by the model;
  * `sets` is carried alongside for strength («жим 4 подхода») so the client can
- * show the entry the way lifters think — in sets, not minutes.
+ * show the entry the way lifters think — in sets, not minutes. `intensity` is
+ * the strength-only effort level, carried for the same reason `sets` is: it
+ * shapes the MET, so a described «тяжёлый присед» must not land as a light one.
  */
 export interface ParsedWorkout {
   type: WorkoutTypeKey;
@@ -621,6 +632,7 @@ export interface ParsedWorkout {
   speed_kmh?: number;
   met?: number;
   sets?: number;
+  intensity?: StrengthIntensityKey;
   confidence: number;
 }
 
@@ -669,10 +681,14 @@ export function normalizeParsedWorkouts(payload: unknown): ParsedWorkout[] {
       const s = posNum(r.speed_kmh);
       if (s !== undefined && s <= 60) item.speed_kmh = round1(s);
     }
-    // Set count only makes sense for strength; clamp so a wild count is dropped.
+    // Set count and effort only make sense for strength; clamp/validate so a
+    // wild count or an invented effort word is dropped rather than trusted.
     if (type === 'strength') {
       const s = posNum(r.sets);
       if (s !== undefined && s <= 60) item.sets = Math.round(s);
+      if (STRENGTH_INTENSITY_KEYS.includes(r.intensity as StrengthIntensityKey)) {
+        item.intensity = r.intensity as StrengthIntensityKey;
+      }
     }
     // MET is carried only for 'other' (the app owns MET for known types). Clamp to
     // the realistic human range so a wild number can't inflate the burn.

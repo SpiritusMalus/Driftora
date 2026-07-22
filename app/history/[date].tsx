@@ -10,20 +10,26 @@ import { SectionHeader } from '@/components/ui/SectionHeader';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { listEntriesForDay } from '@/lib/core/db/food';
 import { listMoodsForDay } from '@/lib/core/db/mood';
-import type { FoodEntry, MoodRow } from '@/lib/core/db/schema';
+import type { FoodEntry, MoodRow, WorkoutRow } from '@/lib/core/db/schema';
 import { ensureSettings } from '@/lib/core/db/settings';
 import { getStepsRow } from '@/lib/core/db/steps';
 import { getWeightForDay } from '@/lib/core/db/weight';
+import { listWorkoutsForDay } from '@/lib/core/db/workouts';
 import { formatDayTitle, parseDayKey } from '@/lib/i18n/formatDay';
+import { formatWorkoutLine, formatWorkoutValue } from '@/lib/i18n/formatWorkout';
 import { useTheme } from '@/lib/theme/theme';
 
 /// One past day: the food log (each entry is TAPPABLE — it opens the normal
 /// /food/[id] edit screen where the meal can be changed or deleted, so «закинул
-/// спеша вчера» is fixable), the mood check-ins, and the body facts (weight,
-/// steps) when they exist. Reached from the day-history list behind the
-/// «Сегодня ⌄» title. A chevron + a one-line hint make the edit affordance
-/// obvious — without them the kcal value sits where the chevron would, and the
-/// row reads as a dead label (tester: «нельзя что-то поменять»).
+/// спеша вчера» is fixable), the workouts, the mood check-ins, and the body
+/// facts (weight, steps) when they exist. Reached from the day-history list
+/// behind the «Сегодня ⌄» title. A chevron + a one-line hint make the edit
+/// affordance obvious — without them the kcal value sits where the chevron
+/// would, and the row reads as a dead label (tester: «нельзя что-то поменять»).
+///
+/// Workouts sit right under the food: those two are what MOVED the day's eating
+/// budget, and a yesterday's session used to be invisible here even though the
+/// budget it shifted was not.
 export default function HistoryDayScreen() {
   const { t } = useTranslation();
   const theme = useTheme();
@@ -34,6 +40,7 @@ export default function HistoryDayScreen() {
 
   const [entries, setEntries] = useState<FoodEntry[]>([]);
   const [moods, setMoods] = useState<MoodRow[]>([]);
+  const [workoutRows, setWorkoutRows] = useState<WorkoutRow[]>([]);
   const [weightKg, setWeightKg] = useState<number | null>(null);
   const [steps, setSteps] = useState<number | null>(null);
   const [hideCalories, setHideCalories] = useState(false);
@@ -50,10 +57,13 @@ export default function HistoryDayScreen() {
           setLoaded(true);
           return;
         }
-        const [settings, dayEntries, dayMoods, weightRow, stepsRow] = await Promise.all([
+        const [settings, dayEntries, dayMoods, dayWorkouts, weightRow, stepsRow] = await Promise.all([
           ensureSettings(db),
           listEntriesForDay(db, dayDate),
           listMoodsForDay(db, dayDate),
+          // By the day KEY, not the Date: that's the column workouts are stored
+          // and grouped by everywhere else (a device import keys on its start).
+          listWorkoutsForDay(db, date),
           getWeightForDay(db, date),
           getStepsRow(db, date),
         ]);
@@ -61,6 +71,7 @@ export default function HistoryDayScreen() {
         setHideCalories(settings.hideCalories);
         setEntries(dayEntries);
         setMoods(dayMoods);
+        setWorkoutRows(dayWorkouts);
         setWeightKg(weightRow ? weightRow.weightKg : null);
         setSteps(stepsRow != null ? Number(stepsRow.steps) : null);
         setLoaded(true);
@@ -100,6 +111,22 @@ export default function HistoryDayScreen() {
     onPress: () => router.push(`/food/${e.id}`),
   }));
 
+  // The session as it was logged, with its burn on the right — or, under
+  // «Скрыть калории», the line alone: the workout stays visible, only the
+  // number goes (`formatWorkoutValue` owns that rule).
+  const workoutListRows: RowSpec[] = workoutRows.map((w) => {
+    const value = formatWorkoutValue(w, t, hideCalories);
+    return {
+      key: String(w.id),
+      title: formatWorkoutLine(w, t),
+      subtitle: formatTime(new Date(w.ts)),
+      right:
+        value == null ? null : (
+          <Text style={[styles.rowValue, { color: theme.text }, theme.font.bodyMedium]}>{value}</Text>
+        ),
+    };
+  });
+
   const moodRows: RowSpec[] = moods.map((m) => ({
     key: String(m.id),
     title: formatTime(m.ts),
@@ -119,7 +146,12 @@ export default function HistoryDayScreen() {
   const bodyLine = bodyParts.length > 0 ? bodyParts.join(' · ') : null;
 
   const hasFood = entries.length > 0;
-  const emptyDay = loaded && entries.length === 0 && moods.length === 0 && bodyLine == null;
+  const emptyDay =
+    loaded &&
+    entries.length === 0 &&
+    moods.length === 0 &&
+    workoutRows.length === 0 &&
+    bodyLine == null;
 
   return (
     <Screen>
@@ -165,6 +197,12 @@ export default function HistoryDayScreen() {
               </Text>
               <ListGroup rows={foodRows} />
             </>
+          ) : null}
+          {workoutListRows.length > 0 ? (
+            <View style={styles.section}>
+              <SectionHeader>{t('history.workoutSection')}</SectionHeader>
+              <ListGroup rows={workoutListRows} />
+            </View>
           ) : null}
           {moodRows.length > 0 ? (
             <View style={styles.section}>

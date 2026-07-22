@@ -31,6 +31,10 @@ export interface ParsedWorkout {
   speed_kmh?: number;
   met?: number;
   sets?: number; // strength only — the entry is shown in подходы, not minutes
+  /// Strength only, and only when the effort was actually described («тяжёлый
+  /// присед»). Absent = no signal, and the app keeps its conservative moderate
+  /// MET rather than guessing. Validated against STRENGTH_INTENSITIES on use.
+  intensity?: string;
   confidence: number;
 }
 
@@ -65,7 +69,8 @@ function isParsedWorkout(v: unknown): v is ParsedWorkout {
     typeof w.confidence === 'number' &&
     (w.speed_kmh === undefined || typeof w.speed_kmh === 'number') &&
     (w.met === undefined || typeof w.met === 'number') &&
-    (w.sets === undefined || typeof w.sets === 'number')
+    (w.sets === undefined || typeof w.sets === 'number') &&
+    (w.intensity === undefined || w.intensity === null || typeof w.intensity === 'string')
   );
 }
 

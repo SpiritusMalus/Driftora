@@ -20,12 +20,12 @@ import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { todayMacroTotals } from '@/lib/core/db/food';
 import type { AppSettings } from '@/lib/core/db/schema';
 import { latestMood } from '@/lib/core/db/mood';
-import { syncDayHealth } from '@/lib/core/db/healthSync';
+import { catchUpHealth, syncDayHealth } from '@/lib/core/db/healthSync';
 import { ensureSettings, parseReminderTimes, updateSettings } from '@/lib/core/db/settings';
 import { dayKey, listStepsDays, typicalSteps } from '@/lib/core/db/steps';
 import { weekReview } from '@/lib/core/db/weekReview';
 import { latestWeight } from '@/lib/core/db/weight';
-import { todayWorkoutKcal } from '@/lib/core/db/workouts';
+import { listWorkoutsForDay, todayWorkoutKcal } from '@/lib/core/db/workouts';
 import {
   dayBudgetKcal,
   EATBACK_FRACTION,
@@ -106,12 +106,23 @@ export default function HomeScreen() {
         // even though sleep is DISPLAYED on the mood screen only.
         const health = await syncDayHealth(db, svc, new Date(), settingsRow.healthImportExtended);
         const stepCount = health.steps;
-        const [tot, moodRow, review, weightLatest, workoutKcal] = await Promise.all([
+        // Then fill in whatever days the app wasn't opened on. Home is the entry
+        // point, so this is where a gap gets closed — today's numbers are already
+        // in hand above, and the catch-up only touches PAST days, so it runs
+        // unawaited rather than holding the first paint. On a daily user it is a
+        // handful of keyed reads and stops.
+        void catchUpHealth(db, svc, settingsRow.healthImportExtended).catch(() => {});
+        // The workout table is read twice on purpose: `todayWorkoutKcal` stays
+        // the single source of the budget's burn, while the win rule only asks
+        // «была ли сегодня тренировка» — re-summing kcal here would fork that
+        // math for the sake of one `.length`.
+        const [tot, moodRow, review, weightLatest, workoutKcal, todayWorkouts] = await Promise.all([
           todayMacroTotals(db),
           latestMood(db),
           weekReview(db),
           latestWeight(db),
           todayWorkoutKcal(db),
+          listWorkoutsForDay(db),
         ]);
         const stepsForGoals = stepCount ?? 0;
         // Personal baseline: today vs the median of recent prior days (steps
@@ -133,6 +144,7 @@ export default function HomeScreen() {
             stepsGoal: settingsRow.stepsGoal,
             proteinG: tot.proteinG,
             proteinTargetG: settingsRow.targetProteinG,
+            workouts: todayWorkouts.length,
             paused: settingsRow.paused,
           },
           {
@@ -154,6 +166,18 @@ export default function HomeScreen() {
                 t('wins.auto.proteinGoal2', { protein: Math.round(tot.proteinG) }),
                 t('wins.auto.proteinGoal3', { protein: Math.round(tot.proteinG) }),
                 t('wins.auto.proteinGoal4', { protein: Math.round(tot.proteinG) }),
+              ],
+              dayOfYear(),
+            ),
+            // No number to interpolate here on purpose: a «по трекеру» entry
+            // has kcal but no minutes, so any «N мин» copy would be a lie on
+            // exactly the days it fires for a watch-typed session.
+            workout: pickVariant(
+              [
+                t('wins.auto.workout'),
+                t('wins.auto.workout2'),
+                t('wins.auto.workout3'),
+                t('wins.auto.workout4'),
               ],
               dayOfYear(),
             ),
@@ -460,7 +484,10 @@ export default function HomeScreen() {
           estimateLine={stepsEstimateLine}
           onSaved={reload}
         />
-        <WorkoutWidget countedKcal={Math.round(Math.max(0, workoutRawKcal) * EATBACK_FRACTION)} />
+        <WorkoutWidget
+          countedKcal={Math.round(Math.max(0, workoutRawKcal) * EATBACK_FRACTION)}
+          hideCalories={settings?.hideCalories ?? false}
+        />
         {/* Persistent page indicator for the two day panes (body ● ○ mind). It
             signposts the left swipe for good — tappable too, so anyone who reads
             the dots but misses the gesture still reaches the mind pane. */}

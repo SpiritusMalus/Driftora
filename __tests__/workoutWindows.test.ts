@@ -1,6 +1,11 @@
 import { describe, expect, it } from '@jest/globals';
 
-import { clipWindows, mergedDayWindows, mergeWindows } from '@/lib/core/services/workoutWindows';
+import {
+  clipWindows,
+  mergedDayWindows,
+  mergeWindows,
+  subtractWindows,
+} from '@/lib/core/services/workoutWindows';
 
 const w = (start: number, end: number) => ({ start, end });
 
@@ -42,5 +47,43 @@ describe('mergedDayWindows', () => {
 
   it('returns empty for a day without sessions', () => {
     expect(mergedDayWindows([], 0, 1000)).toEqual([]);
+  });
+});
+
+describe('subtractWindows', () => {
+  it('returns the whole window when nothing is claimed', () => {
+    expect(subtractWindows(w(10, 20), [])).toEqual([w(10, 20)]);
+  });
+
+  it('trims a leading and a trailing overlap', () => {
+    expect(subtractWindows(w(10, 20), [w(5, 12)])).toEqual([w(12, 20)]);
+    expect(subtractWindows(w(10, 20), [w(18, 25)])).toEqual([w(10, 18)]);
+  });
+
+  it('splits into two pieces around a claim in the middle', () => {
+    expect(subtractWindows(w(10, 30), [w(15, 20)])).toEqual([w(10, 15), w(20, 30)]);
+  });
+
+  it('a fully covered window earns nothing', () => {
+    expect(subtractWindows(w(10, 20), [w(0, 100)])).toEqual([]);
+    expect(subtractWindows(w(10, 20), [w(10, 20)])).toEqual([]);
+  });
+
+  it('ignores claims that do not touch the window', () => {
+    expect(subtractWindows(w(10, 20), [w(0, 5), w(30, 40)])).toEqual([w(10, 20)]);
+  });
+
+  it('handles unsorted and overlapping claims (it merges them first)', () => {
+    expect(subtractWindows(w(0, 100), [w(60, 70), w(10, 20), w(15, 25)])).toEqual([
+      w(0, 10),
+      w(25, 60),
+      w(70, 100),
+    ]);
+  });
+
+  it('rejects an invalid window rather than inventing a stretch', () => {
+    expect(subtractWindows(w(20, 10), [])).toEqual([]);
+    expect(subtractWindows(w(10, 10), [])).toEqual([]);
+    expect(subtractWindows(w(NaN, 10), [])).toEqual([]);
   });
 });

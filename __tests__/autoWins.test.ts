@@ -5,6 +5,7 @@ import { drizzle } from 'drizzle-orm/better-sqlite3';
 import {
   AUTO_WIN_PROTEIN_GOAL,
   AUTO_WIN_STEPS_GOAL,
+  AUTO_WIN_WORKOUT,
   awardOncePerDay,
   earnedAutoWinKinds,
   hasWinOfKindOnDay,
@@ -20,10 +21,10 @@ function makeDb() {
   return { sqlite, db: drizzle(sqlite, { schema }) };
 }
 
-const MESSAGES = { stepsGoal: 'steps win', proteinGoal: 'protein win' };
+const MESSAGES = { stepsGoal: 'steps win', proteinGoal: 'protein win', workout: 'workout win' };
 
 function facts(over: Partial<AutoWinFacts> = {}): AutoWinFacts {
-  return { steps: 0, stepsGoal: 7000, proteinG: 0, proteinTargetG: 120, ...over };
+  return { steps: 0, stepsGoal: 7000, proteinG: 0, proteinTargetG: 120, workouts: 0, ...over };
 }
 
 describe('earnedAutoWinKinds', () => {
@@ -54,8 +55,25 @@ describe('earnedAutoWinKinds', () => {
     ]);
   });
 
+  it('awards the workout win for any logged session — there is no goal to clear', () => {
+    expect(earnedAutoWinKinds(facts({ workouts: 0 }))).not.toContain(AUTO_WIN_WORKOUT);
+    expect(earnedAutoWinKinds(facts({ workouts: 1 }))).toContain(AUTO_WIN_WORKOUT);
+    // Two sessions are still ONE win for the day (dedup lives in awardOncePerDay).
+    expect(earnedAutoWinKinds(facts({ workouts: 3 }))).toEqual([AUTO_WIN_WORKOUT]);
+  });
+
+  it('earns steps, protein and the workout together', () => {
+    expect(earnedAutoWinKinds(facts({ steps: 8000, proteinG: 130, workouts: 1 }))).toEqual([
+      AUTO_WIN_STEPS_GOAL,
+      AUTO_WIN_PROTEIN_GOAL,
+      AUTO_WIN_WORKOUT,
+    ]);
+  });
+
   it('awards nothing while on a break (paused)', () => {
-    expect(earnedAutoWinKinds(facts({ steps: 8000, proteinG: 130, paused: true }))).toEqual([]);
+    expect(
+      earnedAutoWinKinds(facts({ steps: 8000, proteinG: 130, workouts: 2, paused: true })),
+    ).toEqual([]);
   });
 });
 
@@ -116,6 +134,39 @@ describe('runAutoWins', () => {
       [AUTO_WIN_PROTEIN_GOAL, AUTO_WIN_STEPS_GOAL].sort(),
     );
     expect(stored.map((w) => w.message).sort()).toEqual(['protein win', 'steps win']);
+    sqlite.close();
+  });
+
+  it('writes the workout win with its OWN copy, not the protein one', async () => {
+    const { sqlite, db } = makeDb();
+    await applySchema((s) => sqlite.exec(s));
+    const day = new Date(2026, 5, 16, 19);
+
+    const awarded = await runAutoWins(db, facts({ workouts: 1 }), MESSAGES, day);
+    expect(awarded).toEqual([AUTO_WIN_WORKOUT]);
+    const stored = await listWins(db);
+    expect(stored).toHaveLength(1);
+    expect(stored[0].message).toBe('workout win');
+    sqlite.close();
+  });
+
+  it('gives a second workout the same day no second win', async () => {
+    const { sqlite, db } = makeDb();
+    await applySchema((s) => sqlite.exec(s));
+    const day = new Date(2026, 5, 16, 8);
+
+    expect(await runAutoWins(db, facts({ workouts: 1 }), MESSAGES, day)).toEqual([
+      AUTO_WIN_WORKOUT,
+    ]);
+    // Evening session: same local day → deduped.
+    expect(
+      await runAutoWins(db, facts({ workouts: 2 }), MESSAGES, new Date(2026, 5, 16, 20)),
+    ).toEqual([]);
+    // Tomorrow it can be earned again.
+    expect(
+      await runAutoWins(db, facts({ workouts: 1 }), MESSAGES, new Date(2026, 5, 17, 8)),
+    ).toEqual([AUTO_WIN_WORKOUT]);
+    expect(await listWins(db)).toHaveLength(2);
     sqlite.close();
   });
 

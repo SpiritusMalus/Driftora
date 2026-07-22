@@ -23,6 +23,8 @@ import {
 } from '@/lib/core/db/workouts';
 import {
   EATBACK_FRACTION,
+  POPULATION_RESTING_KCAL_PER_KG_H,
+  restingRateForProfile,
   setsToMinutes,
   STRENGTH_INTENSITIES,
   supportsIntensity,
@@ -46,6 +48,7 @@ import {
   isWorkoutParserConfigured,
   type ParsedWorkout,
 } from '@/lib/core/services/workoutParser';
+import { formatWorkoutLine, formatWorkoutValue } from '@/lib/i18n/formatWorkout';
 import { type Theme, useTheme } from '@/lib/theme/theme';
 
 /// Whether an online AI parser is configured for this build (env at bundle time).
@@ -59,6 +62,7 @@ type WorkoutMode = (typeof WORKOUT_MODES)[number];
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Db = any;
+
 
 /// «Тренировки сегодня» — log a workout (type + minutes → kcal via MET, computed
 /// from the latest weight) and see the day's burn. Reports the RAW burned kcal up
@@ -85,6 +89,11 @@ export function WorkoutSection({
   // Whether a real weigh-in backs the kcal math. Without one we fall back to
   // 70 kg — say so instead of silently mis-scaling a 100 kg user by 30%.
   const [hasWeight, setHasWeight] = useState(true);
+  // The user's OWN cost of merely existing, subtracted from every MET estimate.
+  // Byrne 2005's recommendation over the 1-MET convention, which overstates rest
+  // by ~19% on average and more at high BMI. Falls back to the population value
+  // until the body profile is complete — see [restingRateForProfile].
+  const [restingRate, setRestingRate] = useState(POPULATION_RESTING_KCAL_PER_KG_H);
   const [type, setType] = useState<WorkoutType>('walk');
   const [minutes, setMinutes] = useState('');
   // Strength is logged in SETS («время не нужно») — a separate field so a
@@ -94,15 +103,17 @@ export function WorkoutSection({
   // Strength effort → MET (light/moderate/heavy). Defaults to «средняя»: a typical
   // gym session, not the light-isolation floor the flat 3.5 used to assume.
   const [intensity, setIntensity] = useState<StrengthIntensity>('moderate');
-  // «По часам»: a measured kcal number typed straight off a watch/tracker — stored
-  // verbatim (no MET, no EPOC), the standalone model's optional import path.
+  // «По часам»: a kcal number typed straight off a watch/tracker — stored
+  // verbatim (no MET math of ours), the standalone model's optional import path.
+  // Not a criterion measure: wrist devices miss energy expenditure by >30% MAPE,
+  // so it is shown with «≈» like everything else.
   const [trackerKcal, setTrackerKcal] = useState('');
   const [open, setOpen] = useState(initiallyOpen);
   // Which input path is visible (segmented control). Defaults to the primary
   // manual entry; «tracker»/«ai» are the optional paths.
   const [mode, setMode] = useState<WorkoutMode>('exact');
   // The honest burn-math note is quiet by default — one line always, the full
-  // explanation (75 %, afterburn, «по трекеру») a tap away.
+  // explanation (72 %, resting subtraction, «по трекеру») a tap away.
   const [noteOpen, setNoteOpen] = useState(false);
   // Free-text parse path.
   const [describe, setDescribe] = useState('');
@@ -110,6 +121,12 @@ export function WorkoutSection({
   // Transient result note under the free-text row: how many activities were added,
   // or an honest "couldn't parse". Cleared on the next edit.
   const [parseNote, setParseNote] = useState<string | null>(null);
+  // «Не показывать калории» — the same app_settings switch the food, review and
+  // history screens already honour. Workouts were the one budget surface that
+  // ignored it, so a user who asked for no calories still met them on the home
+  // screen. It hides the user's OWN numbers, not the method: the «как считаем»
+  // explainer stays, since it describes the model rather than their day.
+  const [hideCalories, setHideCalories] = useState(false);
   // Cross-border AI consent — mirrors app_settings; drives the just-in-time gate.
   const [aiConsent, setAiConsent] = useState(false);
   const [aiConsentVersion, setAiConsentVersion] = useState('');
@@ -135,35 +152,56 @@ export function WorkoutSection({
   function ackBudget(rawKcal: number) {
     const add = Math.round(Math.max(0, rawKcal) * EATBACK_FRACTION);
     if (add <= 0) return;
-    setBudgetAck(t('workouts.budgetAck', { kcal: add }));
+    setBudgetAck(hideCalories ? t('workouts.budgetAckNoKcal') : t('workouts.budgetAck', { kcal: add }));
     if (budgetAckTimer.current) clearTimeout(budgetAckTimer.current);
     budgetAckTimer.current = setTimeout(() => setBudgetAck(null), 6000);
   }
 
   const reload = useCallback(async () => {
     if (!db) return;
-    const [list, w, repeats] = await Promise.all([
+    const [list, w, repeats, s] = await Promise.all([
       listWorkoutsForDay(db),
       latestWeight(db),
       quickWorkouts(db),
+      ensureSettings(db),
     ]);
     setRows(list);
     setQuick(repeats);
     const weighed = w != null && w.weightKg > 0;
+    const kg = weighed ? w.weightKg : weightKg;
     if (weighed) setWeightKg(w.weightKg);
     setHasWeight(weighed);
-    onChange?.(list.reduce((s, r) => s + Number(r.kcal), 0));
-  }, [db, onChange]);
+    // Resting rate rides along with the weight it was derived from, so the two
+    // never disagree inside one estimate.
+    setRestingRate(
+      restingRateForProfile(
+        {
+          sex: s.sex,
+          birthYear: s.birthYear,
+          heightCm: s.heightCm,
+          activityLevel: s.activityLevel,
+          bodyFatPct: s.bodyFatPct,
+          waistCm: s.waistCm,
+          bmrFactor: s.bmrFactor,
+        },
+        kg,
+      ),
+    );
+    onChange?.(list.reduce((s2, r) => s2 + Number(r.kcal), 0));
+  }, [db, onChange, weightKg]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
 
-  // Load the AI-consent state once so the free-text button can gate correctly.
+  // Settings this card reacts to: the calorie-visibility switch (always), and
+  // the AI-consent state so the free-text button can gate correctly.
   useEffect(() => {
-    if (!db || !AI_CONFIGURED) return;
+    if (!db) return;
     void (async () => {
       const s = await ensureSettings(db);
+      setHideCalories(s.hideCalories);
+      if (!AI_CONFIGURED) return;
       setAiConsent(s.aiFoodParseConsent);
       setAiConsentVersion(s.aiFoodParseConsentVersion);
     })();
@@ -184,27 +222,10 @@ export function WorkoutSection({
   );
 
   /// One line describing a workout — «Силовая · 12 подх. · Средняя». Shared by
-  /// the day's list and the repeat chips, so a chip reads exactly like the row
-  /// it came from.
-  function describeWorkout(w: {
-    type: string;
-    label?: string | null;
-    minutes: number;
-    sets?: number | null;
-    speedKmh?: number | null;
-    intensity?: string | null;
-    source?: string;
-  }): string {
-    const parts = [w.label ? w.label : t(`workouts.type.${w.type}`)];
-    if (w.sets != null && w.sets > 0) parts.push(t('workouts.setsCount', { count: w.sets }));
-    // Skip a «0 мин» tail: a «по часам» entry has kcal but no duration.
-    else if (w.minutes > 0) parts.push(`${w.minutes} ${t('workouts.min')}`);
-    if (w.speedKmh) parts.push(`${Math.round(w.speedKmh * 10) / 10} ${t('workouts.kmh')}`);
-    if (w.intensity) parts.push(t(`workouts.intensity.${w.intensity}`));
-    // Provenance tag for auto-imported sessions — «с часов».
-    if (w.source === 'device') parts.push(t('workouts.fromDevice'));
-    return parts.join(' · ');
-  }
+  /// the day's list, the repeat chips AND the history screen: a past session has
+  /// to read back exactly as it read the day it was logged, which is why the
+  /// formatter lives in [lib/i18n/formatWorkout] rather than in this component.
+  const describeWorkout = (w: Parameters<typeof formatWorkoutLine>[0]) => formatWorkoutLine(w, t);
 
   /// One tap logs a past workout again for today — no form, no typing. kcal is
   /// recomputed from the CURRENT weight for known types (see [repeatWorkout]),
@@ -213,7 +234,7 @@ export function WorkoutSection({
     if (!db || repeating) return;
     setRepeating(true);
     try {
-      ackBudget(await repeatWorkout(db, q, weightKg));
+      ackBudget(await repeatWorkout(db, q, weightKg, new Date(), restingRate));
       await reload();
     } finally {
       setRepeating(false);
@@ -228,14 +249,16 @@ export function WorkoutSection({
       const n = Number(sets.replace(',', '.'));
       const min = setsToMinutes(n);
       if (!(min > 0)) return;
-      ackBudget(await addWorkout(db, type, min, weightKg, null, new Date(), Math.round(n), intensity));
+      ackBudget(
+        await addWorkout(db, type, min, weightKg, null, new Date(), Math.round(n), intensity, restingRate),
+      );
       setSets('');
     } else {
       const min = Number(minutes.replace(',', '.'));
       if (!Number.isFinite(min) || min <= 0) return;
       const kmh = supportsSpeed(type) ? Number(speed.replace(',', '.')) : NaN;
       const speedKmh = Number.isFinite(kmh) && kmh > 0 ? kmh : null;
-      ackBudget(await addWorkout(db, type, min, weightKg, speedKmh));
+      ackBudget(await addWorkout(db, type, min, weightKg, speedKmh, new Date(), null, null, restingRate));
       setMinutes('');
       setSpeed('');
     }
@@ -243,8 +266,9 @@ export function WorkoutSection({
   }
 
   /// «По часам»: log a measured kcal number typed straight off a tracker/watch.
-  /// Stored verbatim via [addTrackerWorkout] — no MET, no EPOC (the device already
-  /// measured the whole session) — and marked «по трекеру», like the screenshot path.
+  /// Stored verbatim via [addTrackerWorkout] — none of our MET math — and marked
+  /// «по трекеру», like the screenshot path. Still shown with «≈»: a watch's
+  /// calorie figure is an estimate too, and a poorly validated one.
   async function addTracker() {
     if (!db) return;
     const kcal = Number(trackerKcal.replace(',', '.'));
@@ -275,8 +299,11 @@ export function WorkoutSection({
           speedKmh: p.speed_kmh ?? null,
           met: p.met ?? null,
           sets: p.sets ?? null,
+          intensity: p.intensity ?? null,
         },
         weightKg,
+        new Date(),
+        restingRate,
       );
     }
     setDescribe('');
@@ -398,7 +425,9 @@ export function WorkoutSection({
           label: names ? `${names} · ${t('workouts.fromTracker')}` : t('workouts.fromTracker'),
           sets: single?.sets ?? null,
         });
-        setParseNote(t('workouts.trackerAdded', { kcal: storedKcal }));
+        setParseNote(
+          hideCalories ? t('workouts.trackerAddedNoKcal') : t('workouts.trackerAdded', { kcal: storedKcal }),
+        );
         ackBudget(storedKcal);
         await reload();
         return;
@@ -450,7 +479,11 @@ export function WorkoutSection({
       <Pressable onPress={() => setOpen((v) => !v)} style={styles.head} hitSlop={6}>
         <Text style={[styles.title, { color: theme.text }, theme.font.bodySemiBold]}>{t('workouts.title')}</Text>
         <Text style={[styles.summary, { color: theme.subtle }, theme.font.body]}>
-          {totalRaw > 0 ? t('workouts.summary', { kcal: Math.round(totalRaw), counted }) : t('workouts.summaryEmpty')}
+          {totalRaw <= 0
+            ? t('workouts.summaryEmpty')
+            : hideCalories
+              ? t('workouts.summaryNoKcal', { count: rows.length })
+              : t('workouts.summary', { kcal: Math.round(totalRaw), counted })}
         </Text>
         <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={16} color={theme.tertiary} />
       </Pressable>
@@ -494,12 +527,13 @@ export function WorkoutSection({
                       >
                         {name}
                       </Text>
-                      <Text style={[styles.repeatChipKcal, { color: theme.subtle }, theme.font.body]}>
-                        {/* Same «≈» rule as the log rows: an unknown activity's
-                            burn is the model's MET estimate. */}
-                        {q.type === 'other' ? '≈ ' : ''}
-                        {quickWorkoutKcal(q, weightKg)} {t('units.kcal')}
-                      </Text>
+                      {hideCalories ? null : (
+                        <Text style={[styles.repeatChipKcal, { color: theme.subtle }, theme.font.body]}>
+                          {/* Same «≈» as the log rows: every burn here is an
+                              estimate, ours or a device's. */}
+                          ≈ {quickWorkoutKcal(q, weightKg, restingRate)} {t('units.kcal')}
+                        </Text>
+                      )}
                     </Pressable>
                   );
                 })}
@@ -682,7 +716,7 @@ export function WorkoutSection({
           ) : null}
 
           {/* «По часам» — the optional import path: a measured kcal number from a
-              watch/tracker, stored verbatim (no MET/EPOC), marked «по трекеру». The
+              watch/tracker, stored verbatim (none of our MET math), marked «по трекеру». The
               app stays standalone; this just lets a measured number in. */}
           {mode === 'tracker' ? (
             <View style={styles.modeSection}>
@@ -823,14 +857,11 @@ export function WorkoutSection({
                     <Text style={[styles.itemName, { color: theme.text }, theme.font.body]} numberOfLines={1}>
                       {describeWorkout(r)}
                     </Text>
-                    <Text style={[styles.itemKcal, { color: theme.subtle }, theme.font.body]}>
-                      {/* «≈» = estimated: device rows only when their kcal fell
-                          back to our MET math (kcalFrom='met'); user-logged rows
-                          keep the old model-MET rule (type 'other'). A measured
-                          device number shows verbatim. */}
-                      {(r.source === 'device' ? r.kcalFrom === 'met' : r.type === 'other') ? '≈ ' : ''}
-                      {Math.round(r.kcal)} {t('units.kcal')}
-                    </Text>
+                    {hideCalories ? null : (
+                      <Text style={[styles.itemKcal, { color: theme.subtle }, theme.font.body]}>
+                        {formatWorkoutValue(r, t, false)}
+                      </Text>
+                    )}
                     <Pressable
                       onPress={() => confirmRemove(r.id)}
                       hitSlop={8}
@@ -853,7 +884,7 @@ export function WorkoutSection({
           ) : null}
 
           {/* Honest burn-math kept but quiet: one line always, the full
-              explanation (75 %, afterburn, «по трекеру») a tap away. */}
+              explanation (72 %, resting subtraction, «по трекеру») a tap away. */}
           <Pressable onPress={() => setNoteOpen((v) => !v)} style={styles.noteHead} hitSlop={6}>
             <Text style={[styles.noteShort, { color: theme.subtle }, theme.font.body]}>{t('workouts.noteShort')}</Text>
             <Text style={[styles.noteToggle, { color: theme.tertiary }, theme.font.body]}>{t('workouts.noteToggle')}</Text>

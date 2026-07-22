@@ -10,7 +10,9 @@ import {
   metForSpeed,
   mifflinBmr,
   MIN_PER_SET,
+  POPULATION_RESTING_KCAL_PER_KG_H,
   restingPlan,
+  restingRateFor,
   rfmBodyFatPct,
   setsToMinutes,
   stepsEarnedKcal,
@@ -405,15 +407,16 @@ describe('suggestPlan (goal weight + high-BMI precision)', () => {
   });
 });
 
-describe('workoutKcal (MET × kg × hours)', () => {
+describe('workoutKcal ((MET − resting) × kg × hours — the ACTIVE cost)', () => {
   it('computes a running session for a heavy person', () => {
-    // run 9.8 MET × 130 kg × 0.5 h = 637
-    expect(workoutKcal('run', 30, 130)).toBe(637);
+    // run 9.3 MET (Compendium 2024, 12050) minus the population resting rate
+    // 0.84 → 8.46 × 130 kg × 0.5 h = 550
+    expect(workoutKcal('run', 30, 130)).toBe(550);
   });
 
   it('scales with duration and clamps garbage input', () => {
     expect(workoutKcal('walk', 0, 130)).toBe(0);
-    expect(workoutKcal('walk', 60, 130)).toBe(559); // 4.3 × 130 × 1
+    expect(workoutKcal('walk', 60, 130)).toBe(515); // (4.8 − 0.84) × 130 × 1
     expect(workoutKcal('run', -5, 130)).toBe(0); // negative minutes floored
     expect(Number.isFinite(workoutKcal('run', 30, 0))).toBe(true); // weight clamps, no NaN
   });
@@ -424,14 +427,129 @@ describe('workoutKcal (MET × kg × hours)', () => {
     }
   });
 
-  it('strength and HIIT carry the +10% afterburn (EPOC); steady cardio does not', () => {
-    // strength: 3.5 × 80 × 1 h = 280 session → 308 with the afterburn
-    // (3.5 = Compendium 02050, the rest-inclusive gym session — see WORKOUT_MET)
-    expect(workoutKcal('strength', 60, 80)).toBe(308);
-    // hiit: 8.0 × 80 × 0.5 h = 320 → 352
-    expect(workoutKcal('hiit', 30, 80)).toBe(352);
-    // walk stays session-only: 4.3 × 130 × 1 h = 559
-    expect(workoutKcal('walk', 60, 130)).toBe(559);
+  it('the resting hour is not billed as exercise', () => {
+    // An hour of yoga (2.3 MET) is an hour of being alive (0.84) plus 1.46 of
+    // actual effort — charging all 2.3 would bill the budget twice for the same
+    // resting metabolism its base already covers.
+    expect(workoutKcal('yoga', 60, 80)).toBe(117); // 1.46 × 80, not 2.3 × 80 = 184
+    // The lighter the activity, the larger the share that was resting: yoga is
+    // 37% resting, running only 9%.
+    expect(workoutKcal('run', 60, 80)).toBe(677); // 8.46 × 80, not 9.3 × 80 = 744
+  });
+
+  it('carries no afterburn — the evidence could not size one', () => {
+    // strength: (3.5 − 0.84) × 80 × 1 h = 213, with nothing added on top.
+    // The old +10% rested on a 6–15% figure that applies to protocols far harder
+    // than a typical session, on «no data» for resistance work, and on a review
+    // whose own spread was 4.1–114 kcal. See POPULATION_RESTING_KCAL_PER_KG_H.
+    expect(workoutKcal('strength', 60, 80)).toBe(213);
+    // hiit: (7.5 − 0.84) × 80 × 0.5 h = 266 — no bonus, and no strength/cardio
+    // split either (measured EPOC after steady running matches interval work).
+    expect(workoutKcal('hiit', 30, 80)).toBe(266);
+    expect(workoutKcal('walk', 60, 130)).toBe(515);
+  });
+
+  it('uses the user’s OWN resting rate when the caller knows their BMR', () => {
+    // Byrne 2005's recommendation: individual RMR as the correction factor.
+    // A 120 kg user with a 2000 kcal BMR rests at 2000/(120×24) = 0.69 kcal/kg/h,
+    // well under the 0.84 population value — subtracting a flat 1.0 (the old
+    // constant) would have over-corrected them by nearly a third.
+    const heavy = restingRateFor(2000, 120);
+    expect(heavy).toBeCloseTo(0.694, 3);
+    // Their hour of walking therefore costs MORE than the population default
+    // says, not less: (4.8 − 0.69) vs (4.8 − 0.84).
+    expect(workoutKcal('walk', 60, 120, null, null, heavy)).toBeGreaterThan(
+      workoutKcal('walk', 60, 120),
+    );
+  });
+
+  it('falls back to the population rate only when there is no personal number', () => {
+    expect(restingRateFor(undefined, 80)).toBe(POPULATION_RESTING_KCAL_PER_KG_H);
+    expect(restingRateFor(2000, undefined)).toBe(POPULATION_RESTING_KCAL_PER_KG_H);
+    expect(restingRateFor(0, 80)).toBe(POPULATION_RESTING_KCAL_PER_KG_H);
+    expect(restingRateFor(NaN, 80)).toBe(POPULATION_RESTING_KCAL_PER_KG_H);
+  });
+
+  it('clamps an out-of-band rate instead of jumping to the population value', () => {
+    // A 6000 kcal "BMR" on a 70 kg body is 3.6 kcal/kg/h — clamped to the ceiling.
+    expect(restingRateFor(6000, 70)).toBe(1.2);
+    // The failure that mattered: a 130 kg user on a low adaptive factor. BMR 1539
+    // gives 0.49, a hair under the floor. Answering 0.84 there would hand the
+    // LOWEST measured metabolism the LARGEST resting subtraction.
+    expect(restingRateFor(1539, 130)).toBe(0.5);
+    expect(restingRateFor(1539, 130)).toBeLessThan(POPULATION_RESTING_KCAL_PER_KG_H);
+  });
+
+  it('is monotone in BMR — a lower metabolism never costs the user more', () => {
+    // The property the clamp exists to preserve: walking the BMR down must never
+    // raise the subtraction, at any weight.
+    for (const kg of [60, 80, 100, 130, 160]) {
+      let prev = -Infinity;
+      for (const bmr of [900, 1100, 1300, 1539, 1760, 2200, 2600, 3200]) {
+        const rate = restingRateFor(bmr, kg);
+        expect(rate).toBeGreaterThanOrEqual(prev);
+        prev = rate;
+      }
+    }
+  });
+
+  it('never penalises a heavier user for logging a walk', () => {
+    // The same 6000 steps of walking, priced two ways: as a logged workout
+    // (Compendium MET, personal resting rate, EATBACK_FRACTION, its own steps
+    // subtracted) versus left to the pedometer (per-step constant, full credit).
+    //
+    // They do not match exactly and cannot: the step model has no idea how fast
+    // you walked, and at the app's brisk MET the two agree only near 100 steps
+    // per minute. What MUST hold is the direction — the gap has to be bounded,
+    // and it has to shrink rather than grow with body mass, because that is the
+    // regime where the resting subtraction and the step constant are both least
+    // certain. Measured at 115 steps/min: −25% at 50 kg, −19% at 80, −15% at
+    // 130, −13% at 200. Heavier users are treated BETTER by this pair, not worse.
+    const STEPS = 6000;
+    const MINUTES = Math.round(STEPS / 115);
+    let previousGap = Infinity;
+    for (const kg of [50, 60, 80, 100, 130, 160, 200]) {
+      const rate = restingRateFor(mifflinBmr('male', kg, 175, 40), kg);
+      const asSteps = stepsEarnedKcal(STEPS + 3000, kg) - stepsEarnedKcal(3000, kg);
+      const asWorkout = Math.round(workoutKcal('walk', MINUTES, kg, null, null, rate) * EATBACK_FRACTION);
+      const gap = Math.abs(asWorkout - asSteps) / asSteps;
+      expect(gap).toBeLessThan(0.27);
+      expect(gap).toBeLessThanOrEqual(previousGap + 0.001); // monotone in weight
+      previousGap = gap;
+    }
+  });
+
+  it('agrees between the two models at the pace the step constant implies', () => {
+    // 6000 steps at ~100 steps/min is an hour of moderate walking, and there the
+    // Compendium path and the per-step path land within a few percent of each
+    // other at every weight — including 130 kg, where an earlier version of this
+    // model diverged badly. This is the smoke test for retuning either side.
+    for (const kg of [60, 80, 130, 160]) {
+      const rate = restingRateFor(mifflinBmr('male', kg, 175, 40), kg);
+      const asSteps = stepsEarnedKcal(9000, kg) - stepsEarnedKcal(3000, kg);
+      const asWorkout = Math.round(workoutKcal('walk', 60, kg, null, null, rate) * EATBACK_FRACTION);
+      expect(Math.abs(asWorkout - asSteps) / asSteps).toBeLessThan(0.13);
+    }
+  });
+
+  it('lands on the measured resting rate for a severely obese adult', () => {
+    // Mifflin for a 130 kg / 175 cm / 40 y man → BMR 2199 → 0.705 kcal·kg⁻¹·h⁻¹.
+    // Direct measurement in 1331 adults at mean BMI 42.5 puts true resting at
+    // ~0.71 (women) / ~0.75 (men) — the formula ladder lands inside that band,
+    // where the old flat 1.0 was ~40% too high for exactly these users.
+    const bmr = mifflinBmr('male', 130, 175, 40);
+    const rate = restingRateFor(bmr, 130);
+    expect(rate).toBeGreaterThan(0.65);
+    expect(rate).toBeLessThan(0.8);
+    // And the composition-aware path agrees rather than diverging.
+    const fat = rfmBodyFatPct('male', 175, 130);
+    expect(restingRateFor(katchMcArdleBmr(130, fat as number), 130)).toBeGreaterThan(0.6);
+  });
+
+  it('the population resting rate is the measured one, not the 1.0 convention', () => {
+    // Byrne 2005, 769 adults: 0.84 ± 0.16 kcal/kg/h measured, against the
+    // Compendium's 1 MET = 1 kcal/kg/h convention.
+    expect(POPULATION_RESTING_KCAL_PER_KG_H).toBe(0.84);
   });
 });
 
@@ -451,9 +569,9 @@ describe('sets-based strength logging (no stopwatch needed)', () => {
   });
 
   it('a 12-set gym session lands on a plausible burn for 80 kg', () => {
-    // 12 × 3 min = 36 min → 3.5 × 80 × 0.6 = 168 session → 185 with afterburn —
-    // the band HR-trackers report for a half-hour of lifting at this weight.
-    expect(workoutKcal('strength', setsToMinutes(12), 80)).toBe(185);
+    // 12 × 3 min = 36 min → (3.5 − 0.84) × 80 × 0.6 = 128 active, nothing added
+    // on top. Trackers report ACTIVE energy, which is what this now is.
+    expect(workoutKcal('strength', setsToMinutes(12), 80)).toBe(128);
   });
 });
 
@@ -466,13 +584,13 @@ describe('strength effort → MET (light/moderate/heavy)', () => {
 
   it('effort picks the MET; heavy lifting no longer reads as a light 3.5 session', () => {
     const min = setsToMinutes(12); // 36 min
-    // light 3.5 (= the old flat default), moderate 5.0, heavy 6.0 — each × 80 kg ×
-    // 0.6 h, then +10% afterburn.
-    expect(workoutKcal('strength', min, 80, null, 'light')).toBe(185); // 168 → 185
-    expect(workoutKcal('strength', min, 80, null, 'moderate')).toBe(264); // 240 → 264
-    expect(workoutKcal('strength', min, 80, null, 'heavy')).toBe(317); // 288 → 317
+    // Compendium 2024 codes 02054 / 02052 / 02050 — light 3.5, moderate 5.0,
+    // heavy 6.0, each minus the 0.84 resting rate, × 80 kg × 0.6 h.
+    expect(workoutKcal('strength', min, 80, null, 'light')).toBe(128);
+    expect(workoutKcal('strength', min, 80, null, 'moderate')).toBe(200);
+    expect(workoutKcal('strength', min, 80, null, 'heavy')).toBe(248);
     // No effort passed → the fixed moderate MET (3.5), unchanged from before.
-    expect(workoutKcal('strength', min, 80)).toBe(185);
+    expect(workoutKcal('strength', min, 80)).toBe(128);
   });
 
   it('effort is a strength-only lever — ignored for other types', () => {
@@ -517,19 +635,20 @@ describe('metForSpeed + speed-aware workoutKcal', () => {
   // anchors, not the ACSM treadmill equations (which underestimated fast
   // walking by ~40% and made a typed pace DROP below the untyped default).
   it('walking METs match the Compendium anchors, brisk pace = the fixed default', () => {
-    expect(metForSpeed('walk', 4.8)).toBeCloseTo(3.5, 5); // 3.0 mph
-    expect(metForSpeed('walk', 5.6)).toBeCloseTo(4.3, 5); // brisk — SAME as no-pace walk
+    expect(metForSpeed('walk', 4.8)).toBeCloseTo(3.8, 5); // 2.8–3.4 mph (17190)
+    expect(metForSpeed('walk', 5.6)).toBeCloseTo(4.8, 5); // brisk — SAME as no-pace walk
+    expect(metForSpeed('walk', 6.4)).toBeCloseTo(5.5, 5); // 4.0–4.4 mph (17220)
     expect(metForSpeed('walk', 7.2)).toBeCloseTo(7.0, 5); // fast walking, ACSM gave ~4.4
     expect(metForSpeed('walk', 8.0)).toBeCloseTo(8.3, 5);
-    // Between anchors: linear (6.8 sits halfway between 5.0 and 7.0).
-    expect(metForSpeed('walk', 6.8)).toBeCloseTo(6.0, 5);
+    // Between anchors: linear (6.8 sits halfway between 5.5 and 7.0).
+    expect(metForSpeed('walk', 6.8)).toBeCloseTo(6.25, 5);
     // Typing an honest pace never lowers a brisk default anymore.
     expect(workoutKcal('walk', 60, 100, 5.6)).toBe(workoutKcal('walk', 60, 100));
   });
 
   it('running METs match the Compendium anchors', () => {
-    expect(metForSpeed('run', 8.0)).toBeCloseTo(8.3, 5);
-    expect(metForSpeed('run', 9.7)).toBeCloseTo(9.8, 5);
+    expect(metForSpeed('run', 8.0)).toBeCloseTo(8.5, 5); // 5 mph (12030)
+    expect(metForSpeed('run', 9.7)).toBeCloseTo(9.3, 5); // 6–6.3 mph (12050)
     expect(metForSpeed('run', 12.9)).toBeCloseTo(11.8, 5); // ACSM gave ~13.3
     expect(metForSpeed('run', 5)).toBeCloseTo(6.0, 5); // below the table → slowest anchor
   });
@@ -543,9 +662,13 @@ describe('metForSpeed + speed-aware workoutKcal', () => {
 
 describe('withWorkoutEnergy (eat-back layered onto a base)', () => {
   it('adds only EATBACK_FRACTION of the burn, rounded to 10', () => {
-    expect(EATBACK_FRACTION).toBe(0.75);
-    // 2540 + 0.75 × 600 = 2990
-    expect(withWorkoutEnergy(2540, 600)).toBe(2990);
+    // 0.72 = measured additivity, not a chosen margin: in the largest paired
+    // doubly-labelled-water dataset (n = 1754) the total-on-basal slope is
+    // 0.723, 95% CI [0.626, 0.820] — an interval that excludes both 1.0 and the
+    // 0.9 this used to be.
+    expect(EATBACK_FRACTION).toBe(0.72);
+    // 2540 + 0.72 × 600 = 2972 → 2970
+    expect(withWorkoutEnergy(2540, 600)).toBe(2970);
   });
 
   it('a zero/negative burn leaves the base untouched (rounded to 10)', () => {
