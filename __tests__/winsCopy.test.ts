@@ -14,6 +14,10 @@ import { ru } from '@/lib/i18n/locales/ru';
 
 const STEP_KEYS = ['stepsGoal', 'stepsGoal2', 'stepsGoal3', 'stepsGoal4'] as const;
 const PROTEIN_KEYS = ['proteinGoal', 'proteinGoal2', 'proteinGoal3', 'proteinGoal4'] as const;
+/// The workout win joined later and carries NO placeholder on purpose — a «по
+/// трекеру» session has kcal but no minutes, so any number in the copy would be
+/// invented. Held to the same variety and no-shame bar as the other two.
+const WORKOUT_KEYS = ['workout', 'workout2', 'workout3', 'workout4'] as const;
 
 const ruAuto = ru.wins.auto as Record<string, string>;
 const enAuto = en.wins.auto as Record<string, string>;
@@ -28,9 +32,17 @@ describe('wins auto-copy variants (B2)', () => {
   it('offers at least 3 variants per win type in both languages', () => {
     expect(STEP_KEYS.length).toBeGreaterThanOrEqual(3);
     expect(PROTEIN_KEYS.length).toBeGreaterThanOrEqual(3);
-    for (const k of [...STEP_KEYS, ...PROTEIN_KEYS]) {
+    expect(WORKOUT_KEYS.length).toBeGreaterThanOrEqual(3);
+    for (const k of [...STEP_KEYS, ...PROTEIN_KEYS, ...WORKOUT_KEYS]) {
       expect(typeof ruAuto[k]).toBe('string');
       expect(typeof enAuto[k]).toBe('string');
+    }
+  });
+
+  it('keeps the workout copy number-free (a tracker session has no minutes)', () => {
+    for (const k of WORKOUT_KEYS) {
+      expect(ruAuto[k]).not.toMatch(/\{\{\w+\}\}/);
+      expect(enAuto[k]).not.toMatch(/\{\{\w+\}\}/);
     }
   });
 
@@ -47,7 +59,7 @@ describe('wins auto-copy variants (B2)', () => {
 
   it('never shames or frames the win as control', () => {
     const shame = /(нельзя|не забуд|должны|провал|fail|don'?t|must|should|limit|too much)/i;
-    for (const k of [...STEP_KEYS, ...PROTEIN_KEYS]) {
+    for (const k of [...STEP_KEYS, ...PROTEIN_KEYS, ...WORKOUT_KEYS]) {
       expect(ruAuto[k]).not.toMatch(shame);
       expect(enAuto[k]).not.toMatch(shame);
     }

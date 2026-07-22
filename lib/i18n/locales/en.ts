@@ -104,6 +104,7 @@ export const en = {
       workouts: 'Workouts',
       workoutsCta: 'Log a workout',
       workoutsToday: '≈{{kcal}} kcal to today’s budget',
+      workoutsTodayNoKcal: 'A workout is logged for today',
       sleep: 'Last night’s sleep',
       diary: 'Thought diary',
       diaryCount: '{{count}} entries',
@@ -299,7 +300,7 @@ export const en = {
     budget: {
       title: 'The day’s budget: base + steps + workouts',
       teaser: 'Resting + steps + workouts',
-      body: 'The plan’s base is a day with no movement at all (and never below the healthy minimum). All movement adds on top the same day:\n\n· steps above ~3,000 — the first ~3,000 are already inside the sedentary base;\n· workouts — 75% of their burn (why not 100% — below).\n\nThe sum shows on Food as the “resting · steps · workouts” line. Move more — eat more: any movement raises the budget on top of the minimum right away.',
+      body: 'The plan’s base is a day with no movement at all (and never below the healthy minimum). All movement adds on top the same day:\n\n· steps above ~3,000 — the first ~3,000 are already inside the sedentary base;\n· workouts — 72% of their burn (why not 100% — below).\n\nThe sum shows on Food as the “resting · steps · workouts” line. Move more — eat more: any movement raises the budget on top of the minimum right away.',
     },
     food: {
       title: 'Where food numbers come from',
@@ -307,9 +308,9 @@ export const en = {
       body: 'Where the numbers come from: a full nutrition label on a package photo (“from the label”) — the most exact; otherwise food databases (the Russian table, USDA, Open Food Facts, FatSecret); when no database has the food — a rough AI estimate marked “≈”.\n\nHonest accuracy: even with databases a real plate differs by ±10–20%; an AI estimate — up to ±30%. Wrong match — “not it?” and manual search are always one tap away.',
     },
     workouts: {
-      title: 'Workouts and the afterburn',
-      teaser: 'MET × weight × time, 75% into the budget',
-      body: 'Burn = the activity’s “cost” (MET from a research compendium) × weight × time. For walking, running and cycling your pace refines it. Strength is logged in sets — ≈3 minutes per set, no stopwatch needed; and the effort you pick (light/moderate/hard) shifts the “cost” — heavy lifting burns more.\n\nStrength and HIIT get +10% for the afterburn: for a day or two after the session the body keeps spending on recovery. Tens of kcal, not hundreds.\n\nOnly 75% of the estimate enters the budget — formulas overstate, and undercounting is more honest. Have exact numbers from a watch? Enter the kcal by hand (“from tracker”) or via a screenshot — saved as-is, the budget takes the same 75%. Overall estimate accuracy ±20–25%.',
+      title: 'How a workout’s burn is worked out',
+      teaser: 'The activity’s cost minus resting, 72% into the budget',
+      body: 'Burn = the activity’s “cost” (MET from a research compendium) × weight × time, minus YOUR resting metabolism: an hour of any activity contains an hour of simply being alive, and your budget’s base already paid for it. We subtract your own resting cost rather than the textbook one — the standard “1 MET” overstates real resting metabolism by about 19%, and by more the heavier you are. For walking, running and cycling your pace refines it. Strength is logged in sets — ≈3 minutes per set, no stopwatch needed; and the effort you pick (light/moderate/hard) shifts the “cost”.\n\nWe add no “afterburn” bonus. Measurements put the elevated burn at roughly half an hour, not a day or two, and for an ordinary session it cannot be sized reliably — adding a number we cannot justify would not be honest.\n\n72% of the estimate enters the budget. That is not a safety margin but a measured figure: in the largest doubly-labelled-water dataset (1,754 adults) only about 72% of the energy spent on activity reaches your daily total — the body offsets the rest by lowering its resting burn. Have exact numbers from a watch? Enter the kcal by hand (“from tracker”) or via a screenshot — saved as-is, the budget takes the same 72%. Every burn figure here, ours and the watch’s alike, is an estimate: wrist trackers miss calorie expenditure by over 30%.',
     },
     boost: {
       title: 'How to raise your target',
@@ -361,6 +362,8 @@ export const en = {
     foodSection: 'Food',
     foodEditHint: 'Tap an entry to edit or delete it',
     macrosLine: 'P {{prot}} · F {{fat}} · C {{carb}}',
+    // That day's workouts — they moved its budget, yet history never showed them.
+    workoutSection: 'Workouts',
     moodSection: 'Mood',
     otherSection: 'Body',
     weightRow: 'Weight',
@@ -394,6 +397,8 @@ export const en = {
     title: 'Workouts today',
     summaryEmpty: 'none — add one',
     summary: '−{{kcal}} kcal · {{counted}} kcal into the budget',
+    // «Hide calories»: the fact of the workout stays, only the figure goes.
+    summaryNoKcal: 'workouts logged: {{count}}',
     // Segmented control: one input path at a time instead of three open blocks.
     mode: { exact: 'Exact', tracker: 'From tracker', ai: 'Describe' },
     minutes: 'e.g. 30',
@@ -415,7 +420,7 @@ export const en = {
       heavy: 'Hard',
     },
     // «By tracker» — the optional import: kcal straight off a watch/tracker, kept
-    // verbatim (no MET, no afterburn), marked «by tracker».
+    // verbatim (none of our MET math), marked «by tracker».
     tracker: {
       head: 'Kcal your watch or band already counted.',
       kcalPlaceholder: 'e.g. 300',
@@ -459,11 +464,13 @@ export const en = {
     fromDevice: 'from watch',
     stepsInside: '{{steps}} steps inside — counted in the workout, not in steps',
     trackerAdded: 'Logged from your tracker: {{kcal}} kcal.',
+    trackerAddedNoKcal: 'Logged from your tracker.',
     budgetAck: '✓ Workout logged: +{{kcal}} kcal added to today’s budget.',
+    budgetAckNoKcal: '✓ Workout logged — today’s budget just grew.',
     // The short line is always visible; the full math is a tap away («How we count»).
-    noteShort: 'Only 75% enters the budget — formulas usually overstate.',
+    noteShort: '72% enters the budget — that is how much activity reaches your daily total.',
     noteToggle: 'How we count',
-    // The 75% line lives in `noteShort`, which stays visible above this — no
+    // The eat-back line lives in `noteShort`, which stays visible above this — no
     // point repeating it word for word one line lower.
     note: 'Burn is an estimate from type and duration; strength — from sets. Strength and interval work get ≈10% more: the body keeps burning above rest for a while after. A tracker number is saved as-is (“from tracker”). Details — in “How it works”.',
     type: {
@@ -1293,6 +1300,12 @@ export const en = {
       proteinGoal2: 'Protein goal done — {{protein}} g. Muscle supported 💪',
       proteinGoal3: '{{protein}} g protein — goal met. Satiety and strength up 🍳',
       proteinGoal4: 'Done: {{protein}} g protein today. A good habit growing 🌱',
+      // No minute count: a “from tracker” entry carries kcal but no duration —
+      // an “N min” line would lie on exactly the days it fires for a watch.
+      workout: 'You worked out today — your body says thank you 💪',
+      workout2: 'Workout logged. You made time for it — that is the win 🏋️',
+      workout3: 'You trained today. Movement counted ✨',
+      workout4: 'Done: a workout today. This is how fitness is built 🌱',
     },
   },
   review: {
@@ -1316,8 +1329,12 @@ export const en = {
     },
     metrics: {
       steps: 'Steps',
+      // “Time”, not “Minutes”: the value already carries its unit on the right.
+      workoutTime: 'Workout time',
       protein: 'Protein',
       kcal: 'Calories',
+      // A session count, never the burned kcal: no calorie pressure on this screen.
+      workouts: 'Workouts',
       foodDays: 'Days with food',
       diary: 'Diary entries',
       wins: 'Wins',

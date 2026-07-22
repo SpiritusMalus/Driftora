@@ -13,6 +13,10 @@ type AnyDb = BaseSQLiteDatabase<any, any, any>;
 /// with the 'manual' kind and can be deduped per day.
 export const AUTO_WIN_STEPS_GOAL = 'auto:steps_goal';
 export const AUTO_WIN_PROTEIN_GOAL = 'auto:protein_goal';
+/// Trained today. Goal-free by design — there is no «сколько тренировок в
+/// неделю» setting to fall short of, and adding one would turn movement into
+/// another target to miss.
+export const AUTO_WIN_WORKOUT = 'auto:workout';
 
 /// Today's facts the auto-win rules look at. Goals/targets of 0 mean "not set"
 /// and never earn a win (so a fresh, ungoaled profile gets no false wins).
@@ -21,6 +25,11 @@ export interface AutoWinFacts {
   stepsGoal: number;
   proteinG: number;
   proteinTargetG: number;
+  /// Workouts logged today. Counted as SESSIONS, not minutes: a «по трекеру»
+  /// entry carries the watch's kcal with no duration (minutes 0), so a
+  /// minutes>0 rule would drop exactly the days someone bothered to copy a
+  /// number off their watch.
+  workouts: number;
   /// "Take a break" mode — when true, no auto-wins fire (no pressure on a pause).
   paused?: boolean;
 }
@@ -29,7 +38,17 @@ export interface AutoWinFacts {
 export interface AutoWinMessages {
   stepsGoal: string;
   proteinGoal: string;
+  workout: string;
 }
+
+/// kind → the message field the caller filled. A lookup rather than the old
+/// two-way ternary: with a third auto-win, "everything that isn't steps" would
+/// have silently awarded the protein copy for a workout.
+const MESSAGE_FIELD: Record<string, keyof AutoWinMessages> = {
+  [AUTO_WIN_STEPS_GOAL]: 'stepsGoal',
+  [AUTO_WIN_PROTEIN_GOAL]: 'proteinGoal',
+  [AUTO_WIN_WORKOUT]: 'workout',
+};
 
 /// Which auto-win kinds the facts qualify for right now, before dedup. Pure —
 /// no DB. Deliberately rewards reaching a *protein* goal (a habit you want more
@@ -42,6 +61,13 @@ export function earnedAutoWinKinds(facts: AutoWinFacts): string[] {
   }
   if (facts.proteinTargetG > 0 && facts.proteinG >= facts.proteinTargetG) {
     kinds.push(AUTO_WIN_PROTEIN_GOAL);
+  }
+  // No threshold to clear — the session IS the win. A watch-imported session
+  // counts too: the body did the work either way, and the steps win above
+  // already fires off passively synced data. Source only decides the
+  // self-initiated STREAK (see [selfInitiatedLogDays]), never a celebration.
+  if (facts.workouts > 0) {
+    kinds.push(AUTO_WIN_WORKOUT);
   }
   return kinds;
 }
@@ -113,7 +139,7 @@ export async function runAutoWins(
 ): Promise<string[]> {
   const awarded: string[] = [];
   for (const kind of earnedAutoWinKinds(facts)) {
-    const message = kind === AUTO_WIN_STEPS_GOAL ? messages.stepsGoal : messages.proteinGoal;
+    const message = messages[MESSAGE_FIELD[kind]];
     if (await awardOncePerDay(db, kind, message, date)) awarded.push(kind);
   }
   return awarded;

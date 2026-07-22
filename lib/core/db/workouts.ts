@@ -1,4 +1,4 @@
-import { desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, lt } from 'drizzle-orm';
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
 import {
@@ -9,6 +9,7 @@ import {
   type StrengthIntensity,
   type WorkoutType,
 } from '../insights/bodyMetrics';
+import type { TimeWindow } from '../services/workoutWindows';
 import { workoutImportTombstones, workouts, type WorkoutRow } from './schema';
 import { dayKey } from './steps';
 
@@ -18,7 +19,7 @@ import { dayKey } from './steps';
 type AnyDb = BaseSQLiteDatabase<any, any, any>;
 
 /// Log one workout for a day. kcal is computed HERE from the then-current weight
-/// (MET × kg × hours, plus the type's EPOC afterburn) and stored, so the number
+/// ((MET − the user's resting rate) × kg × hours) and stored, so the number
 /// is stable even if the user later re-weighs. An optional pace (km/h, for
 /// walk/run/cycle) refines the MET; when omitted the fixed moderate MET is used.
 /// `sets` records a strength entry logged «подходами» (minutes then already hold
@@ -32,8 +33,9 @@ export async function addWorkout(
   when: Date = new Date(),
   sets: number | null = null,
   intensity: StrengthIntensity | null = null,
+  restingRate?: number,
 ): Promise<number> {
-  const kcal = workoutKcal(type, minutes, weightKg, speedKmh, intensity);
+  const kcal = workoutKcal(type, minutes, weightKg, speedKmh, intensity, restingRate);
   await db.insert(workouts).values({
     ts: when,
     date: dayKey(when),
@@ -44,6 +46,7 @@ export async function addWorkout(
     sets: sets != null && sets > 0 ? Math.round(sets) : null,
     // Effort is a strength-only lever; store it only where it shaped the MET.
     intensity: type === 'strength' && intensity != null ? intensity : null,
+    ...(loggedWindow(when, minutes) ?? {}),
   });
   return kcal;
 }
@@ -59,25 +62,62 @@ export interface ParsedWorkoutInput {
   speedKmh?: number | null;
   met?: number | null;
   sets?: number | null;
+  /// Strength-only effort level as the model reported it — a free-form string
+  /// off the wire, validated here before it can shape the MET.
+  intensity?: string | null;
+}
+
+/// The reported effort, but only when it's one of ours AND the type is one the
+/// effort lever applies to. Anything else → null, i.e. the conservative fixed
+/// MET. Guards a model that invents an effort word or attaches one to a run.
+function validIntensity(type: string, raw: string | null | undefined): StrengthIntensity | null {
+  if (type !== 'strength' || raw == null) return null;
+  return (STRENGTH_INTENSITIES as readonly string[]).includes(raw) ? (raw as StrengthIntensity) : null;
+}
+
+/// The time window a hand-logged workout occupied: it ended when you logged it,
+/// and it lasted `minutes`. A guess, and deliberately so — without it the steps
+/// you took DURING a logged walk are also priced as «шаги +N», so one walk pays
+/// twice (the device-import path has subtracted its sessions' steps since day
+/// one; hand-logged rows had no window to subtract by and quietly kept the
+/// double count). Logging right after finishing is the norm the budget-ack
+/// nudges toward, so the guess is usually right; when it's wrong it removes
+/// steps that weren't the workout's, which undercredits rather than overcredits
+/// — the same direction every other estimate here leans.
+///
+/// Null for a zero-duration entry («по часам», kcal with no minutes): there is
+/// no stretch to attribute, and a zero-length window subtracts nothing anyway.
+function loggedWindow(when: Date, minutes: number): { startTs: Date; endTs: Date } | null {
+  const min = Math.min(Math.max(0, Math.round(minutes)), 600);
+  if (min <= 0) return null;
+  return { startTs: new Date(when.getTime() - min * 60_000), endTs: when };
 }
 
 /// Log a workout parsed from free text. kcal is computed HERE (client-side) from
-/// the user's weight — a known type uses the app's MET (pace-refined when given),
-/// an 'other' activity uses the model's MET. The model's phrasing is kept in
-/// `label` so the log shows what was actually done; its minutes stay the duration
-/// basis even when sets are present (the model saw the reps detail — a fixed
-/// per-set constant would be a worse estimate). Returns the stored kcal.
+/// the user's weight — a known type uses the app's MET (pace-refined when given,
+/// effort-refined for strength), an 'other' activity uses the model's MET. The
+/// model's phrasing is kept in `label` so the log shows what was actually done;
+/// its minutes stay the duration basis even when sets are present (the model saw
+/// the reps detail — a fixed per-set constant would be a worse estimate).
+///
+/// Effort rides the same path as the manual form's chip: a described «тяжёлый
+/// присед» used to land on the light 3.5 MET because this path dropped the
+/// lever, so the same session cost ~40% less by voice than by form. An ABSENT
+/// effort still means the fixed moderate MET — we refine what the user said, we
+/// don't invent a level they didn't. Returns the stored kcal.
 export async function addParsedWorkout(
   db: AnyDb,
   parsed: ParsedWorkoutInput,
   weightKg: number,
   when: Date = new Date(),
+  restingRate?: number,
 ): Promise<number> {
   const known = (WORKOUT_TYPES as readonly string[]).includes(parsed.type);
   const speedKmh = parsed.speedKmh != null && parsed.speedKmh > 0 ? parsed.speedKmh : null;
+  const intensity = validIntensity(parsed.type, parsed.intensity);
   const kcal = known
-    ? workoutKcal(parsed.type as WorkoutType, parsed.minutes, weightKg, speedKmh)
-    : kcalFromMet(parsed.met ?? 0, parsed.minutes, weightKg);
+    ? workoutKcal(parsed.type as WorkoutType, parsed.minutes, weightKg, speedKmh, intensity, restingRate)
+    : kcalFromMet(parsed.met ?? 0, parsed.minutes, weightKg, restingRate);
   await db.insert(workouts).values({
     ts: when,
     date: dayKey(when),
@@ -87,15 +127,20 @@ export async function addParsedWorkout(
     speedKmh,
     label: parsed.name_ru.trim() || null,
     sets: parsed.sets != null && parsed.sets > 0 ? Math.round(parsed.sets) : null,
+    intensity,
     source: 'ai',
+    ...(loggedWindow(when, parsed.minutes) ?? {}),
   });
   return kcal;
 }
 
 /// Log a workout whose burn came from the user's OWN tracker screenshot: the
 /// device measured it (heart rate + sensors), so its printed kcal is stored
-/// VERBATIM instead of a MET estimate — no EPOC bonus either (a watch total
-/// already is the session's measurement). Clamped to a sane band so an OCR
+/// VERBATIM instead of a MET estimate. NOT because it is more accurate — wrist
+/// devices miss energy expenditure by >30% MAPE against indirect calorimetry, and
+/// the bias has no consistent direction — but because it is the number the user
+/// is looking at, and silently overriding it would be worse than carrying it with
+/// an «≈». Clamped to a sane band so an OCR
 /// misread can't blow up the day. Returns the stored kcal.
 export async function addTrackerWorkout(
   db: AnyDb,
@@ -113,6 +158,11 @@ export async function addTrackerWorkout(
     label: input.label?.trim() || null,
     sets: input.sets != null && input.sets > 0 ? Math.round(input.sets) : null,
     source: 'tracker',
+    // A screenshot that named a duration still tells us how long you moved, so
+    // those steps get attributed here like any hand-logged session. The plain
+    // «по часам» entry carries kcal and no minutes — no window, nothing to
+    // subtract (see [loggedWindow]).
+    ...(loggedWindow(when, input.minutes) ?? {}),
   });
   return kcal;
 }
@@ -304,10 +354,10 @@ export async function quickWorkouts(
 /// What repeating [q] would cost TODAY: a known type is recomputed from the
 /// current weight (so a user who lost 10 kg doesn't keep re-logging the old
 /// burn), an unknown activity keeps the stored number — see [QuickWorkout.kcal].
-export function quickWorkoutKcal(q: QuickWorkout, weightKg: number): number {
+export function quickWorkoutKcal(q: QuickWorkout, weightKg: number, restingRate?: number): number {
   const known = (WORKOUT_TYPES as readonly string[]).includes(q.type);
   return known
-    ? workoutKcal(q.type as WorkoutType, q.minutes, weightKg, q.speedKmh, q.intensity)
+    ? workoutKcal(q.type as WorkoutType, q.minutes, weightKg, q.speedKmh, q.intensity, restingRate)
     : Math.round(Math.max(0, q.kcal));
 }
 
@@ -318,8 +368,9 @@ export async function repeatWorkout(
   q: QuickWorkout,
   weightKg: number,
   when: Date = new Date(),
+  restingRate?: number,
 ): Promise<number> {
-  const kcal = quickWorkoutKcal(q, weightKg);
+  const kcal = quickWorkoutKcal(q, weightKg, restingRate);
   await db.insert(workouts).values({
     ts: when,
     date: dayKey(when),
@@ -332,8 +383,41 @@ export async function repeatWorkout(
     // Effort is a strength-only lever, same rule as [addWorkout].
     intensity: q.type === 'strength' ? q.intensity : null,
     source: q.source,
+    ...(loggedWindow(when, q.minutes) ?? {}),
   });
   return kcal;
+}
+
+/// Every workout window that overlaps [dayStart, dayEnd) — device sessions AND
+/// hand-logged rows, which now carry a window too (see [loggedWindow]). The
+/// steps subtraction reads this instead of only the sessions it just imported,
+/// so a walk you typed in subtracts its own steps exactly like a watch-detected
+/// one does.
+///
+/// Selected by OVERLAP, not by the `date` column: a session that crossed
+/// midnight is dated to its start day, but the stretch after midnight belongs to
+/// the next day's step count and has to be subtractable there. The caller clips
+/// to the day before pricing.
+export async function workoutWindowsForDay(
+  db: AnyDb,
+  dayStart: Date,
+  dayEnd: Date,
+): Promise<TimeWindow[]> {
+  const rows = (await db
+    .select({ startTs: workouts.startTs, endTs: workouts.endTs })
+    .from(workouts)
+    .where(and(gt(workouts.endTs, dayStart), lt(workouts.startTs, dayEnd)))) as {
+    startTs: Date | null;
+    endTs: Date | null;
+  }[];
+  const out: TimeWindow[] = [];
+  for (const r of rows) {
+    const start = r.startTs?.getTime();
+    const end = r.endTs?.getTime();
+    if (start == null || end == null || !Number.isFinite(start) || !Number.isFinite(end)) continue;
+    if (end > start) out.push({ start, end });
+  }
+  return out;
 }
 
 /// A day's logged workouts, newest-first.

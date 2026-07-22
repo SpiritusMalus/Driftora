@@ -3,7 +3,7 @@ import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
 import { logDaysInRange, startOfWeek, weeklyStreak } from '../insights/engagement';
 import { selfInitiatedLogDays } from './activity';
-import { diaryEntries, foodEntries, stepsDays, wins } from './schema';
+import { diaryEntries, foodEntries, stepsDays, wins, workouts } from './schema';
 import { dayKey } from './steps';
 
 /// Accepts any drizzle SQLite database (op-sqlite async on device,
@@ -12,7 +12,7 @@ import { dayKey } from './steps';
 type AnyDb = BaseSQLiteDatabase<any, any, any>;
 
 /// Aggregates for one week. Averages are over the days that actually have data
-/// (a steps row, or a food log) — never punishing a quiet day with a zero.
+/// (a steps row, a food log, a workout) — never punishing a quiet day with a zero.
 export interface WeekStats {
   stepsAvg: number;
   stepsDayCount: number;
@@ -21,6 +21,15 @@ export interface WeekStats {
   foodLogDays: number;
   diaryCount: number;
   winsCount: number;
+  /// Sessions logged this week, ANY source — device imports included. This is
+  /// the week the BODY had; the streak is the one that cares who typed it (see
+  /// [selfInitiatedLogDays]). Workouts moved the eating budget every day they
+  /// happened and were the one thing this review never mentioned.
+  workoutCount: number;
+  /// Minutes averaged over the days that HAD a workout — rest days are not
+  /// averaged in, same rule as the steps/food averages above. So three 45-min
+  /// sessions read «45 мин», and how OFTEN is told by `workoutCount` next to it.
+  workoutMinutesAvg: number;
 }
 
 export interface WeekReview {
@@ -73,6 +82,20 @@ async function statsForWindow(db: AnyDb, start: Date, end: Date): Promise<WeekSt
   const proteinAvg = foodLogDays ? Math.round(proteinSum / foodLogDays) : 0;
   const kcalAvg = foodLogDays ? Math.round(kcalSum / foodLogDays) : 0;
 
+  // Ranged on the stored day key, not `ts`: that column is what every other
+  // workout surface groups by, and for a device import it holds the SESSION
+  // START day — so a session that crosses midnight lands in exactly one week.
+  const workoutRows = (await db
+    .select({ date: workouts.date, minutes: workouts.minutes })
+    .from(workouts)
+    .where(and(gte(workouts.date, startKey), lt(workouts.date, endKey)))) as {
+    date: string;
+    minutes: number;
+  }[];
+  const workoutDays = new Set(workoutRows.map((w) => w.date));
+  const workoutMinutes = workoutRows.reduce((a, w) => a + Number(w.minutes), 0);
+  const workoutMinutesAvg = workoutDays.size ? Math.round(workoutMinutes / workoutDays.size) : 0;
+
   const [diaryRows, winsRows] = await Promise.all([
     db.select({ c: count() }).from(diaryEntries).where(and(gte(diaryEntries.ts, start), lt(diaryEntries.ts, end))),
     db.select({ c: count() }).from(wins).where(and(gte(wins.ts, start), lt(wins.ts, end))),
@@ -86,6 +109,8 @@ async function statsForWindow(db: AnyDb, start: Date, end: Date): Promise<WeekSt
     foodLogDays,
     diaryCount: Number(diaryRows[0]?.c ?? 0),
     winsCount: Number(winsRows[0]?.c ?? 0),
+    workoutCount: workoutRows.length,
+    workoutMinutesAvg,
   };
 }
 

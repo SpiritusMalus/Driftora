@@ -67,12 +67,25 @@ export default function ReviewScreen() {
   // the labels drop the repeated "(avg/day)" qualifier without blurring units.
   const avgMetrics: Metric[] = [
     { label: t('review.metrics.steps'), value: a.stepsAvg, delta: a.stepsAvg - b.stepsAvg },
+    // Movement rides together: minutes averaged over the days that HAD a
+    // workout (a rest day is not a zero — see [WeekStats]), so the number
+    // answers «сколько обычно длилась тренировка», not «сколько в сутках».
+    {
+      label: t('review.metrics.workoutTime'),
+      value: a.workoutMinutesAvg,
+      delta: a.workoutMinutesAvg - b.workoutMinutesAvg,
+      unit: t('workouts.min'),
+    },
     { label: t('review.metrics.protein'), value: a.proteinAvg, delta: a.proteinAvg - b.proteinAvg, unit: t('units.g') },
     ...(hideCalories
       ? []
       : [{ label: t('review.metrics.kcal'), value: a.kcalAvg, delta: a.kcalAvg - b.kcalAvg, unit: t('units.kcal') }]),
   ];
   const totalMetrics: Metric[] = [
+    // Kept a plain count, never the burned kcal: the weekly review is the one
+    // screen with no calorie pressure on it, and «сколько раз» is the honest
+    // answer to «тренировался ли я на этой неделе».
+    { label: t('review.metrics.workouts'), value: a.workoutCount, delta: a.workoutCount - b.workoutCount },
     { label: t('review.metrics.foodDays'), value: a.foodLogDays, delta: a.foodLogDays - b.foodLogDays },
     { label: t('review.metrics.diary'), value: a.diaryCount, delta: a.diaryCount - b.diaryCount },
     { label: t('review.metrics.wins'), value: a.winsCount, delta: a.winsCount - b.winsCount },

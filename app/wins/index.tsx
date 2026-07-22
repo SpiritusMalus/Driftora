@@ -9,7 +9,7 @@ import { ListGroup, type RowSpec } from '@/components/ui/ListGroup';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
 import { TextField } from '@/components/ui/TextField';
-import { AUTO_WIN_PROTEIN_GOAL, AUTO_WIN_STEPS_GOAL } from '@/lib/core/db/autoWins';
+import { AUTO_WIN_PROTEIN_GOAL, AUTO_WIN_STEPS_GOAL, AUTO_WIN_WORKOUT } from '@/lib/core/db/autoWins';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import type { Win } from '@/lib/core/db/schema';
 import { addWin, listWins } from '@/lib/core/db/settings';
@@ -21,6 +21,15 @@ type IoniconName = ComponentProps<typeof Ionicons>['name'];
 /// Quick-add chips: tap fills the field with a wholesome starter the user can
 /// still edit. Fights the blank-page pause without hiding the free-text ritual.
 const QUICK_KEYS = ['walk', 'sleep', 'cooked', 'mood'] as const;
+
+/// Glyph per auto-awarded kind — membership here is ALSO what marks a win as
+/// auto (coral) rather than the user's own flourish (amber). A map, so adding a
+/// kind can't leave it silently wearing the manual «sparkles».
+const AUTO_ICONS: Record<string, IoniconName | undefined> = {
+  [AUTO_WIN_STEPS_GOAL]: 'walk',
+  [AUTO_WIN_PROTEIN_GOAL]: 'restaurant',
+  [AUTO_WIN_WORKOUT]: 'barbell',
+};
 
 /// Celebrate progress: a hero count leads (the reward is watching wins pile up),
 /// then a quick log. Rewards are feedback, not pressure — no targets, no
@@ -106,13 +115,9 @@ export default function WinsScreen() {
   }
 
   const rows: RowSpec[] = (items ?? []).map((w) => {
-    const auto = w.kind === AUTO_WIN_STEPS_GOAL || w.kind === AUTO_WIN_PROTEIN_GOAL;
-    const icon: IoniconName =
-      w.kind === AUTO_WIN_STEPS_GOAL
-        ? 'walk'
-        : w.kind === AUTO_WIN_PROTEIN_GOAL
-          ? 'restaurant'
-          : 'sparkles';
+    const autoIcon = AUTO_ICONS[w.kind];
+    const auto = autoIcon != null;
+    const icon: IoniconName = autoIcon ?? 'sparkles';
     return {
       key: String(w.id),
       icon,

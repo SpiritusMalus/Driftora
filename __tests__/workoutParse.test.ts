@@ -15,13 +15,20 @@ async function makeDb() {
 }
 
 describe('kcalFromMet', () => {
-  it('MET × kg × hours, whole kcal', () => {
-    expect(kcalFromMet(8, 30, 80)).toBe(320); // 8 × 80 × 0.5
+  it('(MET − resting) × kg × hours, whole kcal', () => {
+    expect(kcalFromMet(8, 30, 80)).toBe(286); // (8 − 0.84) × 80 × 0.5
+    // The resting rate is a parameter, not a constant: a heavier user with a
+    // lower per-kg resting cost keeps more of the same MET.
+    expect(kcalFromMet(8, 30, 80, 0.7)).toBe(292);
   });
 
   it('clamps garbage — non-positive MET, weight band, minutes ceiling, never NaN', () => {
     expect(kcalFromMet(0, 30, 80)).toBe(0);
     expect(kcalFromMet(-4, 30, 80)).toBe(0);
+    // A sub-resting MET floors at 0 instead of going negative — a model that
+    // calls sitting «activity» must not subtract from the day.
+    expect(kcalFromMet(0.5, 30, 80)).toBe(0);
+    expect(kcalFromMet(0.8, 60, 80)).toBe(0);
     expect(Number.isFinite(kcalFromMet(8, 30, 0))).toBe(true); // weight clamps up to 20
     expect(kcalFromMet(8, 99999, 80)).toBe(kcalFromMet(8, 600, 80)); // minutes capped at 10 h
   });
@@ -73,6 +80,54 @@ describe('addParsedWorkout (LLM parse path → on-device kcal)', () => {
     expect(row.sets).toBe(4);
     expect(row.minutes).toBe(12);
     expect(row.label).toBe('жим лёжа');
+  });
+
+  it('a described effort picks the MET — voice and the manual form now agree', async () => {
+    const db = await makeDb();
+    const kcal = await addParsedWorkout(
+      db,
+      { type: 'strength', name_ru: 'тяжёлый присед', minutes: 36, sets: 12, intensity: 'heavy' },
+      80,
+    );
+    // Exactly what the form's «тяжёлая» chip produces (6.0 MET + afterburn) —
+    // this path used to drop the lever and bill it as a light 3.5 session.
+    expect(kcal).toBe(workoutKcal('strength', 36, 80, null, 'heavy'));
+    expect(kcal).toBeGreaterThan(workoutKcal('strength', 36, 80));
+    // Stored too, so the day's row reads «Тяжёлая» and a one-tap repeat keeps it.
+    const [row] = await listWorkoutsForDay(db);
+    expect(row.intensity).toBe('heavy');
+  });
+
+  it('no effort described → the conservative fixed MET, unchanged', async () => {
+    const db = await makeDb();
+    const kcal = await addParsedWorkout(db, { type: 'strength', name_ru: 'силовая', minutes: 36 }, 80);
+    expect(kcal).toBe(workoutKcal('strength', 36, 80));
+    const [row] = await listWorkoutsForDay(db);
+    expect(row.intensity).toBeNull();
+  });
+
+  it('an invented effort word is ignored rather than trusted', async () => {
+    const db = await makeDb();
+    const kcal = await addParsedWorkout(
+      db,
+      { type: 'strength', name_ru: 'силовая', minutes: 36, intensity: 'ультратяжёлая' },
+      80,
+    );
+    expect(kcal).toBe(workoutKcal('strength', 36, 80));
+    const [row] = await listWorkoutsForDay(db);
+    expect(row.intensity).toBeNull();
+  });
+
+  it('effort attached to a non-strength type never shapes the burn', async () => {
+    const db = await makeDb();
+    const kcal = await addParsedWorkout(
+      db,
+      { type: 'run', name_ru: 'бег', minutes: 30, intensity: 'heavy' },
+      130,
+    );
+    expect(kcal).toBe(workoutKcal('run', 30, 130));
+    const [row] = await listWorkoutsForDay(db);
+    expect(row.intensity).toBeNull();
   });
 });
 

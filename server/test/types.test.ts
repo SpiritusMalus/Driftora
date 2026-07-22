@@ -277,6 +277,28 @@ test('normalizeParsedWorkouts: sets ride along for strength only, clamped', () =
   assert.equal(run.sets, undefined);
 });
 
+test('normalizeParsedWorkouts: strength effort rides along, validated', () => {
+  const [heavy] = normalizeParsedWorkouts({
+    workouts: [{ type: 'strength', name_ru: 'присед', minutes: 36, intensity: 'heavy', confidence: 0.9 }],
+  });
+  assert.equal(heavy.intensity, 'heavy');
+  // An invented effort word is dropped — the client then keeps its fixed MET.
+  const [odd] = normalizeParsedWorkouts({
+    workouts: [{ type: 'strength', name_ru: 'присед', minutes: 36, intensity: 'ультра', confidence: 0.9 }],
+  });
+  assert.equal(odd.intensity, undefined);
+  // Effort is meaningless outside strength — dropped even if the model emits it.
+  const [run] = normalizeParsedWorkouts({
+    workouts: [{ type: 'run', name_ru: 'бег', minutes: 30, intensity: 'heavy', confidence: 0.9 }],
+  });
+  assert.equal(run.intensity, undefined);
+  // Absent effort stays absent — no default is invented server-side.
+  const [plain] = normalizeParsedWorkouts({
+    workouts: [{ type: 'strength', name_ru: 'силовая', minutes: 36, confidence: 0.9 }],
+  });
+  assert.equal(plain.intensity, undefined);
+});
+
 test('normalizeParsedWorkouts: drops non-positive / garbage durations, never throws', () => {
   assert.deepEqual(normalizeParsedWorkouts({ workouts: [{ type: 'run', minutes: 0, confidence: 1 }] }), []);
   assert.deepEqual(normalizeParsedWorkouts({ workouts: [{ type: 'walk', minutes: 'x', confidence: 1 }] }), []);

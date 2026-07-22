@@ -147,11 +147,11 @@ describe('measuredExpenditure (energy balance from weight trend + intake)', () =
 });
 
 describe('averageEarnedKcal (per-day steps + workout eat-back)', () => {
-  it('averages the same «шаги +N» + 75% workout eat-back the budget credits', () => {
+  it('averages the same «шаги +N» + workout eat-back the budget credits', () => {
     // 100 kg, 8000 steps → (8000−3000)·0.0005·100 = 250; 3000 steps → 0. Avg 125.
     expect(averageEarnedKcal([{ steps: 8000, workoutSteps: 0, workoutKcal: 0 }, { steps: 3000, workoutSteps: 0, workoutKcal: 0 }], 100)).toBe(125);
-    // A pure workout day: 0 step-earned + round(400·0.75) = 300.
-    expect(averageEarnedKcal([{ steps: 3000, workoutSteps: 0, workoutKcal: 400 }], 100)).toBe(300);
+    // A pure workout day: 0 step-earned + round(400·EATBACK_FRACTION) = 288.
+    expect(averageEarnedKcal([{ steps: 3000, workoutSteps: 0, workoutKcal: 400 }], 100)).toBe(288);
   });
 
   it('subtracts workout-window steps so a watch run is not double-counted', () => {

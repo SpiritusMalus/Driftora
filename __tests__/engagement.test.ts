@@ -96,4 +96,51 @@ describe('selfInitiatedLogDays', () => {
     expect([...days].sort()).toEqual(['2026-06-16', '2026-06-17']);
     sqlite.close();
   });
+
+  it('counts a hand-logged workout — a day spent only training is not empty', async () => {
+    const sqlite = new BetterSqlite3(':memory:');
+    const db = drizzle(sqlite, { schema });
+    await applySchema((s) => sqlite.exec(s));
+
+    await logWorkout(db, '2026-06-16', 'manual');
+    await logWorkout(db, '2026-06-17', 'ai'); // described in free text / voice
+    await logWorkout(db, '2026-06-18', 'tracker'); // kcal copied off a watch screen
+    await logWorkout(db, '2026-06-18', 'manual'); // same day twice → one key
+
+    const days = await selfInitiatedLogDays(db);
+    expect([...days].sort()).toEqual(['2026-06-16', '2026-06-17', '2026-06-18']);
+    sqlite.close();
+  });
+
+  it('excludes an auto-imported (device) session — a sleeping phone must not hold a streak', async () => {
+    const sqlite = new BetterSqlite3(':memory:');
+    const db = drizzle(sqlite, { schema });
+    await applySchema((s) => sqlite.exec(s));
+
+    await logWorkout(db, '2026-06-16', 'device');
+    expect([...(await selfInitiatedLogDays(db))]).toEqual([]);
+
+    // The same day gains a hand-logged one → now it counts, exactly once.
+    await logWorkout(db, '2026-06-16', 'manual');
+    expect([...(await selfInitiatedLogDays(db))]).toEqual(['2026-06-16']);
+    sqlite.close();
+  });
 });
+
+/// One workout row on a day key, by source. Mirrors what the workout writers
+/// store: `date` is the day the row is grouped by everywhere in the app.
+function logWorkout(
+  db: ReturnType<typeof drizzle>,
+  date: string,
+  source: 'manual' | 'ai' | 'tracker' | 'device',
+) {
+  const [y, m, d] = date.split('-').map(Number);
+  return db.insert(schema.workouts).values({
+    ts: new Date(y, m - 1, d, 19),
+    date,
+    type: 'strength',
+    minutes: 30,
+    kcal: 150,
+    source,
+  });
+}

@@ -51,3 +51,29 @@ export function mergedDayWindows(
 ): TimeWindow[] {
   return mergeWindows(clipWindows(windows, dayStart, dayEnd));
 }
+
+/// What's left of [window] after removing everything covered by [claimed] — the
+/// same overlap problem as above, applied to ENERGY instead of steps.
+///
+/// The steps side has always merged before subtracting; the kcal side asked the
+/// OS for each session's own window separately, so two overlapping sessions both
+/// billed the shared stretch and the day's total counted it twice. Giving each
+/// session only its EXCLUSIVE stretch makes the rows sum to the union exactly
+/// once, and keeps every row a number that still means something on its own.
+/// [claimed] does not need to be pre-merged; the result is sorted and disjoint.
+export function subtractWindows(window: TimeWindow, claimed: TimeWindow[]): TimeWindow[] {
+  if (!(Number.isFinite(window.start) && Number.isFinite(window.end) && window.end > window.start)) {
+    return [];
+  }
+  let cursor = window.start;
+  const out: TimeWindow[] = [];
+  for (const c of mergeWindows(claimed)) {
+    if (c.end <= cursor) continue; // entirely behind us
+    if (c.start >= window.end) break; // merged input is sorted — the rest is past
+    if (c.start > cursor) out.push({ start: cursor, end: Math.min(c.start, window.end) });
+    cursor = Math.max(cursor, c.end);
+    if (cursor >= window.end) return out;
+  }
+  if (cursor < window.end) out.push({ start: cursor, end: window.end });
+  return out;
+}
