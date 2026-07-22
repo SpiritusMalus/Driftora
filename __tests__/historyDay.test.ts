@@ -9,7 +9,7 @@ import { listMoodsForDay, listMoodsSince, logMood } from '@/lib/core/db/mood';
 import { getWeightForDay, upsertWeight } from '@/lib/core/db/weight';
 import { listWorkoutsForDay } from '@/lib/core/db/workouts';
 import { formatDayTitle, localDayKey, parseDayKey } from '@/lib/i18n/formatDay';
-import { formatWorkoutLine, formatWorkoutValue } from '@/lib/i18n/formatWorkout';
+import { budgetKcal, formatWorkoutLine, formatWorkoutValue } from '@/lib/i18n/formatWorkout';
 import * as schema from '@/lib/core/db/schema';
 
 function makeDb() {
@@ -168,26 +168,31 @@ describe('day history (выбрать прошлый день и посмотр�
     ).toBe('workouts.type.run · 40 мин · 9.6 км/ч · workouts.fromDevice');
   });
 
-  it('marks EVERY burn with «≈» and drops it entirely under hideCalories', () => {
-    // Our own MET math — an estimate, and rounded.
+  it('shows the BUDGET share, not the burn — one number, never two', () => {
+    // The stored 120.4 kcal of burn credits 87 to the eating budget. Only this
+    // figure is ever shown: the card used to print both side by side and the
+    // pair read as two independent facts.
     expect(formatWorkoutValue({ type: 'walk', minutes: 30, kcal: 120.4 }, tr, false)).toBe(
-      '≈ 120 ккал',
+      '≈ 87 ккал',
     );
-    expect(formatWorkoutValue({ type: 'other', minutes: 10, kcal: 55 }, tr, false)).toBe('≈ 55 ккал');
+    expect(budgetKcal(120.4)).toBe(87);
     // A device session gets the tilde too, whether the store priced it or we did.
     // Wrist wearables miss energy expenditure by >30% MAPE against indirect
     // calorimetry (Apple Watch 15–211%), with no consistent direction — so the
     // old «device number = measurement» hierarchy had no support.
     expect(
       formatWorkoutValue({ type: 'run', minutes: 30, kcal: 300, source: 'device', kcalFrom: 'device' }, tr, false),
-    ).toBe('≈ 300 ккал');
+    ).toBe('≈ 216 ккал');
     expect(
       formatWorkoutValue({ type: 'run', minutes: 30, kcal: 300, source: 'device', kcalFrom: 'met' }, tr, false),
-    ).toBe('≈ 300 ккал');
+    ).toBe('≈ 216 ккал');
     // Same for a figure copied off a watch face by hand.
     expect(
       formatWorkoutValue({ type: 'other', minutes: 0, kcal: 412, source: 'tracker' }, tr, false),
-    ).toBe('≈ 412 ккал');
+    ).toBe('≈ 297 ккал');
+    // A zero/negative burn never becomes a negative credit.
+    expect(budgetKcal(0)).toBe(0);
+    expect(budgetKcal(-50)).toBe(0);
     // «Скрыть калории»: the row keeps its line, loses only the number.
     expect(formatWorkoutValue({ type: 'walk', minutes: 30, kcal: 120 }, tr, true)).toBeNull();
   });

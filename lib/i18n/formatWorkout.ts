@@ -4,6 +4,8 @@
 /// same order, same tags, same «≈». Mirrors [formatDay] — hand-rolled, testable
 /// without a renderer.
 
+import { EATBACK_FRACTION } from '@/lib/core/insights/bodyMetrics';
+
 type Translate = (key: string, opts?: Record<string, unknown>) => string;
 
 /// The parts of a workout row a line needs. Structurally typed so a `WorkoutRow`
@@ -58,14 +60,29 @@ export function formatWorkoutLine(w: WorkoutLineInput, t: Translate): string {
 /// so the user can tell whose estimate it is.
 const ESTIMATE_PREFIX = '≈ ';
 
-/// The burn shown beside the line — or null under «Скрыть калории», where the
-/// row simply loses its trailing number: the duration already rides in the line
-/// above, so the session stays visible and nothing is faked to fill the space.
+/// The number shown beside the line: what this workout ADDED TO THE EATING
+/// BUDGET, not what it burned. Null under «Скрыть калории», where the row simply
+/// loses its trailing number — the duration already rides in the line above, so
+/// the session stays visible and nothing is faked to fill the space.
+///
+/// Only ONE of the two figures is ever shown, deliberately. The card used to
+/// print «−317 ккал · в бюджет 228 ккал» side by side, and the middot read as a
+/// list of two independent facts rather than a number and its share — the app's
+/// own author read it that way. Two numbers where one is actionable is a way to
+/// be misunderstood, so the actionable one wins and the burn lives in «Как
+/// считаем». Every surface uses this function so they can never disagree again.
 export function formatWorkoutValue(
   w: WorkoutLineInput,
   t: Translate,
   hideCalories: boolean,
 ): string | null {
   if (hideCalories) return null;
-  return `${ESTIMATE_PREFIX}${Math.round(w.kcal)} ${t('units.kcal')}`;
+  return `${ESTIMATE_PREFIX}${budgetKcal(w.kcal)} ${t('units.kcal')}`;
+}
+
+/// A stored raw burn as the budget actually credits it — the single conversion
+/// every workout surface goes through, so a row, a repeat chip and the section
+/// total are always the same currency.
+export function budgetKcal(rawKcal: number): number {
+  return Math.round(Math.max(0, rawKcal) * EATBACK_FRACTION);
 }
