@@ -48,7 +48,7 @@ import {
   isWorkoutParserConfigured,
   type ParsedWorkout,
 } from '@/lib/core/services/workoutParser';
-import { formatWorkoutLine, formatWorkoutValue } from '@/lib/i18n/formatWorkout';
+import { budgetKcal, formatWorkoutLine, formatWorkoutValue } from '@/lib/i18n/formatWorkout';
 import { type Theme, useTheme } from '@/lib/theme/theme';
 
 /// Whether an online AI parser is configured for this build (env at bundle time).
@@ -425,9 +425,7 @@ export function WorkoutSection({
           label: names ? `${names} · ${t('workouts.fromTracker')}` : t('workouts.fromTracker'),
           sets: single?.sets ?? null,
         });
-        setParseNote(
-          hideCalories ? t('workouts.trackerAddedNoKcal') : t('workouts.trackerAdded', { kcal: storedKcal }),
-        );
+        setParseNote(t('workouts.trackerAdded'));
         ackBudget(storedKcal);
         await reload();
         return;
@@ -483,7 +481,7 @@ export function WorkoutSection({
             ? t('workouts.summaryEmpty')
             : hideCalories
               ? t('workouts.summaryNoKcal', { count: rows.length })
-              : t('workouts.summary', { kcal: Math.round(totalRaw), counted })}
+              : t('workouts.summary', { kcal: counted })}
         </Text>
         <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={16} color={theme.tertiary} />
       </Pressable>
@@ -529,9 +527,10 @@ export function WorkoutSection({
                       </Text>
                       {hideCalories ? null : (
                         <Text style={[styles.repeatChipKcal, { color: theme.subtle }, theme.font.body]}>
-                          {/* Same «≈» as the log rows: every burn here is an
-                              estimate, ours or a device's. */}
-                          ≈ {quickWorkoutKcal(q, weightKg, restingRate)} {t('units.kcal')}
+                          {/* Same currency as the log rows: what the repeat
+                              would ADD to the budget, not what it burns. */}
+                          ≈ {budgetKcal(quickWorkoutKcal(q, weightKg, restingRate))}{' '}
+                          {t('units.kcal')}
                         </Text>
                       )}
                     </Pressable>

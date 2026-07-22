@@ -396,7 +396,9 @@ export const en = {
     screenTitle: 'Workouts',
     title: 'Workouts today',
     summaryEmpty: 'none — add one',
-    summary: '−{{kcal}} kcal · {{counted}} kcal into the budget',
+    // ONE number, not two — see the Russian note: two figures side by side
+    // read as two independent facts rather than a number and its share.
+    summary: '+{{kcal}} kcal to eat today',
     // «Hide calories»: the fact of the workout stays, only the figure goes.
     summaryNoKcal: 'workouts logged: {{count}}',
     // Segmented control: one input path at a time instead of three open blocks.
@@ -463,12 +465,13 @@ export const en = {
     // the workout's kcal already, so the budget's step earnings exclude them.
     fromDevice: 'from watch',
     stepsInside: '{{steps}} steps inside — counted in the workout, not in steps',
-    trackerAdded: 'Logged from your tracker: {{kcal}} kcal.',
-    trackerAddedNoKcal: 'Logged from your tracker.',
+    // No figure: budgetAck follows with its own, and two different numbers in
+    // a row is the very confusion the header was collapsed to avoid.
+    trackerAdded: 'Logged from your tracker.',
     budgetAck: '✓ Workout logged: +{{kcal}} kcal added to today’s budget.',
     budgetAckNoKcal: '✓ Workout logged — today’s budget just grew.',
     // The short line is always visible; the full math is a tap away («How we count»).
-    noteShort: '72% enters the budget — that is how much activity reaches your daily total.',
+    noteShort: 'This is what you may eat — less than you burned: not all activity reaches your daily total.',
     noteToggle: 'How we count',
     // The eat-back line lives in `noteShort`, which stays visible above this — no
     // point repeating it word for word one line lower.
