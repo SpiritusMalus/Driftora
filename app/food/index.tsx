@@ -36,6 +36,7 @@ import { latestWeight } from '@/lib/core/db/weight';
 import { todayWorkoutKcal } from '@/lib/core/db/workouts';
 import { useAppActiveEffect } from '@/lib/core/services/appActive';
 import { getHealthService } from '@/lib/core/services/healthProvider';
+import { fiberTargetG } from '@/lib/core/insights/fiberTarget';
 import { dailyMicroNorms, type MicroRow } from '@/lib/core/insights/microNutrients';
 import { groupEntriesByMeal } from '@/lib/core/insights/mealType';
 import type { FoodEntry } from '@/lib/core/db/schema';
@@ -286,6 +287,7 @@ export default function FoodDayScreen() {
           stepsEarned={stepsEarned}
           stepsForecast={stepsForecast}
           workoutStepsCut={workoutStepsCut}
+          fiberG={micros?.fiberG}
           theme={theme}
         />
       ) : null}
@@ -428,11 +430,15 @@ function DayProgress({
   stepsEarned,
   stepsForecast,
   workoutStepsCut,
+  fiberG,
   theme,
 }: {
   goal: DayGoal;
   totals: { kcal: number; proteinG: number; fatG: number; carbG: number };
   workoutKcalRaw: number;
+  /// The day's fibre, grams — lives in the micro blob, not a column, so it
+  /// arrives separately from `totals`. Undefined until the day's micros load.
+  fiberG?: number;
   steps: number;
   stepsEarned: number;
   stepsForecast: boolean;
@@ -493,10 +499,17 @@ function DayProgress({
   // (device feedback 2026-07-12). Real counts only: a forecast below the
   // baseline stays on the generic no-movement line.
   const stepsBelowBase = noMovementYet && steps > 0 && !stepsForecast;
+  // Fibre joins the macro rows only once the day actually has a figure: most
+  // entries logged before fibre was tracked carry none, and a confident «0 г»
+  // under a goal would read as "you ate no fibre" when the truth is "we don't
+  // know". Target scales with the budget (docs/nutrition-science.md §5).
   const macros = [
     { label: t('macros.protein'), eaten: Math.round(totals.proteinG), target: goal.prot },
     { label: t('macros.fat'), eaten: Math.round(totals.fatG), target: goal.fat },
     { label: t('macros.carbs'), eaten: Math.round(totals.carbG), target: goal.carb },
+    ...(fiberG != null && fiberG > 0
+      ? [{ label: t('macros.fiber'), eaten: Math.round(fiberG), target: fiberTargetG(goal.kcal) }]
+      : []),
   ];
   return (
     <Card style={styles.dayCard}>

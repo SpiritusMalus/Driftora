@@ -12,7 +12,7 @@ import type {
 } from '../services/foodParser';
 import { displayItemName } from '../services/foodChoice';
 import { recomputeDraft } from '../services/mealDraft';
-import type { MealType } from '../insights/mealType';
+import { mealTypeForEntry, type MealType } from '../insights/mealType';
 import type { MicroRow } from '../insights/microNutrients';
 import { foodEntries, foodItems, type FoodEntry, type FoodItem } from './schema';
 
@@ -53,6 +53,11 @@ export interface MicroTotals {
   /// that carried an entry id — callers passing bare `{micros}` still get sums.
   mineralsTop: Partial<Record<keyof Minerals, MicroDonor>>;
   vitaminsTop: Partial<Record<keyof Vitamins, MicroDonor>>;
+  /// The day's dietary fibre (клетчатка), grams. Summed from the same stored
+  /// blob but counted separately from `entriesWithData`: fibre is far more
+  /// widely known than vitamins, so a fibre-only entry must not inflate the
+  /// micronutrient coverage line.
+  fiberG: number;
   entriesWithData: number;
   entriesTotal: number;
 }
@@ -62,13 +67,23 @@ export interface MicroTotals {
 export function encodeMicros(totals: NutrientValues): string | null {
   const minerals = totals.minerals && Object.keys(totals.minerals).length > 0 ? totals.minerals : undefined;
   const vitamins = totals.vitamins && Object.keys(totals.vitamins).length > 0 ? totals.vitamins : undefined;
-  if (!minerals && !vitamins) return null;
-  return JSON.stringify({ ...(minerals ? { minerals } : {}), ...(vitamins ? { vitamins } : {}) });
+  // Fibre rides in the same blob (it has no column of its own). A real 0 is kept
+  // — "measured, none here" is information, and it's what lets the day total
+  // stay honest instead of silently treating unknown as zero.
+  const fiber = typeof totals.fiber === 'number' && Number.isFinite(totals.fiber) ? totals.fiber : undefined;
+  if (!minerals && !vitamins && fiber === undefined) return null;
+  return JSON.stringify({
+    ...(minerals ? { minerals } : {}),
+    ...(vitamins ? { vitamins } : {}),
+    ...(fiber !== undefined ? { fiber } : {}),
+  });
 }
 
 /// Parse a stored `micros` JSON back into a bounded {minerals, vitamins}. Only
 /// known keys with finite numbers survive — never trusts arbitrary JSON shape.
-function decodeMicros(raw: string | null | undefined): { minerals: Minerals; vitamins: Vitamins } | null {
+function decodeMicros(
+  raw: string | null | undefined,
+): { minerals: Minerals; vitamins: Vitamins; fiber?: number } | null {
   if (!raw) return null;
   let parsed: unknown;
   try {
@@ -77,7 +92,7 @@ function decodeMicros(raw: string | null | undefined): { minerals: Minerals; vit
     return null;
   }
   if (!parsed || typeof parsed !== 'object') return null;
-  const p = parsed as { minerals?: unknown; vitamins?: unknown };
+  const p = parsed as { minerals?: unknown; vitamins?: unknown; fiber?: unknown };
   const minerals: Minerals = {};
   const vitamins: Vitamins = {};
   const m = (p.minerals && typeof p.minerals === 'object' ? p.minerals : {}) as Record<string, unknown>;
@@ -88,8 +103,9 @@ function decodeMicros(raw: string | null | undefined): { minerals: Minerals; vit
   for (const key of VITAMIN_KEYS) {
     if (typeof v[key] === 'number' && Number.isFinite(v[key])) vitamins[key] = v[key] as number;
   }
-  const hasAny = Object.keys(minerals).length > 0 || Object.keys(vitamins).length > 0;
-  return hasAny ? { minerals, vitamins } : null;
+  const fiber = typeof p.fiber === 'number' && Number.isFinite(p.fiber) ? p.fiber : undefined;
+  const hasAny = Object.keys(minerals).length > 0 || Object.keys(vitamins).length > 0 || fiber !== undefined;
+  return hasAny ? { minerals, vitamins, ...(fiber !== undefined ? { fiber } : {}) } : null;
 }
 
 /// Local-day [start, end) bounds for a given date.
@@ -451,9 +467,14 @@ export function sumMicroRows(
   const mineralsTop: Partial<Record<keyof Minerals, MicroDonor>> = {};
   const vitaminsTop: Partial<Record<keyof Vitamins, MicroDonor>> = {};
   let entriesWithData = 0;
+  let fiberG = 0;
   for (const r of rows) {
     const decoded = decodeMicros(r.micros);
     if (!decoded) continue;
+    if (typeof decoded.fiber === 'number') fiberG = round2(fiberG + decoded.fiber);
+    // Coverage counts VITAMIN/MINERAL data only — an entry that carried nothing
+    // but fibre must not make the micronutrient line overstate what's measured.
+    if (Object.keys(decoded.minerals).length === 0 && Object.keys(decoded.vitamins).length === 0) continue;
     entriesWithData += 1;
     for (const key of MINERAL_KEYS) {
       const v = decoded.minerals[key];
@@ -474,7 +495,7 @@ export function sumMicroRows(
       }
     }
   }
-  return { minerals, vitamins, mineralsTop, vitaminsTop, entriesWithData, entriesTotal: rows.length };
+  return { minerals, vitamins, mineralsTop, vitaminsTop, fiberG, entriesWithData, entriesTotal: rows.length };
 }
 
 /// Donor call-out gates: the day's sum must itself look anomalous (≥150 % of
@@ -554,6 +575,10 @@ export interface QuickMeal {
   fatG: number;
   carbG: number;
   count: number;
+  /// Dominant meal-of-day this dish was logged at across history (most-frequent,
+  /// ties → latest). Lets the log screen surface breakfast history first when the
+  /// user is logging breakfast. Always set by [groupMeals].
+  meal: MealType;
 }
 
 interface QuickSourceEntry {
@@ -563,6 +588,9 @@ interface QuickSourceEntry {
   proteinG: number;
   fatG: number;
   carbG: number;
+  /// The user's stored meal chip, if any. Absent/null → the keyword/clock
+  /// heuristic decides, same rule the day view uses.
+  meal?: MealType | null;
 }
 
 /// Derives quick-add lists from past entries. `recents` = the most recent
@@ -590,19 +618,42 @@ export function deriveQuickMeals(
   return { recents, favorites };
 }
 
+/// Most-frequent meal-of-day in a group's `tally`, ties broken toward the
+/// `latest` occurrence — a dish usually eaten at breakfast stays breakfast even
+/// if the last log happened to be an odd-hour snack.
+function dominantMeal(tally: Map<MealType, number>, latest: MealType): MealType {
+  let best = latest;
+  let bestN = tally.get(latest) ?? 0;
+  for (const [m, n] of tally) {
+    if (n > bestN) {
+      best = m;
+      bestN = n;
+    }
+  }
+  return best;
+}
+
 /// Groups entries by normalized name → one `QuickMeal` each (count = repeats,
-/// macros/label from the most recent occurrence). Order-independent; shared by
-/// `deriveQuickMeals` and `deriveDayMeals`.
+/// macros/label from the most recent occurrence, `meal` = dominant meal-of-day).
+/// Order-independent; shared by `deriveQuickMeals` and `deriveDayMeals`.
 function groupMeals(entries: QuickSourceEntry[]): { meal: QuickMeal; latestTs: number }[] {
-  const groups = new Map<string, { meal: QuickMeal; latestTs: number }>();
+  const groups = new Map<
+    string,
+    { meal: QuickMeal; latestTs: number; tally: Map<MealType, number>; latestMeal: MealType }
+  >();
   for (const e of entries) {
     const key = e.rawText.trim().toLowerCase();
     if (key.length === 0) continue;
     const ts = e.ts.getTime();
+    // Effective meal-of-day for this occurrence: the user's stored chip wins,
+    // else the keyword/clock heuristic — the same rule the day view applies.
+    const eff = e.meal ?? mealTypeForEntry(e.rawText, e.ts);
     const existing = groups.get(key);
     if (!existing) {
       groups.set(key, {
         latestTs: ts,
+        latestMeal: eff,
+        tally: new Map([[eff, 1]]),
         meal: {
           rawText: e.rawText.trim(),
           kcal: e.kcal,
@@ -610,14 +661,17 @@ function groupMeals(entries: QuickSourceEntry[]): { meal: QuickMeal; latestTs: n
           fatG: e.fatG,
           carbG: e.carbG,
           count: 1,
+          meal: eff,
         },
       });
       continue;
     }
     existing.meal.count += 1;
+    existing.tally.set(eff, (existing.tally.get(eff) ?? 0) + 1);
     // Keep macros + label from the most recent occurrence (order-independent).
     if (ts > existing.latestTs) {
       existing.latestTs = ts;
+      existing.latestMeal = eff;
       existing.meal = {
         ...existing.meal,
         rawText: e.rawText.trim(),
@@ -628,7 +682,8 @@ function groupMeals(entries: QuickSourceEntry[]): { meal: QuickMeal; latestTs: n
       };
     }
   }
-  return [...groups.values()];
+  for (const g of groups.values()) g.meal.meal = dominantMeal(g.tally, g.latestMeal);
+  return [...groups.values()].map((g) => ({ meal: g.meal, latestTs: g.latestTs }));
 }
 
 /// Distinct meals logged on [date]'s local day, newest first — powers the
@@ -646,6 +701,17 @@ export function deriveDayMeals(
     .map((g) => g.meal);
 }
 
+/// Stable-reorders quick meals so those whose dominant meal-of-day matches
+/// `current` lead — the log screen calls this so logging завтрак surfaces
+/// breakfast history first, обед/ужин after. Nothing is dropped; order within
+/// each partition is preserved (callers slice afterwards).
+export function orderByMeal(meals: QuickMeal[], current: MealType): QuickMeal[] {
+  const lead: QuickMeal[] = [];
+  const rest: QuickMeal[] = [];
+  for (const m of meals) (m.meal === current ? lead : rest).push(m);
+  return [...lead, ...rest];
+}
+
 /// Quick-add lists drawn from the last [scan] confirmed entries.
 export async function quickMeals(
   db: AnyDb,
@@ -660,6 +726,7 @@ export async function quickMeals(
       proteinG: foodEntries.proteinG,
       fatG: foodEntries.fatG,
       carbG: foodEntries.carbG,
+      meal: foodEntries.meal,
     })
     .from(foodEntries)
     .where(eq(foodEntries.confirmed, true))
@@ -680,6 +747,7 @@ export async function quickMeals(
       proteinG: foodEntries.proteinG,
       fatG: foodEntries.fatG,
       carbG: foodEntries.carbG,
+      meal: foodEntries.meal,
     })
     .from(foodEntries)
     .where(and(eq(foodEntries.confirmed, true), gte(foodEntries.ts, start), lt(foodEntries.ts, end)))

@@ -510,7 +510,7 @@ export const ru = {
     },
   },
   // Полные подписи — для осей/шкал; короткие Б/Ж/У — для плотных строк списка.
-  macros: { protein: 'Белок', fat: 'Жиры', carbs: 'Углеводы', protShort: 'Б', fatShort: 'Ж', carbShort: 'У' },
+  macros: { protein: 'Белок', fat: 'Жиры', carbs: 'Углеводы', fiber: 'Клетчатка', protShort: 'Б', fatShort: 'Ж', carbShort: 'У' },
   bodyMind: {
     // Hero-варианты: крупная фраза несёт направление; «связь, а не причина»
     // переезжает в подпись героя (home.hero.caption).

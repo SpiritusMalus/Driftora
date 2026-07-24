@@ -493,7 +493,7 @@ export const en = {
     },
   },
   // Full labels for axes/gauges; short P/F/C for dense list rows.
-  macros: { protein: 'Protein', fat: 'Fat', carbs: 'Carbs', protShort: 'P', fatShort: 'F', carbShort: 'C' },
+  macros: { protein: 'Protein', fat: 'Fat', carbs: 'Carbs', fiber: 'Fiber', protShort: 'P', fatShort: 'F', carbShort: 'C' },
   bodyMind: {
     // Hero variants: the big sentence carries the direction; the "association,
     // not a cause" framing moves to the hero caption (home.hero.caption).

@@ -12,7 +12,8 @@ import {
   type Vitamins,
 } from '../types.js';
 import type { FoodEstimate } from '../llm.js';
-import { looksDryBasis } from './dryBasis.js';
+import { cookedFromDry, dryStarchYield, looksDryBasis } from './dryBasis.js';
+import { energyFromMacros, energyInconsistent } from './energy.js';
 import type { NutritionProvider, ProviderResult } from './provider.js';
 import { kcalBandViolated } from './plausibility.js';
 import { hasCyrillic } from './ruSearch.js';
@@ -80,7 +81,17 @@ function aiEstimatePer100(est: AiEstimate): Per100 | null {
   if (kcal_100g === undefined || prot_100g === undefined || fat_100g === undefined || carb_100g === undefined) {
     return null;
   }
-  return coercePer100({ source: 'ai_estimate', kcal: kcal_100g, prot: prot_100g, fat: fat_100g, carb: carb_100g });
+  // Keep the model's kcal when it already reconciles with its own macros — it may
+  // encode specific-Atwater/measured knowledge the general formula lacks (dairy
+  // fat 8.79 not 9, etc.), and that few-percent spread lives inside the «≈» band
+  // anyway. Only when the two GROSSLY contradict — a transposed fat↔carb, or a
+  // per-serving kcal left against per-100g macros — fall back to the macro-derived
+  // value, so the card can never show a kcal that visibly doesn't match the P/F/C
+  // beside it. (docs/nutrition-science.md §1; the client, not the LLM, owns the
+  // arithmetic when they disagree.)
+  const macros = { prot: prot_100g, fat: fat_100g, carb: carb_100g };
+  const kcal = energyInconsistent({ kcal: kcal_100g, ...macros }) ? energyFromMacros(macros) : kcal_100g;
+  return coercePer100({ source: 'ai_estimate', kcal, ...macros });
 }
 
 /**
@@ -313,20 +324,30 @@ export class Resolver {
     const minerals: Minerals = { ...donor.minerals, ...per100.minerals }; // primary wins on overlap
     const merged: Per100 = { ...per100, minerals };
     if (donor.vitamins) merged.vitamins = donor.vitamins;
+    // Fiber from the proxy ONLY when the primary carries none — a curated «0»
+    // (or any real value) stays untouched. This fills the gap for RU dishes and
+    // crowd OFF rows that omit fiber, flagged microsEstimated like the rest, so
+    // клетчатка can be shown/tracked instead of silently reading as absent.
+    if (merged.fiber === undefined && typeof donor.fiber === 'number') merged.fiber = donor.fiber;
     return { ...found, per100: merged, microsEstimated: true };
   }
 
   /** Top USDA candidate's micro block for `nameEn`, or null if none is a good
    *  enough match / it carries no micronutrients worth grafting. */
-  private async usdaMicros(nameEn: string): Promise<{ minerals: Minerals; vitamins?: Vitamins } | null> {
+  private async usdaMicros(nameEn: string): Promise<{ minerals: Minerals; vitamins?: Vitamins; fiber?: number } | null> {
     if (!this.usda) return null;
     // USDA is English-only; the resolver queries it with name_en in every region.
     const [top] = await this.candidatesFrom(this.usda, nameEn, 'US');
     if (!top || clamp01(top.confidence) < MICRO_BACKFILL_MIN_CONFIDENCE) return null;
     const p = coercePer100(top.per100);
     const hasMinerals = Object.keys(p.minerals).length > 0;
-    if (!p.vitamins && !hasMinerals) return null;
-    return { minerals: p.minerals, ...(p.vitamins ? { vitamins: p.vitamins } : {}) };
+    const hasFiber = typeof p.fiber === 'number';
+    if (!p.vitamins && !hasMinerals && !hasFiber) return null;
+    return {
+      minerals: p.minerals,
+      ...(p.vitamins ? { vitamins: p.vitamins } : {}),
+      ...(hasFiber ? { fiber: p.fiber } : {}),
+    };
   }
 
   /**
@@ -559,8 +580,23 @@ export class Resolver {
     const confidence = suspect
       ? REFEREE_DEMOTED_CONFIDENCE
       : Math.min(item.confidence, found.matchConfidence);
-    const alternatives: NutritionAlternative[] =
-      suspect && aiFull ? [{ name: item.name_ru, per100: aiFull }, ...found.alternatives] : found.alternatives;
+    // A recognised dry starch matched on a likely-cooked weight: offer the
+    // cooked-basis version (dry per-100g ÷ yield factor) as the TOP one-tap
+    // alternative, so the ~3× overcount is one tap to fix. The warning still
+    // shows and the user still decides — they may genuinely have weighed it dry.
+    // Unknown starches keep the warning only (no reliable factor to offer).
+    const cookedAlt: NutritionAlternative[] = [];
+    if (dryBasis) {
+      const yieldFactor = dryStarchYield([item.name_ru, item.name_en, found.name]);
+      if (yieldFactor) {
+        const label = region === 'US' ? `${item.name_en}, cooked` : `${item.name_ru}, готовое`;
+        cookedAlt.push({ name: label, per100: cookedFromDry(found.per100, yieldFactor) });
+      }
+    }
+    const alternatives: NutritionAlternative[] = [
+      ...cookedAlt,
+      ...(suspect && aiFull ? [{ name: item.name_ru, per100: aiFull }, ...found.alternatives] : found.alternatives),
+    ];
 
     return {
       name_ru: item.name_ru,
