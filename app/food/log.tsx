@@ -18,6 +18,7 @@ import { AI_CONSENT_VERSION, grantAiConsent, needsAiConsent } from '@/lib/core/c
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import {
   distinctFoodItemsToday,
+  orderByMeal,
   quickMeals,
   saveParsedEntry,
   todayMacroTotals,
@@ -747,14 +748,18 @@ export default function FoodLogScreen() {
   // yesterday AND recently shows once.
   const quickPickList = (() => {
     const seen = new Set<string>();
-    return [...quick.yesterday, ...quick.favorites, ...quick.recents]
-      .filter((m) => {
-        const key = m.rawText.trim().toLowerCase();
-        if (key.length === 0 || seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      })
-      .slice(0, 8);
+    const deduped = [...quick.yesterday, ...quick.favorites, ...quick.recents].filter((m) => {
+      const key = m.rawText.trim().toLowerCase();
+      if (key.length === 0 || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    // Current meal-of-day leads: logging завтрак surfaces breakfast history first,
+    // обед/ужин follow — reordered ahead of the slice so a breakfast dish isn't
+    // truncated away by a run of lunch/dinner recents. Stable within each
+    // partition (yesterday→favorites→recents holds); reacts live to the meal
+    // chips through `mealChoice`.
+    return orderByMeal(deduped, mealChoice).slice(0, 8);
   })();
 
   async function onSave() {

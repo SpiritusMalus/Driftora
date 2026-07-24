@@ -45,6 +45,7 @@ const usdaBorscht = {
         { nutrientNumber: '1003', value: 2 }, // protein
         { nutrientNumber: '1004', value: 1.5 }, // fat
         { nutrientNumber: '1005', value: 6 }, // carbs
+        { nutrientNumber: '1079', value: 3 }, // dietary fiber (donor-only gap-filler)
         { nutrientNumber: '1092', value: 200 }, // potassium (donor-only)
         { nutrientNumber: '1093', value: 999 }, // sodium (should NOT overwrite primary)
         { nutrientNumber: '1162', value: 10 }, // vitamin C
@@ -87,9 +88,18 @@ test('back-fill: curated primary (no vitamins) gets USDA vitamins grafted, macro
   assert.equal(r.per100.vitamins?.a, 50, 'vitamin A grafted from USDA');
   assert.equal(r.per100.minerals.na, 300, 'primary mineral wins on overlap (not USDA 999)');
   assert.equal(r.per100.minerals.k, 200, 'USDA fills the mineral the primary lacked');
+  assert.equal(r.per100.fiber, 3, 'fiber grafted from USDA when the curated row lacked it');
   assert.equal(r.micros_estimated, true, 'flagged as a proxy so the client can say so');
   // scaled to 200 g → ×2
   assert.equal(r.scaled.vitamins?.c, 20);
+});
+
+test('back-fill: a curated fiber value is never overwritten by the USDA proxy', async () => {
+  mockFetch(() => json(usdaBorscht)); // donor carries fiber 3
+  const curated: Per100 = { source: 'skurikhin', kcal: 50, prot: 3, fat: 2, carb: 6, fiber: 2.4, minerals: {} };
+  const resolver = new Resolver([new StubCurated(curated, 'борщ'), new UsdaProvider('KEY')]);
+  const r = await resolver.resolveItem(item(), 'RU');
+  assert.equal(r.per100.fiber, 2.4, 'the curated fiber stays — donor 3 does not overwrite a real value');
 });
 
 test('back-fill no-op when the primary already carries vitamins (USDA-primary)', async () => {

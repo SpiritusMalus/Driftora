@@ -346,6 +346,56 @@ test('weak match: a one-token DB hit loses to the AI estimate (тархун → 
   );
 });
 
+test('estimate: a model kcal that grossly contradicts its own macros is overridden by the formula', async () => {
+  // Estimate becomes primary via the same one-token weak match. But here the
+  // model's estimate is self-contradictory — 400 kcal against macros that sum to
+  // ~57 (a fat↔carb transposition, or a per-serving kcal left on per-100g macros).
+  // The card must never show 400 next to 2/1/10 g, so the macro-derived value
+  // takes over (docs/nutrition-science.md §1).
+  mockFetch(() =>
+    json({
+      foods: [
+        { description: 'Tarragon, dried', score: 100, foodNutrients: [{ nutrientNumber: '1008', value: 295 }] },
+      ],
+    }),
+  );
+  const resolver = new Resolver([new UsdaProvider('KEY')]);
+  const r = await resolver.resolveItem(
+    item({
+      name_ru: 'лимонад тархун',
+      name_en: 'tarragon soda',
+      estimate: { kcal_100g: 400, prot_100g: 2, fat_100g: 1, carb_100g: 10 },
+    }),
+    'RU',
+  );
+  assert.equal(r.per100.source, 'ai_estimate');
+  assert.equal(r.per100.kcal, 57); // 4·2 + 9·1 + 4·10 — not the contradictory 400
+});
+
+test('dry-basis: a dry rice row offers a cooked-basis alternative (÷ yield factor)', async () => {
+  // A dense «рис» row (a dry-product label, 360 kcal/100 g) matched against a
+  // cooked weight overcounts ~3×. The warning fires AND the cooked version
+  // (per-100g ÷ 2.9) is offered as the top one-tap alternative — the user still
+  // decides, since they may have weighed it dry (docs/nutrition-science.md §6).
+  const riceStub: NutritionProvider = {
+    name: 'usda',
+    regions: ['RU', 'US'],
+    async search() {
+      return {
+        per100: coercePer100({ source: 'usda', kcal: 360, prot: 7, fat: 1, carb: 80 }),
+        confidence: 0.95,
+        name: 'Rice, white, dry',
+      };
+    },
+  };
+  const resolver = new Resolver([riceStub]);
+  const r = await resolver.resolveItem(item({ name_ru: 'рис', name_en: 'rice', est_grams: 150 }), 'RU');
+  assert.equal(r.dry_basis, true, 'the dry-product overcount is flagged');
+  const cooked = (r.alternatives ?? []).find((a) => a.name?.includes('готовое'));
+  assert.ok(cooked, 'a cooked-basis alternative is offered');
+  assert.equal(cooked?.per100.kcal, 124); // 360 / 2.9
+});
+
 test('weak match with NO estimate is demoted, not served as a confident hit', async () => {
   // Same thin match, but the model gave no estimate to fall back on. We still
   // must not present it as fact: confidence drops so the client opens the picker.
@@ -445,6 +495,9 @@ test('resolve: a WEAK match is refereed by the on-demand estimate, which becomes
 
   assert.equal(asked, 1, 'the band is fetched for the suspicious row');
   assert.equal(r.per100.source, 'ai_estimate', 'estimate is primary over a thin row');
+  // The model's kcal (490) reconciles with its own macros (4·4.5 + 9·25 + 4·61 =
+  // 487, a 0.6% gap) → kept as-is; the macro-derived override only fires on gross
+  // self-contradiction (docs/nutrition-science.md §1).
   assert.equal(r.per100.kcal, 490);
   assert.ok(
     r.alternatives?.some((a) => a.per100.kcal === 329),
