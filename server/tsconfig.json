@@ -8,6 +8,13 @@
     "noUncheckedIndexedAccess": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
+    // Pin the ambient types to THIS package. Without it TypeScript walks up
+    // the directory tree collecting every `node_modules/@types` it finds, so a
+    // check run from inside the monorepo silently borrows the app's much newer
+    // @types/node (25.x vs the 22.x pinned here) and passes on globals this
+    // package does not actually have. CI installs `server/` alone and does not,
+    // which is how a green local run became a red master.
+    "typeRoots": ["./node_modules/@types"],
     "outDir": "dist",
     "rootDir": "src",
     "declaration": false,
