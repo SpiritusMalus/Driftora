@@ -1,6 +1,8 @@
 import { sql } from 'drizzle-orm';
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
+import { withDbLock, withTx } from './tx';
+
 /// Accepts any drizzle SQLite database (op-sqlite async on device,
 /// better-sqlite3 sync in tests). Query builders are awaitable for both.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -59,20 +61,20 @@ export interface BackupDocument {
 /// it never CONTAINS the key.
 export async function exportAllTables(db: AnyDb): Promise<BackupDocument> {
   const tables = {} as Record<TableName, TableRows>;
-  // One transaction around the reads: a concurrent save between two SELECTs
-  // must not produce a document with child rows whose parent isn't included.
-  await db.run(sql`BEGIN`);
-  try {
-    for (const table of EXPORT_TABLES) {
-      tables[table] = await selectAll(db, table);
-    }
-  } finally {
-    try {
-      await db.run(sql`COMMIT`);
-    } catch {
-      // Read-only transaction: if COMMIT itself fails there is nothing to undo.
-    }
-  }
+  // Read every table at one consistent moment: a concurrent save landing between
+  // two SELECTs must not produce a document with child rows whose parent isn't
+  // included. The queue (not a transaction) is what gives that here — a reader
+  // holding an open transaction is exactly what a concurrent writer collides
+  // with, and these are pure SELECTs with nothing to roll back.
+  await withDbLock(
+    db,
+    async () => {
+      for (const table of EXPORT_TABLES) {
+        tables[table] = await selectAll(db, table);
+      }
+    },
+    'exportAllTables',
+  );
   return {
     app: APP_ID,
     formatVersion: BACKUP_FORMAT_VERSION,
@@ -93,30 +95,24 @@ export async function exportAllTables(db: AnyDb): Promise<BackupDocument> {
 export async function importAllTables(db: AnyDb, doc: BackupDocument): Promise<void> {
   validateDocument(doc);
 
-  await db.run(sql`BEGIN`);
-  try {
-    // Delete children before parents to respect the FK (reverse insert order),
-    // then insert parents before children.
-    for (let i = EXPORT_TABLES.length - 1; i >= 0; i--) {
-      const table = EXPORT_TABLES[i];
-      await db.run(sql`DELETE FROM ${sql.identifier(table)}`);
-    }
-    for (const table of EXPORT_TABLES) {
-      const rows = doc.tables[table] ?? [];
-      for (const row of rows) {
-        await insertRow(db, table, row);
+  await withTx(
+    db,
+    async () => {
+      // Delete children before parents to respect the FK (reverse insert order),
+      // then insert parents before children.
+      for (let i = EXPORT_TABLES.length - 1; i >= 0; i--) {
+        const table = EXPORT_TABLES[i];
+        await db.run(sql`DELETE FROM ${sql.identifier(table)}`);
       }
-    }
-    await db.run(sql`COMMIT`);
-  } catch (e) {
-    try {
-      await db.run(sql`ROLLBACK`);
-    } catch {
-      // If ROLLBACK itself fails there's nothing more we can do; surface the
-      // original error below.
-    }
-    throw e;
-  }
+      for (const table of EXPORT_TABLES) {
+        const rows = doc.tables[table] ?? [];
+        for (const row of rows) {
+          await insertRow(db, table, row);
+        }
+      }
+    },
+    'importAllTables',
+  );
 }
 
 /// The list of tables this version exports — exposed so the drift test can assert

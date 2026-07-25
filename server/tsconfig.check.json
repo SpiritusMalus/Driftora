@@ -1,0 +1,21 @@
+// Typechecking covers MORE than the build does. `tsconfig.json` compiles `src/`
+// alone (it has to: `rootDir` is src, and `dist/` must mirror it), so everything
+// outside src — the tests, the eval harness, the import scripts — was checked by
+// no gate at all: a test could reference a function that no longer exists and
+// nothing would say so until someone ran it.
+//
+// Bringing `test/` under this surfaced 29 gaps, almost all the same shape: a
+// value read out of an array or a counter map, used without ever establishing
+// that it exists. `const [w] = parse(...)` followed by `assert.equal(w.type,
+// 'run')` does fail if the parse returned nothing — but it fails as a TypeError
+// on a line that looks like an assertion, which reads as a broken test rather
+// than a broken parser. Those reads now carry an explicit `assert.ok`, so the
+// precondition the test always assumed is stated and reported as itself.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "include": ["src/**/*.ts", "eval/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"]
+}

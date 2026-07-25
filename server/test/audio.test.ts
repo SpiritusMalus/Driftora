@@ -66,7 +66,9 @@ afterEach(() => {
   globalThis.fetch = realFetch;
 });
 
-function audioForm(bytes: Uint8Array, region: string): FormData {
+// `Uint8Array<ArrayBuffer>`, not the bare alias: a view over a SharedArrayBuffer
+// is not a valid BlobPart, and every caller here builds a plain one.
+function audioForm(bytes: Uint8Array<ArrayBuffer>, region: string): FormData {
   const form = new FormData();
   form.append('region', region);
   form.append('audio', new Blob([bytes], { type: 'audio/m4a' }), 'meal.m4a');

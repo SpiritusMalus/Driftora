@@ -6,6 +6,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AccordionChevron } from '@/components/ui/AccordionChevron';
 import { Card } from '@/components/ui/Card';
+import { Chip, ChipRow } from '@/components/ui/Chip';
 import { Collapsible } from '@/components/ui/Collapsible';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
@@ -267,11 +268,17 @@ export default function BodySetupScreen() {
 
       {step === 'sex' ? (
         <StepCard title={t('bodySetup.sex.title')} hint={t('bodySetup.sex.hint')} theme={theme}>
-          <View style={styles.chips}>
+          <ChipRow>
             {(['male', 'female'] as const).map((s) => (
-              <Chip key={s} label={t(`bodySetup.sex.${s}`)} active={sex === s} onPress={() => setSex(s)} theme={theme} />
+              <Chip
+                key={s}
+                label={t(`bodySetup.sex.${s}`)}
+                selected={sex === s}
+                onPress={() => setSex(s)}
+                size="lg"
+              />
             ))}
-          </View>
+          </ChipRow>
         </StepCard>
       ) : null}
 
@@ -645,34 +652,6 @@ function OptionRow({
   );
 }
 
-function Chip({
-  label,
-  active,
-  onPress,
-  theme,
-}: {
-  label: string;
-  active: boolean;
-  onPress: () => void;
-  theme: Theme;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.chip,
-        {
-          backgroundColor: active ? theme.primary : theme.card,
-          borderColor: active ? theme.primary : theme.separator,
-          opacity: pressed ? 0.7 : 1,
-        },
-      ]}
-    >
-      <Text style={[styles.chipText, { color: active ? theme.onPrimary : theme.text }, theme.font.body]}>{label}</Text>
-    </Pressable>
-  );
-}
-
 function toNumber(v: string): number {
   const n = parseFloat(v.replace(',', '.'));
   return Number.isFinite(n) ? n : 0;
@@ -698,9 +677,6 @@ const styles = StyleSheet.create({
   unit: { fontSize: 15 },
   invalid: { fontSize: 13, lineHeight: 18, marginTop: 8 },
   skip: { fontSize: 14, marginTop: 14, textAlign: 'center', paddingVertical: 4 },
-  chips: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  chip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 16, paddingVertical: 10 },
-  chipText: { fontSize: 15 },
   option: {
     borderWidth: 1.5,
     borderRadius: 14,

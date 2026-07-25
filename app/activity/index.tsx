@@ -215,16 +215,16 @@ export default function ActivityScreen() {
               </Text>
             ) : null}
             {workoutStepsLine ? (
-              <Text style={[styles.heroPayoff, { color: theme.tertiary }, theme.font.body]}>
+              <Text style={[styles.heroPayoff, { color: theme.subtle }, theme.font.body]}>
                 {workoutStepsLine}
               </Text>
             ) : null}
             {vo2max != null ? (
-              <Text style={[styles.heroSource, { color: theme.tertiary }, theme.font.body]}>
+              <Text style={[styles.heroSource, { color: theme.subtle }, theme.font.body]}>
                 {t('activity.vo2max', { value: vo2max })}
               </Text>
             ) : null}
-            <Text style={[styles.heroSource, { color: theme.tertiary }, theme.font.body]}>
+            <Text style={[styles.heroSource, { color: theme.subtle }, theme.font.body]}>
               {today.source === 'manual' ? t('steps.source.manual') : t('steps.source.device')}
             </Text>
           </>

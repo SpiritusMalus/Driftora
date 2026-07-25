@@ -550,7 +550,7 @@ function DayProgress({
             </Pressable>
           ) : null}
           <Pressable onPress={() => router.push('/more/how-it-works')} hitSlop={6}>
-            <Text style={[styles.dayHowLink, { color: theme.tertiary }, theme.font.body]}>{t('food.day.how')}</Text>
+            <Text style={[styles.dayHowLink, { color: theme.subtle }, theme.font.body]}>{t('food.day.how')}</Text>
           </Pressable>
         </>
       )}

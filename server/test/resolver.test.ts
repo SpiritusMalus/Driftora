@@ -301,9 +301,11 @@ test('graded query (молоко 1.8%) whose DB grade differs → AI estimate be
   assert.equal(r.per100.kcal, 44);
   // …and the real-but-wrong-grade DB row is the fallback alternative.
   assert.ok(r.alternatives && r.alternatives.length >= 1);
-  assert.equal(r.alternatives[0].name, 'молоко 1%');
-  assert.equal(r.alternatives[0].per100.source, 'openfoodfacts');
-  assert.equal(r.alternatives[0].per100.kcal, 42);
+  const [fallback] = r.alternatives;
+  assert.ok(fallback);
+  assert.equal(fallback.name, 'молоко 1%');
+  assert.equal(fallback.per100.source, 'openfoodfacts');
+  assert.equal(fallback.per100.kcal, 42);
 });
 
 test('weak match: a one-token DB hit loses to the AI estimate (тархун → «Tarragon, dried»)', async () => {

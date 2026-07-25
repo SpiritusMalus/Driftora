@@ -12,6 +12,7 @@ import {
 import type { TimeWindow } from '../services/workoutWindows';
 import { workoutImportTombstones, workouts, type WorkoutRow } from './schema';
 import { dayKey } from './steps';
+import { withDbLock, withTx } from './tx';
 
 /// Accepts any drizzle SQLite database (op-sqlite async on device,
 /// better-sqlite3 sync in tests) — mirrors [steps.ts].
@@ -188,6 +189,13 @@ export interface DeviceWorkoutInput {
 /// day, matching manual `ts → date` semantics for midnight-crossers. Returns
 /// whether the session is now present in the log.
 export async function importDeviceWorkout(db: AnyDb, input: DeviceWorkoutInput): Promise<boolean> {
+  // One unit through the queue: this is a read-check-then-write (tombstone
+  // lookup → update-or-insert), so an interleaved neighbour can both invalidate
+  // the check and swallow the write into its own rollback.
+  return withDbLock(db, () => importDeviceWorkoutUnlocked(db, input), 'importDeviceWorkout');
+}
+
+async function importDeviceWorkoutUnlocked(db: AnyDb, input: DeviceWorkoutInput): Promise<boolean> {
   const dead = await db
     .select()
     .from(workoutImportTombstones)
@@ -448,13 +456,22 @@ export async function todayWorkoutKcal(
 /// its OS record id, so the next passive sync doesn't resurrect the row the
 /// user just removed.
 export async function deleteWorkout(db: AnyDb, id: number): Promise<void> {
-  const rows = (await db.select().from(workouts).where(eq(workouts.id, id))) as WorkoutRow[];
-  const row = rows[0];
-  if (row && row.source === 'device' && row.externalId) {
-    await db
-      .insert(workoutImportTombstones)
-      .values({ externalId: row.externalId, deletedAt: new Date() })
-      .onConflictDoNothing();
-  }
-  await db.delete(workouts).where(eq(workouts.id, id));
+  // Atomic: a tombstone without its delete silently blocks a session the user
+  // still has, and a delete without its tombstone lets the next sync resurrect
+  // the row they just removed. Neither half is recoverable from the UI.
+  await withTx(
+    db,
+    async () => {
+      const rows = (await db.select().from(workouts).where(eq(workouts.id, id))) as WorkoutRow[];
+      const row = rows[0];
+      if (row && row.source === 'device' && row.externalId) {
+        await db
+          .insert(workoutImportTombstones)
+          .values({ externalId: row.externalId, deletedAt: new Date() })
+          .onConflictDoNothing();
+      }
+      await db.delete(workouts).where(eq(workouts.id, id));
+    },
+    'deleteWorkout',
+  );
 }

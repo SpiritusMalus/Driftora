@@ -1,0 +1,59 @@
+name: SLO (food server)
+
+# `uptime.yml` answers "is it alive". This answers "is it working", which is the
+# harder and more important question: the service can hold /health green while
+# every parse comes back empty, or while a nutrition provider is down and the
+# model is quietly guessing every number in its place. Those are the failures
+# users actually meet, and none of them move the liveness probe.
+#
+# /metrics is token-gated (as it must be — it is operational data), so unlike the
+# uptime probe this needs a secret. It reuses EXPO_PUBLIC_FOOD_API_TOKEN, which
+# is the same APP_TOKEN value the app already sends.
+#
+# Thresholds live in server/eval/slo.ts and are unit-tested by CI, not written
+# inline here: an alert nobody can run and nobody has tested fails open, and a
+# silent alert reads as health.
+#
+# Hourly, not every 15 minutes: /metrics counters are cumulative since the last
+# restart, so a ratio barely moves between two nearby reads — a faster cadence
+# would be the same answer, repeated.
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: slo
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Exits 1 on a crossed alert threshold and 2 when /metrics can't be read
+      # at all — both fail the run, and GitHub mails the workflow author. Targets
+      # that are merely missed are printed as warnings and keep the run green.
+      - name: Check SLOs
+        env:
+          BASE_URL: https://food.family-pie.ru
+          APP_TOKEN: ${{ secrets.EXPO_PUBLIC_FOOD_API_TOKEN }}
+        run: npm run slo

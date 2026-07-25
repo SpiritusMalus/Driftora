@@ -1,6 +1,7 @@
 import { Platform, type TextStyle, useColorScheme } from 'react-native';
 
 import { colors } from './colors';
+import { iosSurfaces } from './iosSurfaces';
 
 /// Unified, platform-aware theme. The app ships two distinct looks from the
 /// «Миллиметровка» direction (engineering journal, pitched 2026-07-20;
@@ -20,28 +21,8 @@ import { colors } from './colors';
 /// `theme.font.*` into their text styles so weight maps to JetBrains Mono/
 /// Golos Text on Android and to SF system weights on iOS.
 
-/// Native iOS grouped-list surface tokens (Apple HIG system colors), kept
-/// separate from the Ember/Android palette in `colors.ts`.
-const iosSurfaces = {
-  light: {
-    background: '#F2F2F7', // systemGroupedBackground
-    card: '#FFFFFF', // secondarySystemGroupedBackground
-    separator: 'rgba(60,60,67,0.12)', // inset hairline from the mockup
-    text: '#000000', // label
-    subtle: 'rgba(60,60,67,0.6)', // secondaryLabel
-    tertiary: 'rgba(60,60,67,0.3)', // tertiaryLabel / chevrons
-    fill: '#F2F2F7', // tertiarySystemFill — inactive mood pills
-  },
-  dark: {
-    background: '#000000',
-    card: '#1C1C1E',
-    separator: 'rgba(84,84,88,0.4)',
-    text: '#FFFFFF',
-    subtle: 'rgba(235,235,245,0.6)',
-    tertiary: 'rgba(235,235,245,0.3)',
-    fill: '#2C2C2E',
-  },
-};
+// iOS surface tokens live in their own react-native-free module so the contrast
+// test can load them; the divergence from Apple's label alphas is documented there.
 
 /// Font weight fragments. On Android they name the loaded JetBrains Mono /
 /// Golos Text faces (mono = figures, Golos = words); on iOS they carry only a

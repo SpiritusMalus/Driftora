@@ -1,0 +1,552 @@
+openapi: 3.1.0
+
+# The contract between two codebases in two languages: the Expo/TypeScript app
+# (lib/core/services/foodParser.ts and friends) and this Node/Express service.
+# Nothing enforced it before — the shapes were kept in agreement by hand, in two
+# repositories' worth of interfaces, and a field renamed on one side would only
+# surface as a silently missing value on a user's screen.
+#
+# `test/openapiContract.test.ts` asserts that every route registered by
+# `createApp()` appears here and vice versa, so this file cannot quietly rot.
+# It documents SHAPES; the prose about what the numbers mean lives in
+# docs/nutrition-science.md.
+
+info:
+  title: Driftora food-parse
+  version: '1.0.0'
+  description: |
+    Turns free text, photos and voice into structured nutrition and workouts.
+
+    Stateless: nothing is persisted. Photos and audio clips live in memory for
+    the duration of the request and are never written to disk (privacy §2).
+    Request content is never logged — only aggregate counters.
+
+    Energy numbers are estimates. Where the model reads a printed nutrition
+    panel it is transcribing ground truth; everywhere else the client shows the
+    result with «≈».
+
+servers:
+  - url: https://food.family-pie.ru
+    description: production (single VPS behind Caddy)
+  - url: http://127.0.0.1:8787
+    description: local
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: food
+  - name: workout
+  - name: ops
+
+paths:
+  /health:
+    get:
+      tags: [ops]
+      summary: Liveness probe
+      description: |
+        Public and never rate-limited, on purpose: the external uptime monitor
+        has no token, and a probe that can be throttled cannot tell "throttled"
+        from "dead". This is also the container HEALTHCHECK.
+      security: []
+      responses:
+        '200':
+          description: The process is up
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, enum: [ok] }
+
+  /metrics:
+    get:
+      tags: [ops]
+      summary: Aggregate, content-free counters
+      description: |
+        Counts and latencies only — never request content. Resets on restart, so
+        read `uptime_s` alongside anything else. Thresholds in docs/operations.md.
+      responses:
+        '200':
+          description: Snapshot
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Metrics' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /food/parse:
+    post:
+      tags: [food]
+      summary: Free text → a meal draft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text:
+                  type: string
+                  minLength: 1
+                  maxLength: 1000
+                  example: омлет из трёх яиц и кофе с молоком
+                region: { $ref: '#/components/schemas/Region' }
+      responses:
+        '200':
+          description: |
+            A draft. An unrecognised input yields `items: []` with zero totals —
+            that is a successful request reporting nothing, never a 4xx.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MealDraft' }
+        '400': { $ref: '#/components/responses/BadInput' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/LlmUnavailable' }
+
+  /food/parse-photo:
+    post:
+      tags: [food]
+      summary: Photo of food or a nutrition label → a meal draft
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [image]
+              properties:
+                image:
+                  type: string
+                  format: binary
+                  description: ≤ 8 MB. The client downscales the long side to ≤ 1024 px first.
+                region: { $ref: '#/components/schemas/Region' }
+      responses:
+        '200':
+          description: A draft
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MealDraft' }
+        '400': { $ref: '#/components/responses/BadInput' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/LlmUnavailable' }
+
+  /food/parse-audio:
+    post:
+      tags: [food]
+      summary: Spoken meal → a meal draft
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [audio]
+              properties:
+                audio: { type: string, format: binary, description: ≤ 8 MB }
+                region: { $ref: '#/components/schemas/Region' }
+      responses:
+        '200':
+          description: A draft
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MealDraft' }
+        '400': { $ref: '#/components/responses/BadInput' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/LlmUnavailable' }
+
+  /food/search:
+    post:
+      tags: [food]
+      summary: Ranked database candidates for a query
+      description: |
+        The manual "find it yourself" picker. With `ai: true` the caller has
+        consented to a cross-border model call, and one AI-estimated card is
+        appended after the database rows — both are returned so the user picks,
+        each carrying its own source tag.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query: { type: string, minLength: 1, maxLength: 1000 }
+                region: { $ref: '#/components/schemas/Region' }
+                ai:
+                  type: boolean
+                  default: false
+                  description: Requires the user's AI consent. Off ⇒ database rows only.
+      responses:
+        '200':
+          description: Candidates, best first
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [candidates]
+                properties:
+                  candidates:
+                    type: array
+                    items: { $ref: '#/components/schemas/NutritionAlternative' }
+        '400': { $ref: '#/components/responses/BadInput' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /workout/parse:
+    post:
+      tags: [workout]
+      summary: Free text → activities
+      description: |
+        The model maps text to structured activities only. Calories are computed
+        on the CLIENT from the user's weight and resting rate, so no energy
+        number for this user ever crosses the wire.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text: { type: string, minLength: 1, maxLength: 1000, example: полчаса бегал и 20 приседаний }
+      responses:
+        '200':
+          description: Activities
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ParsedWorkouts' }
+        '400': { $ref: '#/components/responses/BadInput' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/LlmUnavailable' }
+
+  /workout/parse-audio:
+    post:
+      tags: [workout]
+      summary: Spoken workout → activities
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [audio]
+              properties:
+                audio: { type: string, format: binary, description: ≤ 8 MB }
+      responses:
+        '200':
+          description: Activities
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ParsedWorkouts' }
+        '400': { $ref: '#/components/responses/BadInput' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/LlmUnavailable' }
+
+  /workout/parse-photo:
+    post:
+      tags: [workout]
+      summary: Screenshot of a tracker → activities plus the tracker's own totals
+      description: |
+        When the tracker printed a burn, `device_kcal` carries it and the client
+        logs THAT number instead of re-deriving one — the device measured it.
+        An implausible value is dropped while the activities survive.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [image]
+              properties:
+                image: { type: string, format: binary, description: ≤ 8 MB }
+      responses:
+        '200':
+          description: Activities and, when legible, the tracker's totals
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ParsedWorkoutPhoto' }
+        '400': { $ref: '#/components/responses/BadInput' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '413': { $ref: '#/components/responses/TooLarge' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/LlmUnavailable' }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        `APP_TOKEN`, compared in constant time. When the variable is unset the
+        check is a no-op and every route is public — acceptable only behind a
+        network boundary.
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid token
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example: { error: { code: unauthorized, message: Missing or invalid access token. } }
+    BadInput:
+      description: Empty or over-long input (`empty_input`, `input_too_long`)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    TooLarge:
+      description: Upload above the 8 MB cap (`input_too_large`)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RateLimited:
+      description: |
+        Burst or daily cap hit, or the shared AI quota is exhausted. The client
+        degrades to manual entry rather than showing an error.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    InternalError:
+      description: '`internal_error`. Never carries a stack trace or the request content.'
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    LlmUnavailable:
+      description: |
+        `llm_unavailable` — the model provider is unreachable or out of credit.
+        Fails closed: no fabricated numbers. Note `/health` stays green.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Region:
+      type: string
+      enum: [RU, US]
+      description: Selects the nutrition-database chain. Defaults to `DEFAULT_REGION`.
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum:
+                [
+                  empty_input,
+                  input_too_long,
+                  input_too_large,
+                  unauthorized,
+                  internal_error,
+                  llm_unavailable,
+                ]
+            message: { type: string }
+
+    NutritionSource:
+      type: string
+      description: |
+        Where the per-100 g numbers came from. `estimate` is a database MISS
+        whose numbers the client hides until the user fills them in; `ai_estimate`
+        is the model's own guess. Both are shown to the user as such — the
+        provenance is part of the answer, not metadata.
+      enum: [usda, skurikhin, openfoodfacts, apininjas, fatsecret, label, ai_estimate, estimate]
+
+    NutrientValues:
+      type: object
+      description: Energy and macros; micronutrients only where a source measured them.
+      properties:
+        kcal: { type: number }
+        prot: { type: number }
+        fat: { type: number }
+        carb: { type: number }
+        fiber: { type: number, description: 'grams; 2 kcal/g, counted once' }
+        sugar: { type: number }
+        satFat: { type: number }
+        minerals:
+          type: object
+          description: mg per 100 g. Any subset — a key exists only when measured, never zero-filled.
+          properties:
+            na: { type: number }
+            k: { type: number }
+            ca: { type: number }
+            mg: { type: number }
+            fe: { type: number }
+            zn: { type: number }
+        vitamins:
+          type: object
+          description: µg for a/d/b9/b12, mg for e/c/b1/b2/b6. Any subset.
+          properties:
+            a: { type: number }
+            d: { type: number }
+            e: { type: number }
+            c: { type: number }
+            b1: { type: number }
+            b2: { type: number }
+            b6: { type: number }
+            b9: { type: number }
+            b12: { type: number }
+
+    Per100:
+      allOf:
+        - $ref: '#/components/schemas/NutrientValues'
+        - type: object
+          required: [source]
+          properties:
+            source: { $ref: '#/components/schemas/NutritionSource' }
+
+    NutritionAlternative:
+      type: object
+      description: Another ranked database row for the same item.
+      required: [name, per100]
+      properties:
+        name: { type: string }
+        per100: { $ref: '#/components/schemas/Per100' }
+
+    NutritionItem:
+      type: object
+      required: [name_ru, name_en, grams, grams_source, confidence, per100, scaled, approximate]
+      properties:
+        name_ru: { type: string }
+        name_en: { type: string }
+        grams: { type: number }
+        grams_source:
+          type: string
+          enum: [estimated, confirmed]
+          description: |
+            `estimated` = the weight was assumed. Portion mass, not composition,
+            is the largest error source in the whole chain, so the client says so
+            in the open.
+        confidence: { type: number, minimum: 0, maximum: 1 }
+        per100: { $ref: '#/components/schemas/Per100' }
+        scaled:
+          allOf: [{ $ref: '#/components/schemas/NutrientValues' }]
+          description: per100 × grams / 100
+        approximate: { type: boolean }
+        matched_name:
+          type: string
+          description: |
+            The display name of the database row the numbers actually came from
+            («картошка» → «картофель варёный»). Absent on a full miss. The user
+            must see this: a plausible number from the wrong row is the failure
+            mode that looks like success.
+        prepared:
+          type: boolean
+          description: Already-prepared dish; the client skips the cooking adjustment to avoid double-counting.
+        alternatives:
+          type: array
+          items: { $ref: '#/components/schemas/NutritionAlternative' }
+        dry_basis_suspected:
+          type: boolean
+          description: The row looks like a dry-product label while the weight is probably the cooked dish (~3× overcount).
+
+    MealDraft:
+      type: object
+      required: [region, items, totals, portion_state, approximate, flags]
+      properties:
+        region: { $ref: '#/components/schemas/Region' }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/NutritionItem' }
+        totals: { $ref: '#/components/schemas/NutrientValues' }
+        portion_state: { type: string, enum: [estimated, confirmed] }
+        approximate: { type: boolean }
+        flags:
+          type: object
+          required: [has_estimate, has_ai_estimate, low_confidence]
+          properties:
+            has_estimate: { type: boolean }
+            has_ai_estimate: { type: boolean }
+            low_confidence: { type: boolean }
+
+    ParsedWorkout:
+      type: object
+      required: [type, name_ru, minutes, confidence]
+      properties:
+        type: { type: string }
+        name_ru: { type: string }
+        minutes: { type: number }
+        speed_kmh: { type: number }
+        met: { type: number, description: 'Compendium 2024 metabolic equivalent' }
+        sets: { type: number }
+        intensity: { type: string }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+
+    ParsedWorkouts:
+      type: object
+      required: [workouts]
+      properties:
+        workouts:
+          type: array
+          items: { $ref: '#/components/schemas/ParsedWorkout' }
+
+    ParsedWorkoutPhoto:
+      allOf:
+        - $ref: '#/components/schemas/ParsedWorkouts'
+        - type: object
+          properties:
+            device_kcal: { type: number, description: Total active calories the tracker itself printed }
+            device_minutes: { type: number }
+
+    Metrics:
+      type: object
+      description: Aggregate only. See docs/operations.md for the SLO thresholds.
+      properties:
+        uptime_s: { type: integer }
+        requests:
+          type: object
+          properties:
+            text: { type: integer }
+            photo: { type: integer }
+            audio: { type: integer }
+        by_region:
+          type: object
+          properties:
+            RU: { type: integer }
+            US: { type: integer }
+        empty: { type: integer, description: Parses that returned no items — the «не распозналось» counter }
+        low_confidence: { type: integer }
+        escalations: { type: integer, description: Retries on the pricier model — the cost signal }
+        truncation_retries: { type: integer }
+        label_cache_hits: { type: integer }
+        hedges: { type: integer }
+        sources:
+          type: object
+          additionalProperties: { type: integer }
+        latency_ms:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              avg: { type: integer }
+              count: { type: integer }
+        stage_ms:
+          type: object
+          description: Per-stage timings inside one parse (identify_* / resolve / translate).
+          additionalProperties:
+            type: object
+            properties:
+              avg: { type: integer }
+              count: { type: integer }
+        ai_quota:
+          type: object
+          additionalProperties: true

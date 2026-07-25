@@ -4,6 +4,7 @@ import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 import type { HealthService } from '../services/health';
 import { sleepDays } from './schema';
 import { dayKey } from './steps';
+import { withDbLock } from './tx';
 
 /// Accepts any drizzle SQLite database (op-sqlite async on device,
 /// better-sqlite3 sync in tests). Query builders are awaitable for both.
@@ -18,10 +19,16 @@ export async function upsertSleep(
   syncedAt: Date = new Date(),
 ): Promise<void> {
   const date = typeof day === 'string' ? day : dayKey(day);
-  await db
-    .insert(sleepDays)
-    .values({ date, minutes, syncedAt })
-    .onConflictDoUpdate({ target: sleepDays.date, set: { minutes, syncedAt } });
+  // Queued with the rest of the passive sync — see [upsertSteps].
+  await withDbLock(
+    db,
+    () =>
+      db
+        .insert(sleepDays)
+        .values({ date, minutes, syncedAt })
+        .onConflictDoUpdate({ target: sleepDays.date, set: { minutes, syncedAt } }),
+    'upsertSleep',
+  );
 }
 
 /// Stored sleep minutes for a day, or null if nothing has been synced yet.

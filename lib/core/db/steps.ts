@@ -3,6 +3,7 @@ import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
 import type { HealthService } from '../services/health';
 import { stepsDays, type StepsRow } from './schema';
+import { withDbLock } from './tx';
 
 /// Accepts any drizzle SQLite database (op-sqlite async on device,
 /// better-sqlite3 sync in tests). Query builders are awaitable for both.
@@ -33,10 +34,18 @@ export async function upsertSteps(
   syncedAt: Date = new Date(),
 ): Promise<void> {
   const date = typeof day === 'string' ? day : dayKey(day);
-  await db
-    .insert(stepsDays)
-    .values({ date, steps, source, syncedAt })
-    .onConflictDoUpdate({ target: stepsDays.date, set: { steps, source, syncedAt } });
+  // Queued, like every health write: the passive sync fires on app open, next to
+  // an adopted photo parse committing its own transaction. A bare write issued
+  // while that transaction is open joins it and vanishes with its rollback.
+  await withDbLock(
+    db,
+    () =>
+      db
+        .insert(stepsDays)
+        .values({ date, steps, source, syncedAt })
+        .onConflictDoUpdate({ target: stepsDays.date, set: { steps, source, syncedAt } }),
+    'upsertSteps',
+  );
 }
 
 /// Records a user-typed step count for a day. Tagged 'manual' so the passive OS
@@ -61,10 +70,15 @@ export async function setWorkoutSteps(
   workoutSteps: number,
 ): Promise<void> {
   const date = typeof day === 'string' ? day : dayKey(day);
-  await db
-    .update(stepsDays)
-    .set({ workoutSteps: Math.max(0, Math.round(workoutSteps)) })
-    .where(eq(stepsDays.date, date));
+  await withDbLock(
+    db,
+    () =>
+      db
+        .update(stepsDays)
+        .set({ workoutSteps: Math.max(0, Math.round(workoutSteps)) })
+        .where(eq(stepsDays.date, date)),
+    'setWorkoutSteps',
+  );
 }
 
 /// The stored row for a day, or null if nothing has been recorded yet.

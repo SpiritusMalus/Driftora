@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
+import { Chip, ChipRow } from '@/components/ui/Chip';
 import { MEAL_ORDER, type MealType } from '@/lib/core/insights/mealType';
 import { useTheme } from '@/lib/theme/theme';
 
@@ -14,38 +15,17 @@ export function MealChips({ value, onChange }: { value: MealType; onChange: (mea
   return (
     <View style={styles.wrap}>
       <Text style={[styles.label, { color: theme.subtle }, theme.font.body]}>{t('food.mealPick.label')}</Text>
-      <View style={styles.chips}>
-        {MEAL_ORDER.map((m) => {
-          const active = value === m;
-          return (
-            <Pressable
-              key={m}
-              onPress={() => onChange(m)}
-              accessibilityRole="button"
-              accessibilityState={{ selected: active }}
-              accessibilityLabel={t(`food.meal.${m}`)}
-              style={({ pressed }) => [
-                styles.chip,
-                {
-                  backgroundColor: active ? theme.primary : theme.card,
-                  borderColor: active ? theme.primary : theme.separator,
-                  opacity: pressed ? 0.7 : 1,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.chipText,
-                  { color: active ? theme.onPrimary : theme.text },
-                  active ? theme.font.bodySemiBold : theme.font.body,
-                ]}
-              >
-                {t(`food.meal.${m}`)}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      <ChipRow>
+        {MEAL_ORDER.map((m) => (
+          <Chip
+            key={m}
+            label={t(`food.meal.${m}`)}
+            selected={value === m}
+            onPress={() => onChange(m)}
+            boldWhenSelected
+          />
+        ))}
+      </ChipRow>
     </View>
   );
 }
@@ -53,7 +33,4 @@ export function MealChips({ value, onChange }: { value: MealType; onChange: (mea
 const styles = StyleSheet.create({
   wrap: { marginTop: 4 },
   label: { fontSize: 12, marginBottom: 6 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { paddingVertical: 7, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1 },
-  chipText: { fontSize: 13 },
 });

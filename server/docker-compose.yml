@@ -1,0 +1,37 @@
+# Runs the food-parse service the way production runs it, on any machine.
+#
+# Secrets stay OUT of this file and out of the image: every key is read from a
+# local `.env` that is gitignored (the repository is public). Copy `.env.example`
+# from the deploy notes, fill it in, then:
+#
+#   docker compose up --build -d
+#   curl localhost:8787/health
+#
+# Behind Caddy on the VPS, the published port stays bound to loopback so the
+# container is never directly reachable from outside.
+
+services:
+  food-parse:
+    build: .
+    image: driftora-food-parse:latest
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:8787:8787'
+    env_file:
+      - .env
+    environment:
+      PORT: 8787
+    # The image already declares a HEALTHCHECK; this only makes the interval
+    # explicit where a reader will look for it.
+    healthcheck:
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    # The service holds no state — every request is answered from the request
+    # itself plus upstream APIs — so there are no volumes on purpose. Losing the
+    # container loses nothing but the in-memory quota/rate-limit counters.
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'

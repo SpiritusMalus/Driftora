@@ -56,6 +56,13 @@ npm run db:generate  # regenerate Drizzle artifacts after a schema change
 
 Metro runs on **:8081** (the Expo SDK 54 default).
 
+### CI
+
+`.github/workflows/ci.yml` runs on every push and pull request: typecheck plus tests for the app
+(jest) and for `server/` (`node --test`), and a `server/` build. `uptime.yml` probes the production
+`/health` every ~15 min and `slo.yml` checks the production `/metrics` against the thresholds in
+`docs/operations.md` hourly; `android-apk.yml` builds a preview APK on demand.
+
 ## Food-parse proxy (`server/`)
 
 A small stateless service: it identifies a food from a photo, text, or voice note with an LLM via
@@ -69,7 +76,22 @@ npm install
 cp .env.example .env        # set OPENROUTER_API_KEY (required), USDA_API_KEY for nutrition numbers
 npm run dev                 # tsx watch on :8787   (prod: npm run build && npm start)
 npm test                    # node:test
+npm run typecheck           # tsc over src/, eval/ and scripts/
+npm run eval                # measure the parse chain against server/eval/cases.json
 ```
+
+Or run it as a container — a reproducible build instead of «compile on the VPS and rsync `dist/`»:
+
+```bash
+cd server
+docker compose up --build -d   # reads secrets from a local .env, publishes 127.0.0.1:8787
+curl localhost:8787/health
+```
+
+`server/openapi.yaml` is the contract between the app and this service;
+`test/openapiContract.test.ts` fails if a route is added, renamed or removed without it.
+`server/eval/` measures what the parse chain actually returns — see its README for what the
+numbers do and don't mean. Operating it (SLOs, alerts, runbook, rollback) is `docs/operations.md`.
 
 Key env (`server/.env.example`): `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` (default
 `google/gemini-3.5-flash`), `USDA_API_KEY`, `DEFAULT_REGION` (US|RU), `PORT` (default **8787**),

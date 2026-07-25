@@ -220,6 +220,9 @@ test('normalizeParsedWorkouts: known type keeps pace, drops model met', () => {
   const [w] = normalizeParsedWorkouts({
     workouts: [{ type: 'run', name_ru: 'бег', minutes: 30, speed_kmh: 10, met: 9, confidence: 0.9 }],
   });
+  // The parse must yield exactly this one activity — without saying so, every
+  // assertion below would read `undefined` and silently prove nothing.
+  assert.ok(w);
   assert.equal(w.type, 'run');
   assert.equal(w.minutes, 30);
   assert.equal(w.speed_kmh, 10);
@@ -230,6 +233,9 @@ test('normalizeParsedWorkouts: "other" carries a clamped met, no pace', () => {
   const [w] = normalizeParsedWorkouts({
     workouts: [{ type: 'other', name_ru: 'отжимания', minutes: 8, speed_kmh: 5, met: 999, confidence: 0.7 }],
   });
+  // The parse must yield exactly this one activity — without saying so, every
+  // assertion below would read `undefined` and silently prove nothing.
+  assert.ok(w);
   assert.equal(w.type, 'other');
   assert.equal(w.name_ru, 'отжимания');
   assert.equal(w.met, 25); // clamped to the human ceiling
@@ -238,6 +244,9 @@ test('normalizeParsedWorkouts: "other" carries a clamped met, no pace', () => {
 
 test('normalizeParsedWorkouts: unknown type folds to "other"; name falls back to type', () => {
   const [w] = normalizeParsedWorkouts({ workouts: [{ type: 'quidditch', minutes: 20, confidence: 0.5 }] });
+  // The parse must yield exactly this one activity — without saying so, every
+  // assertion below would read `undefined` and silently prove nothing.
+  assert.ok(w);
   assert.equal(w.type, 'other');
   assert.equal(w.name_ru, 'other');
 });
@@ -264,16 +273,25 @@ test('normalizeParsedWorkouts: sets ride along for strength only, clamped', () =
   const [lift] = normalizeParsedWorkouts({
     workouts: [{ type: 'strength', name_ru: 'жим лёжа', minutes: 12, sets: 4, confidence: 0.9 }],
   });
+  // The parse must yield exactly this one activity — without saying so, every
+  // assertion below would read `undefined` and silently prove nothing.
+  assert.ok(lift);
   assert.equal(lift.sets, 4);
   // A wild count is dropped rather than clamped-and-kept — no fabricated volume.
   const [wild] = normalizeParsedWorkouts({
     workouts: [{ type: 'strength', name_ru: 'жим', minutes: 12, sets: 500, confidence: 0.9 }],
   });
+  // The parse must yield exactly this one activity — without saying so, every
+  // assertion below would read `undefined` and silently prove nothing.
+  assert.ok(wild);
   assert.equal(wild.sets, undefined);
   // Sets are meaningless for a run — dropped even if the model emits them.
   const [run] = normalizeParsedWorkouts({
     workouts: [{ type: 'run', name_ru: 'бег', minutes: 30, sets: 3, confidence: 0.9 }],
   });
+  // The parse must yield exactly this one activity — without saying so, every
+  // assertion below would read `undefined` and silently prove nothing.
+  assert.ok(run);
   assert.equal(run.sets, undefined);
 });
 
@@ -281,21 +299,33 @@ test('normalizeParsedWorkouts: strength effort rides along, validated', () => {
   const [heavy] = normalizeParsedWorkouts({
     workouts: [{ type: 'strength', name_ru: 'присед', minutes: 36, intensity: 'heavy', confidence: 0.9 }],
   });
+  // The parse must yield exactly this one activity — without saying so, every
+  // assertion below would read `undefined` and silently prove nothing.
+  assert.ok(heavy);
   assert.equal(heavy.intensity, 'heavy');
   // An invented effort word is dropped — the client then keeps its fixed MET.
   const [odd] = normalizeParsedWorkouts({
     workouts: [{ type: 'strength', name_ru: 'присед', minutes: 36, intensity: 'ультра', confidence: 0.9 }],
   });
+  // The parse must yield exactly this one activity — without saying so, every
+  // assertion below would read `undefined` and silently prove nothing.
+  assert.ok(odd);
   assert.equal(odd.intensity, undefined);
   // Effort is meaningless outside strength — dropped even if the model emits it.
   const [run] = normalizeParsedWorkouts({
     workouts: [{ type: 'run', name_ru: 'бег', minutes: 30, intensity: 'heavy', confidence: 0.9 }],
   });
+  // The parse must yield exactly this one activity — without saying so, every
+  // assertion below would read `undefined` and silently prove nothing.
+  assert.ok(run);
   assert.equal(run.intensity, undefined);
   // Absent effort stays absent — no default is invented server-side.
   const [plain] = normalizeParsedWorkouts({
     workouts: [{ type: 'strength', name_ru: 'силовая', minutes: 36, confidence: 0.9 }],
   });
+  // The parse must yield exactly this one activity — without saying so, every
+  // assertion below would read `undefined` and silently prove nothing.
+  assert.ok(plain);
   assert.equal(plain.intensity, undefined);
 });
 
@@ -308,6 +338,9 @@ test('normalizeParsedWorkouts: drops non-positive / garbage durations, never thr
 
 test('normalizeParsedWorkouts: clamps minutes to 10 h and caps the array', () => {
   const [w] = normalizeParsedWorkouts({ workouts: [{ type: 'walk', minutes: 99999, confidence: 1 }] });
+  // The parse must yield exactly this one activity — without saying so, every
+  // assertion below would read `undefined` and silently prove nothing.
+  assert.ok(w);
   assert.equal(w.minutes, 600);
   const many = normalizeParsedWorkouts({
     workouts: Array.from({ length: 50 }, () => ({ type: 'run', minutes: 10, confidence: 1 })),
