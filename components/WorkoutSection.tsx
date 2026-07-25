@@ -5,6 +5,7 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ConsentModal } from '@/components/consent/ConsentModal';
 import { Card } from '@/components/ui/Card';
+import { Chip, ChipRow } from '@/components/ui/Chip';
 import { TextField } from '@/components/ui/TextField';
 import { AI_CONSENT_VERSION, grantAiConsent, needsAiConsent } from '@/lib/core/consent/consent';
 import type { WorkoutRow } from '@/lib/core/db/schema';
@@ -580,29 +581,16 @@ export function WorkoutSection({
 
           {mode === 'exact' ? (
             <View style={styles.modeSection}>
-              <View style={styles.chips}>
-                {WORKOUT_TYPES.map((w) => {
-                  const active = type === w;
-                  return (
-                    <Pressable
-                      key={w}
-                      onPress={() => setType(w)}
-                      style={({ pressed }) => [
-                        styles.chip,
-                        {
-                          backgroundColor: active ? theme.primary : theme.card,
-                          borderColor: active ? theme.primary : theme.separator,
-                          opacity: pressed ? 0.7 : 1,
-                        },
-                      ]}
-                    >
-                      <Text style={[styles.chipText, { color: active ? theme.onPrimary : theme.text }, theme.font.body]}>
-                        {t(`workouts.type.${w}`)}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
+              <ChipRow>
+                {WORKOUT_TYPES.map((w) => (
+                  <Chip
+                    key={w}
+                    label={t(`workouts.type.${w}`)}
+                    selected={type === w}
+                    onPress={() => setType(w)}
+                  />
+                ))}
+              </ChipRow>
 
               <View style={styles.addRow}>
                 {supportsSets(type) ? (
@@ -635,40 +623,21 @@ export function WorkoutSection({
                   <Text style={[styles.intensityLabel, { color: theme.subtle }, theme.font.body]}>
                     {t('workouts.intensity.label')}
                   </Text>
-                  <View style={styles.intensityChips}>
-                    {STRENGTH_INTENSITIES.map((lv) => {
-                      const active = intensity === lv;
-                      return (
-                        <Pressable
-                          key={lv}
-                          onPress={() => setIntensity(lv)}
-                          style={({ pressed }) => [
-                            styles.effortChip,
-                            {
-                              backgroundColor: active ? theme.primary : theme.card,
-                              borderColor: active ? theme.primary : theme.separator,
-                              opacity: pressed ? 0.7 : 1,
-                            },
-                          ]}
-                        >
-                          <Text
-                            style={[
-                              styles.effortChipText,
-                              { color: active ? theme.onPrimary : theme.text },
-                              theme.font.body,
-                            ]}
-                          >
-                            {t(`workouts.intensity.${lv}`)}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
+                  <ChipRow>
+                    {STRENGTH_INTENSITIES.map((lv) => (
+                      <Chip
+                        key={lv}
+                        label={t(`workouts.intensity.${lv}`)}
+                        selected={intensity === lv}
+                        onPress={() => setIntensity(lv)}
+                      />
+                    ))}
+                  </ChipRow>
                 </View>
               ) : null}
 
               {supportsSets(type) ? (
-                <Text style={[styles.setsHint, { color: theme.tertiary }, theme.font.body]}>
+                <Text style={[styles.setsHint, { color: theme.subtle }, theme.font.body]}>
                   {t('workouts.setsHint')}
                 </Text>
               ) : null}
@@ -683,14 +652,14 @@ export function WorkoutSection({
                     style={styles.minInput}
                   />
                   <Text style={[styles.unit, { color: theme.subtle }, theme.font.body]}>{t('workouts.kmh')}</Text>
-                  <Text style={[styles.speedOptional, { color: theme.tertiary }, theme.font.body]} numberOfLines={2}>
+                  <Text style={[styles.speedOptional, { color: theme.subtle }, theme.font.body]} numberOfLines={2}>
                     {t('workouts.speedOptional')}
                   </Text>
                 </View>
               ) : null}
 
               {!hasWeight ? (
-                <Text style={[styles.setsHint, { color: theme.tertiary }, theme.font.body]}>
+                <Text style={[styles.setsHint, { color: theme.subtle }, theme.font.body]}>
                   {t('workouts.weightFallback', { kg: weightKg })}
                 </Text>
               ) : null}
@@ -752,7 +721,7 @@ export function WorkoutSection({
                   </Text>
                 </Pressable>
               </View>
-              <Text style={[styles.setsHint, { color: theme.tertiary }, theme.font.body]}>
+              <Text style={[styles.setsHint, { color: theme.subtle }, theme.font.body]}>
                 {t('workouts.tracker.hint')}
               </Text>
             </View>
@@ -833,7 +802,7 @@ export function WorkoutSection({
                 /* The mic/photo buttons are icon-only — say out loud that voice
                    and a tracker screenshot work here (device feedback
                    2026-07-21: «не очевидно, что можно фото приложить»). */
-                <Text style={[styles.setsHint, { color: theme.tertiary }, theme.font.body]}>
+                <Text style={[styles.setsHint, { color: theme.subtle }, theme.font.body]}>
                   {t('workouts.describeMedia')}
                 </Text>
               ) : null}
@@ -873,7 +842,7 @@ export function WorkoutSection({
                   {/* The double-count fix, said out loud: these steps moved into
                       the workout's kcal and left the step earnings. */}
                   {r.source === 'device' && r.stepsInWindow != null && r.stepsInWindow > 0 ? (
-                    <Text style={[styles.itemSub, { color: theme.tertiary }, theme.font.body]}>
+                    <Text style={[styles.itemSub, { color: theme.subtle }, theme.font.body]}>
                       {t('workouts.stepsInside', { steps: r.stepsInWindow })}
                     </Text>
                   ) : null}
@@ -886,7 +855,7 @@ export function WorkoutSection({
               explanation (72 %, resting subtraction, «по трекеру») a tap away. */}
           <Pressable onPress={() => setNoteOpen((v) => !v)} style={styles.noteHead} hitSlop={6}>
             <Text style={[styles.noteShort, { color: theme.subtle }, theme.font.body]}>{t('workouts.noteShort')}</Text>
-            <Text style={[styles.noteToggle, { color: theme.tertiary }, theme.font.body]}>{t('workouts.noteToggle')}</Text>
+            <Text style={[styles.noteToggle, { color: theme.subtle }, theme.font.body]}>{t('workouts.noteToggle')}</Text>
             <Ionicons name={noteOpen ? 'chevron-up' : 'chevron-down'} size={14} color={theme.tertiary} />
           </Pressable>
           {noteOpen ? (
@@ -932,14 +901,8 @@ const styles = StyleSheet.create({
   repeatChipKcal: { fontSize: 11, marginTop: 2 },
   // Closes the fast-path group off from the form below it.
   repeatRule: { height: StyleSheet.hairlineWidth, marginTop: 14 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { paddingVertical: 7, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1 },
-  chipText: { fontSize: 13 },
   intensityRow: { marginTop: 12, gap: 8 },
   intensityLabel: { fontSize: 12 },
-  intensityChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  effortChip: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 999, borderWidth: 1 },
-  effortChipText: { fontSize: 13 },
   addRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 },
   speedRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
   setsHint: { fontSize: 12, lineHeight: 16, marginTop: 6 },

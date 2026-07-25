@@ -66,7 +66,9 @@ afterEach(() => {
   globalThis.fetch = realFetch;
 });
 
-function photoForm(bytes: Uint8Array, region: string): FormData {
+// `Uint8Array<ArrayBuffer>`, not the bare alias: a view over a SharedArrayBuffer
+// is not a valid BlobPart, and every caller here builds a plain one.
+function photoForm(bytes: Uint8Array<ArrayBuffer>, region: string): FormData {
   const form = new FormData();
   form.append('region', region);
   form.append('image', new Blob([bytes], { type: 'image/jpeg' }), 'meal.jpg');

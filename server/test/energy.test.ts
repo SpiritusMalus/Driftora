@@ -53,7 +53,9 @@ test('ruler: the single formula reproduces curated RU kcal', () => {
     return { name: e.name, stated, computed: Math.round(computed), pct };
   });
   const pcts = rows.map((r) => r.pct).sort((a, b) => a - b);
-  const at = (q: number) => pcts[Math.min(pcts.length - 1, Math.floor(pcts.length * q))];
+  // `pcts` is non-empty because CURATED_RU is, but an index is still an index —
+  // handle it once here rather than at each of the four call sites.
+  const at = (q: number): number => pcts[Math.min(pcts.length - 1, Math.floor(pcts.length * q))] ?? 0;
   const median = at(0.5);
   const p90 = at(0.9);
   const mape = pcts.reduce((s, x) => s + x, 0) / pcts.length;

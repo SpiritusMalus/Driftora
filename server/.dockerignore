@@ -1,0 +1,13 @@
+# Keep the build context to source + lockfile. `dist/` in particular must never
+# be copied in: the image builds it, and a stale local one would silently win.
+node_modules
+dist
+dist.bak-*
+.env
+.env.*
+*.log
+test
+scripts
+Dockerfile
+.dockerignore
+docker-compose.yml

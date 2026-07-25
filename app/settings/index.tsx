@@ -7,6 +7,7 @@ import { Alert, Linking, Pressable, StyleSheet, Switch, Text, View } from 'react
 import { ConsentModal } from '@/components/consent/ConsentModal';
 import { LegalReader } from '@/components/legal/LegalReader';
 import { Card } from '@/components/ui/Card';
+import { Chip, ChipRow } from '@/components/ui/Chip';
 import { ListGroup, type RowSpec } from '@/components/ui/ListGroup';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
@@ -280,7 +281,7 @@ export default function SettingsScreen() {
       <Note theme={theme}>{t('settings.pauseNote')}</Note>
 
       <NumberField label={t('settings.stepsGoal')} value={stepsGoal} onChange={(v) => { setStepsGoal(v); dirty(); }} theme={theme} />
-      <StepChips value={stepsGoal} onSelect={(v) => { setStepsGoal(v); dirty(); }} theme={theme} />
+      <StepChips value={stepsGoal} onSelect={(v) => { setStepsGoal(v); dirty(); }} />
       {/* КБЖУ targets live on the Weight screen now — next to BMI + the formula. */}
       <Note theme={theme}>{t('settings.targetsMoved')}</Note>
 
@@ -427,39 +428,19 @@ function NumberField({
   );
 }
 
-function StepChips({
-  value,
-  onSelect,
-  theme,
-}: {
-  value: string;
-  onSelect: (v: string) => void;
-  theme: Theme;
-}) {
+function StepChips({ value, onSelect }: { value: string; onSelect: (v: string) => void }) {
   return (
-    <View style={styles.chipRow}>
-      {STEP_CHIPS.map((chip) => {
-        const active = chip.v === value.trim();
-        return (
-          <Pressable
-            key={chip.v}
-            onPress={() => onSelect(chip.v)}
-            style={({ pressed }) => [
-              styles.chip,
-              {
-                backgroundColor: active ? theme.primary : theme.card,
-                borderColor: active ? theme.primary : theme.separator,
-                opacity: pressed ? 0.7 : 1,
-              },
-            ]}
-          >
-            <Text style={[styles.chipText, { color: active ? theme.onPrimary : theme.text }, theme.font.bodySemiBold]}>
-              {chip.l}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
+    <ChipRow size="block" style={styles.chipRow}>
+      {STEP_CHIPS.map((chip) => (
+        <Chip
+          key={chip.v}
+          label={chip.l}
+          selected={chip.v === value.trim()}
+          onPress={() => onSelect(chip.v)}
+          size="block"
+        />
+      ))}
+    </ChipRow>
   );
 }
 
@@ -509,9 +490,7 @@ const styles = StyleSheet.create({
   field: { marginBottom: 12 },
   fieldLabel: { fontSize: 12, marginBottom: 5 },
   groupLabel: { fontSize: 12, marginTop: 6, marginBottom: 8, marginHorizontal: 4 },
-  chipRow: { flexDirection: 'row', gap: 8, marginBottom: 4 },
-  chip: { flex: 1, borderWidth: 1.5, borderRadius: 999, paddingVertical: 9, alignItems: 'center' },
-  chipText: { fontSize: 14 },
+  chipRow: { marginBottom: 4 },
   nextHint: { fontSize: 12, marginTop: 8, marginHorizontal: 4 },
   timeRow: {
     flexDirection: 'row',

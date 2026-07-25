@@ -10,8 +10,10 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "test": "node --import tsx --test test/*.test.ts",
-    "typecheck": "tsc --noEmit",
-    "import:nutrition": "tsx scripts/srLegacyImport.ts"
+    "typecheck": "tsc --noEmit -p tsconfig.check.json",
+    "import:nutrition": "tsx scripts/srLegacyImport.ts",
+    "eval": "tsx eval/run.ts",
+    "slo": "tsx eval/checkSlo.ts"
   },
   "dependencies": {
     "express": "^5.1.0",

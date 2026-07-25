@@ -1,0 +1,6 @@
+Baselines land here as `YYYY-MM-DD-<model>.json`, written by
+`npm run eval -- --save eval/baselines/<name>.json`.
+
+Empty on purpose: recording the first one spends real model and provider quota
+against a live service, so it is the owner's call to make, not something this
+directory should pretend has already happened.

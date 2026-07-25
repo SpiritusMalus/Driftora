@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, lt } from 'drizzle-orm';
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
 import type {
@@ -15,6 +15,7 @@ import { recomputeDraft } from '../services/mealDraft';
 import { mealTypeForEntry, type MealType } from '../insights/mealType';
 import type { MicroRow } from '../insights/microNutrients';
 import { foodEntries, foodItems, type FoodEntry, type FoodItem } from './schema';
+import { withTx } from './tx';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyDb = BaseSQLiteDatabase<any, any, any>;
@@ -116,26 +117,6 @@ export function dayBounds(date: Date): { start: Date; end: Date } {
   return { start, end };
 }
 
-/// Run related writes atomically: BEGIN/COMMIT with ROLLBACK on failure — the
-/// same raw-SQL seam [importAllTables] uses (drizzle's `transaction()` isn't
-/// wired for every driver this app runs on). Without this, a crash between an
-/// entry write and its item rows leaves a meal without its breakdown.
-async function withTx<T>(db: AnyDb, body: () => Promise<T>): Promise<T> {
-  await db.run(sql`BEGIN`);
-  try {
-    const out = await body();
-    await db.run(sql`COMMIT`);
-    return out;
-  } catch (e) {
-    try {
-      await db.run(sql`ROLLBACK`);
-    } catch {
-      // Surfacing the original failure matters more than a rollback error.
-    }
-    throw e;
-  }
-}
-
 /// Saves a confirmed meal plus its item breakdown. Returns the entry id.
 ///
 /// The honest [MealDraft] (exact per-100g + scaled totals) collapses to the
@@ -176,7 +157,7 @@ export async function saveParsedEntry(
 
     await insertDraftItems(db, entryId, d);
     return entryId;
-  });
+  }, 'saveParsedEntry');
 }
 
 /// Insert the draft's item breakdown for an entry (each row holds the SCALED
@@ -257,7 +238,7 @@ export async function updateFoodEntry(
     // cascade) so no `food_items` are orphaned even if PRAGMA foreign_keys is off.
     await db.delete(foodItems).where(eq(foodItems.entryId, id));
     await insertDraftItems(db, id, d);
-  });
+  }, 'updateFoodEntry');
 }
 
 /// ——— Background (adopted) parses: entries that exist BEFORE their parse ———
@@ -313,7 +294,7 @@ export async function applyDraftToPendingEntry(
       .where(eq(foodEntries.id, id));
     await db.delete(foodItems).where(eq(foodItems.entryId, id));
     await insertDraftItems(db, id, d);
-  });
+  }, 'applyDraftToPendingEntry');
 }
 
 export async function markPendingFailed(db: AnyDb, id: number): Promise<void> {
@@ -348,7 +329,7 @@ export async function deleteFoodEntry(db: AnyDb, id: number): Promise<void> {
   await withTx(db, async () => {
     await db.delete(foodItems).where(eq(foodItems.entryId, id));
     await db.delete(foodEntries).where(eq(foodEntries.id, id));
-  });
+  }, 'deleteFoodEntry');
 }
 
 /// Re-log a past meal as of `ts` (default: now) — copies the entry row AND its
@@ -395,7 +376,7 @@ export async function repeatFoodEntry(db: AnyDb, id: number, ts: Date = new Date
       );
     }
     return newId;
-  });
+  }, 'repeatFoodEntry');
 }
 
 /// Rebuild an editable [MealDraft] from a stored entry + items. Storage keeps

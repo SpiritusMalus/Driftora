@@ -6,6 +6,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { DeviceHealthCard } from '@/components/DeviceHealthCard';
 import { Card } from '@/components/ui/Card';
+import { Chip, ChipRow } from '@/components/ui/Chip';
 import { ListGroup, type RowSpec } from '@/components/ui/ListGroup';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
@@ -428,20 +429,19 @@ export default function WeightScreen() {
               <Text style={[styles.ackTick, { color: theme.accent }, theme.font.bodyMedium]}>{ack.text}</Text>
             ) : null}
           </View>
-          <View style={styles.chips}>
+          <ChipRow>
             {GOAL_MODES.map((m) => (
               <Chip
                 key={m}
                 label={t(`weight.plan.mode.${m}`)}
-                active={goalMode === m}
+                selected={goalMode === m}
                 onPress={() => {
                   setGoalMode(m);
                   void persist({ goalMode: m }, t('weight.targets.savedTick'), 'plan');
                 }}
-                theme={theme}
               />
             ))}
-          </View>
+          </ChipRow>
 
           {/* Pace tempo — the ONE speed lever. For lose it sizes the deficit
               (soft −10% / standard −15…−20% / fast −25%), for gain the surplus
@@ -453,20 +453,19 @@ export default function WeightScreen() {
               <Text style={[styles.fieldLabel, { color: theme.subtle }, theme.font.body]}>
                 {t(goalMode === 'lose' ? 'weight.plan.tempo.label' : 'weight.plan.tempoGain.label')}
               </Text>
-              <View style={styles.chips}>
+              <ChipRow>
                 {DEFICIT_TEMPOS.map((tp) => (
                   <Chip
                     key={tp}
                     label={t(`weight.plan.${goalMode === 'lose' ? 'tempo' : 'tempoGain'}.${tp}`)}
-                    active={deficitTempo === tp}
+                    selected={deficitTempo === tp}
                     onPress={() => {
                       setDeficitTempo(tp);
                       void persist({ deficitTempo: tp }, t('weight.targets.savedTick'), 'plan');
                     }}
-                    theme={theme}
                   />
                 ))}
-              </View>
+              </ChipRow>
             </>
           ) : null}
 
@@ -1072,34 +1071,6 @@ function ProfileLine({
   return <View style={[styles.microRow, { borderBottomColor: theme.separator }]}>{inner}</View>;
 }
 
-function Chip({
-  label,
-  active,
-  onPress,
-  theme,
-}: {
-  label: string;
-  active: boolean;
-  onPress: () => void;
-  theme: Theme;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.chip,
-        {
-          backgroundColor: active ? theme.primary : theme.card,
-          borderColor: active ? theme.primary : theme.separator,
-          opacity: pressed ? 0.7 : 1,
-        },
-      ]}
-    >
-      <Text style={[styles.chipText, { color: active ? theme.onPrimary : theme.text }, theme.font.body]}>{label}</Text>
-    </Pressable>
-  );
-}
-
 function toNumber(v: string): number {
   const n = parseFloat(v.replace(',', '.'));
   return Number.isFinite(n) ? n : 0;
@@ -1159,8 +1130,6 @@ const styles = StyleSheet.create({
   field: { marginBottom: 10 },
   fieldLabel: { fontSize: 12, marginBottom: 5, marginTop: 4 },
   chips: { flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginBottom: 8 },
-  chip: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 7 },
-  chipText: { fontSize: 13 },
   applyBtn: { borderWidth: 1.5, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 10, alignSelf: 'flex-start', marginTop: 12 },
   applyText: { fontSize: 14 },
   hint: { fontSize: 13, textAlign: 'center', marginTop: 8, marginBottom: 16 },

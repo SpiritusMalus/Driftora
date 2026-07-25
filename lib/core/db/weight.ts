@@ -4,6 +4,7 @@ import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 import type { HealthSample, HealthService } from '../services/health';
 import { weights, type WeightRow } from './schema';
 import { dayKey } from './steps';
+import { withDbLock } from './tx';
 
 /// Accepts any drizzle SQLite database (op-sqlite async on device,
 /// better-sqlite3 sync in tests). Query builders are awaitable for both.
@@ -25,10 +26,15 @@ export async function upsertWeight(
   ts: Date = new Date(),
 ): Promise<void> {
   const date = typeof day === 'string' ? day : dayKey(day);
-  await db
-    .insert(weights)
-    .values({ date, weightKg, ts, source: 'manual' })
-    .onConflictDoUpdate({ target: weights.date, set: { weightKg, ts, source: 'manual' } });
+  await withDbLock(
+    db,
+    () =>
+      db
+        .insert(weights)
+        .values({ date, weightKg, ts, source: 'manual' })
+        .onConflictDoUpdate({ target: weights.date, set: { weightKg, ts, source: 'manual' } }),
+    'upsertWeight',
+  );
 }
 
 /// Device-sourced upsert (smart scale via HealthKit / Health Connect).
@@ -43,16 +49,24 @@ export async function upsertDeviceWeight(
   ts: Date = new Date(),
 ): Promise<boolean> {
   const date = typeof day === 'string' ? day : dayKey(day);
-  const existing = await getWeightForDay(db, date);
-  if (existing && existing.source === 'manual') return false;
-  await db
-    .insert(weights)
-    .values({ date, weightKg, ts, source: 'device', bodyFatPct })
-    .onConflictDoUpdate({
-      target: weights.date,
-      set: { weightKg, ts, source: 'device', bodyFatPct },
-    });
-  return true;
+  // Read-check-then-write (manual stickiness) — one unit through the queue, or a
+  // neighbouring transaction can both invalidate the check and eat the write.
+  return withDbLock(
+    db,
+    async () => {
+      const existing = await getWeightForDay(db, date);
+      if (existing && existing.source === 'manual') return false;
+      await db
+        .insert(weights)
+        .values({ date, weightKg, ts, source: 'device', bodyFatPct })
+        .onConflictDoUpdate({
+          target: weights.date,
+          set: { weightKg, ts, source: 'device', bodyFatPct },
+        });
+      return true;
+    },
+    'upsertDeviceWeight',
+  );
 }
 
 /// Pure: latest sample per local day — a scale weighed several times a day

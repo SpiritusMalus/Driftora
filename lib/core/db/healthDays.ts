@@ -4,6 +4,7 @@ import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 import type { DeviceBodySignals } from '../services/health';
 import { healthDays, type HealthDayRow } from './schema';
 import { dayKey } from './steps';
+import { withDbLock } from './tx';
 
 /// Accepts any drizzle SQLite database (op-sqlite async on device,
 /// better-sqlite3 sync in tests) — mirrors [steps.ts].
@@ -37,10 +38,16 @@ export async function upsertHealthDay(
     vo2max: signals.vo2Max,
     syncedAt,
   };
-  await db
-    .insert(healthDays)
-    .values(values)
-    .onConflictDoUpdate({ target: healthDays.date, set: values });
+  // Through the queue: a passive health sync runs on app open, which is exactly
+  // when an adopted background photo parse is committing. A bare write issued
+  // mid-transaction joins it and dies with its rollback — silently, because
+  // nothing here ever hears about the other helper's failure.
+  await withDbLock(
+    db,
+    () =>
+      db.insert(healthDays).values(values).onConflictDoUpdate({ target: healthDays.date, set: values }),
+    'upsertHealthDay',
+  );
   return true;
 }
 
