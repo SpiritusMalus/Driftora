@@ -15,7 +15,7 @@ function fdcFetchStub(foods: unknown[]): typeof fetch {
 
 test('usda: sends the API key via X-Api-Key header, never in the query string, and bounds the call with a signal', async () => {
   let seenUrl: string | undefined;
-  let seenHeaders: HeadersInit | undefined;
+  let seenHeaders: RequestInit['headers'];
   let seenSignal: AbortSignal | undefined;
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     seenUrl = String(input);
