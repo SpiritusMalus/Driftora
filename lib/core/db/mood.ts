@@ -2,6 +2,7 @@ import { and, desc, gte, lt } from 'drizzle-orm';
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
 import { moods, type MoodRow } from './schema';
+import { withDbLock } from './tx';
 
 /// Accepts any drizzle SQLite database (op-sqlite async on device,
 /// better-sqlite3 sync in tests). Query builders are awaitable for both.
@@ -11,7 +12,10 @@ type AnyDb = BaseSQLiteDatabase<any, any, any>;
 /// Logs a standalone mood check-in (0–10). Multiple per day are allowed — the
 /// Body↔Mind insight averages them with any diary moods for that day.
 export async function logMood(db: AnyDb, value: number, ts: Date = new Date()): Promise<void> {
-  await db.insert(moods).values({ value, ts });
+  // Queued: a check-in can be tapped while an adopted photo parse holds its own
+  // transaction open, and a bare write issued then joins it — and vanishes with
+  // its rollback, silently. See lib/core/db/tx.ts.
+  await withDbLock(db, () => db.insert(moods).values({ value, ts }), 'logMood');
 }
 
 /// Mood check-ins newest-first, optionally capped to [limit].

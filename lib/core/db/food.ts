@@ -15,7 +15,7 @@ import { recomputeDraft } from '../services/mealDraft';
 import { mealTypeForEntry, type MealType } from '../insights/mealType';
 import type { MicroRow } from '../insights/microNutrients';
 import { foodEntries, foodItems, type FoodEntry, type FoodItem } from './schema';
-import { withTx } from './tx';
+import { withDbLock, withTx } from './tx';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyDb = BaseSQLiteDatabase<any, any, any>;
@@ -250,22 +250,33 @@ export async function savePendingEntry(
   db: AnyDb,
   opts: { source: 'voice' | 'text' | 'photo'; meal?: MealType | null; ts?: Date },
 ): Promise<number> {
-  const inserted = await db
-    .insert(foodEntries)
-    .values({
-      ts: opts.ts ?? new Date(),
-      rawText: '',
-      source: opts.source,
-      kcal: 0,
-      proteinG: 0,
-      fatG: 0,
-      carbG: 0,
-      confirmed: false,
-      micros: null,
-      meal: opts.meal ?? null,
-      parseStatus: 'pending',
-    })
-    .returning({ id: foodEntries.id });
+  // Queued — and this one is the sharpest case of it. The placeholder is created
+  // from the background service, exactly when the user may be saving or editing
+  // a meal inside a transaction. Adopted by that transaction and rolled back
+  // with it, the row disappears while its id has already been handed out: the
+  // parse then lands on a row that no longer exists, updates nothing, reports
+  // nothing, and the photo the user took never becomes an entry.
+  const inserted = await withDbLock(
+    db,
+    () =>
+      db
+        .insert(foodEntries)
+        .values({
+          ts: opts.ts ?? new Date(),
+          rawText: '',
+          source: opts.source,
+          kcal: 0,
+          proteinG: 0,
+          fatG: 0,
+          carbG: 0,
+          confirmed: false,
+          micros: null,
+          meal: opts.meal ?? null,
+          parseStatus: 'pending',
+        })
+        .returning({ id: foodEntries.id }),
+    'savePendingEntry',
+  );
   return inserted[0].id as number;
 }
 
@@ -297,18 +308,34 @@ export async function applyDraftToPendingEntry(
   }, 'applyDraftToPendingEntry');
 }
 
+/// Queued like the rest of the pending lifecycle: these fire from the background
+/// service alongside the user's own writes, and a status flip swallowed by a
+/// neighbouring rollback leaves the row spinning «разбирается…» with nothing left
+/// to finish it.
 export async function markPendingFailed(db: AnyDb, id: number): Promise<void> {
-  await db.update(foodEntries).set({ parseStatus: 'failed' }).where(eq(foodEntries.id, id));
+  await withDbLock(
+    db,
+    () => db.update(foodEntries).set({ parseStatus: 'failed' }).where(eq(foodEntries.id, id)),
+    'markPendingFailed',
+  );
 }
 
 export async function markPendingRetrying(db: AnyDb, id: number): Promise<void> {
-  await db.update(foodEntries).set({ parseStatus: 'pending' }).where(eq(foodEntries.id, id));
+  await withDbLock(
+    db,
+    () => db.update(foodEntries).set({ parseStatus: 'pending' }).where(eq(foodEntries.id, id)),
+    'markPendingRetrying',
+  );
 }
 
 /// Opening an entry IS the deferred review — flip the flag so the «≈ проверьте»
 /// pill rests once a human has actually looked at the numbers.
 export async function confirmFoodEntry(db: AnyDb, id: number): Promise<void> {
-  await db.update(foodEntries).set({ confirmed: true }).where(eq(foodEntries.id, id));
+  await withDbLock(
+    db,
+    () => db.update(foodEntries).set({ confirmed: true }).where(eq(foodEntries.id, id)),
+    'confirmFoodEntry',
+  );
 }
 
 /// App-start hygiene: a 'pending' row can only finish while its process lives —
@@ -317,10 +344,15 @@ export async function confirmFoodEntry(db: AnyDb, id: number): Promise<void> {
 /// 'failed' («снимите заново») instead of spinning forever.
 export async function sweepStalePendingEntries(db: AnyDb, maxAgeMin = 15): Promise<void> {
   const cutoff = new Date(Date.now() - maxAgeMin * 60_000);
-  await db
-    .update(foodEntries)
-    .set({ parseStatus: 'failed' })
-    .where(and(eq(foodEntries.parseStatus, 'pending'), lt(foodEntries.ts, cutoff)));
+  await withDbLock(
+    db,
+    () =>
+      db
+        .update(foodEntries)
+        .set({ parseStatus: 'failed' })
+        .where(and(eq(foodEntries.parseStatus, 'pending'), lt(foodEntries.ts, cutoff))),
+    'sweepStalePendingEntries',
+  );
 }
 
 /// Delete an entry and its items. Items are removed explicitly first so there

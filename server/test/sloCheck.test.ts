@@ -95,6 +95,30 @@ test('an empty or unfamiliar snapshot degrades quietly instead of throwing', () 
   assert.deepEqual(evaluate({ latency_ms: { video: { avg: 99_000, count: 5 } } }).violations, []);
 });
 
+test('a day of uptime with no parses at all is reported, not scored as perfect', () => {
+  // The blind spot this check exists for: with zero requests every ratio is
+  // vacuously healthy (100 % success, 0 % model-guessed, 0 % escalations) and
+  // the run went green while the client could not reach the service at all.
+  const silent: MetricsSnapshot = {
+    uptime_s: 30 * 3600,
+    requests: { text: 0, photo: 0, audio: 0 },
+    empty: 0,
+    escalations: 0,
+    sources: {},
+  };
+  const { violations, totals } = evaluate(silent);
+  assert.equal(totals.parseSuccess, 1); // still vacuously perfect…
+  assert.equal(violations.length, 1); // …but no longer silent about it
+  assert.equal(violations[0]?.sli, 'traffic');
+  assert.equal(violations[0]?.level, 'slo'); // a warning: a quiet day is not an outage
+});
+
+test('a quiet stretch shorter than the silence threshold stays quiet', () => {
+  // Nights exist. Only a full day of nothing is worth a line in the run.
+  const overnight: MetricsSnapshot = { uptime_s: 8 * 3600, requests: { text: 0 } };
+  assert.deepEqual(evaluate(overnight).violations, []);
+});
+
 test('the alert level is always looser than the target it backs', () => {
   assert.ok(THRESHOLDS.parseSuccess.alert < THRESHOLDS.parseSuccess.slo);
   assert.ok(THRESHOLDS.aiEstimateShare.alert > THRESHOLDS.aiEstimateShare.slo);

@@ -4,6 +4,7 @@ import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 import { choiceKey, lookupNameForItem, normalizeChoiceName } from '../services/foodChoice';
 import type { MealDraft, NutritionAlternative, Per100, Region } from '../services/foodParser';
 import { foodChoices } from './schema';
+import { withDbLock } from './tx';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyDb = BaseSQLiteDatabase<any, any, any>;
@@ -19,10 +20,18 @@ export async function rememberFoodChoice(
   const key = choiceKey(region, foodName);
   const per100 = JSON.stringify(choice.per100);
   const ts = new Date();
-  await db
-    .insert(foodChoices)
-    .values({ key, name: choice.name, per100, ts })
-    .onConflictDoUpdate({ target: foodChoices.key, set: { name: choice.name, per100, ts } });
+  // Queued: corrections are saved from the log screen while a background parse
+  // may hold a transaction open — a bare write joins it and dies with its
+  // rollback, and the user's correction is silently forgotten.
+  await withDbLock(
+    db,
+    () =>
+      db
+        .insert(foodChoices)
+        .values({ key, name: choice.name, per100, ts })
+        .onConflictDoUpdate({ target: foodChoices.key, set: { name: choice.name, per100, ts } }),
+    'rememberFoodChoice',
+  );
 }
 
 /// One remembered food, ready to re-log: its display name + exact per-100g.

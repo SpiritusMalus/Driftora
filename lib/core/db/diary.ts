@@ -3,6 +3,7 @@ import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
 import { isDistortionKey, type DistortionKey } from '../insights/distortions';
 import { diaryEntries, type DiaryEntry } from './schema';
+import { withDbLock } from './tx';
 
 /// Accepts any drizzle SQLite database (op-sqlite async on device,
 /// better-sqlite3 sync in tests). Query builders are awaitable for both.
@@ -94,10 +95,18 @@ export async function saveDiaryEntry(
   draft: DiaryDraft,
   ts: Date = new Date(),
 ): Promise<number> {
-  const inserted = await db
-    .insert(diaryEntries)
-    .values({ ts, ...draftToColumns(draft) })
-    .returning({ id: diaryEntries.id });
+  // Queued, like every write outside a transaction of its own: a thought record
+  // saved while an adopted photo parse holds a transaction open would join it
+  // and disappear on its rollback — id returned, row gone. See lib/core/db/tx.ts.
+  const inserted = await withDbLock(
+    db,
+    () =>
+      db
+        .insert(diaryEntries)
+        .values({ ts, ...draftToColumns(draft) })
+        .returning({ id: diaryEntries.id }),
+    'saveDiaryEntry',
+  );
   return inserted[0].id as number;
 }
 
@@ -111,15 +120,24 @@ export async function updateDiaryEntry(
   draft: DiaryDraft,
   ts?: Date,
 ): Promise<void> {
-  await db
-    .update(diaryEntries)
-    .set({ ...draftToColumns(draft), ...(ts ? { ts } : {}) })
-    .where(eq(diaryEntries.id, id));
+  await withDbLock(
+    db,
+    () =>
+      db
+        .update(diaryEntries)
+        .set({ ...draftToColumns(draft), ...(ts ? { ts } : {}) })
+        .where(eq(diaryEntries.id, id)),
+    'updateDiaryEntry',
+  );
 }
 
 /// Permanently removes a thought record.
 export async function deleteDiaryEntry(db: AnyDb, id: number): Promise<void> {
-  await db.delete(diaryEntries).where(eq(diaryEntries.id, id));
+  await withDbLock(
+    db,
+    () => db.delete(diaryEntries).where(eq(diaryEntries.id, id)),
+    'deleteDiaryEntry',
+  );
 }
 
 /// Distortion tag lists from entries since [since] — the input to
