@@ -50,6 +50,18 @@ export const THRESHOLDS = {
    * is the whole point.
    */
   minSample: 20,
+  /**
+   * Hours of uptime with ZERO parses before the silence is worth saying out
+   * loud. Every ratio below is gated on `minSample`, so a service nobody can
+   * reach scores a perfect 100 % parse success and reports "all SLOs met" —
+   * the one failure this monitor was blind to.
+   *
+   * A target, never an alert: for an app with a handful of users a quiet day is
+   * ordinary, and /metrics alone cannot tell "nobody logged food" from "the
+   * client is failing to reach us". Saying which is impossible; saying "it has
+   * been quiet this long, go look" is not.
+   */
+  silentHours: 24,
 } as const;
 
 function pct(value: number): string {
@@ -97,6 +109,19 @@ export function evaluate(metrics: MetricsSnapshot): {
         message: `${route} average ${avg} ms over the ${limit.slo} ms target (n=${count})`,
       });
     }
+  }
+
+  // Checked BEFORE the sample gate on purpose — zero requests is exactly the
+  // case the gate swallows.
+  const uptimeH = (metrics.uptime_s ?? 0) / 3600;
+  if (requests === 0 && uptimeH >= THRESHOLDS.silentHours) {
+    violations.push({
+      level: 'slo',
+      sli: 'traffic',
+      message:
+        `no parses at all in ${uptimeH.toFixed(1)} h of uptime — every ratio below is vacuously ` +
+        'healthy, so check that the app can still reach this service before reading the green',
+    });
   }
 
   const sampled = requests >= THRESHOLDS.minSample;

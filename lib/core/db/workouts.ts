@@ -37,18 +37,26 @@ export async function addWorkout(
   restingRate?: number,
 ): Promise<number> {
   const kcal = workoutKcal(type, minutes, weightKg, speedKmh, intensity, restingRate);
-  await db.insert(workouts).values({
-    ts: when,
-    date: dayKey(when),
-    type,
-    minutes: Math.round(Math.max(0, minutes)),
-    kcal,
-    speedKmh: speedKmh != null && speedKmh > 0 ? speedKmh : null,
-    sets: sets != null && sets > 0 ? Math.round(sets) : null,
-    // Effort is a strength-only lever; store it only where it shaped the MET.
-    intensity: type === 'strength' && intensity != null ? intensity : null,
-    ...(loggedWindow(when, minutes) ?? {}),
-  });
+  // Queued, like the device import below: a hand-logged session can be saved
+  // while an adopted photo parse holds its transaction open, and a bare write
+  // then joins it — and vanishes with its rollback. See lib/core/db/tx.ts.
+  await withDbLock(
+    db,
+    () =>
+      db.insert(workouts).values({
+        ts: when,
+        date: dayKey(when),
+        type,
+        minutes: Math.round(Math.max(0, minutes)),
+        kcal,
+        speedKmh: speedKmh != null && speedKmh > 0 ? speedKmh : null,
+        sets: sets != null && sets > 0 ? Math.round(sets) : null,
+        // Effort is a strength-only lever; store it only where it shaped the MET.
+        intensity: type === 'strength' && intensity != null ? intensity : null,
+        ...(loggedWindow(when, minutes) ?? {}),
+      }),
+    'addWorkout',
+  );
   return kcal;
 }
 
@@ -119,19 +127,24 @@ export async function addParsedWorkout(
   const kcal = known
     ? workoutKcal(parsed.type as WorkoutType, parsed.minutes, weightKg, speedKmh, intensity, restingRate)
     : kcalFromMet(parsed.met ?? 0, parsed.minutes, weightKg, restingRate);
-  await db.insert(workouts).values({
-    ts: when,
-    date: dayKey(when),
-    type: parsed.type,
-    minutes: Math.round(Math.max(0, parsed.minutes)),
-    kcal,
-    speedKmh,
-    label: parsed.name_ru.trim() || null,
-    sets: parsed.sets != null && parsed.sets > 0 ? Math.round(parsed.sets) : null,
-    intensity,
-    source: 'ai',
-    ...(loggedWindow(when, parsed.minutes) ?? {}),
-  });
+  await withDbLock(
+    db,
+    () =>
+      db.insert(workouts).values({
+        ts: when,
+        date: dayKey(when),
+        type: parsed.type,
+        minutes: Math.round(Math.max(0, parsed.minutes)),
+        kcal,
+        speedKmh,
+        label: parsed.name_ru.trim() || null,
+        sets: parsed.sets != null && parsed.sets > 0 ? Math.round(parsed.sets) : null,
+        intensity,
+        source: 'ai',
+        ...(loggedWindow(when, parsed.minutes) ?? {}),
+      }),
+    'addParsedWorkout',
+  );
   return kcal;
 }
 
@@ -149,22 +162,27 @@ export async function addTrackerWorkout(
   when: Date = new Date(),
 ): Promise<number> {
   const kcal = Math.round(Math.min(Math.max(0, input.kcal), 5000));
-  await db.insert(workouts).values({
-    ts: when,
-    date: dayKey(when),
-    type: input.type ?? 'other',
-    minutes: Math.round(Math.min(Math.max(0, input.minutes), 600)),
-    kcal,
-    speedKmh: null,
-    label: input.label?.trim() || null,
-    sets: input.sets != null && input.sets > 0 ? Math.round(input.sets) : null,
-    source: 'tracker',
-    // A screenshot that named a duration still tells us how long you moved, so
-    // those steps get attributed here like any hand-logged session. The plain
-    // «по часам» entry carries kcal and no minutes — no window, nothing to
-    // subtract (see [loggedWindow]).
-    ...(loggedWindow(when, input.minutes) ?? {}),
-  });
+  await withDbLock(
+    db,
+    () =>
+      db.insert(workouts).values({
+        ts: when,
+        date: dayKey(when),
+        type: input.type ?? 'other',
+        minutes: Math.round(Math.min(Math.max(0, input.minutes), 600)),
+        kcal,
+        speedKmh: null,
+        label: input.label?.trim() || null,
+        sets: input.sets != null && input.sets > 0 ? Math.round(input.sets) : null,
+        source: 'tracker',
+        // A screenshot that named a duration still tells us how long you moved,
+        // so those steps get attributed here like any hand-logged session. The
+        // plain «по часам» entry carries kcal and no minutes — no window,
+        // nothing to subtract (see [loggedWindow]).
+        ...(loggedWindow(when, input.minutes) ?? {}),
+      }),
+    'addTrackerWorkout',
+  );
   return kcal;
 }
 
@@ -379,20 +397,25 @@ export async function repeatWorkout(
   restingRate?: number,
 ): Promise<number> {
   const kcal = quickWorkoutKcal(q, weightKg, restingRate);
-  await db.insert(workouts).values({
-    ts: when,
-    date: dayKey(when),
-    type: q.type,
-    minutes: Math.round(Math.max(0, q.minutes)),
-    kcal,
-    speedKmh: q.speedKmh,
-    label: q.label,
-    sets: q.sets,
-    // Effort is a strength-only lever, same rule as [addWorkout].
-    intensity: q.type === 'strength' ? q.intensity : null,
-    source: q.source,
-    ...(loggedWindow(when, q.minutes) ?? {}),
-  });
+  await withDbLock(
+    db,
+    () =>
+      db.insert(workouts).values({
+        ts: when,
+        date: dayKey(when),
+        type: q.type,
+        minutes: Math.round(Math.max(0, q.minutes)),
+        kcal,
+        speedKmh: q.speedKmh,
+        label: q.label,
+        sets: q.sets,
+        // Effort is a strength-only lever, same rule as [addWorkout].
+        intensity: q.type === 'strength' ? q.intensity : null,
+        source: q.source,
+        ...(loggedWindow(when, q.minutes) ?? {}),
+      }),
+    'repeatWorkout',
+  );
   return kcal;
 }
 

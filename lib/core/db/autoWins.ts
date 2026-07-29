@@ -3,6 +3,7 @@ import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
 import { dayBounds } from './food';
 import { wins } from './schema';
+import { withDbLock } from './tx';
 
 /// Accepts any drizzle SQLite database (op-sqlite async on device,
 /// better-sqlite3 sync in tests). Query builders are awaitable for both.
@@ -118,11 +119,21 @@ export async function awardOncePerDay(
   message: string,
   date: Date = new Date(),
 ): Promise<boolean> {
-  const run = awardChain.then(async () => {
-    if (await hasWinOfKindOnDay(db, kind, date)) return false;
-    await db.insert(wins).values({ kind, message, ts: date });
-    return true;
-  });
+  // Two different races, two different guards. `awardChain` keeps two callers
+  // from both reading "no win yet"; the db lock keeps the insert out of a
+  // neighbouring transaction that could roll it back (see lib/core/db/tx.ts).
+  // The read belongs inside the lock too: it is what the insert is decided on.
+  const run = awardChain.then(() =>
+    withDbLock(
+      db,
+      async () => {
+        if (await hasWinOfKindOnDay(db, kind, date)) return false;
+        await db.insert(wins).values({ kind, message, ts: date });
+        return true;
+      },
+      'awardOncePerDay',
+    ),
+  );
   // Keep the chain alive even if this attempt rejects (swallow only for the
   // chain; the original rejection still propagates to `run`'s awaiter).
   awardChain = run.catch(() => undefined);

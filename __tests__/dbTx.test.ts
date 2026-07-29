@@ -2,11 +2,15 @@ import { describe, expect, it } from '@jest/globals';
 import BetterSqlite3 from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 
+import { listDiaryEntries, saveDiaryEntry, type DiaryDraft } from '@/lib/core/db/diary';
 import { listEntriesForDay, saveParsedEntry, todayMacroTotals } from '@/lib/core/db/food';
 import { applySchema } from '@/lib/core/db/init';
+import { listMoods, logMood } from '@/lib/core/db/mood';
 import * as schema from '@/lib/core/db/schema';
+import { addWin, listWins } from '@/lib/core/db/settings';
 import { getStepsForDay, upsertSteps } from '@/lib/core/db/steps';
 import { withDbLock, withTx } from '@/lib/core/db/tx';
+import { addWorkout, listWorkoutsForDay } from '@/lib/core/db/workouts';
 import type { MealDraft } from '@/lib/core/services/foodParser';
 import { withItemManualMacros } from '@/lib/core/services/mealDraft';
 import { StubFoodParser } from '@/lib/core/services/stubFoodParser';
@@ -45,6 +49,8 @@ function makeDb() {
   const db = drizzle(sqlite, { schema });
   return { sqlite, db, asyncDb: withAsyncRun(db) };
 }
+
+type AnyDrizzle = ReturnType<typeof makeDb>['db'];
 
 function fillMacros(draft: MealDraft): MealDraft {
   let d = draft;
@@ -124,6 +130,67 @@ describe('database transaction queue', () => {
     // The food row is gone (its own transaction rolled back) — that part is correct.
     expect(await listEntriesForDay(db)).toHaveLength(0);
 
+    sqlite.close();
+  });
+
+  // The fix above was applied to the health writes and to nothing else, so the
+  // same rollback quietly ate a mood check-in, a thought record and a workout
+  // for as long as those helpers wrote straight to the connection. One case per
+  // module that owns a bare user-facing write: if a new helper skips the queue,
+  // it belongs here too.
+  it.each([
+    [
+      'настроение',
+      (db: AnyDrizzle) => logMood(db, 4),
+      async (db: AnyDrizzle) => (await listMoods(db)).length,
+    ],
+    [
+      'запись дневника',
+      (db: AnyDrizzle) => saveDiaryEntry(db, { mood: 3, distortions: [] } as unknown as DiaryDraft),
+      async (db: AnyDrizzle) => (await listDiaryEntries(db)).length,
+    ],
+    [
+      'тренировка',
+      (db: AnyDrizzle) => addWorkout(db, 'walk', 30, 80),
+      async (db: AnyDrizzle) => (await listWorkoutsForDay(db, new Date())).length,
+    ],
+    [
+      'победа',
+      (db: AnyDrizzle) => addWin(db, 'manual', 'проверка'),
+      async (db: AnyDrizzle) => (await listWins(db)).length,
+    ],
+  ])('%s survives a neighbouring rollback', async (_name, write, countRows) => {
+    const { sqlite, db, asyncDb } = makeDb();
+    await applySchema((stmt) => sqlite.exec(stmt));
+
+    let openTransaction: (() => void) | undefined;
+    const held = new Promise<void>((resolve) => {
+      openTransaction = resolve;
+    });
+    const doomed = withTx(asyncDb, async () => {
+      await db.insert(schema.foodEntries).values({
+        ts: new Date(),
+        rawText: 'обед',
+        source: 'text',
+        kcal: 600,
+        proteinG: 30,
+        fatG: 20,
+        carbG: 60,
+        confirmed: true,
+      });
+      await held;
+      throw new Error('parse failed after the entry row');
+    });
+
+    // Let BEGIN and the entry insert actually execute.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const neighbour = write(asyncDb);
+    openTransaction?.();
+
+    await expect(doomed).rejects.toThrow('parse failed');
+    await neighbour;
+
+    expect(await countRows(db)).toBe(1);
     sqlite.close();
   });
 

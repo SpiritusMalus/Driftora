@@ -2,6 +2,7 @@ import { count, desc, eq } from 'drizzle-orm';
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
 import { appSettings, wins, type AppSettings, type Win } from './schema';
+import { withDbLock } from './tx';
 
 /// Accepts any drizzle SQLite database (op-sqlite async on device,
 /// better-sqlite3 sync in tests). Query builders are awaitable for both.
@@ -11,6 +12,13 @@ type AnyDb = BaseSQLiteDatabase<any, any, any>;
 /// Returns the single settings row, creating it with sensible defaults the
 /// first time (honest 7,000-step goal, calories shown, no LLM diary assist).
 export async function ensureSettings(db: AnyDb): Promise<AppSettings> {
+  return withDbLock(db, () => ensureSettingsUnlocked(db), 'ensureSettings');
+}
+
+/// The body of [ensureSettings] WITHOUT taking the database lock — for callers
+/// that already hold it. The queue has no reentrancy: a locked helper calling a
+/// locked helper on the same database waits for itself forever (tx.ts:41).
+async function ensureSettingsUnlocked(db: AnyDb): Promise<AppSettings> {
   const existing = await db.select().from(appSettings).where(eq(appSettings.id, 0));
   if (existing.length > 0) return existing[0] as AppSettings;
   await db.insert(appSettings).values({ id: 0 }).onConflictDoNothing();
@@ -81,7 +89,6 @@ export async function updateSettings(
   db: AnyDb,
   patch: SettingsPatch,
 ): Promise<AppSettings> {
-  await ensureSettings(db);
   const set: Partial<typeof appSettings.$inferInsert> = {};
   if (patch.targetKcal != null) set.targetKcal = patch.targetKcal;
   if (patch.targetProteinG != null) set.targetProteinG = patch.targetProteinG;
@@ -122,11 +129,22 @@ export async function updateSettings(
   // `…At` accepts an explicit null (clearing consent on sync-off) — probe undefined.
   if (patch.syncConsentAt !== undefined) set.syncConsentAt = patch.syncConsentAt;
   if (patch.syncConsentVersion != null) set.syncConsentVersion = patch.syncConsentVersion;
-  if (Object.keys(set).length > 0) {
-    await db.update(appSettings).set(set).where(eq(appSettings.id, 0));
-  }
-  const rows = await db.select().from(appSettings).where(eq(appSettings.id, 0));
-  return rows[0] as AppSettings;
+  // One lock around row-exists, write and read-back: without it the write can be
+  // adopted by a neighbouring transaction and lost on its rollback (tx.ts), and
+  // the read-back could return someone else's half-applied state. The pure patch
+  // mapping above stays outside — no reason to hold the queue for it.
+  return withDbLock(
+    db,
+    async () => {
+      await ensureSettingsUnlocked(db);
+      if (Object.keys(set).length > 0) {
+        await db.update(appSettings).set(set).where(eq(appSettings.id, 0));
+      }
+      const rows = await db.select().from(appSettings).where(eq(appSettings.id, 0));
+      return rows[0] as AppSettings;
+    },
+    'updateSettings',
+  );
 }
 
 /// Parses the stored `reminderTimes` JSON into an "HH:mm" list, tolerant of bad data.
@@ -146,7 +164,7 @@ export async function addWin(
   message: string,
   ts: Date = new Date(),
 ): Promise<void> {
-  await db.insert(wins).values({ kind, message, ts });
+  await withDbLock(db, () => db.insert(wins).values({ kind, message, ts }), 'addWin');
 }
 
 /// All wins, newest first.
