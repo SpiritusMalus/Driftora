@@ -365,8 +365,16 @@ export async function deleteFoodEntry(db: AnyDb, id: number): Promise<void> {
 }
 
 /// Re-log a past meal as of `ts` (default: now) — copies the entry row AND its
-/// item breakdown into a new confirmed entry. Backs the one-tap «Повторить» in
-/// the diary: the numbers were confirmed once, no parse or review needed.
+/// item breakdown. Backs the one-tap «Повторить» in the diary: no parse needed,
+/// the numbers are already stored.
+///
+/// The review state travels WITH the numbers. «Повторить» sits on every day row,
+/// including one whose background parse landed but which the user has never
+/// opened — and opening the row IS the review (see [confirmFoodEntry]). Stamping
+/// the copy `confirmed` would drop the «≈ проверьте» pill off numbers nobody has
+/// checked, and let them into the `quickMeals` ribbon (which filters on that same
+/// flag) as if they had been. Copy the original's flag instead: repeating a
+/// reviewed meal stays reviewed, repeating an unreviewed one keeps asking.
 /// Returns the new entry id, or null when the original is gone.
 export async function repeatFoodEntry(db: AnyDb, id: number, ts: Date = new Date()): Promise<number | null> {
   const detail = await getFoodEntry(db, id);
@@ -383,7 +391,7 @@ export async function repeatFoodEntry(db: AnyDb, id: number, ts: Date = new Date
         proteinG: e.proteinG,
         fatG: e.fatG,
         carbG: e.carbG,
-        confirmed: true,
+        confirmed: e.confirmed,
         // The re-logged meal is the same food — carry its micro totals forward so
         // «Повторить» counts toward the day's micronutrients like the original.
         micros: e.micros,
