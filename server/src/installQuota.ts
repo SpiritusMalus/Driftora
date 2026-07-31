@@ -40,6 +40,18 @@ const MAX_KEYS = 50_000;
 
 type FailFn = (res: Response, status: number, code: string, message: string) => void;
 
+/**
+ * The caller's install id when it is present and well-formed, else null.
+ *
+ * Exported so everything that scopes state to "one install" agrees on what an
+ * install IS — the quota key below, and the photo route's label cache, which
+ * must never let one install's panel reading answer another's photo.
+ */
+export function installIdOf(req: Request): string | null {
+  const raw = req.get('x-install-id') || '';
+  return INSTALL_ID_RE.test(raw) ? raw : null;
+}
+
 export interface InstallQuotaOptions {
   /** Override the per-day cap (tests use tiny values). 0 disables the quota. */
   perDay?: number;
@@ -79,8 +91,8 @@ export function createInstallQuota(fail: FailFn, opts: InstallQuotaOptions = {})
   let quotaHits = 0;
 
   function keyOf(req: Request): string {
-    const raw = req.get('x-install-id') || '';
-    if (INSTALL_ID_RE.test(raw)) return `id:${raw}`;
+    const id = installIdOf(req);
+    if (id) return `id:${id}`;
     // No (valid) id — an older client. Falling back to the IP key keeps the
     // quota meaningful during the transition without punishing anyone extra.
     return `ip:${ipKeyGenerator(req.ip ?? '', IPV6_SUBNET)}`;

@@ -18,7 +18,7 @@ import { metrics } from './metrics.js';
 import { Resolver } from './nutrition/resolver.js';
 import { buildMealDraft, buildProviders } from './orchestrator.js';
 import { localizeAlternatives, localizeDraft } from './nutrition/translateNames.js';
-import { createInstallQuota } from './installQuota.js';
+import { createInstallQuota, installIdOf } from './installQuota.js';
 import { buildLimiters, type RateLimits, resolveLimits } from './rateLimit.js';
 import {
   coercePer100,
@@ -86,11 +86,21 @@ function audioFormat(mime: string | undefined, name: string | undefined): string
 }
 
 /**
- * `product name → panel reading` cache for the dedicated label pass. Insertion-
- * ordered Map as a tiny LRU (same idiom as the resolver's lookup caches).
- * Process-local and reset on restart — a panel is stable per product, so even a
- * short-lived cache absorbs the common case: the same «Бабаевский» logged for
- * the third time this week.
+ * `install + product name → panel reading` cache for the dedicated label pass.
+ * Insertion-ordered Map as a tiny LRU (same idiom as the resolver's lookup
+ * caches). Process-local and reset on restart — a panel is stable per product,
+ * so even a short-lived cache absorbs the common case: the same «Бабаевский»
+ * logged for the third time this week.
+ *
+ * SCOPED PER INSTALL, and skipped entirely without an install id. The key is
+ * the identified name, and that name is only as specific as the photo allowed:
+ * the prompt asks for the brand «when it is legible», so an unbranded or
+ * badly-lit wrapper yields a generic «творог 5%». Globally shared, that key
+ * makes one user's panel answer another user's photo of a DIFFERENT product —
+ * and a panel is shown as «по упаковке», a claim of fact, so the wrong numbers
+ * arrive with no «≈» and the package actually photographed is never read.
+ * Scoping keeps the repeat-purchase win (same person, same product) and leaves
+ * only a collision inside one install's own foods.
  */
 const labelCache = new Map<string, LabelReading>();
 const LABEL_CACHE_MAX = 300;
@@ -418,6 +428,9 @@ export function createApp(
     // Trust the bytes over the client's label — see `sniffImageMime`.
     const mimeType = sniffImageMime(file.buffer) ?? (file.mimetype || 'image/jpeg');
     const base64 = file.buffer.toString('base64');
+    // Whose panel readings this request may reuse — null for a client that sends
+    // no id, which then reads every package fresh (see `labelCache`).
+    const installId = installIdOf(req);
     await respondWithDraft(res, 'photo', region, async () => {
       const items = await identifyFromPhoto(base64, mimeType, region);
       // SECOND PASS, only for wrappers the first pass flagged: read the printed
@@ -431,12 +444,13 @@ export function createApp(
         await Promise.all(
           packaged.map(async (it) => {
             // A product's printed panel doesn't change between purchases, so a
-            // package we've already read never pays the second vision call (or
-            // the repeat ~200 KB image upload) again. Keyed by the identified
-            // name, which carries the brand («Ветчина … Индилайт») — distinct
-            // products rarely collide on the full name.
-            const key = it.name_ru.trim().toLowerCase();
-            const cached = labelCache.get(key);
+            // package THIS INSTALL has already read never pays the second vision
+            // call (or the repeat ~200 KB image upload) again. Keyed by install
+            // + identified name: the name alone is not a product identifier
+            // (see `labelCache`), so a shared key would hand one user's reading
+            // to another user's photo as «по упаковке».
+            const key = installId ? `${installId}::${it.name_ru.trim().toLowerCase()}` : null;
+            const cached = key ? labelCache.get(key) : undefined;
             if (cached) {
               it.label = cached;
               metrics.recordLabelCacheHit();
@@ -447,7 +461,7 @@ export function createApp(
               it.label = label;
               // Cache only complete readings — a failed/partial read should be
               // retried on the next photo, not remembered forever.
-              rememberLabel(key, label);
+              if (key) rememberLabel(key, label);
             }
           }),
         );
