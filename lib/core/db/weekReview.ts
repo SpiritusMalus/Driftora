@@ -1,4 +1,4 @@
-import { and, count, gte, lt } from 'drizzle-orm';
+import { and, count, gte, isNull, lt } from 'drizzle-orm';
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
 import { logDaysInRange, startOfWeek, weeklyStreak } from '../insights/engagement';
@@ -62,10 +62,16 @@ async function statsForWindow(db: AnyDb, start: Date, end: Date): Promise<WeekSt
     ? Math.round(steps.reduce((a, r) => a + Number(r.steps), 0) / stepsDayCount)
     : 0;
 
+  // Background-parse rows are NOT food logs: a `parse_status` row carries zero
+  // macros — «разбирается…» while the photo is out, «не распозналось» forever if
+  // the parse died with its process and the user never retried or deleted it.
+  // Counted, such a row makes its day a «день с записями еды» and averages a 0
+  // into the week: six real 2000-kcal days plus one failed-photo day reported
+  // 1714 kcal/day. The average must be over days that actually hold food.
   const foods = (await db
     .select({ ts: foodEntries.ts, proteinG: foodEntries.proteinG, kcal: foodEntries.kcal })
     .from(foodEntries)
-    .where(and(gte(foodEntries.ts, start), lt(foodEntries.ts, end)))) as {
+    .where(and(gte(foodEntries.ts, start), lt(foodEntries.ts, end), isNull(foodEntries.parseStatus)))) as {
     ts: Date;
     proteinG: number;
     kcal: number;

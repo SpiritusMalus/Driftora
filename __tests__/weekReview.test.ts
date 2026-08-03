@@ -137,6 +137,49 @@ describe('weekReview', () => {
     sqlite.close();
   });
 
+  it('does not average a photo that never parsed into the week', async () => {
+    const sqlite = new BetterSqlite3(':memory:');
+    const db = drizzle(sqlite, { schema });
+    await applySchema((s) => sqlite.exec(s));
+
+    // Two real days at 2000 kcal…
+    for (const day of [15, 16]) {
+      await db.insert(schema.foodEntries).values({
+        ts: new Date(2026, 5, day, 12),
+        rawText: 'обед',
+        source: 'text',
+        kcal: 2000,
+        proteinG: 100,
+        fatG: 0,
+        carbG: 0,
+        confirmed: true,
+      });
+    }
+    // …and a third day whose only rows are background-parse placeholders: one
+    // still spinning, one that died with its process. Both carry zero macros and
+    // no text — the user photographed a meal and got nothing back.
+    for (const status of ['pending', 'failed'] as const) {
+      await db.insert(schema.foodEntries).values({
+        ts: new Date(2026, 5, 17, 13),
+        rawText: '',
+        source: 'photo',
+        kcal: 0,
+        proteinG: 0,
+        fatG: 0,
+        carbG: 0,
+        confirmed: false,
+        parseStatus: status,
+      });
+    }
+
+    const r = await weekReview(db, today);
+    // Two days logged, not three — and the averages stay at what was eaten.
+    expect(r.thisWeek.foodLogDays).toBe(2);
+    expect(r.thisWeek.kcalAvg).toBe(2000);
+    expect(r.thisWeek.proteinAvg).toBe(100);
+    sqlite.close();
+  });
+
   it('counts a watch-imported session too — the review is the week the body had', async () => {
     const sqlite = new BetterSqlite3(':memory:');
     const db = drizzle(sqlite, { schema });

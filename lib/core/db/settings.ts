@@ -18,7 +18,7 @@ export async function ensureSettings(db: AnyDb): Promise<AppSettings> {
 /// The body of [ensureSettings] WITHOUT taking the database lock — for callers
 /// that already hold it. The queue has no reentrancy: a locked helper calling a
 /// locked helper on the same database waits for itself forever (tx.ts:41).
-async function ensureSettingsUnlocked(db: AnyDb): Promise<AppSettings> {
+export async function ensureSettingsUnlocked(db: AnyDb): Promise<AppSettings> {
   const existing = await db.select().from(appSettings).where(eq(appSettings.id, 0));
   if (existing.length > 0) return existing[0] as AppSettings;
   await db.insert(appSettings).values({ id: 0 }).onConflictDoNothing();

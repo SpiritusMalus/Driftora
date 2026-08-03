@@ -3,7 +3,8 @@ import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 import { getRandomBytes } from 'expo-crypto';
 
 import { appSettings } from '../db/schema';
-import { ensureSettings } from '../db/settings';
+import { ensureSettingsUnlocked } from '../db/settings';
+import { withDbLock } from '../db/tx';
 
 /**
  * Random per-install id for the server's AI-quota meter (the `X-Install-Id`
@@ -38,18 +39,34 @@ export function newInstallId(): string {
 }
 
 /** Get-or-create the persistent id (called once at DB init); caches for the
- *  synchronous request-header path. */
+ *  synchronous request-header path.
+ *
+ *  Read-check-then-write as ONE queued unit (lib/core/db/tx.ts), for the two
+ *  reasons the queue exists. Split across two trips it was the last write in the
+ *  app issued outside the queue — a bare UPDATE landing while a neighbouring
+ *  transaction is open joins that transaction and disappears with its rollback.
+ *  And two callers racing (a provider remount) both read "no id yet" and mint
+ *  their own: the row keeps the loser's, `_cached` may hold the winner's, and the
+ *  id the server meters this install by changes on the next launch — which is
+ *  the whole point of a stable install id. Uses `ensureSettingsUnlocked`: the
+ *  locked variant would wait for the lock this already holds. */
 export async function ensureInstallId(db: AnyDb): Promise<string> {
-  const settings = await ensureSettings(db);
-  const existing = settings.installId;
-  if (typeof existing === 'string' && /^[A-Za-z0-9-]{8,64}$/.test(existing)) {
-    _cached = existing;
-    return existing;
-  }
-  const id = newInstallId();
-  await db.update(appSettings).set({ installId: id }).where(eq(appSettings.id, 0));
-  _cached = id;
-  return id;
+  return withDbLock(
+    db,
+    async () => {
+      const settings = await ensureSettingsUnlocked(db);
+      const existing = settings.installId;
+      if (typeof existing === 'string' && /^[A-Za-z0-9-]{8,64}$/.test(existing)) {
+        _cached = existing;
+        return existing;
+      }
+      const id = newInstallId();
+      await db.update(appSettings).set({ installId: id }).where(eq(appSettings.id, 0));
+      _cached = id;
+      return id;
+    },
+    'ensureInstallId',
+  );
 }
 
 /** Synchronous view for header builders; null until `ensureInstallId` ran
