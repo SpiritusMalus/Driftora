@@ -136,7 +136,12 @@ export function createInstallQuota(fail: FailFn, opts: InstallQuotaOptions = {})
     const buckets = { '1-2': 0, '3-5': 0, '6-10': 0, '11-30': 0, '31+': 0 };
     let installs = 0;
     let ipFallback = 0;
-    for (const [key, n] of counts) {
+    // The day rolls over in `middleware`, so on a day with no AI traffic yet
+    // `counts` still holds YESTERDAY's keys. Reporting them as today's actives
+    // made /metrics claim installs that had not been seen — the same class of
+    // lie as the SLO check going green on no traffic. Read the day here too.
+    const today = dayOf(now()) === currentDay ? counts : new Map<string, number>();
+    for (const [key, n] of today) {
       if (!key.startsWith('id:')) {
         ipFallback += 1;
         continue;

@@ -279,6 +279,9 @@ export const en = {
       boost: 'The base is a day with no movement at all. Steps above ~3,000 and workouts add to the budget the same day: move more — eat more. You’ll see the “base · steps · workouts” line on Food.',
       gainNote: 'A surplus builds muscle only together with strength training. Without it, the extra calories become fat.',
       applied: 'Saved as your daily goal ✓ — progress shows on Food.',
+      // Shown instead of `applied` when there is no database to save into —
+      // claiming "saved" then would be a false confirmation.
+      notSaved: 'Database unavailable — the target was not saved as your goal.',
       edit: 'You can change this anytime: Weight → Body parameters → Edit.',
       done: 'Done',
     },
