@@ -51,6 +51,13 @@ export const THRESHOLDS = {
    */
   minSample: 20,
   /**
+   * Below this many requests on a route, a latency average is one anecdote:
+   * counters accumulate since restart, so a single borderline parse would fail
+   * the workflow every hour for days until traffic dilutes it or the service
+   * restarts. The crossing is still reported — as a target miss, not an alert.
+   */
+  minLatencySample: 5,
+  /**
    * Hours of uptime with ZERO parses before the silence is worth saying out
    * loud. Every ratio below is gated on `minSample`, so a service nobody can
    * reach scores a perfect 100 % parse success and reports "all SLOs met" —
@@ -90,6 +97,9 @@ export function evaluate(metrics: MetricsSnapshot): {
 
   // Latency is a per-request average and needs no ratio sample — a single slow
   // route is meaningful on its own, so it is checked even on a small sample.
+  // But *failing the run* on it needs `minLatencySample`: under that, a crossed
+  // ceiling is demoted to a target miss, visible in the run without the hourly
+  // mail that one slow parse would otherwise send until the next restart.
   for (const route of ['text', 'photo'] as const) {
     const entry = metrics.latency_ms?.[route];
     const avg = entry?.avg ?? 0;
@@ -97,10 +107,13 @@ export function evaluate(metrics: MetricsSnapshot): {
     if (count === 0 || avg === 0) continue;
     const limit = THRESHOLDS.latencyMs[route];
     if (avg > limit.alert) {
+      const judged = count >= THRESHOLDS.minLatencySample;
       violations.push({
-        level: 'alert',
+        level: judged ? 'alert' : 'slo',
         sli: `latency.${route}`,
-        message: `${route} average ${avg} ms over the alert ceiling ${limit.alert} ms (n=${count})`,
+        message:
+          `${route} average ${avg} ms over the alert ceiling ${limit.alert} ms (n=${count})` +
+          (judged ? '' : ` — under the ${THRESHOLDS.minLatencySample} requests needed to alert on an average`),
       });
     } else if (avg > limit.slo) {
       violations.push({

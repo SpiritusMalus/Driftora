@@ -77,7 +77,11 @@ test('a small sample skips every ratio — the state right after a restart', () 
   assert.deepEqual(violations, []);
 });
 
-test('latency is still judged on a small sample — one slow route means something alone', () => {
+test('latency is still judged on a small sample — but as a target miss, not an alert', () => {
+  // One slow route means something alone, so it stays in the run output. But
+  // failing the workflow on it would mail someone every hour until the next
+  // restart, since counters accumulate — the 2026-08-07 incident: one 15.1 s
+  // photo parse (n=1) over the 15 s ceiling turned into a day of red runs.
   const fresh: MetricsSnapshot = {
     requests: { text: 3 },
     empty: 0,
@@ -86,6 +90,15 @@ test('latency is still judged on a small sample — one slow route means somethi
   const { sampled, violations } = evaluate(fresh);
   assert.equal(sampled, false);
   assert.equal(violations[0]?.sli, 'latency.text');
+  assert.equal(violations[0]?.level, 'slo');
+  assert.match(violations[0]?.message ?? '', /under the 5 requests needed/);
+});
+
+test('a slow average over a real latency sample still alerts', () => {
+  const slow = healthy({ latency_ms: { photo: { avg: 15_115, count: 20 } } });
+  const fired = alerts(slow);
+  assert.equal(fired[0]?.sli, 'latency.photo');
+  assert.doesNotMatch(fired[0]?.message ?? '', /needed to alert/);
 });
 
 test('an empty or unfamiliar snapshot degrades quietly instead of throwing', () => {

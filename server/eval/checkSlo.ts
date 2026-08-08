@@ -55,7 +55,8 @@ async function main(): Promise<void> {
   if (!sampled) {
     console.log(
       `\n${totals.requests} parses since the last restart, under the ${THRESHOLDS.minSample} needed ` +
-        'to judge a ratio — success/provenance/escalation checks skipped, latency still checked',
+        'to judge a ratio — success/provenance/escalation checks skipped, latency reported ' +
+        `(alerts from ${THRESHOLDS.minLatencySample} requests per route)`,
     );
   }
 
