@@ -606,6 +606,18 @@ components:
       required: [region, items, totals, portion_state, approximate, flags]
       properties:
         region: { $ref: '#/components/schemas/Region' }
+        heard:
+          type: string
+          description: |
+            Verbatim transcript of the speech — `/food/parse-audio` ONLY, absent
+            everywhere else. On that route the speech is understood server-side,
+            so without this a parse that recognised no food left the caller with
+            nothing of the user's own to show.
+
+            It is a record of what was said, NOT nutrition data: it never becomes
+            a food name and never feeds a number. Absent when the model returned
+            nothing usable, or when the transcript was implausibly long (a decode
+            loop rather than speech).
         items:
           type: array
           items: { $ref: '#/components/schemas/NutritionItem' }

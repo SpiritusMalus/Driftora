@@ -427,7 +427,11 @@ export default function FoodLogScreen() {
   async function applyMemory(draft: MealDraft): Promise<MealDraft> {
     if (!db) return draft;
     const choices = await loadRememberedChoices(db, region, draft);
-    return applyRememberedChoices(draft, region, choices);
+    const applied = applyRememberedChoices(draft, region, choices);
+    // `recomputeDraft` inside rebuilds the draft FROM ITS ITEMS, so anything not
+    // derived from items has to be carried across by hand — and losing `heard`
+    // here would silently undo the whole point of the server sending it.
+    return draft.heard && !applied.heard ? { ...applied, heard: draft.heard } : applied;
   }
 
   /// After any parse: surface HOW the draft was produced. `offline_fallback`
@@ -444,6 +448,13 @@ export default function FoodLogScreen() {
     // that makes a voice/photo parse visible up top, which used to be written
     // here and only when the field happened to be empty.
     setFreshDraft(parsed);
+    // Nothing was recognised, but the person still said something. On the voice-
+    // note path their words only exist in `heard` — the clip was understood on
+    // the server — so this is the last chance to put them back on screen. With
+    // items present the derived title says the same thing better, and the effect
+    // above owns the field.
+    const heard = parsed.heard?.trim() ?? '';
+    if (parsed.items.length === 0 && heard.length > 0) setText(heard);
     const offline = AI_CONFIGURED && consentNow && parsed.flags.offline_fallback;
     setParseIssue(
       !offline

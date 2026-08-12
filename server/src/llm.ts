@@ -11,6 +11,7 @@ import {
   READ_LABEL_SCHEMA,
   READ_LABEL_SYSTEM_PROMPT,
   userReadLabelInstruction,
+  IDENTIFY_AUDIO_SCHEMA,
   IDENTIFY_SCHEMA,
   IDENTIFY_SYSTEM_PROMPT,
   IDENTIFY_TEXT_SCHEMA,
@@ -148,21 +149,43 @@ function stripFences(text: string): string {
   return m ? m[1]! : text;
 }
 
-/** Parse `choices[0].message.content` (a JSON string) → `IdentifiedItem[]`. */
-export function parseResponse(data: unknown): IdentifiedItem[] {
+/** Parse `choices[0].message.content` (a JSON string) → the raw JSON payload. */
+function responsePayload(data: unknown): unknown {
   const d = data as { choices?: { message?: { content?: unknown } }[] } | null;
   const content = d?.choices?.[0]?.message?.content;
   const text = typeof content === 'string' ? content.trim() : '';
-  if (!text) return [];
-
-  let payload: unknown;
+  if (!text) return null;
   try {
-    payload = JSON.parse(stripFences(text));
+    return JSON.parse(stripFences(text));
   } catch {
-    return []; // malformed structured output → unrecognized, never a crash
+    return null; // malformed structured output → unrecognized, never a crash
   }
-  return normalizeIdentified(payload);
 }
+
+/** Parse `choices[0].message.content` (a JSON string) → `IdentifiedItem[]`. */
+export function parseResponse(data: unknown): IdentifiedItem[] {
+  const payload = responsePayload(data);
+  return payload === null ? [] : normalizeIdentified(payload);
+}
+
+/**
+ * What the model heard, when it was asked for it (the audio route only).
+ *
+ * Kept as a plain string beside the items rather than folded into them: it is
+ * NOT nutrition data and must never influence a number. Its whole job is to give
+ * a person their own words back when the parse found no food — see
+ * `heard` in types.ts.
+ */
+export function parseHeard(data: unknown): string {
+  const payload = responsePayload(data) as { heard?: unknown } | null;
+  const heard = typeof payload?.heard === 'string' ? payload.heard.trim() : '';
+  // A transcript longer than any spoken meal description is a decode loop, not
+  // speech — drop it rather than shipping a wall of text to the phone.
+  return heard.length > MAX_HEARD_CHARS ? '' : heard;
+}
+
+/** Generous for a spoken meal, far short of a runaway decode. */
+const MAX_HEARD_CHARS = 500;
 
 /**
  * The upstream ran out of time. Distinct from VisionUnavailableError because it
@@ -437,12 +460,18 @@ async function completeHedged(
   }
 }
 
+/** One model answer: the items it identified, plus the raw completion behind them. */
+interface ModelAnswer {
+  items: IdentifiedItem[];
+  data: unknown;
+}
+
 async function callModel(
   messages: ChatMessage[],
   model: string,
   schema: object = IDENTIFY_SCHEMA,
   opts: { hedge?: boolean; text?: boolean; effort?: string } = {},
-): Promise<IdentifiedItem[]> {
+): Promise<ModelAnswer> {
   // Explicit per-caller effort wins; the text flag implies the text throttle.
   // No opts at all (e.g. the PRO-model escalation) keeps the provider default —
   // the rescue attempt deliberately thinks at full depth.
@@ -470,7 +499,9 @@ async function callModel(
   if (items.length === 0 && truncated) {
     throw new VisionUnavailableError('model response truncated (max_tokens) after retry');
   }
-  return items;
+  // The raw completion rides along so a caller that asked for more than items
+  // (audio, which also asks what was heard) can read it without a second call.
+  return { items, data };
 }
 
 /**
@@ -483,14 +514,14 @@ async function identifyWithEscalation(
   messages: ChatMessage[],
   schema: object = IDENTIFY_SCHEMA,
   opts: { hedge?: boolean; text?: boolean; effort?: string } = {},
-): Promise<IdentifiedItem[]> {
+): Promise<ModelAnswer> {
   const base = await callModel(messages, MODEL, schema, opts);
   if (!PRO_MODEL) return base;
 
-  const weak = base.length === 0 || topConfidence(base) < CONFIDENCE_FLOOR;
+  const weak = base.items.length === 0 || topConfidence(base.items) < CONFIDENCE_FLOOR;
   if (!weak) return base;
 
-  let escalated: IdentifiedItem[];
+  let escalated: ModelAnswer;
   try {
     escalated = await callModel(messages, PRO_MODEL, schema);
   } catch {
@@ -498,8 +529,10 @@ async function identifyWithEscalation(
   }
   metrics.recordEscalation();
   const better =
-    escalated.length > base.length ||
-    (escalated.length > 0 && topConfidence(escalated) > topConfidence(base));
+    escalated.items.length > base.items.length ||
+    (escalated.items.length > 0 && topConfidence(escalated.items) > topConfidence(base.items));
+  // The winner's raw completion travels with it, so a transcript never gets
+  // paired with the other model's items.
   return better ? escalated : base;
 }
 
@@ -620,7 +653,7 @@ export function parseTranslations(data: unknown, labels: string[]): string[] {
 /** Layer 2: free-text meal → identified foods + estimated grams (no numbers). */
 export async function identifyFromText(text: string, region: Region): Promise<IdentifiedItem[]> {
   // Slim contract (no `estimate`) — see IDENTIFY_TEXT_SYSTEM_PROMPT for why.
-  return identifyWithEscalation(
+  return (await identifyWithEscalation(
     [
       { role: 'system', content: IDENTIFY_TEXT_SYSTEM_PROMPT },
       { role: 'user', content: `${userInstruction(region)}\n\n${text}` },
@@ -629,7 +662,7 @@ export async function identifyFromText(text: string, region: Region): Promise<Id
     // Hedged like the photo path, with text-sized knobs (duplicate at 6 s,
     // patient lanes): one fail-fast lane went 503 on flaky afternoons.
     { text: true, hedge: true },
-  );
+  )).items;
 }
 
 /** Layer 1: photo (base64) → identified foods + estimated grams (Phase 3). */
@@ -638,7 +671,7 @@ export async function identifyFromPhoto(
   mimeType: string,
   region: Region,
 ): Promise<IdentifiedItem[]> {
-  return identifyWithEscalation(
+  return (await identifyWithEscalation(
     [
       { role: 'system', content: IDENTIFY_PHOTO_SYSTEM_PROMPT },
       {
@@ -653,7 +686,7 @@ export async function identifyFromPhoto(
     // The slow path gets the hedge: a duplicate re-roll fired at ~12 s cuts the
     // looping tail from 43 s to ~25 s (see completeHedged).
     { hedge: true, effort: REASONING_EFFORT_MEDIA },
-  );
+  )).items;
 }
 
 /**
@@ -712,8 +745,8 @@ export async function identifyFromAudio(
   base64: string,
   format: string,
   region: Region,
-): Promise<IdentifiedItem[]> {
-  return identifyWithEscalation(
+): Promise<{ items: IdentifiedItem[]; heard: string }> {
+  const answer = await identifyWithEscalation(
     [
       { role: 'system', content: IDENTIFY_SYSTEM_PROMPT },
       {
@@ -724,9 +757,12 @@ export async function identifyFromAudio(
         ],
       },
     ],
-    IDENTIFY_SCHEMA,
+    IDENTIFY_AUDIO_SCHEMA,
     { effort: REASONING_EFFORT_MEDIA },
   );
+  // The transcript comes from the SAME answer the items came from, so the words
+  // shown always belong to the parse being shown.
+  return { items: answer.items, heard: parseHeard(answer.data) };
 }
 
 /** `choices[0].message.content` → parsed JSON payload, or null on any malformation. */

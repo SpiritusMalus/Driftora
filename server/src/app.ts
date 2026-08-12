@@ -463,11 +463,14 @@ export function createApp(
     res: Response,
     route: 'text' | 'photo' | 'audio',
     region: Region,
-    identify: () => Promise<IdentifiedItem[]>,
+    // Audio also returns what it HEARD; every other route just returns items.
+    identify: () => Promise<IdentifiedItem[] | { items: IdentifiedItem[]; heard?: string }>,
   ): Promise<void> {
     const startedAt = Date.now();
     try {
-      const identified = await identify();
+      const answer = await identify();
+      const identified = Array.isArray(answer) ? answer : answer.items;
+      const heard = Array.isArray(answer) ? undefined : answer.heard;
       // Stage split: everything up to here is model work (identification and,
       // for photos, the label pass); everything after is DB resolution. The
       // per-route total alone can't say which side a slow day comes from.
@@ -484,7 +487,11 @@ export function createApp(
       const localized = await localizeDraft(draft, region);
       metrics.recordStage('translate', Date.now() - translateStart);
       metrics.recordParse(route, region, draft, Date.now() - startedAt);
-      res.json(localized);
+      // `heard` rides alongside the draft, never inside it: it is a record of
+      // what the person said, not nutrition data, and nothing downstream may
+      // treat it as a food name. It matters most when `items` is EMPTY — that is
+      // the case where the phone otherwise has nothing of theirs to show.
+      res.json(heard ? { ...localized, heard } : localized);
     } catch (err) {
       if (err instanceof VisionUnavailableError) {
         fail(res, 503, 'llm_unavailable', 'The parsing service is temporarily unavailable.');

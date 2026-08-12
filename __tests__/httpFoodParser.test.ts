@@ -277,6 +277,24 @@ describe('server error vs offline', () => {
     }
   });
 
+  /// The voice-note clip is understood on the SERVER, so `heard` is the only
+  /// copy of the user's words the phone ever gets. Dropping it in validation
+  /// would put the screen right back where the tester found it: blank, with the
+  /// entry saved as «Без названия».
+  it('carries the transcript of a voice note through to the caller', async () => {
+    global.fetch = jest.fn(async () =>
+      new Response(JSON.stringify({ ...SENTINEL, heard: 'съел борщ и выпил кофе' }), { status: 200 }),
+    ) as unknown as typeof fetch;
+
+    const r = await new HttpFoodParser(ENDPOINT, new SpyFallback(), 50).parseAudio(
+      { uri: 'file:///tmp/meal.m4a', mimeType: 'audio/m4a' },
+      'RU',
+    );
+
+    expect(r.heard).toBe('съел борщ и выпил кофе');
+    expect(r.flags.offline_fallback).toBeUndefined(); // a real answer, not the stub
+  });
+
   it('leaves an ordinary server failure out of the auth bucket', async () => {
     global.fetch = jest.fn(async () =>
       new Response(JSON.stringify({ error: { code: 'llm_unavailable' } }), { status: 503 }),
