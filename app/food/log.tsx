@@ -45,6 +45,7 @@ import {
 import { deleteTempFile } from '@/lib/core/services/tempFiles';
 import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
 import { mealPromptKeyForHour } from '@/lib/core/insights/mealPrompt';
+import { mealTitle } from '@/lib/core/insights/mealTitle';
 import { mealTypeForEntry, type MealType } from '@/lib/core/insights/mealType';
 import { proteinInsight } from '@/lib/core/insights/proteinInsight';
 import { pickVariant } from '@/lib/core/insights/variant';
@@ -59,6 +60,7 @@ import type { AudioInput, MealDraft, NutritionAlternative, NutritionItem, PhotoI
 import type { Sex } from '@/lib/core/insights/bodyMetrics';
 import { getFoodParser, resolveRegion } from '@/lib/core/services/foodParserProvider';
 import { recomputeDraft, scaleToGrams, withItemAlternative, withItemGrams, withItemManualMacros, withItemReplacement } from '@/lib/core/services/mealDraft';
+import { mergeReparsedDraft } from '@/lib/core/services/reparseMerge';
 import { capturePhoto, isPhotoCaptureAvailable, type PhotoSource } from '@/lib/core/services/photoProvider';
 import { getSpeechService } from '@/lib/core/services/speechProvider';
 import { useTheme } from '@/lib/theme/theme';
@@ -87,6 +89,9 @@ export default function FoodLogScreen() {
   const [parsing, setParsing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState<MealDraft | null>(null);
+  // The user renamed the meal by hand — stop deriving the name from the dishes
+  // until the next parse consumes the field as input again.
+  const [titleTouched, setTitleTouched] = useState(false);
   // Meal-of-day chips: the clock (or a typed «завтрак…») preselects, the user's
   // tap decides — their pick is stored with the entry so a late breakfast never
   // gets filed under «Обед» by the clock (device feedback 2026-07-10).
@@ -202,7 +207,37 @@ export default function FoodLogScreen() {
 
   function setFreshDraft(d: MealDraft | null) {
     setDraft(d);
+    // Every fresh capture, parse and «очистить» goes through here, so this is
+    // the one place that has to remember it: a hand-typed name belonged to the
+    // meal being replaced, not to the new one. Sprinkling the reset across the
+    // five call sites instead would work until someone adds a sixth.
+    setTitleTouched(false);
   }
+
+  /**
+   * The entry's name follows its dishes (tester feedback 2026-08-12, items 1–2):
+   * remove «хлеб» from the plate and it leaves the name too, instead of the name
+   * staying frozen on whatever sentence produced the first parse.
+   *
+   * Runs off `draft`, so EVERY path that changes the dishes is covered — parse,
+   * re-parse, weight edits, «не то?», «из моего рациона», delete — without each
+   * of them having to remember to touch the title.
+   *
+   * Two deliberate exemptions:
+   * - `titleTouched`: once the user renames the meal by hand, that wins. Their
+   *   words are not a stale derivation to be corrected.
+   * - an EMPTY draft: keep whatever is in the field. That is the user's own
+   *   sentence or dictation, and blanking it would throw away the only record of
+   *   what they said in exactly the case where nothing was recognised (item 3).
+   */
+  useEffect(() => {
+    if (titleTouched) return;
+    const items = draft?.items ?? [];
+    if (items.length === 0) return;
+    const derived = mealTitle(items, region);
+    if (derived.length === 0) return;
+    setText((prev) => (prev === derived ? prev : derived));
+  }, [draft, region, titleTouched]);
 
   // Probe the on-device recognizer once; off-device this stays false and the
   // mic button never shows (text entry is the fallback). Stop on unmount.
@@ -381,12 +416,8 @@ export default function FoodLogScreen() {
       const items = [...(prev?.items ?? []), item];
       return recomputeDraft(region, items);
     });
-    // Give the entry a real name from the picked foods while the field is empty.
-    setText((prev) =>
-      prev.trim().length === 0
-        ? food.name
-        : `${prev}${prev.trim().endsWith(',') ? '' : ','} ${food.name}`,
-    );
+    // The name is not appended here any more: it follows the dishes through the
+    // title effect, so a food picked and then removed also leaves the name.
   }
 
   /// Run the text parse with a known consent value. `getFoodParser` only goes
@@ -407,16 +438,12 @@ export default function FoodLogScreen() {
   /// offline text parse explains itself — the generic «не удалось распознать»
   /// hint stays out of the way then (it used to stack contradictorily).
   function acceptDraft(parsed: MealDraft, consentNow: boolean, kind: 'text' | 'photo' | 'audio') {
+    // `setFreshDraft` also clears any hand-typed name: the parse consumed the
+    // field as input, so it goes back to being derived. The title itself is set
+    // by the effect watching `draft` — including the «борщ, хлеб, сметана» echo
+    // that makes a voice/photo parse visible up top, which used to be written
+    // here and only when the field happened to be empty.
     setFreshDraft(parsed);
-    // Voice/photo parses arrive with an EMPTY input field: echo what was
-    // understood («борщ, хлеб, сметана») as editable text — the recognition
-    // becomes visible up top, and the saved diary entry gets a real name
-    // instead of «Без названия». The functional updater never clobbers text
-    // the user typed (text parses, or edits made while the parse ran).
-    if (parsed.items.length > 0) {
-      const understood = parsed.items.map((it) => it.name_ru).join(', ');
-      setText((prev) => (prev.trim().length === 0 ? understood : prev));
-    }
     const offline = AI_CONFIGURED && consentNow && parsed.flags.offline_fallback;
     setParseIssue(
       !offline
@@ -445,11 +472,43 @@ export default function FoodLogScreen() {
     setQuotaLeft(getAiQuotaRemaining());
   }
 
+  /**
+   * What the screen should show after a TEXT parse, given what is already there.
+   *
+   * «Забыл указать кофе» (tester feedback 2026-08-12, item 4): the field holds
+   * the complete dish list, so adding the missing one and parsing again is the
+   * natural move — and it only works because the title is derived and complete.
+   * Two things must survive it:
+   *
+   * - the weights and matches the user already fixed ([mergeReparsedDraft]);
+   * - the plate itself when the parse understands NOTHING. An empty result
+   *   replacing a built-up meal would delete real work over one unrecognised
+   *   word, so the dishes stay and only the explanatory message changes.
+   */
+  function nextDraftFromTextParse(parsed: MealDraft): MealDraft {
+    if (parsed.items.length > 0) return mergeReparsedDraft(draft, parsed, region);
+    if (!draft || draft.items.length === 0) return parsed;
+    // Keep the dishes, but carry over the CLIENT-side flags (offline, quota,
+    // auth, server error) so `acceptDraft` still explains what went wrong.
+    const kept = recomputeDraft(region, draft.items);
+    return {
+      ...kept,
+      flags: {
+        ...kept.flags,
+        offline_fallback: parsed.flags.offline_fallback,
+        server_error: parsed.flags.server_error,
+        quota_exceeded: parsed.flags.quota_exceeded,
+        auth_error: parsed.flags.auth_error,
+      },
+    };
+  }
+
   async function runTextParse(consentNow: boolean) {
     setParsing(true);
     setParseIssue(null);
     try {
-      acceptDraft(await applyMemory(await getFoodParser(consentNow).parse(text, region)), consentNow, 'text');
+      const parsed = await applyMemory(await getFoodParser(consentNow).parse(text, region));
+      acceptDraft(nextDraftFromTextParse(parsed), consentNow, 'text');
     } catch {
       // A throw here is not the network (that falls back inside the parser) —
       // it's something local (db read). Still: never fail into silence.
@@ -884,6 +943,10 @@ export default function FoodLogScreen() {
         value={text}
         onChangeText={(v) => {
           setText(v);
+          // With a draft on screen this field IS the meal's name, so typing here
+          // is a rename and must not be overwritten by the next dish edit. Before
+          // a draft exists it is plain parse input and nothing is being renamed.
+          if (draft) setTitleTouched(true);
           if (voiceError) setVoiceError(null);
           if (photoError) setPhotoError(null);
           if (!listening) setSource('text');

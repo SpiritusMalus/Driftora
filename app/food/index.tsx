@@ -38,6 +38,7 @@ import { useAppActiveEffect } from '@/lib/core/services/appActive';
 import { getHealthService } from '@/lib/core/services/healthProvider';
 import { fiberTargetG } from '@/lib/core/insights/fiberTarget';
 import { dailyMicroNorms, type MicroRow } from '@/lib/core/insights/microNutrients';
+import { shortMealTitle } from '@/lib/core/insights/mealTitle';
 import { groupEntriesByMeal } from '@/lib/core/insights/mealType';
 import type { FoodEntry } from '@/lib/core/db/schema';
 import type { Sex } from '@/lib/core/insights/bodyMetrics';
@@ -374,7 +375,7 @@ export default function FoodDayScreen() {
                 <Card style={styles.row} onPress={() => router.push(`/food/${e.id}`)}>
                   <View style={styles.rowHead}>
                     <Text style={[styles.rowText, { color: theme.text }, theme.font.bodySemiBold]} numberOfLines={1}>
-                      {e.rawText || t('food.untitled')}
+                      {e.rawText ? shortMealTitle(e.rawText) : t('food.untitled')}
                     </Text>
                     <Text style={[styles.rowTime, { color: theme.subtle }, theme.font.body]}>{formatTime(e.ts)}</Text>
                     <Pressable
