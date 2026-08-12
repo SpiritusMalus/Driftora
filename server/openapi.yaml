@@ -75,6 +75,142 @@ paths:
               schema: { $ref: '#/components/schemas/Metrics' }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
+  /billing/register:
+    post:
+      tags: [billing]
+      summary: Bind a store purchase to this install
+      description: |
+        Verifies the purchase with the store and, if it is real, raises this
+        install's daily AI cap to the paid tier. `X-Install-Id` is required —
+        it is what the entitlement is bound to.
+
+        The client calls this after a purchase AND on every launch: re-registering
+        is how a subscription follows the user onto a new phone (the install id
+        changes, the store account's purchase does not), and how a refund ends
+        access here — the service stores only a hash of the token and cannot
+        re-ask the store on its own.
+
+        `503 store_unreachable` does NOT mean the purchase is bad; retry later
+        and do not tell the user their payment failed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [purchaseToken, productId]
+              properties:
+                purchaseToken: { type: string }
+                productId:
+                  type: string
+                  description: |
+                    A hint only. The stored tier comes from the product the STORE
+                    reports for this token, never from this field.
+      responses:
+        '200':
+          description: Verified
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [active, expires_at, state]
+                properties:
+                  active: { type: boolean }
+                  expires_at: { type: integer, description: Epoch ms; 0 when the store did not say. }
+                  state: { type: string, enum: [active, grace, paused, expired, revoked] }
+        '400': { description: Missing install id or malformed body }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '402': { description: The store does not recognize this purchase }
+        '503': { description: Billing is not configured here, or the store could not be reached }
+
+  /billing/status:
+    get:
+      tags: [billing]
+      summary: This install's current entitlement
+      responses:
+        '200':
+          description: Status
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [billing_enabled, active, expires_at, state]
+                properties:
+                  billing_enabled:
+                    type: boolean
+                    description: False on a deployment that sells nothing — everyone gets the free tier.
+                  active: { type: boolean }
+                  expires_at: { type: integer }
+                  state: { type: string, enum: [active, grace, paused, expired, revoked, none] }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /billing/yookassa/webhook:
+    post:
+      tags: [billing]
+      summary: ЮKassa payment notification
+      description: |
+        Called by ЮKassa, not by the app — so it is NOT token-authenticated.
+        Authentication is the source-IP allowlist ЮKassa prescribes, and the
+        handler re-reads the payment through the ЮKassa API rather than trusting
+        the notification body (anyone able to spoof an allowed address could
+        otherwise mint subscriptions by POSTing `payment.succeeded`).
+
+        Status codes are a protocol: 200 stops redelivery, anything else makes
+        ЮKassa retry for up to 24 hours. A payment we could not verify therefore
+        answers 500 on purpose.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type: { type: string, example: notification }
+                event: { type: string, example: payment.succeeded }
+                object:
+                  type: object
+                  properties:
+                    id: { type: string }
+      responses:
+        '200': { description: Processed, or understood and intentionally ignored }
+        '400': { description: Notification without an object id }
+        '403': { description: Not a ЮKassa source address }
+        '500': { description: Could not verify the payment — ЮKassa should retry }
+        '503': { description: Direct sales are not configured on this deployment }
+
+  /billing/license:
+    get:
+      tags: [billing]
+      summary: Collect the licence key for a settled payment
+      description: |
+        Used by the checkout page after ЮKassa redirects the buyer back. Not
+        token-authenticated (the web page has no app token); the payment id is an
+        unguessable ЮKassa uuid known only to the buyer, and the route is capped
+        per IP per day.
+
+        `404 license_not_ready` is also the honest answer while the notification
+        is still in flight — poll, do not conclude the payment failed.
+      parameters:
+        - in: query
+          name: payment_id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Issued
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [key, plan, paid_until]
+                properties:
+                  key: { type: string, example: ABCD-EFGH-JKLM-NPQR }
+                  plan: { type: string, example: monthly }
+                  paid_until: { type: integer, description: Epoch ms. }
+        '400': { description: Missing payment_id }
+        '404': { description: No licence for this payment yet }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
   /food/parse:
     post:
       tags: [food]
@@ -359,6 +495,12 @@ components:
                   unauthorized,
                   internal_error,
                   llm_unavailable,
+                  billing_unavailable,
+                  install_id_required,
+                  invalid_purchase_body,
+                  invalid_purchase,
+                  store_unreachable,
+                  license_not_ready,
                 ]
             message: { type: string }
 

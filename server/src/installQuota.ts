@@ -26,8 +26,22 @@ import { ipKeyGenerator } from 'express-rate-limit';
  * acceptable slack, not a bug.
  */
 
-/** Requests per install per UTC day across ALL AI parse routes (food text/photo/audio + workout). */
+/** Free-tier requests per install per UTC day across ALL AI parse routes. */
 const DEFAULT_PER_DAY = 30;
+
+/**
+ * Paid-tier cap. Not "unlimited": an unbounded plan is an unbounded bill, and
+ * the escalation SLI (operations.md §6) is what turns ~$0.3–0.5/month per active
+ * user into something else. This is a fair-use ceiling nobody eating food will
+ * reach, not a meter people are meant to feel.
+ *
+ * BOTH CAPS ARE ENV-TUNABLE ON PURPOSE (`AI_PER_INSTALL_PER_DAY`,
+ * `AI_PER_INSTALL_PER_DAY_PAID`): they ship before the usage histogram has a
+ * single data point, so the numbers WILL be wrong at first and must be fixable
+ * by a restart rather than a store release. Raising them is free; lowering the
+ * paid one on people who already bought it is not — so start generous.
+ */
+const DEFAULT_PER_DAY_PAID = 100;
 
 /** Same /64 grouping as rateLimit.ts, for clients that don't send an id yet. */
 const IPV6_SUBNET = 64;
@@ -53,8 +67,16 @@ export function installIdOf(req: Request): string | null {
 }
 
 export interface InstallQuotaOptions {
-  /** Override the per-day cap (tests use tiny values). 0 disables the quota. */
+  /** Override the free per-day cap (tests use tiny values). 0 disables the quota. */
   perDay?: number;
+  /** Override the paid per-day cap. */
+  perDayPaid?: number;
+  /**
+   * Whether this caller has an active purchase. Defaults to "nobody is paying",
+   * which is the honest default for a build with no billing wired up: the free
+   * tier is what everyone gets until an entitlement says otherwise.
+   */
+  isPaid?: (req: Request) => boolean;
   /** Injectable clock for deterministic day-rollover tests. */
   now?: () => number;
 }
@@ -83,12 +105,15 @@ function secondsToReset(ms: number): number {
 
 export function createInstallQuota(fail: FailFn, opts: InstallQuotaOptions = {}): InstallQuota {
   const perDay = opts.perDay ?? envInt('AI_PER_INSTALL_PER_DAY', DEFAULT_PER_DAY);
+  const perDayPaid = opts.perDayPaid ?? envInt('AI_PER_INSTALL_PER_DAY_PAID', DEFAULT_PER_DAY_PAID);
+  const isPaid = opts.isPaid ?? (() => false);
   const now = opts.now ?? Date.now;
 
   // key → requests today. Insertion-ordered Map doubles as an eviction queue.
   const counts = new Map<string, number>();
   let currentDay = dayOf(now());
   let quotaHits = 0;
+  let quotaHitsPaid = 0;
 
   function keyOf(req: Request): string {
     const id = installIdOf(req);
@@ -99,7 +124,13 @@ export function createInstallQuota(fail: FailFn, opts: InstallQuotaOptions = {})
   }
 
   function middleware(req: Request, res: Response, next: NextFunction): void {
-    if (perDay <= 0) return next(); // explicitly disabled
+    // The cap, not the counter, is what a purchase changes: a subscriber who
+    // spent 20 parses on the free tier this morning keeps that spend and simply
+    // gains headroom, rather than getting a suspiciously fresh budget the moment
+    // they pay.
+    const paid = isPaid(req);
+    const cap = paid ? perDayPaid : perDay;
+    if (cap <= 0) return next(); // explicitly disabled
 
     const ms = now();
     const day = dayOf(ms);
@@ -110,8 +141,12 @@ export function createInstallQuota(fail: FailFn, opts: InstallQuotaOptions = {})
 
     const key = keyOf(req);
     const used = counts.get(key) ?? 0;
-    if (used >= perDay) {
+    if (used >= cap) {
       quotaHits += 1;
+      // Counted apart because the two mean opposite things: a free-tier hit is
+      // the paywall doing its job, a paid-tier hit is a fair-use ceiling set too
+      // low — a bug report from someone who already paid.
+      if (paid) quotaHitsPaid += 1;
       res.setHeader('X-AI-Quota-Remaining', '0');
       res.setHeader('Retry-After', String(secondsToReset(ms)));
       fail(res, 429, 'ai_quota_exceeded', 'Daily AI parse quota reached for this install.');
@@ -125,7 +160,7 @@ export function createInstallQuota(fail: FailFn, opts: InstallQuotaOptions = {})
     counts.set(key, used + 1);
     // The client shows a quiet «осталось N» once this runs low — the honest
     // alternative to a surprise 429 at the day's fifth meal.
-    res.setHeader('X-AI-Quota-Remaining', String(perDay - used - 1));
+    res.setHeader('X-AI-Quota-Remaining', String(cap - used - 1));
     next();
   }
 
@@ -155,9 +190,11 @@ export function createInstallQuota(fail: FailFn, opts: InstallQuotaOptions = {})
     }
     return {
       per_day: perDay,
+      per_day_paid: perDayPaid,
       installs_active: installs,
       ip_fallback_active: ipFallback,
       quota_hits: quotaHits,
+      quota_hits_paid: quotaHitsPaid,
       usage: buckets,
     };
   }

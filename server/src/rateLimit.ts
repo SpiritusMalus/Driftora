@@ -14,6 +14,13 @@ export interface RateLimits {
   textPerDay: number;
   /** Daily cap per IP on POST /food/parse-photo (vision — pricier, so tighter). */
   photoPerDay: number;
+  /**
+   * Daily cap per IP on POST /billing/register. Its own bucket on purpose: the
+   * route fans out to the store's API on every call, so it needs a ceiling — but
+   * sharing the parse budget would let launch-time purchase checks eat into
+   * someone's meals behind the same CGNAT address.
+   */
+  billingPerDay: number;
 }
 
 const MINUTE_MS = 60_000;
@@ -41,6 +48,9 @@ export function resolveLimits(overrides: Partial<RateLimits> = {}): RateLimits {
     burstPerMin: overrides.burstPerMin ?? envInt('RL_BURST_PER_MIN', 30),
     textPerDay: overrides.textPerDay ?? envInt('RL_TEXT_PER_DAY', 300),
     photoPerDay: overrides.photoPerDay ?? envInt('RL_PHOTO_PER_DAY', 100),
+    // A legitimate client registers once per launch, so this is roomy for a
+    // shared exit IP while still bounding a token-guessing flood.
+    billingPerDay: overrides.billingPerDay ?? envInt('RL_BILLING_PER_DAY', 120),
   };
 }
 
@@ -77,12 +87,24 @@ export interface Limiters {
   textDaily: RateLimitRequestHandler;
   /** Daily cap — mount on POST /food/parse-photo before multer buffers the upload. */
   photoDaily: RateLimitRequestHandler;
+  /** Daily cap — mount on POST /billing/register before the store round-trip. */
+  billingDaily: RateLimitRequestHandler;
 }
 
 export function buildLimiters(limits: RateLimits, fail: FailFn): Limiters {
   return {
-    burst: limiter(MINUTE_MS, limits.burstPerMin, fail, (req) => req.path === '/health'),
+    // The payment webhook is exempt alongside /health: it is already gated by a
+    // source-IP allowlist, ЮKassa's few addresses would share one bucket, and
+    // 429-ing your payment provider only converts settled money into a 24-hour
+    // redelivery storm.
+    burst: limiter(
+      MINUTE_MS,
+      limits.burstPerMin,
+      fail,
+      (req) => req.path === '/health' || req.path === '/billing/yookassa/webhook',
+    ),
     textDaily: limiter(DAY_MS, limits.textPerDay, fail),
     photoDaily: limiter(DAY_MS, limits.photoPerDay, fail),
+    billingDaily: limiter(DAY_MS, limits.billingPerDay, fail),
   };
 }
