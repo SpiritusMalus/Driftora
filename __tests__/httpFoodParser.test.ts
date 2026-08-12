@@ -256,6 +256,56 @@ describe('server error vs offline', () => {
     expect(fallback.photoCalls).toBe(1);
   });
 
+  /// A build shipped without EXPO_PUBLIC_FOOD_API_TOKEN gets 401 on every single
+  /// parse. Reported as «нет интернета» it looks like a flaky phone, so a whole
+  /// closed-test group inspects their wifi while the real fix is one build
+  /// setting — and the reports come back as «приложение не работает».
+  it('marks a rejected token as a build problem, not as being offline', async () => {
+    for (const status of [401, 403]) {
+      global.fetch = jest.fn(async () =>
+        new Response(JSON.stringify({ error: { code: 'unauthorized' } }), { status }),
+      ) as unknown as typeof fetch;
+      const fallback = new SpyFallback();
+
+      const r = await new HttpFoodParser(ENDPOINT, fallback, 50).parse('омлет', 'US');
+
+      expect(r.flags.auth_error).toBe(true);
+      expect(r.flags.offline_fallback).toBe(true); // still a degraded stub draft
+      // Must NOT be mistaken for the retryable «server is busy» case: retrying
+      // a 401 forever is exactly the wrong advice.
+      expect(r.flags.server_error).toBeUndefined();
+    }
+  });
+
+  /// The voice-note clip is understood on the SERVER, so `heard` is the only
+  /// copy of the user's words the phone ever gets. Dropping it in validation
+  /// would put the screen right back where the tester found it: blank, with the
+  /// entry saved as «Без названия».
+  it('carries the transcript of a voice note through to the caller', async () => {
+    global.fetch = jest.fn(async () =>
+      new Response(JSON.stringify({ ...SENTINEL, heard: 'съел борщ и выпил кофе' }), { status: 200 }),
+    ) as unknown as typeof fetch;
+
+    const r = await new HttpFoodParser(ENDPOINT, new SpyFallback(), 50).parseAudio(
+      { uri: 'file:///tmp/meal.m4a', mimeType: 'audio/m4a' },
+      'RU',
+    );
+
+    expect(r.heard).toBe('съел борщ и выпил кофе');
+    expect(r.flags.offline_fallback).toBeUndefined(); // a real answer, not the stub
+  });
+
+  it('leaves an ordinary server failure out of the auth bucket', async () => {
+    global.fetch = jest.fn(async () =>
+      new Response(JSON.stringify({ error: { code: 'llm_unavailable' } }), { status: 503 }),
+    ) as unknown as typeof fetch;
+
+    const r = await new HttpFoodParser(ENDPOINT, new SpyFallback(), 50).parse('омлет', 'US');
+
+    expect(r.flags.auth_error).toBeUndefined();
+    expect(r.flags.server_error).toBe(true);
+  });
+
   it('leaves a genuine network failure unmarked as a server error', async () => {
     global.fetch = jest.fn(async () => {
       throw new Error('Network request failed');

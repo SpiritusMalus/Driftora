@@ -311,8 +311,38 @@ export function userReadLabelInstruction(productName: string): string {
  * `estimate` from the system prompt). Uses the base IDENTIFY_SCHEMA.
  */
 export function userAudioInstruction(region: Region): string {
-  return `Region: ${region}. The audio is a person describing, in Russian, a meal they ate. Understand what they said, then identify the foods and estimate grams. Identification and grams are your primary job; the nutrition DB is authoritative for numbers.`;
+  return `Region: ${region}. The audio is a person describing, in Russian, a meal they ate. First write down what you heard, verbatim, in "heard" — their own words, in Russian, with no interpretation and no food names you inferred. Then identify the foods and estimate grams. Identification and grams are your primary job; the nutrition DB is authoritative for numbers. If you recognise no food at all, still fill "heard".`;
 }
+
+/**
+ * Audio identification returns the ordinary item list PLUS a verbatim transcript.
+ *
+ * Tester feedback 2026-08-12: «пусть всё, что я сказал, автоматически переносится
+ * в текст — и даже если что-то не нашлось, текст должен быть». On the voice-note
+ * path the speech is understood on the SERVER, so when the parse recognised no
+ * food the phone had nothing at all to show: the words existed only inside this
+ * request and died with it, and the entry became «Без названия».
+ *
+ * `heard` is deliberately its own top-level string rather than anything derived
+ * from the items — it is a record of what the person said, not nutrition data,
+ * and it must never feed a number.
+ *
+ * Its own schema (rather than a field added to IDENTIFY_SCHEMA) so the photo and
+ * text paths keep byte-identical contracts: changing what this model is asked to
+ * emit has caused decode loops before, and there is no reason to take that risk
+ * on routes that gain nothing from a transcript.
+ */
+export const IDENTIFY_AUDIO_SCHEMA = {
+  type: 'object',
+  properties: {
+    heard: {
+      type: 'string',
+      description: 'Verbatim transcript of the speech, in the language spoken. Never empty when there is audible speech.',
+    },
+    ...IDENTIFY_SCHEMA.properties,
+  },
+  required: ['items'],
+} as const;
 
 /**
  * System prompt for WORKOUT parsing. Symmetric to food: the model's job is to

@@ -143,7 +143,26 @@ export interface MealDraft {
     // connection is fine; the honest message is «дневной лимит», with the
     // manual/chip paths as the remedy until the UTC-day reset.
     quota_exceeded?: boolean;
+    // Client-side narrowing again: the server rejected the app's credentials
+    // (401/403). This is never the user's fault and never a connection problem —
+    // it means the BUILD is missing the API token, so every parse in that build
+    // fails identically. Retrying, waiting for signal or reinstalling all do
+    // nothing, and a wrong «нет интернета» sends a whole test group chasing
+    // their wifi. Named separately so the app can say what is actually wrong.
+    auth_error?: boolean;
   };
+  /**
+   * Verbatim transcript of a VOICE NOTE, set by the server on that route only.
+   *
+   * On the voice-note path the speech is understood server-side, so when the
+   * parse recognises no food this is the only copy of the user's own words the
+   * phone will ever see — without it the screen goes blank and the entry becomes
+   * «Без названия» (tester feedback 2026-08-12).
+   *
+   * A record of what was SAID, never nutrition data: it must not become a food
+   * name and must not feed a number.
+   */
+  heard?: string;
 }
 
 /// A prepared photo ready for upload — already downscaled + EXIF-stripped.

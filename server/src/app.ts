@@ -19,6 +19,10 @@ import { Resolver } from './nutrition/resolver.js';
 import { buildMealDraft, buildProviders } from './orchestrator.js';
 import { localizeAlternatives, localizeDraft } from './nutrition/translateNames.js';
 import { createInstallQuota, installIdOf } from './installQuota.js';
+import { createEntitlements, type PurchaseVerifier } from './entitlements.js';
+import { createGooglePlayVerifier } from './billing/googlePlay.js';
+import { createLicenses, type Licenses } from './billing/licenses.js';
+import { createYooKassaClient, createYooKassaWebhook, type YooKassaPayment } from './billing/yookassa.js';
 import { buildLimiters, type RateLimits, resolveLimits } from './rateLimit.js';
 import {
   coercePer100,
@@ -175,6 +179,79 @@ export interface CreateAppOptions {
   limits?: Partial<RateLimits>;
   /** Override the per-install daily AI quota (tests set tiny caps; 0 disables). */
   aiQuotaPerDay?: number;
+  /** Override the paid-tier daily AI quota. */
+  aiQuotaPerDayPaid?: number;
+  /** Inject a purchase verifier (tests); production builds one from env. */
+  verifyPurchase?: PurchaseVerifier;
+  /** Where entitlements persist. Empty string = memory only (tests). */
+  entitlementsPath?: string;
+  /** Where issued ЮKassa licences persist. Empty string = memory only (tests). */
+  licensesPath?: string;
+  /** Inject the ЮKassa payment reader (tests); production builds one from env. */
+  getYooKassaPayment?: (id: string) => Promise<YooKassaPayment>;
+  /** Override the ЮKassa source-IP allowlist (tests). */
+  yooKassaCidrs?: readonly string[];
+}
+
+/**
+ * Try each adapter until one recognises the string.
+ *
+ * The subtlety worth spelling out: "no adapter recognised it" and "an adapter
+ * could not reach its store" must stay different answers. If Google times out
+ * while the licence table simply has no such key, calling the purchase INVALID
+ * would tell a paying customer their subscription is fake. So an error from any
+ * adapter is rethrown unless some other adapter produced a real verdict.
+ */
+function chainVerifiers(verifiers: PurchaseVerifier[]): PurchaseVerifier {
+  return async (purchaseToken, productId) => {
+    let failure: unknown = null;
+    for (const verify of verifiers) {
+      try {
+        const verdict = await verify(purchaseToken, productId);
+        if (verdict) return verdict;
+      } catch (err) {
+        failure = err;
+      }
+    }
+    if (failure) throw failure;
+    return null;
+  };
+}
+
+/**
+ * Build the Google Play adapter, or null when this deployment does not sell
+ * through the store.
+ *
+ * Billing is OPT-IN by configuration: today's prod has no service account, and a
+ * server that refused to boot without one would take food parsing down for
+ * everybody in exchange for a feature nobody has bought yet. Absent config means
+ * "free tier for all", which is exactly the current behaviour.
+ */
+function resolveGoogleVerifier(injected?: PurchaseVerifier): PurchaseVerifier | null {
+  if (injected) return injected;
+  if (!process.env.GOOGLE_SERVICE_ACCOUNT_JSON) return null;
+  try {
+    return createGooglePlayVerifier();
+  } catch (err) {
+    // Misconfigured is worse than unconfigured: someone MEANT to sell here and
+    // the app would look healthy while every purchase silently failed.
+    console.error('billing: google verifier unavailable:', err instanceof Error ? err.message : String(err));
+    return null;
+  }
+}
+
+/** Same opt-in rule for direct ЮKassa sales. */
+function resolveYooKassaReader(
+  injected?: (id: string) => Promise<YooKassaPayment>,
+): ((id: string) => Promise<YooKassaPayment>) | null {
+  if (injected) return injected;
+  if (!process.env.YOOKASSA_SHOP_ID || !process.env.YOOKASSA_SECRET_KEY) return null;
+  try {
+    return createYooKassaClient();
+  } catch (err) {
+    console.error('billing: yookassa unavailable:', err instanceof Error ? err.message : String(err));
+    return null;
+  }
 }
 
 /**
@@ -212,11 +289,35 @@ export function createApp(
   app.set('trust proxy', 1);
 
   const limiters = buildLimiters(resolveLimits(opts.limits), fail);
+
+  // Who has paid. Consulted by the quota below for its cap, and by /billing/*.
+  // Two ways in, one notion of entitlement: a Google Play purchase token and a
+  // ЮKassa licence key arrive through the SAME /billing/register field, and the
+  // chain decides which adapter owns the string.
+  const googleVerifier = resolveGoogleVerifier(opts.verifyPurchase);
+  const getYooKassaPayment = resolveYooKassaReader(opts.getYooKassaPayment);
+  const licenses: Licenses = createLicenses({ path: opts.licensesPath });
+
+  const verifiers: PurchaseVerifier[] = [];
+  // Licences first: a local lookup that costs nothing, before any network hop.
+  if (getYooKassaPayment) verifiers.push(licenses.verifier);
+  if (googleVerifier) verifiers.push(googleVerifier);
+  const billingEnabled = verifiers.length > 0;
+
+  const entitlements = createEntitlements({
+    verify: chainVerifiers(verifiers),
+    path: opts.entitlementsPath,
+  });
+
   // Per-install daily AI budget (the CGNAT-safe layer; per-IP caps stay as the
   // abuse backstop). Mounted on the six LLM-burning parse routes only — the DB
   // search stays under the per-IP caps, so a quota'd-out user can still look
   // things up by hand.
-  const aiQuota = createInstallQuota(fail, { perDay: opts.aiQuotaPerDay });
+  const aiQuota = createInstallQuota(fail, {
+    perDay: opts.aiQuotaPerDay,
+    perDayPaid: opts.aiQuotaPerDayPaid,
+    isPaid: entitlements.isPaid,
+  });
 
   // Global per-IP burst guard, before body parsing/routes so abuse is cheap to
   // reject; /health is never limited (skip lives in the limiter).
@@ -250,7 +351,110 @@ export function createApp(
   app.get('/metrics', requireToken, (_req: Request, res: Response) => {
     // `ai_quota` rides alongside the registry snapshot: the anonymous usage
     // histogram that will size the free tier / fair-use cap from real behavior.
-    res.json({ ...metrics.snapshot(), ai_quota: aiQuota.snapshot() });
+    res.json({
+      ...metrics.snapshot(),
+      ai_quota: aiQuota.snapshot(),
+      billing: { ...entitlements.snapshot(), ...licenses.snapshot() },
+    });
+  });
+
+  /**
+   * ЮKassa notification endpoint.
+   *
+   * Deliberately NOT behind `requireToken`: ЮKassa has no way to send our app
+   * token. Authentication is the source-IP allowlist inside the handler, which
+   * is the mechanism ЮKassa itself prescribes — and the handler re-reads the
+   * payment through the API rather than believing the body.
+   */
+  const yooKassaWebhook = getYooKassaPayment
+    ? createYooKassaWebhook({ licenses, getPayment: getYooKassaPayment, cidrs: opts.yooKassaCidrs })
+    : null;
+  // Mounted unconditionally even when unconfigured, so the route stays visible
+  // to the openapi contract test instead of vanishing from the spec's view.
+  app.post('/billing/yookassa/webhook', (req: Request, res: Response) => {
+    if (!yooKassaWebhook) {
+      fail(res, 503, 'billing_unavailable', 'This deployment does not sell subscriptions.');
+      return;
+    }
+    void yooKassaWebhook(req, res);
+  });
+
+  /**
+   * The buyer collects their licence key here after paying, using the payment id
+   * ЮKassa returned to them.
+   *
+   * No `requireToken`: this is called by the checkout page on the web, which has
+   * no app token. The payment id is an unguessable ЮKassa uuid known only to the
+   * buyer, and the route is capped per IP per day.
+   */
+  app.get('/billing/license', limiters.billingDaily, (req: Request, res: Response) => {
+    const paymentId = typeof req.query.payment_id === 'string' ? req.query.payment_id : '';
+    if (!paymentId) {
+      fail(res, 400, 'invalid_purchase_body', 'Query parameter "payment_id" is required.');
+      return;
+    }
+    const license = licenses.byPaymentId(paymentId);
+    if (!license) {
+      // Also the honest answer while the notification is still in flight — the
+      // page should poll rather than conclude the payment failed.
+      fail(res, 404, 'license_not_ready', 'No licence for this payment (yet).');
+      return;
+    }
+    res.json({ key: license.key, plan: license.plan, paid_until: license.paidUntil });
+  });
+
+  /**
+   * Register a purchase made in the store, binding it to this install.
+   *
+   * The client calls this after buying AND on every launch: the store SDK hands
+   * over the token each time, and re-registering is what carries a subscription
+   * onto a new phone after a reinstall (the install id changes, the Google
+   * account's purchase does not) and what lets a refund end access here — see
+   * entitlements.ts on why the server cannot re-check on its own.
+   */
+  app.post('/billing/register', requireToken, limiters.billingDaily, async (req: Request, res: Response) => {
+    if (!billingEnabled) {
+      fail(res, 503, 'billing_unavailable', 'This deployment does not sell subscriptions.');
+      return;
+    }
+    const installId = installIdOf(req);
+    if (!installId) {
+      // Without an id there is nothing to bind the purchase TO — the entitlement
+      // would be verified and then immediately unfindable.
+      fail(res, 400, 'install_id_required', 'Header "X-Install-Id" is required to register a purchase.');
+      return;
+    }
+    const body = (req.body ?? {}) as { purchaseToken?: unknown; productId?: unknown };
+    const purchaseToken = typeof body.purchaseToken === 'string' ? body.purchaseToken.trim() : '';
+    const productId = typeof body.productId === 'string' ? body.productId.trim() : '';
+    if (!purchaseToken || !productId) {
+      fail(res, 400, 'invalid_purchase_body', 'Fields "purchaseToken" and "productId" are required.');
+      return;
+    }
+
+    const result = await entitlements.register(purchaseToken, productId, installId);
+    if (result.reason === 'store_unreachable') {
+      // 503, not 402: the purchase may well be perfectly good. The client must
+      // retry later and must NOT tell the user their payment failed.
+      fail(res, 503, 'store_unreachable', 'Could not reach the store to verify this purchase. Retry later.');
+      return;
+    }
+    if (result.reason === 'invalid_purchase') {
+      fail(res, 402, 'invalid_purchase', 'The store does not recognize this purchase.');
+      return;
+    }
+    res.json({ active: result.active, expires_at: result.expiresAt, state: result.state });
+  });
+
+  /** Current entitlement for this install — what the client gates its paywall on. */
+  app.get('/billing/status', requireToken, (req: Request, res: Response) => {
+    const status = entitlements.statusOf(installIdOf(req));
+    res.json({
+      billing_enabled: billingEnabled,
+      active: status.active,
+      expires_at: status.expiresAt,
+      state: status.state,
+    });
   });
 
   // Shared tail for both inputs: identified items → resolved MealDraft, with the
@@ -259,11 +463,14 @@ export function createApp(
     res: Response,
     route: 'text' | 'photo' | 'audio',
     region: Region,
-    identify: () => Promise<IdentifiedItem[]>,
+    // Audio also returns what it HEARD; every other route just returns items.
+    identify: () => Promise<IdentifiedItem[] | { items: IdentifiedItem[]; heard?: string }>,
   ): Promise<void> {
     const startedAt = Date.now();
     try {
-      const identified = await identify();
+      const answer = await identify();
+      const identified = Array.isArray(answer) ? answer : answer.items;
+      const heard = Array.isArray(answer) ? undefined : answer.heard;
       // Stage split: everything up to here is model work (identification and,
       // for photos, the label pass); everything after is DB resolution. The
       // per-route total alone can't say which side a slow day comes from.
@@ -280,7 +487,11 @@ export function createApp(
       const localized = await localizeDraft(draft, region);
       metrics.recordStage('translate', Date.now() - translateStart);
       metrics.recordParse(route, region, draft, Date.now() - startedAt);
-      res.json(localized);
+      // `heard` rides alongside the draft, never inside it: it is a record of
+      // what the person said, not nutrition data, and nothing downstream may
+      // treat it as a food name. It matters most when `items` is EMPTY — that is
+      // the case where the phone otherwise has nothing of theirs to show.
+      res.json(heard ? { ...localized, heard } : localized);
     } catch (err) {
       if (err instanceof VisionUnavailableError) {
         fail(res, 503, 'llm_unavailable', 'The parsing service is temporarily unavailable.');

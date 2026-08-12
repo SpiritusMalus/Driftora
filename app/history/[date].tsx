@@ -15,6 +15,7 @@ import { ensureSettings } from '@/lib/core/db/settings';
 import { getStepsRow } from '@/lib/core/db/steps';
 import { getWeightForDay } from '@/lib/core/db/weight';
 import { listWorkoutsForDay } from '@/lib/core/db/workouts';
+import { shortMealTitle } from '@/lib/core/insights/mealTitle';
 import { formatDayTitle, parseDayKey } from '@/lib/i18n/formatDay';
 import { formatWorkoutLine, formatWorkoutValue } from '@/lib/i18n/formatWorkout';
 import { useTheme } from '@/lib/theme/theme';
@@ -94,7 +95,7 @@ export default function HistoryDayScreen() {
 
   const foodRows: RowSpec[] = entries.map((e) => ({
     key: String(e.id),
-    title: e.rawText.trim().length > 0 ? e.rawText : t('food.untitled'),
+    title: e.rawText.trim().length > 0 ? shortMealTitle(e.rawText) : t('food.untitled'),
     subtitle: e.meal ? t(`food.meal.${e.meal}`) : formatTime(new Date(e.ts)),
     // Keep the kcal (or protein) value, but pair it with a chevron so the row
     // visibly invites a tap — ListGroup hides its own chevron once `right` is set.
