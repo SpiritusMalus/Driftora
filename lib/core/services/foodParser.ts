@@ -143,6 +143,13 @@ export interface MealDraft {
     // connection is fine; the honest message is «дневной лимит», with the
     // manual/chip paths as the remedy until the UTC-day reset.
     quota_exceeded?: boolean;
+    // Client-side narrowing again: the server rejected the app's credentials
+    // (401/403). This is never the user's fault and never a connection problem —
+    // it means the BUILD is missing the API token, so every parse in that build
+    // fails identically. Retrying, waiting for signal or reinstalling all do
+    // nothing, and a wrong «нет интернета» sends a whole test group chasing
+    // their wifi. Named separately so the app can say what is actually wrong.
+    auth_error?: boolean;
   };
 }
 

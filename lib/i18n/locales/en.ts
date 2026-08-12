@@ -880,6 +880,8 @@ export const en = {
       serverBusy: 'Recognition couldn’t handle this shot — your connection is fine. Try again, or describe the food in words.',
       failed: 'Couldn’t parse this. Check your connection and try again.',
       quota: 'Today’s AI-parse limit is used up — it resets tomorrow. You can still log by hand, with chips, or via “Repeat”.',
+      misconfigured:
+        'Recognition isn’t available in this build — it’s not your internet and not your phone. Please write to support@family-pie.ru; meanwhile you can log food by hand or with chips.',
     },
     quotaLeft: 'AI parses left today: {{n}}.',
     entryGone: 'This entry has already been deleted.',

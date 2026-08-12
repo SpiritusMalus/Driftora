@@ -125,6 +125,24 @@ function asQuotaFallback(draft: MealDraft): MealDraft {
   return { ...draft, flags: { ...draft.flags, offline_fallback: true, quota_exceeded: true } };
 }
 
+/**
+ * 401/403: the server refused the app's token. Not a network problem and not
+ * something the user can fix — it means this BUILD went out without
+ * `EXPO_PUBLIC_FOOD_API_TOKEN`, so every parse in it fails the same way.
+ *
+ * Worth its own flag precisely because the generic «нет интернета» is so
+ * plausible and so wrong: a whole test group would go check their wifi while the
+ * real fix is one build setting.
+ */
+function asAuthFallback(draft: MealDraft): MealDraft {
+  return { ...draft, flags: { ...draft.flags, offline_fallback: true, auth_error: true } };
+}
+
+/** Credentials rejected — distinguishable from every other non-2xx by status alone. */
+function isAuthFailure(res: Response): boolean {
+  return res.status === 401 || res.status === 403;
+}
+
 /** Detect the quota envelope without assuming a readable body. */
 async function isQuotaExceeded(res: Response): Promise<boolean> {
   if (res.status !== 429) return false;
@@ -250,6 +268,7 @@ export class HttpFoodParser implements FoodParser {
           setAiQuotaRemaining(0);
           return asQuotaFallback(await this.fallback.parse(text, region));
         }
+        if (isAuthFailure(res)) return asAuthFallback(await this.fallback.parse(text, region));
         return asServerFallback(await this.fallback.parse(text, region));
       }
       captureQuotaRemaining(res);
@@ -293,6 +312,7 @@ export class HttpFoodParser implements FoodParser {
           setAiQuotaRemaining(0);
           return asQuotaFallback(await this.fallback.parsePhoto(photo, region));
         }
+        if (isAuthFailure(res)) return asAuthFallback(await this.fallback.parsePhoto(photo, region));
         return asServerFallback(await this.fallback.parsePhoto(photo, region));
       }
       captureQuotaRemaining(res);
@@ -335,6 +355,7 @@ export class HttpFoodParser implements FoodParser {
           setAiQuotaRemaining(0);
           return asQuotaFallback(await this.fallback.parseAudio(audio, region));
         }
+        if (isAuthFailure(res)) return asAuthFallback(await this.fallback.parseAudio(audio, region));
         return asServerFallback(await this.fallback.parseAudio(audio, region));
       }
       captureQuotaRemaining(res);

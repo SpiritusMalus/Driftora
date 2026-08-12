@@ -109,7 +109,7 @@ export default function FoodLogScreen() {
   // can't be parsed offline at all; 'quota' = today's per-install AI budget is
   // spent (manual/chip paths remain); 'failed' = the parse itself threw locally.
   const [parseIssue, setParseIssue] = useState<
-    'offline' | 'offlineEmpty' | 'offlineMedia' | 'serverBusy' | 'quota' | 'failed' | null
+    'offline' | 'offlineEmpty' | 'offlineMedia' | 'serverBusy' | 'quota' | 'misconfigured' | 'failed' | null
   >(null);
   // Server-reported remaining daily AI budget (X-AI-Quota-Remaining) — drives
   // the quiet «осталось N» line once it runs low. Null = never reported.
@@ -426,15 +426,21 @@ export default function FoodLogScreen() {
           // paths until the daily reset, not hunting for signal.
           parsed.flags.quota_exceeded
           ? 'quota'
-          : // The server answered, it just couldn't parse — blaming the connection
-            // sends the user to check a wifi that is plainly working.
-            parsed.flags.server_error
-            ? 'serverBusy'
-            : kind !== 'text'
-              ? 'offlineMedia'
-              : parsed.items.length === 0
-                ? 'offlineEmpty'
-                : 'offline',
+          : // The build has no API token, so EVERY parse here fails the same way.
+            // Checked before the others: it is the one cause the user genuinely
+            // cannot work around, and mislabelling it sends a whole test group
+            // to inspect a connection that is fine.
+            parsed.flags.auth_error
+            ? 'misconfigured'
+            : // The server answered, it just couldn't parse — blaming the connection
+              // sends the user to check a wifi that is plainly working.
+              parsed.flags.server_error
+              ? 'serverBusy'
+              : kind !== 'text'
+                ? 'offlineMedia'
+                : parsed.items.length === 0
+                  ? 'offlineEmpty'
+                  : 'offline',
     );
     setQuotaLeft(getAiQuotaRemaining());
   }
