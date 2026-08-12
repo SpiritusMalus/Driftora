@@ -494,9 +494,13 @@ export function createApp(
       res.json(heard ? { ...localized, heard } : localized);
     } catch (err) {
       if (err instanceof VisionUnavailableError) {
+        // Counted, not just returned: a failure that reaches no counter is a
+        // failure nobody will notice (see metrics.recordFailure).
+        metrics.recordFailure(route, 'llm_unavailable');
         fail(res, 503, 'llm_unavailable', 'The parsing service is temporarily unavailable.');
         return;
       }
+      metrics.recordFailure(route, 'internal_error');
       // Error name+message only — never the request content (privacy §2).
       // Without this line a recurring internal bug is invisible in journalctl.
       console.error('parse failed:', route, err instanceof Error ? `${err.name}: ${err.message}` : String(err));

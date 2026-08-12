@@ -197,3 +197,63 @@ test('the photo and text routes are NOT asked for a transcript', async () => {
     await stop();
   }
 });
+
+/// ИЗМЕРЕНО 2026-08-12: OpenRouter отдаёт один слаг модели с двух апстримов, и
+/// Vertex вырождается на `input_audio` — 3/3 усечения против 5/5 разборов у AI
+/// Studio на одном и том же клипе. Примерно треть голосовых заметок улетала
+/// туда и возвращалась 503. Маршрут исключается ТОЛЬКО для аудио: текст на
+/// обоих апстримах здоров (проверено 3/3), сужать пул остальным незачем.
+test('аудио-запрос исключает апстрим, который зацикливается на клипах', async () => {
+  const { base, stop } = await startApp();
+  try {
+    await realFetch(`${base}/food/parse-audio`, {
+      method: 'POST',
+      body: audioForm(new Uint8Array([1, 2, 3]), 'RU'),
+    });
+    assert.deepEqual(lastLlmBody.provider, { ignore: ['google-vertex'] });
+  } finally {
+    await stop();
+  }
+});
+
+test('текстовый маршрут пул провайдеров НЕ сужает', async () => {
+  const { base, stop } = await startApp();
+  try {
+    await realFetch(`${base}/food/parse`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: 'омлет', region: 'US' }),
+    });
+    assert.equal(lastLlmBody.provider, undefined);
+  } finally {
+    await stop();
+  }
+});
+
+/// Провал, который не дошёл ни до одного счётчика, — это провал, которого никто
+/// не заметит: `recordParse` живёт только на успешном пути, поэтому упавшие
+/// разборы не попадали даже в `requests`, а значит и долю пустых не поднимали.
+test('упавший разбор попадает в /metrics, а не исчезает', async () => {
+  const { base, stop } = await startApp();
+  try {
+    // Модель отдаёт усечённый мусор → VisionUnavailableError → 503.
+    nextLlmReply = () =>
+      json({ choices: [{ message: { content: '{"items": [' }, finish_reason: 'length' }] });
+    // Реестр метрик — синглтон на процесс, в файле уже прошли другие тесты:
+    // проверяем ПРИРАЩЕНИЕ, а не абсолютные значения.
+    const before = (await (await realFetch(`${base}/metrics`)).json()) as any;
+    const res = await realFetch(`${base}/food/parse-audio`, {
+      method: 'POST',
+      body: audioForm(new Uint8Array([1, 2, 3]), 'RU'),
+    });
+    assert.equal(res.status, 503);
+    const after = (await (await realFetch(`${base}/metrics`)).json()) as any;
+
+    assert.equal(after.failures.audio - before.failures.audio, 1, 'отказ обязан быть виден в метриках');
+    assert.equal(after.failures_by_reason.llm_unavailable - before.failures_by_reason.llm_unavailable, 1);
+    // И при этом НЕ должен считаться успешным разбором.
+    assert.equal(after.requests.audio - before.requests.audio, 0);
+  } finally {
+    await stop();
+  }
+});
