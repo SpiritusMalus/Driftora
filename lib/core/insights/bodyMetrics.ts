@@ -8,6 +8,8 @@
 /// Mifflin–St Jeor result is a population-average estimate, presented as a
 /// starting point to adjust by the real weight trend, not as a prescription.
 
+import { fiberTargetG } from './fiberTarget';
+
 /// BMI = kg / m². Returns one-decimal value, or null when inputs are not
 /// plausible adult measurements (guards against '17' typed mid-way for 170).
 export function bmiValue(weightKg: number, heightCm: number): number | null {
@@ -694,10 +696,6 @@ const MIN_KCAL: Record<Sex, number> = { male: 1500, female: 1200 };
 /// ≈7,700 kcal per kg of body fat — powers the honest pace estimate.
 const KCAL_PER_KG_FAT = 7700;
 
-/// IOM adequate-intake rule of thumb: 14 g of fiber per 1000 kcal. Satiety is
-/// the main lever against deficit hunger, so the plan states it explicitly.
-const FIBER_PER_1000_KCAL = 14;
-
 /// What the protein grams were computed from. Adipose tissue needs almost no
 /// protein, so "g/kg of TOTAL weight" over-prescribes at high body fat
 /// (1.8 × 130 kg = 234 g — неподъёмно и не нужно). Precision ladder, best
@@ -873,7 +871,11 @@ export function suggestPlan(
   const prot = Math.round(PROTEIN_PER_KG[mode] * basisKg);
   const fat = Math.round((kcal * 0.3) / 9);
   const carb = Math.max(0, Math.round((kcal - prot * 4 - fat * 9) / 4));
-  const fiber = Math.round((kcal * FIBER_PER_1000_KCAL) / 1000);
+  // ONE fiber goal in the app. This used to compute its own (14 g per 1000 kcal,
+  // no floor) while the food screen showed `fiberTargetG` — so the same person
+  // read 28 g in their plan and 25 g on the day, for the same day. Two numbers
+  // for one thing is exactly what makes people stop believing either.
+  const fiber = fiberTargetG(kcal);
   const etaWeeks = goalKg != null && paceKgPerWeek > 0 ? Math.round(Math.abs(weightKg - goalKg) / paceKgPerWeek) : null;
   return {
     mode,
