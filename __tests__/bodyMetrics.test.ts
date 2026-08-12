@@ -1,5 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
 
+import { fiberTargetG } from '@/lib/core/insights/fiberTarget';
+
 import {
   ACTIVITY_FACTORS,
   bmiCategory,
@@ -333,10 +335,12 @@ describe('suggestPlan (goal modes)', () => {
     expect(plan.prot).toBe(Math.round(1.8 * 45));
   });
 
-  it('states a fiber guideline scaled to the kcal budget (14 g / 1000 kcal)', () => {
+  it('states the SAME fiber goal the food screen shows, not a second opinion', () => {
     const plan = suggestPlan(profile, 70, 'maintain', NOW)!;
-    expect(plan.fiber).toBe(Math.round((plan.kcal * 14) / 1000)); // 1980 → 28 g
-    expect(plan.fiber).toBe(28);
+    // The plan used to compute its own 14 g/1000 kcal with no floor, so 1980
+    // kcal read 28 g here and 25 g on the day screen — one number, two answers.
+    expect(plan.fiber).toBe(fiberTargetG(plan.kcal));
+    expect(plan.fiber).toBe(25); // max(25, round(1980/1000 × 12) = 24)
   });
 });
 
@@ -355,8 +359,9 @@ describe('suggestPlan (goal weight + high-BMI precision)', () => {
     expect(plan.prot).toBe(162);
     expect(plan.proteinBasis).toBe('goal');
     expect(plan.proteinBasisKg).toBe(90);
-    // Fiber against deficit hunger: 14 g/1000 kcal of the actual budget.
-    expect(plan.fiber).toBe(35);
+    // Fiber against deficit hunger, from the one shared goal: 2480 kcal → 30 g.
+    expect(plan.fiber).toBe(fiberTargetG(2480));
+    expect(plan.fiber).toBe(30);
     // Honest ETA: 620 kcal/day gap → 0.6 kg/week → 40 kg ≈ 67 weeks.
     expect(plan.paceKgPerWeek).toBe(0.6);
     expect(plan.etaWeeks).toBe(67);
