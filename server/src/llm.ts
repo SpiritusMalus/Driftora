@@ -65,6 +65,14 @@ const PRO_MODEL = process.env.OPENROUTER_PRO_MODEL || '';
  * surfaced as a silent "не распознал". Reasoning cannot be disabled on this
  * endpoint ("Reasoning is mandatory for this endpoint and cannot be disabled"),
  * so the ceiling has to clear reasoning + payload with room to spare.
+ *
+ * ⚠️ CORRECTION 2026-08-12, measured: on the audio route `reasoning_tokens` came
+ * back as **0** on every sampled call, healthy and looping alike. When a loop
+ * happens the ceiling is consumed by CONTENT (6126 completion tokens for 6208
+ * characters of unparseable output), not by hidden thinking. So raising
+ * MAX_TOKENS does not rescue a looping answer — it only makes each failure
+ * slower and dearer. Treat a `length` finish as a routing/prompt problem to
+ * diagnose, never as a budget to widen.
  */
 const MAX_TOKENS = 6144;
 /** Sampling for the truncation retry — a different path out of a decode loop. */
@@ -93,6 +101,35 @@ const REASONING_EFFORT_TEXT = process.env.REASONING_EFFORT_TEXT ?? 'low';
  * row, never to wrong numbers. 'off' restores default effort via env.
  */
 const REASONING_EFFORT_MEDIA = process.env.REASONING_EFFORT_MEDIA ?? 'low';
+
+/**
+ * Upstreams excluded for the AUDIO route only.
+ *
+ * MEASURED 2026-08-12, and the numbers are unambiguous. OpenRouter serves
+ * `google/gemini-3.6-flash` from two upstreams, and they do not handle
+ * `input_audio` the same way. On the SAME 21 KB clip:
+ *
+ *   Google AI Studio → prompt 850 tok, finish 'stop',   ~180-260 completion, 5/5 parsed
+ *   Google (Vertex)  → prompt 1282 tok, finish 'length', 6126 completion,    3/3 unparseable
+ *
+ * Different PROMPT token counts for identical input give it away: Vertex reads
+ * the clip differently and then degenerates, filling the entire output ceiling
+ * with junk. Unpinned, roughly a third of voice notes landed there and came back
+ * 503 — the truncation re-roll only rescued the ones that happened to re-route.
+ *
+ * Text was verified healthy on BOTH upstreams (3/3 each), so this stays scoped
+ * to audio rather than shrinking the routing pool for everything.
+ *
+ * Env-overridable so the list can be widened, or emptied to re-test, by a
+ * restart — no deploy. Empty string disables the exclusion entirely.
+ */
+const AUDIO_IGNORE_PROVIDERS: readonly string[] = (
+  process.env.OPENROUTER_AUDIO_IGNORE_PROVIDERS ?? 'google-vertex'
+)
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
 const CONFIDENCE_FLOOR = 0.5;
 
 /** Raised when the model is unreachable/failing — routes map it to 503. */
@@ -124,6 +161,7 @@ export function buildPayload(
   schema: object = IDENTIFY_SCHEMA,
   temperature = 0,
   reasoningEffort?: string,
+  ignoreProviders?: readonly string[],
 ): Record<string, unknown> {
   const payload: Record<string, unknown> = {
     model,
@@ -135,6 +173,12 @@ export function buildPayload(
       json_schema: { name: 'identification', strict: false, schema },
     },
   };
+  // OpenRouter serves one model slug from SEVERAL upstreams, and they are not
+  // interchangeable — see AUDIO_IGNORE_PROVIDERS. `ignore` rather than a hard
+  // `only`: naming the broken route leaves every other one (including any added
+  // later) available, where pinning a single provider would make us go down
+  // whenever it does.
+  if (ignoreProviders && ignoreProviders.length > 0) payload.provider = { ignore: [...ignoreProviders] };
   // OpenRouter unified reasoning control; omitted entirely for 'off'/unset so
   // providers keep their default behavior. NB: a tiny reasoning.max_tokens
   // budget is NOT an alternative — measured 2026-07-21, it drives this model
@@ -207,6 +251,7 @@ async function complete(
   temperature = 0,
   timeoutMs: number = TIMEOUT_MS.openrouter,
   reasoningEffort?: string,
+  ignoreProviders?: readonly string[],
 ): Promise<unknown> {
   const key = process.env.OPENROUTER_API_KEY || '';
   if (!key) {
@@ -221,7 +266,7 @@ async function complete(
         Authorization: `Bearer ${key}`,
         'X-Title': 'Driftora', // OpenRouter dashboard attribution (optional, harmless)
       },
-      body: JSON.stringify(buildPayload(messages, model, schema, temperature, reasoningEffort)),
+      body: JSON.stringify(buildPayload(messages, model, schema, temperature, reasoningEffort, ignoreProviders)),
       // A hung OpenRouter call must not hold a /food/parse* request (or an
       // escalation retry) open indefinitely — same treatment as a network error.
       signal: AbortSignal.timeout(timeoutMs),
@@ -309,10 +354,11 @@ async function completeWithRetry(
   schema: object,
   timeouts: RetryTimeouts = PATIENT_TIMEOUTS,
   reasoningEffort?: string,
+  ignoreProviders?: readonly string[],
 ): Promise<{ data: unknown; truncated: boolean }> {
   let first: unknown;
   try {
-    first = await complete(messages, model, schema, 0, timeouts.first, reasoningEffort);
+    first = await complete(messages, model, schema, 0, timeouts.first, reasoningEffort, ignoreProviders);
     // A provider error rides in on HTTP 200 — fail now rather than retry into a
     // rate limit that is already refusing us.
     const failed = providerErrorOf(first);
@@ -329,7 +375,7 @@ async function completeWithRetry(
   metrics.recordTruncationRetry();
   let second: unknown;
   try {
-    second = await complete(messages, model, schema, RETRY_TEMPERATURE, timeouts.retry, reasoningEffort);
+    second = await complete(messages, model, schema, RETRY_TEMPERATURE, timeouts.retry, reasoningEffort, ignoreProviders);
   } catch (err) {
     if (err instanceof UpstreamTimeoutError) {
       throw new VisionUnavailableError('OpenRouter timed out on both attempts');
@@ -470,7 +516,7 @@ async function callModel(
   messages: ChatMessage[],
   model: string,
   schema: object = IDENTIFY_SCHEMA,
-  opts: { hedge?: boolean; text?: boolean; effort?: string } = {},
+  opts: { hedge?: boolean; text?: boolean; effort?: string; ignoreProviders?: readonly string[] } = {},
 ): Promise<ModelAnswer> {
   // Explicit per-caller effort wins; the text flag implies the text throttle.
   // No opts at all (e.g. the PRO-model escalation) keeps the provider default —
@@ -491,6 +537,7 @@ async function callModel(
         schema,
         opts.text ? TEXT_TIMEOUTS : PATIENT_TIMEOUTS,
         effort,
+        opts.ignoreProviders,
       );
   const items = parseResponse(data);
   // A truncated answer that yielded nothing is a SERVER failure, not an honest
@@ -513,7 +560,7 @@ async function callModel(
 async function identifyWithEscalation(
   messages: ChatMessage[],
   schema: object = IDENTIFY_SCHEMA,
-  opts: { hedge?: boolean; text?: boolean; effort?: string } = {},
+  opts: { hedge?: boolean; text?: boolean; effort?: string; ignoreProviders?: readonly string[] } = {},
 ): Promise<ModelAnswer> {
   const base = await callModel(messages, MODEL, schema, opts);
   if (!PRO_MODEL) return base;
@@ -523,7 +570,9 @@ async function identifyWithEscalation(
 
   let escalated: ModelAnswer;
   try {
-    escalated = await callModel(messages, PRO_MODEL, schema);
+    // Эскалация наследует те же ограничения маршрута: иначе спасательный вызов
+    // уходит ровно на тот провайдер, из-за которого мы сюда попали.
+    escalated = await callModel(messages, PRO_MODEL, schema, { ignoreProviders: opts.ignoreProviders });
   } catch {
     return base; // escalation is best-effort; keep the fast result on failure
   }
@@ -758,7 +807,7 @@ export async function identifyFromAudio(
       },
     ],
     IDENTIFY_AUDIO_SCHEMA,
-    { effort: REASONING_EFFORT_MEDIA },
+    { effort: REASONING_EFFORT_MEDIA, ignoreProviders: AUDIO_IGNORE_PROVIDERS },
   );
   // The transcript comes from the SAME answer the items came from, so the words
   // shown always belong to the parse being shown.

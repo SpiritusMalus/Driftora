@@ -668,10 +668,28 @@ components:
         uptime_s: { type: integer }
         requests:
           type: object
+          description: |
+            SUCCESSFUL parses only — read together with `failures`, never alone.
           properties:
             text: { type: integer }
             photo: { type: integer }
             audio: { type: integer }
+        failures:
+          type: object
+          description: |
+            Requests that produced no draft at all, by route. Added 2026-08-12:
+            failures never reached `recordParse`, so they were absent from every
+            counter — which hid a defect failing roughly two thirds of voice
+            notes while `/metrics` showed only healthy parses.
+          properties:
+            text: { type: integer }
+            photo: { type: integer }
+            audio: { type: integer }
+        failures_by_reason:
+          type: object
+          properties:
+            llm_unavailable: { type: integer }
+            internal_error: { type: integer }
         by_region:
           type: object
           properties:

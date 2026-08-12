@@ -20,6 +20,9 @@ class MetricsRegistry {
     ai_estimate: 0,
     estimate: 0,
   };
+  /** Requests that produced NO draft, by route and by cause — see recordFailure. */
+  private readonly failures: Record<string, number> = { text: 0, photo: 0, audio: 0 };
+  private readonly failuresByReason: Record<string, number> = { llm_unavailable: 0, internal_error: 0 };
   private empty = 0;
   private lowConfidence = 0;
   private escalations = 0;
@@ -47,6 +50,23 @@ class MetricsRegistry {
 
   recordEscalation(): void {
     this.escalations += 1;
+  }
+
+  /**
+   * A parse that never produced a draft — the model was unreachable/looping
+   * (`llm_unavailable`) or the handler threw (`internal_error`).
+   *
+   * WHY THIS EXISTS: `recordParse` runs only on the success path, so a failed
+   * request was invisible in EVERY counter — it never reached `requests`, so it
+   * could not raise the empty rate either. On 2026-08-12 that hid a defect that
+   * was failing roughly two thirds of voice notes: `/metrics` showed three
+   * healthy audio parses and said nothing about the ones that died. A dashboard
+   * that only counts successes reports «здоров» right up until nobody can use
+   * the thing.
+   */
+  recordFailure(route: 'text' | 'photo' | 'audio', reason: 'llm_unavailable' | 'internal_error'): void {
+    this.failures[route] = (this.failures[route] ?? 0) + 1;
+    this.failuresByReason[reason] = (this.failuresByReason[reason] ?? 0) + 1;
   }
 
   /** A sustained non-zero count means the token ceiling needs another look. */
@@ -96,6 +116,10 @@ class MetricsRegistry {
     return {
       uptime_s: Math.round((Date.now() - this.startedAt) / 1000),
       requests: { ...this.requests },
+      // Sits next to `requests` on purpose: the two are only meaningful read
+      // together. `requests` alone is a success count wearing a neutral name.
+      failures: { ...this.failures },
+      failures_by_reason: { ...this.failuresByReason },
       by_region: { ...this.byRegion },
       empty: this.empty,
       low_confidence: this.lowConfidence,
