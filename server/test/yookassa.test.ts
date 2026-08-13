@@ -502,13 +502,31 @@ test('checkout page: prices, the seller’s details and no way to inject markup'
   }
 });
 
-test('checkout page: the return page is served even when the shop is switched off', async () => {
+test('checkout page: reviewable before the shop exists, and unbuyable until it does', async () => {
   const { base, stop } = await startApp({ licensesPath: '', entitlementsPath: '' });
   try {
     // A buyer returning from an older payment must still be able to read their key.
     assert.equal((await realFetch(`${base}/billing/done`)).status, 200);
-    // …while a new sale is honestly refused.
-    assert.equal((await realFetch(`${base}/billing/pay`)).status, 503);
+
+    // The chicken-and-egg this ordering exists for: ЮKassa reviews the page a
+    // shop sells from BEFORE enabling the shop, so 503 here would mean the page
+    // can never be reviewed at all. Full content, no button.
+    const pay = await realFetch(`${base}/billing/pay`);
+    assert.equal(pay.status, 200);
+    const html = await pay.text();
+    assert.match(html, /ИНН 504414138460/, 'seller details without any env set');
+    assert.match(html, /Возврат/);
+    assert.match(html, /199 ₽/);
+    assert.ok(!html.includes('Перейти к оплате'), 'nothing to press until a shop exists');
+    assert.ok(!html.includes('getElementById'), 'no script for a button that is not there');
+
+    // …and the sale itself is still honestly refused.
+    const checkout = await realFetch(`${base}/billing/checkout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan: 'monthly' }),
+    });
+    assert.equal(checkout.status, 503);
   } finally {
     await stop();
   }

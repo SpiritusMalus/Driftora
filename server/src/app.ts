@@ -530,16 +530,21 @@ export function createApp(
     res.send(html);
   }
 
-  /** The plan picker. This is the link the app opens for «Оформить подписку». */
+  /**
+   * The plan picker, and the page the payment provider reviews before it
+   * enables the shop.
+   *
+   * Served EVEN WHEN NOTHING IS CONFIGURED, and that ordering is not a
+   * preference: ЮKassa moderates the page a shop sells from before switching
+   * the shop on, so a page that 503s until the shop is on could never be
+   * reviewed. Without a shop the content is identical minus the button.
+   */
   app.get('/billing/pay', (_req: Request, res: Response) => {
-    if (!createYooKassaPayment) {
-      fail(res, 503, 'billing_unavailable', 'This deployment does not sell subscriptions.');
-      return;
-    }
     sendPage(
       res,
       renderPayPage({
         prices,
+        enabled: Boolean(createYooKassaPayment),
         requireEmail: receiptRequired,
         termsUrl: process.env.BILLING_TERMS_URL || '',
         privacyUrl: process.env.BILLING_PRIVACY_URL || '',

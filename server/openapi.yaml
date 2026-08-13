@@ -259,12 +259,17 @@ paths:
       tags: [billing]
       summary: Checkout page (HTML)
       description: |
-        The plan picker the app opens for «Оформить подписку». Served by this
-        service because creating a payment needs the ЮKassa secret anyway — one
-        origin, no CORS, one place where the price is written down.
+        The plan picker the app opens for «Оформить подписку», and the page
+        ЮKassa reviews before enabling the shop. Served by this service because
+        creating a payment needs the ЮKassa secret anyway — one origin, no CORS,
+        one place where the price is written down.
+
+        Served even when nothing is configured, and that is load-bearing: the
+        provider reviews this page BEFORE it switches the shop on, so a 503 until
+        the shop exists would make the page unreviewable. Without a shop the
+        content is identical minus the button; `/billing/checkout` still 503s.
       responses:
         '200': { description: HTML, content: { text/html: { schema: { type: string } } } }
-        '503': { description: Direct sales are not configured on this deployment }
 
   /billing/done:
     get:
