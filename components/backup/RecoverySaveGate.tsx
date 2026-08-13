@@ -61,7 +61,15 @@ export function RecoverySaveGate({
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+    <ScrollView
+      contentContainerStyle={styles.container}
+      keyboardShouldPersistTaps="handled"
+      // The one input surface that does not go through `Screen` — it is a gate
+      // rendered over the backup flow, and the field it asks to fill is the
+      // recovery phrase, i.e. exactly the field you must not be unable to reach.
+      automaticallyAdjustKeyboardInsets
+      keyboardDismissMode={theme.isIOS ? 'interactive' : 'on-drag'}
+    >
       <Text style={[styles.title, { color: theme.text }, theme.font.bodyBold]}>
         {t('recovery.gate.title')}
       </Text>
