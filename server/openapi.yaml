@@ -205,6 +205,13 @@ paths:
                 license_key:
                   type: string
                   description: Renewal — must be a key we issued, else 404. Absent on a first purchase.
+                return_url:
+                  type: string
+                  description: |
+                    Where to send the payer afterwards. Allowed only for origins in
+                    BILLING_WEB_ORIGINS (our own site) — compared as a parsed origin, never
+                    as a prefix, so a payment link cannot become an open redirect wearing
+                    our domain. Omitted by the app, which gets the service's own return page.
       responses:
         '200':
           description: Payment created
@@ -218,7 +225,7 @@ paths:
                   confirmation_url: { type: string, description: Send the payer here. }
                   plan: { type: string, example: monthly }
                   amount: { type: string, example: '199.00' }
-        '400': { description: Unknown plan, or a missing/invalid email when receipts are on }
+        '400': { description: Unknown plan, a missing/invalid email when receipts are on, or a return_url that is not ours }
         '404': { description: license_key is not a licence we issued }
         '429': { $ref: '#/components/responses/RateLimited' }
         '502': { description: ЮKassa would not create the payment — retry }
@@ -257,19 +264,18 @@ paths:
   /billing/pay:
     get:
       tags: [billing]
-      summary: Checkout page (HTML)
+      summary: Redirect to the purchase page
       description: |
-        The plan picker the app opens for «Оформить подписку», and the page
-        ЮKassa reviews before enabling the shop. Served by this service because
-        creating a payment needs the ЮKassa secret anyway — one origin, no CORS,
-        one place where the price is written down.
+        The stable address of "where you buy". The page itself lives on the site
+        (`BILLING_SALES_URL`, default `https://family-pie.ru/driftora/subscription`)
+        — keeping a copy here meant a second home for the price, the refund rules
+        and the seller's details, which is the kind of duplication that goes stale
+        in whichever copy nobody is looking at.
 
-        Served even when nothing is configured, and that is load-bearing: the
-        provider reviews this page BEFORE it switches the shop on, so a 503 until
-        the shop exists would make the page unreviewable. Without a shop the
-        content is identical minus the button; `/billing/checkout` still 503s.
+        302 rather than 301: a permanent redirect is cached by browsers forever,
+        and the target is a deployment detail that may move again.
       responses:
-        '200': { description: HTML, content: { text/html: { schema: { type: string } } } }
+        '302': { description: Redirect to the purchase page }
 
   /billing/done:
     get:
@@ -616,6 +622,7 @@ components:
                   email_required,
                   invalid_email,
                   unknown_license,
+                  invalid_return_url,
                 ]
             message: { type: string }
 

@@ -66,12 +66,6 @@ export function billingOrigin(): string {
   return /^(https?:\/\/[^/]+)/.exec(base)?.[1] ?? '';
 }
 
-/** Where «Оформить подписку» sends the user. Empty when there is no server. */
-export function checkoutUrl(): string {
-  const origin = billingOrigin();
-  return origin ? `${origin}/billing/pay` : '';
-}
-
 /** Typed by hand off a screen — accept lowercase and stray spaces, like the server. */
 export function normalizeLicenseKey(raw: string): string {
   return raw.trim().toUpperCase().replace(/\s+/g, '');

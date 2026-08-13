@@ -9,7 +9,6 @@ import { ensureInstallId } from '@/lib/core/services/installId';
 import {
   activateLicense,
   billingOrigin,
-  checkoutUrl,
   claimLicenseKey,
   fetchPlans,
   normalizeLicenseKey,
@@ -63,13 +62,11 @@ afterEach(() => {
 describe('billing endpoints', () => {
   it('derives the server origin from the parse endpoint', () => {
     expect(billingOrigin()).toBe(ORIGIN);
-    expect(checkoutUrl()).toBe(`${ORIGIN}/billing/pay`);
   });
 
   it('has nowhere to sell when the build has no server', () => {
     delete process.env.EXPO_PUBLIC_FOOD_API_URL;
     expect(billingOrigin()).toBe('');
-    expect(checkoutUrl()).toBe('');
   });
 
   it('accepts a key typed by hand, lowercase and spaced', () => {
