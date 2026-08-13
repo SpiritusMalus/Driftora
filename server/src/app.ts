@@ -21,8 +21,17 @@ import { localizeAlternatives, localizeDraft } from './nutrition/translateNames.
 import { createInstallQuota, installIdOf } from './installQuota.js';
 import { createEntitlements, type PurchaseVerifier } from './entitlements.js';
 import { createGooglePlayVerifier } from './billing/googlePlay.js';
-import { createLicenses, type Licenses } from './billing/licenses.js';
-import { createYooKassaClient, createYooKassaWebhook, type YooKassaPayment } from './billing/yookassa.js';
+import { createLicenses, DEFAULT_PLAN, normalizeKey, PLAN_DAYS, type Licenses } from './billing/licenses.js';
+import {
+  createYooKassaClient,
+  createYooKassaPaymentCreator,
+  createYooKassaWebhook,
+  resolvePrices,
+  type CheckoutDraft,
+  type CreatedPayment,
+  type YooKassaPayment,
+} from './billing/yookassa.js';
+import { renderDonePage, renderPayPage } from './billing/checkoutPage.js';
 import { buildLimiters, type RateLimits, resolveLimits } from './rateLimit.js';
 import {
   coercePer100,
@@ -189,6 +198,8 @@ export interface CreateAppOptions {
   licensesPath?: string;
   /** Inject the ЮKassa payment reader (tests); production builds one from env. */
   getYooKassaPayment?: (id: string) => Promise<YooKassaPayment>;
+  /** Inject the ЮKassa payment creator (tests); production builds one from env. */
+  createYooKassaPayment?: (draft: CheckoutDraft) => Promise<CreatedPayment>;
   /** Override the ЮKassa source-IP allowlist (tests). */
   yooKassaCidrs?: readonly string[];
 }
@@ -254,6 +265,40 @@ function resolveYooKassaReader(
   }
 }
 
+/** …and for the outbound half: creating the payment the webhook later settles. */
+function resolvePaymentCreator(
+  injected?: (draft: CheckoutDraft) => Promise<CreatedPayment>,
+): ((draft: CheckoutDraft) => Promise<CreatedPayment>) | null {
+  if (injected) return injected;
+  if (!process.env.YOOKASSA_SHOP_ID || !process.env.YOOKASSA_SECRET_KEY) return null;
+  try {
+    return createYooKassaPaymentCreator();
+  } catch (err) {
+    console.error('billing: yookassa checkout unavailable:', err instanceof Error ? err.message : String(err));
+    return null;
+  }
+}
+
+/**
+ * Absolute base for the ЮKassa `return_url`.
+ *
+ * Prefers `BILLING_PUBLIC_URL` and falls back to the request's own host. The
+ * fallback is safe for exactly one reason worth writing down: the only use is
+ * sending the payer's browser BACK to where it already is, so a forged Host
+ * header can only redirect the attacker to their own page. Never reuse this
+ * value for anything a third party is asked to trust.
+ */
+function publicBaseUrl(req: Request): string {
+  const configured = (process.env.BILLING_PUBLIC_URL || '').replace(/\/+$/, '');
+  if (configured) return configured;
+  return `${req.protocol}://${req.get('host') ?? ''}`;
+}
+
+/** Rough shape check — a full RFC validator would reject addresses that work. */
+function looksLikeEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) && value.length <= 254;
+}
+
 /**
  * Build the Express app (no listener — see `server.ts`). A custom `resolver`
  * can be injected for tests; production wires it from env-configured providers.
@@ -296,6 +341,7 @@ export function createApp(
   // chain decides which adapter owns the string.
   const googleVerifier = resolveGoogleVerifier(opts.verifyPurchase);
   const getYooKassaPayment = resolveYooKassaReader(opts.getYooKassaPayment);
+  const createYooKassaPayment = resolvePaymentCreator(opts.createYooKassaPayment);
   const licenses: Licenses = createLicenses({ path: opts.licensesPath });
 
   const verifiers: PurchaseVerifier[] = [];
@@ -377,6 +423,139 @@ export function createApp(
       return;
     }
     void yooKassaWebhook(req, res);
+  });
+
+  /**
+   * Start a purchase: create a ЮKassa payment and hand back where to send the
+   * payer. The webhook above settles it and mints the licence.
+   *
+   * No `requireToken`, same reason as `/billing/license`: the caller is a web
+   * page, which cannot hold the app token. Creating a payment moves no money and
+   * commits nobody — the payer still has to complete it at ЮKassa — so the
+   * exposure is a per-IP-capped stream of abandoned payments, not a loss.
+   */
+  const prices = resolvePrices();
+  const receiptRequired = process.env.BILLING_RECEIPT === '1';
+
+  app.post('/billing/checkout', limiters.billingDaily, async (req: Request, res: Response) => {
+    if (!createYooKassaPayment) {
+      fail(res, 503, 'billing_unavailable', 'This deployment does not sell subscriptions.');
+      return;
+    }
+    const body = (req.body ?? {}) as { plan?: unknown; email?: unknown; license_key?: unknown };
+
+    // An unknown plan is REJECTED rather than defaulted: silently falling back to
+    // monthly would charge someone who asked for a year the wrong amount and
+    // give them the wrong thing, which is the one failure here that costs money.
+    const plan = typeof body.plan === 'string' ? body.plan.trim() : DEFAULT_PLAN;
+    if (!(plan in PLAN_DAYS) || !prices[plan]) {
+      fail(res, 400, 'unknown_plan', 'No such subscription plan.');
+      return;
+    }
+
+    const email = typeof body.email === 'string' ? body.email.trim() : '';
+    if (receiptRequired && !looksLikeEmail(email)) {
+      // The shop issues fiscal receipts, and ЮKassa rejects a receipt without a
+      // customer contact — better a clear field error than a failed payment.
+      fail(res, 400, 'email_required', 'An email address is required for the receipt.');
+      return;
+    }
+    if (email && !looksLikeEmail(email)) {
+      fail(res, 400, 'invalid_email', 'That email address does not look valid.');
+      return;
+    }
+
+    // Renewal: the key must be one we issued. Passing an unrecognised string
+    // through would make the typo itself the new licence key — the buyer would
+    // pay and then not find their subscription where they expected it.
+    const rawKey = typeof body.license_key === 'string' ? body.license_key.trim() : '';
+    const licenseKey = rawKey ? normalizeKey(rawKey) : '';
+    if (licenseKey && !licenses.byKey(licenseKey)) {
+      fail(res, 404, 'unknown_license', 'We do not know that licence key. Leave the field empty to get a new one.');
+      return;
+    }
+
+    try {
+      const payment = await createYooKassaPayment({
+        plan,
+        email: email || undefined,
+        licenseKey: licenseKey || undefined,
+        returnUrl: `${publicBaseUrl(req)}/billing/done`,
+      });
+      res.json({
+        payment_id: payment.id,
+        confirmation_url: payment.confirmationUrl,
+        plan,
+        amount: payment.amount,
+      });
+    } catch (err) {
+      console.error('billing: checkout failed:', err instanceof Error ? err.message : String(err));
+      fail(res, 502, 'store_unreachable', 'Could not start the payment. Try again in a minute.');
+    }
+  });
+
+  /**
+   * What is on sale, for the app's native purchase screen.
+   *
+   * The price lives on the server for the same reason the quota caps do: an APK
+   * with 199 ₽ baked into it can only be corrected by a store release, and the
+   * store release is the slowest thing in this whole product. Unauthenticated,
+   * because a price list is public by definition.
+   */
+  app.get('/billing/plans', (_req: Request, res: Response) => {
+    res.json({
+      enabled: Boolean(createYooKassaPayment),
+      receipt_required: receiptRequired,
+      currency: 'RUB',
+      plans: Object.keys(PLAN_DAYS)
+        .filter((plan) => prices[plan])
+        .map((plan) => ({
+          id: plan,
+          days: PLAN_DAYS[plan],
+          amount: prices[plan]?.amount ?? '',
+          description: prices[plan]?.description ?? '',
+        })),
+    });
+  });
+
+  /** Locks the two HTML pages down to what they actually use. */
+  function sendPage(res: Response, html: string): void {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader(
+      'Content-Security-Policy',
+      "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'",
+    );
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.send(html);
+  }
+
+  /** The plan picker. This is the link the app opens for «Оформить подписку». */
+  app.get('/billing/pay', (_req: Request, res: Response) => {
+    if (!createYooKassaPayment) {
+      fail(res, 503, 'billing_unavailable', 'This deployment does not sell subscriptions.');
+      return;
+    }
+    sendPage(
+      res,
+      renderPayPage({
+        prices,
+        requireEmail: receiptRequired,
+        termsUrl: process.env.BILLING_TERMS_URL || '',
+        privacyUrl: process.env.BILLING_PRIVACY_URL || '',
+        seller: process.env.BILLING_SELLER || '',
+        contact: process.env.BILLING_CONTACT || '',
+      }),
+    );
+  });
+
+  /**
+   * Where ЮKassa returns the payer. Served unconditionally: someone can land
+   * here from an old payment after billing was switched off, and a 503 would
+   * hide a licence they already own.
+   */
+  app.get('/billing/done', (_req: Request, res: Response) => {
+    sendPage(res, renderDonePage());
   });
 
   /**

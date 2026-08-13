@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { Request, Response } from 'express';
 import { DEFAULT_PLAN, PLAN_DAYS, type Licenses } from './licenses.js';
 
@@ -146,6 +147,162 @@ export function createYooKassaClient(opts: YooKassaClientOptions = {}): (id: str
     });
     if (!res.ok) throw new Error(`yookassa payment lookup failed: ${res.status}`);
     return (await res.json()) as YooKassaPayment;
+  };
+}
+
+/* ------------------------------------------------------------------------- *
+ * Creating a payment — the half of the flow a webhook can never do.
+ *
+ * The webhook above reacts to a payment that already exists; something has to
+ * MAKE one, or the only way to buy is a link pasted by hand from the ЮKassa
+ * dashboard. A dashboard link cannot carry `metadata.plan` or
+ * `metadata.license_key`, so it can neither sell a yearly plan nor top up an
+ * existing licence — both of which the webhook already knows how to honour.
+ * ------------------------------------------------------------------------- */
+
+/** One purchasable plan, priced the way ЮKassa wants it: a decimal string. */
+export interface PlanPrice {
+  /** Roubles, always two decimals ("199.00") — ЮKassa rejects bare integers. */
+  amount: string;
+  /** Shown on the payment page and the receipt. ЮKassa caps this at 128 chars. */
+  description: string;
+}
+
+const DEFAULT_PRICE_RUB: Record<string, number> = { monthly: 199, yearly: 1990 };
+const DESCRIPTION_MAX = 128;
+
+/**
+ * Read a price override. Anything that is not a positive finite number falls
+ * back to the default rather than throwing: a typo in an env var must not take
+ * the whole service down, and the default is a defensible price, not zero.
+ */
+export function formatAmount(raw: string | undefined, fallbackRub: number): string {
+  const n = Number(raw);
+  return (Number.isFinite(n) && n > 0 ? n : fallbackRub).toFixed(2);
+}
+
+/** Prices for every plan `licenses.ts` knows about, from `BILLING_PRICE_*`. */
+export function resolvePrices(env: NodeJS.ProcessEnv = process.env): Record<string, PlanPrice> {
+  const out: Record<string, PlanPrice> = {};
+  for (const [plan, days] of Object.entries(PLAN_DAYS)) {
+    const amount = formatAmount(env[`BILLING_PRICE_${plan.toUpperCase()}`], DEFAULT_PRICE_RUB[plan] ?? 199);
+    out[plan] = {
+      amount,
+      description: `Driftora — ИИ-разборы еды, ${days} дней`.slice(0, DESCRIPTION_MAX),
+    };
+  }
+  return out;
+}
+
+export interface CheckoutDraft {
+  plan: string;
+  /** Where ЮKassa sends the browser back once the payer is done. */
+  returnUrl: string;
+  /** Buyer's email — required only when receipts are on (54-ФЗ). */
+  email?: string;
+  /** Renewing an existing licence rather than starting a new one. */
+  licenseKey?: string;
+}
+
+export interface CreatedPayment {
+  id: string;
+  confirmationUrl: string;
+  amount: string;
+}
+
+export interface PaymentCreatorOptions extends YooKassaClientOptions {
+  prices?: Record<string, PlanPrice>;
+  /**
+   * Send a 54-ФЗ receipt with the payment. On for a shop with a cash register
+   * attached in ЮKassa — where a payment WITHOUT a receipt is rejected — and off
+   * for a shop that issues receipts elsewhere, where sending one duplicates it.
+   * Only the shop owner knows which, hence a setting rather than a guess.
+   */
+  receipt?: boolean;
+  /** 1 = «без НДС» — the right code for the ИП-on-УСН this ships for. */
+  vatCode?: number;
+  /** Injectable for deterministic tests. */
+  newIdempotenceKey?: () => string;
+}
+
+/**
+ * Build the "create a payment" call, or throw when the shop is not configured.
+ *
+ * IDEMPOTENCE KEY IS PER CALL, deliberately. ЮKassa uses it to collapse a
+ * RETRY of one logical request; two taps on «Оплатить» are two intents to pay,
+ * and only one of them will ever be completed. Reusing a key across taps would
+ * instead hand the second tap the first payment's confirmation URL — including
+ * after that payment was cancelled, which is a dead end the payer cannot leave.
+ */
+export function createYooKassaPaymentCreator(
+  opts: PaymentCreatorOptions = {},
+): (draft: CheckoutDraft) => Promise<CreatedPayment> {
+  const shopId = opts.shopId ?? process.env.YOOKASSA_SHOP_ID ?? '';
+  const secretKey = opts.secretKey ?? process.env.YOOKASSA_SECRET_KEY ?? '';
+  const doFetch = opts.fetchImpl ?? fetch;
+  if (!shopId || !secretKey) throw new Error('YOOKASSA_SHOP_ID / YOOKASSA_SECRET_KEY are not set');
+
+  const prices = opts.prices ?? resolvePrices();
+  const withReceipt = opts.receipt ?? process.env.BILLING_RECEIPT === '1';
+  const vatCode = opts.vatCode ?? (Number(process.env.BILLING_VAT_CODE) || 1);
+  const newKey = opts.newIdempotenceKey ?? (() => randomUUID());
+  const auth = `Basic ${Buffer.from(`${shopId}:${secretKey}`).toString('base64')}`;
+
+  return async function createPayment(draft: CheckoutDraft): Promise<CreatedPayment> {
+    const plan = draft.plan in prices ? draft.plan : DEFAULT_PLAN;
+    const price = prices[plan];
+    if (!price) throw new Error(`no price configured for plan "${plan}"`);
+
+    const amount = { value: price.amount, currency: 'RUB' };
+    const body: Record<string, unknown> = {
+      amount,
+      capture: true,
+      confirmation: { type: 'redirect', return_url: draft.returnUrl },
+      description: price.description,
+      // Read back verbatim by the webhook — this is the whole reason a payment
+      // has to be created by us rather than from a dashboard link.
+      metadata: draft.licenseKey ? { plan, license_key: draft.licenseKey } : { plan },
+    };
+    if (withReceipt) {
+      body.receipt = {
+        customer: { email: draft.email },
+        items: [
+          {
+            description: price.description,
+            quantity: '1.00',
+            amount,
+            vat_code: vatCode,
+            payment_subject: 'service',
+            payment_mode: 'full_prepayment',
+          },
+        ],
+      };
+    }
+
+    const res = await doFetch(`${API_BASE}/payments`, {
+      method: 'POST',
+      headers: {
+        Authorization: auth,
+        'Content-Type': 'application/json',
+        'Idempotence-Key': newKey(),
+      },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`yookassa payment create failed: ${res.status}`);
+
+    const payment = (await res.json()) as {
+      id?: unknown;
+      confirmation?: { confirmation_url?: unknown };
+    };
+    const id = typeof payment.id === 'string' ? payment.id : '';
+    const confirmationUrl =
+      typeof payment.confirmation?.confirmation_url === 'string' ? payment.confirmation.confirmation_url : '';
+    // A 200 without somewhere to send the payer is not a usable payment. Failing
+    // here surfaces it as "could not start the payment" instead of a checkout
+    // page that redirects to `undefined`.
+    if (!id || !confirmationUrl) throw new Error('yookassa payment create: no confirmation url');
+
+    return { id, confirmationUrl, amount: price.amount };
   };
 }
 

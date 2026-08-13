@@ -85,6 +85,8 @@ export interface SettingsPatch {
   /// «Начать заново» on the weekly review — the streak stops counting back past
   /// this moment. Null clears the restart (streak spans the whole history).
   streakRestartedAt?: Date | null;
+  /// Licence key for the AI subscription. Null clears it («отвязать подписку»).
+  licenseKey?: string | null;
 }
 
 /// Applies a partial update to the single settings row, returning the result.
@@ -96,6 +98,8 @@ export async function updateSettings(
   // `!== undefined`, not `!= null`: null is a MEANINGFUL value here (undo the
   // restart), and the usual `!= null` guard would silently drop it.
   if (patch.streakRestartedAt !== undefined) set.streakRestartedAt = patch.streakRestartedAt;
+  // Same reason: null means "forget the key", not "leave it alone".
+  if (patch.licenseKey !== undefined) set.licenseKey = patch.licenseKey;
   if (patch.targetKcal != null) set.targetKcal = patch.targetKcal;
   if (patch.targetProteinG != null) set.targetProteinG = patch.targetProteinG;
   if (patch.targetFatG != null) set.targetFatG = patch.targetFatG;
