@@ -405,75 +405,7 @@ export function createApp(
 
   app.use(express.json({ limit: '16kb' }));
 
-  // Minimal CORS — only emitted when an origin is configured.
-  app.use((req: Request, res: Response, next: NextFunction) => {
-    if (ALLOWED_ORIGIN) {
-      res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGIN);
-      res.setHeader('Vary', 'Origin');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-      res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
-    }
-    if (req.method === 'OPTIONS') {
-      res.sendStatus(204);
-      return;
-    }
-    next();
-  });
-
-  app.get('/health', (_req: Request, res: Response) => {
-    res.json({ status: 'ok' });
-  });
-
-  // Aggregate, content-free ops counters (privacy §2). NOTE: `requireToken` is a
-  // no-op when APP_TOKEN is unset, so on a tokenless deployment /metrics (like
-  // every route) is public — operational counts become visible to anyone. That's
-  // acceptable only if running behind a network boundary; set APP_TOKEN otherwise.
-  app.get('/metrics', requireToken, (_req: Request, res: Response) => {
-    // `ai_quota` rides alongside the registry snapshot: the anonymous usage
-    // histogram that will size the free tier / fair-use cap from real behavior.
-    res.json({
-      ...metrics.snapshot(),
-      ai_quota: aiQuota.snapshot(),
-      billing: { ...entitlements.snapshot(), ...licenses.snapshot() },
-    });
-  });
-
-  /**
-   * ЮKassa notification endpoint.
-   *
-   * Deliberately NOT behind `requireToken`: ЮKassa has no way to send our app
-   * token. Authentication is the source-IP allowlist inside the handler, which
-   * is the mechanism ЮKassa itself prescribes — and the handler re-reads the
-   * payment through the API rather than believing the body.
-   */
-  const yooKassaWebhook = getYooKassaPayment
-    ? createYooKassaWebhook({ licenses, getPayment: getYooKassaPayment, cidrs: opts.yooKassaCidrs })
-    : null;
-  // Mounted unconditionally even when unconfigured, so the route stays visible
-  // to the openapi contract test instead of vanishing from the spec's view.
-  app.post('/billing/yookassa/webhook', (req: Request, res: Response) => {
-    if (!yooKassaWebhook) {
-      fail(res, 503, 'billing_unavailable', 'This deployment does not sell subscriptions.');
-      return;
-    }
-    void yooKassaWebhook(req, res);
-  });
-
-  /**
-   * Start a purchase: create a ЮKassa payment and hand back where to send the
-   * payer. The webhook above settles it and mints the licence.
-   *
-   * No `requireToken`, same reason as `/billing/license`: the caller is a web
-   * page, which cannot hold the app token. Creating a payment moves no money and
-   * commits nobody — the payer still has to complete it at ЮKassa — so the
-   * exposure is a per-IP-capped stream of abandoned payments, not a loss.
-   */
-  const prices = resolvePrices();
-  const receiptRequired = process.env.BILLING_RECEIPT === '1';
   const webOrigins = siteOrigins();
-  // Where the purchase page lives. The app never opens it (it creates payments
-  // natively), so this is purely the web front door.
-  const salesPageUrl = process.env.BILLING_SALES_URL || `${webOrigins[0] ?? ''}/driftora/subscription`;
 
   /**
    * CORS for the billing endpoints only.
@@ -568,6 +500,76 @@ export function createApp(
       fail(res, 502, 'store_unreachable', 'Could not start the payment. Try again in a minute.');
     }
   });
+
+
+  // Minimal CORS — only emitted when an origin is configured.
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (ALLOWED_ORIGIN) {
+      res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGIN);
+      res.setHeader('Vary', 'Origin');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
+    }
+    if (req.method === 'OPTIONS') {
+      res.sendStatus(204);
+      return;
+    }
+    next();
+  });
+
+  app.get('/health', (_req: Request, res: Response) => {
+    res.json({ status: 'ok' });
+  });
+
+  // Aggregate, content-free ops counters (privacy §2). NOTE: `requireToken` is a
+  // no-op when APP_TOKEN is unset, so on a tokenless deployment /metrics (like
+  // every route) is public — operational counts become visible to anyone. That's
+  // acceptable only if running behind a network boundary; set APP_TOKEN otherwise.
+  app.get('/metrics', requireToken, (_req: Request, res: Response) => {
+    // `ai_quota` rides alongside the registry snapshot: the anonymous usage
+    // histogram that will size the free tier / fair-use cap from real behavior.
+    res.json({
+      ...metrics.snapshot(),
+      ai_quota: aiQuota.snapshot(),
+      billing: { ...entitlements.snapshot(), ...licenses.snapshot() },
+    });
+  });
+
+  /**
+   * ЮKassa notification endpoint.
+   *
+   * Deliberately NOT behind `requireToken`: ЮKassa has no way to send our app
+   * token. Authentication is the source-IP allowlist inside the handler, which
+   * is the mechanism ЮKassa itself prescribes — and the handler re-reads the
+   * payment through the API rather than believing the body.
+   */
+  const yooKassaWebhook = getYooKassaPayment
+    ? createYooKassaWebhook({ licenses, getPayment: getYooKassaPayment, cidrs: opts.yooKassaCidrs })
+    : null;
+  // Mounted unconditionally even when unconfigured, so the route stays visible
+  // to the openapi contract test instead of vanishing from the spec's view.
+  app.post('/billing/yookassa/webhook', (req: Request, res: Response) => {
+    if (!yooKassaWebhook) {
+      fail(res, 503, 'billing_unavailable', 'This deployment does not sell subscriptions.');
+      return;
+    }
+    void yooKassaWebhook(req, res);
+  });
+
+  /**
+   * Start a purchase: create a ЮKassa payment and hand back where to send the
+   * payer. The webhook above settles it and mints the licence.
+   *
+   * No `requireToken`, same reason as `/billing/license`: the caller is a web
+   * page, which cannot hold the app token. Creating a payment moves no money and
+   * commits nobody — the payer still has to complete it at ЮKassa — so the
+   * exposure is a per-IP-capped stream of abandoned payments, not a loss.
+   */
+  const prices = resolvePrices();
+  const receiptRequired = process.env.BILLING_RECEIPT === '1';
+  // Where the purchase page lives. The app never opens it (it creates payments
+  // natively), so this is purely the web front door.
+  const salesPageUrl = process.env.BILLING_SALES_URL || `${webOrigins[0] ?? ''}/driftora/subscription`;
 
   /**
    * What is on sale, for the app's native purchase screen.
