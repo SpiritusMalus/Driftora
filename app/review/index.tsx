@@ -1,7 +1,7 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card } from '@/components/ui/Card';
 import { ListGroup, type RowSpec } from '@/components/ui/ListGroup';
@@ -9,7 +9,7 @@ import { Screen } from '@/components/ui/Screen';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { listDistortionTagsSince } from '@/lib/core/db/diary';
-import { ensureSettings } from '@/lib/core/db/settings';
+import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
 import { weekReview, type WeekReview } from '@/lib/core/db/weekReview';
 import { thinkingTrapOfWeek, type ThinkingTrap } from '@/lib/core/insights/distortions';
 import { stepReference } from '@/lib/core/insights/stepNorms';
@@ -26,6 +26,33 @@ export default function ReviewScreen() {
   const [hideCalories, setHideCalories] = useState(false);
   const [showPopulationStats, setShowPopulationStats] = useState(false);
   const [trap, setTrap] = useState<ThinkingTrap | null>(null);
+  const [restarted, setRestarted] = useState<Date | null>(null);
+
+  /// «Начать заново»: move the streak's floor to now. Confirmed first — the
+  /// number it resets is the one thing on this screen people are proud of.
+  ///
+  /// Nothing is deleted. Every logged day, meal and workout stays; only the
+  /// consecutive-weeks tally starts from today. The dialog says so, because
+  /// «начать заново» in a fitness app usually means «сотри всё», and a person
+  /// tapping it deserves to know which one this is BEFORE they tap.
+  function onRestartStreak() {
+    Alert.alert(t('review.restart.title'), t('review.restart.body'), [
+      { text: t('review.restart.cancel'), style: 'cancel' },
+      {
+        text: t('review.restart.confirm'),
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
+            if (!db) return;
+            const now = new Date();
+            await updateSettings(db, { streakRestartedAt: now });
+            setRestarted(now);
+            setReview((prev) => (prev ? { ...prev, streakWeeks: 0 } : prev));
+          })();
+        },
+      },
+    ]);
+  }
 
   useFocusEffect(
     useCallback(() => {
@@ -42,6 +69,7 @@ export default function ReviewScreen() {
         if (!active) return;
         setReview(rev);
         setHideCalories(settings.hideCalories);
+        setRestarted(settings.streakRestartedAt ?? null);
         setShowPopulationStats(settings.showPopulationStats);
         setTrap(thinkingTrapOfWeek(tagLists));
       })();
@@ -178,6 +206,19 @@ export default function ReviewScreen() {
           </Text>
         </Card>
       ) : null}
+
+      {/* Quiet, at the bottom, never beside the number it resets — an action
+          that zeroes a streak must not sit within a thumb's slip of the hero. */}
+      <Pressable onPress={onRestartStreak} style={styles.restartBtn} accessibilityRole="button">
+        <Text style={[styles.restartText, { color: theme.subtle }, theme.font.body]}>
+          {t('review.restart.action')}
+        </Text>
+      </Pressable>
+      {restarted != null ? (
+        <Text style={[styles.restartNote, { color: theme.tertiary }, theme.font.body]}>
+          {t('review.restart.since', { date: restarted.toLocaleDateString() })}
+        </Text>
+      ) : null}
     </Screen>
   );
 }
@@ -198,6 +239,9 @@ const styles = StyleSheet.create({
   heroNum: { fontSize: 40, lineHeight: 44 },
   heroStreak: { fontSize: 14, lineHeight: 19 },
   reassurance: { fontSize: 12, marginTop: 10, lineHeight: 17 },
+  restartBtn: { alignSelf: 'center', paddingVertical: 14, paddingHorizontal: 16, marginTop: 24 },
+  restartText: { fontSize: 13 },
+  restartNote: { fontSize: 12, textAlign: 'center', marginTop: -6 },
   deltaCaption: { fontSize: 12, marginTop: 14, lineHeight: 16 },
   card: { marginTop: 12 },
   rowRight: { alignItems: 'flex-end' },

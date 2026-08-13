@@ -3,6 +3,7 @@ import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
 import { logDaysInRange, startOfWeek, weeklyStreak } from '../insights/engagement';
 import { selfInitiatedLogDays } from './activity';
+import { ensureSettings } from './settings';
 import { diaryEntries, foodEntries, stepsDays, wins, workouts } from './schema';
 import { dayKey } from './steps';
 
@@ -127,16 +128,17 @@ export async function weekReview(db: AnyDb, today: Date = new Date()): Promise<W
   const thisEnd = addDays(thisStart, 7);
   const lastStart = addDays(thisStart, -7);
 
-  const [thisWeek, lastWeek, logDays] = await Promise.all([
+  const [thisWeek, lastWeek, logDays, settings] = await Promise.all([
     statsForWindow(db, thisStart, thisEnd),
     statsForWindow(db, lastStart, thisStart),
     selfInitiatedLogDays(db),
+    ensureSettings(db),
   ]);
 
   return {
     thisWeek,
     lastWeek,
-    streakWeeks: weeklyStreak(logDays, today).weeks,
+    streakWeeks: weeklyStreak(logDays, today, undefined, settings.streakRestartedAt).weeks,
     northStarThisWeek: logDaysInRange(logDays, thisStart, thisEnd),
     weekStart: dayKey(thisStart),
   };

@@ -281,6 +281,15 @@ export const appSettings = sqliteTable('app_settings', {
   // per CGNAT-shared IP. Not an account, not a device identifier — a coin
   // flip minted on first launch (lib/core/services/installId.ts). Null until then.
   installId: text('install_id'),
+  /// «Начать заново» on the weekly review: the streak stops counting back past
+  /// this moment. Null = never restarted (count over the whole history).
+  ///
+  /// A BOUNDARY, never a deletion. Nothing logged is touched — the days, meals
+  /// and workouts stay exactly where they are; only the consecutive-weeks tally
+  /// starts from here. Someone asking to start over wants a clean counter, not
+  /// their history erased, and the destructive reading of that request is not
+  /// one to guess at.
+  streakRestartedAt: integer('streak_restarted_at', { mode: 'timestamp' }),
   // Opt-in (default off): gentle context (JITAI) nudges — e.g. "behind your
   // usual pace this afternoon, fancy a short walk?". Rules are pure + on-device
   // (lib/core/insights/nudgeRules.ts); delivery is local notifications only,

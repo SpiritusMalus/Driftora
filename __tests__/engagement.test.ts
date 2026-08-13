@@ -42,6 +42,36 @@ describe('weeklyStreak', () => {
     expect(weeklyStreak(logDays, today)).toMatchObject({ weeks: 1 });
   });
 
+  /// «Начать заново» на экране Итогов недели. Граница, а не удаление: дни
+  /// остаются в базе, обнуляется только счёт недель подряд.
+  it('после «начать заново» недели до границы в серию не идут', () => {
+    const logDays = new Set([daysAgo(0), daysAgo(7), daysAgo(14), daysAgo(21)]);
+    // Без границы серия — все четыре недели.
+    expect(weeklyStreak(logDays, today)).toMatchObject({ weeks: 4 });
+    // Граница поставлена на прошлой неделе → считаются только она и текущая.
+    const restarted = new Date(today);
+    restarted.setDate(restarted.getDate() - 7);
+    expect(weeklyStreak(logDays, today, undefined, restarted)).toMatchObject({ weeks: 2 });
+  });
+
+  it('«начать заново» сегодня оставляет только текущую неделю', () => {
+    const logDays = new Set([daysAgo(0), daysAgo(7), daysAgo(14)]);
+    expect(weeklyStreak(logDays, today, undefined, today)).toMatchObject({ weeks: 1 });
+  });
+
+  it('снятие границы (null) возвращает прежнюю серию — записи не пострадали', () => {
+    const logDays = new Set([daysAgo(0), daysAgo(7), daysAgo(14)]);
+    expect(weeklyStreak(logDays, today, undefined, null)).toEqual(weeklyStreak(logDays, today));
+  });
+
+  it('граница в будущем не ломает счёт текущей недели', () => {
+    const logDays = new Set([daysAgo(0), daysAgo(7)]);
+    const future = new Date(today);
+    future.setDate(future.getDate() + 30);
+    // Текущая неделя всё ещё засчитана: она квалифицируется сама по себе.
+    expect(weeklyStreak(logDays, today, undefined, future)).toMatchObject({ weeks: 1 });
+  });
+
   it('is zero when nothing has been logged', () => {
     expect(weeklyStreak(new Set(), today)).toEqual({
       weeks: 0,

@@ -82,6 +82,9 @@ export interface SettingsPatch {
   syncEnabled?: boolean;
   syncConsentAt?: number | null;
   syncConsentVersion?: string;
+  /// «Начать заново» on the weekly review — the streak stops counting back past
+  /// this moment. Null clears the restart (streak spans the whole history).
+  streakRestartedAt?: Date | null;
 }
 
 /// Applies a partial update to the single settings row, returning the result.
@@ -90,6 +93,9 @@ export async function updateSettings(
   patch: SettingsPatch,
 ): Promise<AppSettings> {
   const set: Partial<typeof appSettings.$inferInsert> = {};
+  // `!== undefined`, not `!= null`: null is a MEANINGFUL value here (undo the
+  // restart), and the usual `!= null` guard would silently drop it.
+  if (patch.streakRestartedAt !== undefined) set.streakRestartedAt = patch.streakRestartedAt;
   if (patch.targetKcal != null) set.targetKcal = patch.targetKcal;
   if (patch.targetProteinG != null) set.targetProteinG = patch.targetProteinG;
   if (patch.targetFatG != null) set.targetFatG = patch.targetFatG;

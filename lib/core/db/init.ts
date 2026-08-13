@@ -276,6 +276,10 @@ export const MIGRATIONS: string[] = [
   // 2026-07-21: random per-install id for the server's AI-quota meter
   // (X-Install-Id). Null until installId.ts mints one on first launch.
   `ALTER TABLE app_settings ADD COLUMN install_id TEXT`,
+  // 2026-08-12: «начать заново» on the weekly review — the streak stops counting
+  // back past this moment. Null = never restarted. A boundary, not a deletion:
+  // no logged day is touched.
+  `ALTER TABLE app_settings ADD COLUMN streak_restarted_at INTEGER`,
 ];
 
 /// Runs each CREATE statement through [run], then the idempotent [MIGRATIONS].
