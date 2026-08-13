@@ -86,30 +86,58 @@ ${body}
 </main><script>${script}</script></body></html>`;
 }
 
+/**
+ * Defaults that make the page complete WITHOUT any configuration.
+ *
+ * These are not invented values: they are the same seller, contact and document
+ * URLs as the offer in `legal/TERMS_OF_USE.md`, which is public and rendered
+ * inside the app. Hard-coding them here is what lets the page be reviewed by the
+ * shop's moderator before a single env var exists — and if they ever have to
+ * disagree with the offer, that is a bug in one of the two, not a feature.
+ */
+const DEFAULT_SELLER = 'ИП Тихоненко Евгений Юрьевич, ОГРНИП 326508100294665, ИНН 504414138460';
+const DEFAULT_CONTACT = 'support@family-pie.ru';
+const DEFAULT_TERMS_URL = 'https://family-pie.ru/driftora/terms';
+const DEFAULT_PRIVACY_URL = 'https://family-pie.ru/driftora/privacy';
+
 export interface CheckoutPageOptions {
   prices: Record<string, PlanPrice>;
+  /**
+   * Whether a payment can actually be created right now.
+   *
+   * False renders the whole page anyway, minus the button. That ordering is
+   * forced by reality: the payment provider reviews the page a shop sells from
+   * BEFORE it enables the shop, so a page that 503s until the shop is enabled
+   * can never be reviewed at all.
+   */
+  enabled: boolean;
   /** Receipts on → the buyer's email is mandatory, so the field is too. */
   requireEmail: boolean;
-  /** Where the offer lives, if it is published. Empty hides the link. */
+  /** Where the offer lives. Empty falls back to the published URL. */
   termsUrl: string;
-  /** Privacy policy URL. Empty hides the link. */
+  /** Privacy policy URL. Empty falls back to the published URL. */
   privacyUrl: string;
   /**
    * Who is selling, as it appears in the registry ("ИП Фамилия И. О., ИНН …").
    *
    * ЮKassa moderates the page a shop sells from and looks for the seller's own
-   * details, a way to reach them, and the refund rules. All three are left as
-   * configuration because only the shop owner knows them — but the page is
-   * built to carry them, so switching the shop live is an env change, not a
-   * code change.
+   * details, a way to reach them, and the refund rules. Overridable by env for
+   * a different deployment; empty falls back to the operator named in the offer.
    */
   seller: string;
-  /** Support contact (email or a link). Empty hides the line. */
+  /** Support contact (email or a link). Empty falls back to the offer's. */
   contact: string;
 }
 
 /** `GET /billing/pay` — pick a plan, then hand off to ЮKassa. */
-export function renderPayPage(opts: CheckoutPageOptions): string {
+export function renderPayPage(input: CheckoutPageOptions): string {
+  const opts: CheckoutPageOptions = {
+    ...input,
+    seller: input.seller || DEFAULT_SELLER,
+    contact: input.contact || DEFAULT_CONTACT,
+    termsUrl: input.termsUrl || DEFAULT_TERMS_URL,
+    privacyUrl: input.privacyUrl || DEFAULT_PRIVACY_URL,
+  };
   const plans = Object.keys(PLAN_DAYS).filter((plan) => opts.prices[plan]);
   const options = plans
     .map((plan, i) => {
@@ -161,16 +189,25 @@ ${links.length ? `<p>${links.join(' · ')}</p>` : ''}
 ${opts.termsUrl ? `<p>Оплачивая, вы принимаете <a href="${esc(opts.termsUrl)}">условия использования</a>.</p>` : ''}
 </div>`;
 
+  // With the shop not yet enabled the page still has to READ as the page it is —
+  // the moderator is reviewing exactly this content — so only the button goes.
+  const action = opts.enabled
+    ? `<button id="go" type="button">Перейти к оплате</button>
+<p id="err" class="err" hidden></p>`
+    : `<p class="err">Оплата скоро откроется. Приложение работает бесплатно и без неё.</p>`;
+
   const body = `<h1>Подписка Driftora</h1>
 <p>Снимает дневной потолок на ИИ-разборы еды — фото, голос и текст. Дневник, вес, настроение и ручной ввод остаются бесплатными всегда.</p>
 ${options}
-${email}
-${renew}
-<button id="go" type="button">Перейти к оплате</button>
-<p id="err" class="err" hidden></p>
+${opts.enabled ? `${email}\n${renew}` : ''}
+${action}
 ${legal}`;
 
-  const script = `
+  // No button on the page → no script for it. Emitting it anyway would throw on
+  // the first `getElementById` and leave a broken console for the reviewer.
+  const script = !opts.enabled
+    ? ''
+    : `
 var cfg = ${json({ requireEmail: opts.requireEmail })};
 var go = document.getElementById('go'), err = document.getElementById('err');
 function show(m) { err.textContent = m; err.hidden = false; go.disabled = false; }
