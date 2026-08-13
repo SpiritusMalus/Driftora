@@ -506,3 +506,66 @@ test('return page is served even when the shop is switched off', async () => {
     await stop();
   }
 });
+
+test('the purchase page on the site is allowed to reach the API from a browser', async () => {
+  const { base, stop } = await startApp({
+    getYooKassaPayment: async (id) => ({ id, status: 'succeeded' }),
+    createYooKassaPayment: async () => ({ id: 'p', confirmationUrl: 'u', amount: '199.00' }),
+    licensesPath: '',
+    entitlementsPath: '',
+  });
+  try {
+    // Regression: the service-wide CORS handler answers EVERY preflight straight
+    // away, so a /billing-scoped one mounted after it never ran — the header was
+    // missing, the browser blocked the call, and the button on the site was dead
+    // while every server-side check still passed.
+    const pre = await realFetch(`${base}/billing/checkout`, {
+      method: 'OPTIONS',
+      headers: { Origin: 'https://family-pie.ru', 'Access-Control-Request-Method': 'POST' },
+    });
+    assert.equal(pre.status, 204);
+    assert.equal(pre.headers.get('access-control-allow-origin'), 'https://family-pie.ru');
+
+    const stranger = await realFetch(`${base}/billing/checkout`, {
+      method: 'OPTIONS',
+      headers: { Origin: 'https://evil.test', 'Access-Control-Request-Method': 'POST' },
+    });
+    assert.equal(stranger.headers.get('access-control-allow-origin'), null, 'only our own pages');
+  } finally {
+    await stop();
+  }
+});
+
+test('return_url is checked as an origin, not as a prefix', async () => {
+  const drafts: unknown[] = [];
+  const { base, stop } = await startApp({
+    getYooKassaPayment: async (id) => ({ id, status: 'succeeded' }),
+    createYooKassaPayment: async (draft) => {
+      drafts.push(draft);
+      return { id: 'p', confirmationUrl: 'u', amount: '199.00' };
+    },
+    licensesPath: '',
+    entitlementsPath: '',
+  });
+  const post = (body: unknown) =>
+    realFetch(`${base}/billing/checkout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  try {
+    const ok = await post({ plan: 'monthly', return_url: 'https://family-pie.ru/driftora/subscription/done' });
+    assert.equal(ok.status, 200);
+
+    // `startsWith` would have accepted this and turned a payment link into an
+    // open redirect wearing our own domain.
+    const lookalike = await post({ plan: 'monthly', return_url: 'https://family-pie.ru.evil.test/steal' });
+    assert.equal(lookalike.status, 400);
+    assert.equal(((await lookalike.json()) as any).error.code, 'invalid_return_url');
+
+    assert.equal(await post({ plan: 'monthly', return_url: 'javascript:alert(1)' }).then((r) => r.status), 400);
+    assert.equal(drafts.length, 1, 'only the allowed return_url ever reached ЮKassa');
+  } finally {
+    await stop();
+  }
+});
