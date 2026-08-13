@@ -369,6 +369,23 @@ export default function SettingsScreen() {
       <ToggleRow label={t('settings.aiToggle')} value={aiConsent} onChange={onToggleAi} theme={theme} />
       <Note theme={theme}>{aiConsent ? t('settings.aiOn') : t('settings.aiOff')}</Note>
 
+      {/* Subscription sits right under the AI toggle because that is the only
+          thing it changes — the daily ceiling on AI parses. Shown even with AI
+          off: the screen then explains rather than sells. */}
+      <ListGroup
+        rows={[
+          {
+            key: 'subscription',
+            icon: 'sparkles-outline',
+            tint: theme.primary,
+            iconBg: coralTile,
+            title: t('subscription.openRow'),
+            subtitle: t('subscription.openRowNote'),
+            onPress: () => router.push('/settings/subscription'),
+          },
+        ]}
+      />
+
       <SectionHeader>{t('settings.displaySection')}</SectionHeader>
       <ToggleRow label={t('settings.hideCalories')} value={hideCalories} onChange={(v) => { setHideCalories(v); dirty(); }} theme={theme} />
       <ToggleRow label={t('settings.llmDiaryAssist')} value={llmDiaryAssist} onChange={(v) => { setLlmDiaryAssist(v); dirty(); }} theme={theme} />

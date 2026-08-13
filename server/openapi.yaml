@@ -178,6 +178,112 @@ paths:
         '500': { description: Could not verify the payment — ЮKassa should retry }
         '503': { description: Direct sales are not configured on this deployment }
 
+  /billing/checkout:
+    post:
+      tags: [billing]
+      summary: Create a ЮKassa payment and get where to send the payer
+      description: |
+        The outbound half of direct sales: the webhook above can only settle a
+        payment that already exists, and a payment link pasted from the ЮKassa
+        dashboard cannot carry `metadata.plan` or `metadata.license_key` — so it
+        can sell neither a yearly plan nor a renewal of an existing licence.
+
+        Not token-authenticated: the caller is `/billing/pay`, a web page, which
+        has no app token. Creating a payment moves no money and commits nobody;
+        the per-IP daily cap bounds the abandoned-payment noise.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                plan: { type: string, enum: [monthly, yearly], default: monthly }
+                email:
+                  type: string
+                  description: Buyer's email. Required when the shop issues fiscal receipts (BILLING_RECEIPT=1).
+                license_key:
+                  type: string
+                  description: Renewal — must be a key we issued, else 404. Absent on a first purchase.
+      responses:
+        '200':
+          description: Payment created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [payment_id, confirmation_url, plan, amount]
+                properties:
+                  payment_id: { type: string }
+                  confirmation_url: { type: string, description: Send the payer here. }
+                  plan: { type: string, example: monthly }
+                  amount: { type: string, example: '199.00' }
+        '400': { description: Unknown plan, or a missing/invalid email when receipts are on }
+        '404': { description: license_key is not a licence we issued }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '502': { description: ЮKassa would not create the payment — retry }
+        '503': { description: Direct sales are not configured on this deployment }
+
+  /billing/plans:
+    get:
+      tags: [billing]
+      summary: What is on sale, and for how much
+      description: |
+        Read by the app's native subscription screen. The price lives here rather
+        than in the build for the same reason the quota caps do: a number baked
+        into an APK can only be corrected by a store release.
+      responses:
+        '200':
+          description: Price list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [enabled, receipt_required, currency, plans]
+                properties:
+                  enabled: { type: boolean, description: False when this deployment sells nothing. }
+                  receipt_required: { type: boolean, description: True → the buyer's email is mandatory. }
+                  currency: { type: string, example: RUB }
+                  plans:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, example: monthly }
+                        days: { type: integer, example: 30 }
+                        amount: { type: string, example: '199.00' }
+                        description: { type: string }
+
+  /billing/pay:
+    get:
+      tags: [billing]
+      summary: Checkout page (HTML)
+      description: |
+        The plan picker the app opens for «Оформить подписку». Served by this
+        service because creating a payment needs the ЮKassa secret anyway — one
+        origin, no CORS, one place where the price is written down.
+      responses:
+        '200': { description: HTML, content: { text/html: { schema: { type: string } } } }
+        '503': { description: Direct sales are not configured on this deployment }
+
+  /billing/done:
+    get:
+      tags: [billing]
+      summary: Return page after payment (HTML)
+      description: |
+        Where ЮKassa returns the payer. Polls `/billing/license` and shows the
+        key — arriving here means the browser is done, not that the notification
+        has landed. Served unconditionally, so someone returning from an older
+        payment is never told a licence they own does not exist.
+      parameters:
+        - in: query
+          name: payment_id
+          required: false
+          schema: { type: string }
+          description: Optional — the page also reads the id it stored before redirecting.
+      responses:
+        '200': { description: HTML, content: { text/html: { schema: { type: string } } } }
+
   /billing/license:
     get:
       tags: [billing]
@@ -501,6 +607,10 @@ components:
                   invalid_purchase,
                   store_unreachable,
                   license_not_ready,
+                  unknown_plan,
+                  email_required,
+                  invalid_email,
+                  unknown_license,
                 ]
             message: { type: string }
 

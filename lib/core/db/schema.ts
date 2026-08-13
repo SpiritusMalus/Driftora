@@ -281,6 +281,14 @@ export const appSettings = sqliteTable('app_settings', {
   // per CGNAT-shared IP. Not an account, not a device identifier — a coin
   // flip minted on first launch (lib/core/services/installId.ts). Null until then.
   installId: text('install_id'),
+  // Licence key bought on the payment page — the only thing that turns the paid
+  // AI budget on. Null = free tier. Stored in plaintext ON PURPOSE (see the
+  // server's billing/licenses.ts): it is our own invention with no power outside
+  // this app, the worst a leak buys is some free parsing, and the owner has to
+  // be able to read it back to move their subscription to a new phone.
+  // Re-sent to the server on every launch — that is what makes a refund end
+  // access rather than linger until the paid date.
+  licenseKey: text('license_key'),
   /// «Начать заново» on the weekly review: the streak stops counting back past
   /// this moment. Null = never restarted (count over the whole history).
   ///

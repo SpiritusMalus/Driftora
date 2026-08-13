@@ -280,6 +280,10 @@ export const MIGRATIONS: string[] = [
   // back past this moment. Null = never restarted. A boundary, not a deletion:
   // no logged day is touched.
   `ALTER TABLE app_settings ADD COLUMN streak_restarted_at INTEGER`,
+  // 2026-08-13: licence key for the AI subscription (bought on the payment page,
+  // typed in on the Subscription screen). Null = free tier, which is every
+  // existing install.
+  `ALTER TABLE app_settings ADD COLUMN license_key TEXT`,
 ];
 
 /// Runs each CREATE statement through [run], then the idempotent [MIGRATIONS].

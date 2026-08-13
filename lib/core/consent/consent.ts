@@ -26,7 +26,12 @@ import { updateSettings } from '../db/settings';
 /// transfer disclosure extended), so the entry gate re-prompts.
 /// `2026-06-27`: AI sub-processor changed from Google Gemini (Google LLC) to
 /// OpenRouter, Inc. (US) — Privacy Policy recipient + storage/DPA clauses updated.
-export const LEGAL_VERSION = '2026-06-27';
+/// `2026-08-13`: the app started SELLING something. §1 no longer says "личное
+/// некоммерческое использование" (it now would be false), a paid section states
+/// what is bought, for how long and how a refund works, and the Privacy Policy
+/// names ЮKassa as a recipient of payment facts. Re-prompting on a change that
+/// introduces money is the whole reason this constant exists.
+export const LEGAL_VERSION = '2026-08-13';
 
 /// Bump when the AI cross-border disclosure materially changes — re-prompts the
 /// just-in-time consent the next time the user triggers an AI parse.

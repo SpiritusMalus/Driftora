@@ -1101,9 +1101,26 @@ export default function FoodLogScreen() {
       {/* Never fail into silence: say the server didn't answer (offline stub
           filled in) or that the parse broke — the button above IS the retry. */}
       {parseIssue ? (
-        <Text style={[styles.parseIssue, { color: theme.subtle }, theme.font.body]}>
-          {t(`food.parseIssue.${parseIssue}`)}
-        </Text>
+        <>
+          <Text style={[styles.parseIssue, { color: theme.subtle }, theme.font.body]}>
+            {t(`food.parseIssue.${parseIssue}`)}
+          </Text>
+          {/* Only on the quota wall, and only as an offer: the sentence above
+              already says the free budget returns tomorrow and that the manual
+              paths still work. This is the shortcut for someone who would rather
+              not wait — not a wall in front of the food they just ate. */}
+          {parseIssue === 'quota' ? (
+            <Pressable
+              onPress={() => router.push('/settings/subscription')}
+              hitSlop={8}
+              accessibilityRole="link"
+            >
+              <Text style={[styles.parseIssue, { color: theme.primary }, theme.font.bodyMedium]}>
+                {t('food.quotaSubscribe')}
+              </Text>
+            </Pressable>
+          ) : null}
+        </>
       ) : quotaLeft !== null && quotaLeft <= 3 ? (
         /* Honest heads-up instead of a surprise «лимит» at the day's fifth
            meal — rendered only once the server-reported budget runs low. */

@@ -297,3 +297,219 @@ test('billing routes: a made-up licence key is rejected as an invalid purchase',
     await stop();
   }
 });
+
+// ------------------------------------------------------------- checkout
+
+const { createYooKassaPaymentCreator, formatAmount, resolvePrices } = await import('../src/billing/yookassa.js');
+
+/** A fetch that records the one request it gets and answers like ЮKassa. */
+function captureFetch(answer: unknown = { id: 'pay-new', confirmation: { confirmation_url: 'https://yoomoney/pay' } }) {
+  const seen: { url: string; init: RequestInit }[] = [];
+  const impl = (async (url: string, init: RequestInit) => {
+    seen.push({ url: String(url), init });
+    return new Response(JSON.stringify(answer), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  }) as unknown as typeof fetch;
+  return { seen, impl };
+}
+
+test('checkout: the payment carries the plan, the price and where to come back', async () => {
+  const { seen, impl } = captureFetch();
+  const create = createYooKassaPaymentCreator({
+    shopId: 'shop',
+    secretKey: 'secret',
+    fetchImpl: impl,
+    prices: { monthly: { amount: '199.00', description: 'месяц' }, yearly: { amount: '1990.00', description: 'год' } },
+    newIdempotenceKey: () => 'fixed-key',
+  });
+
+  const payment = await create({ plan: 'yearly', returnUrl: 'https://food.example/billing/done' });
+  assert.deepEqual(payment, { id: 'pay-new', confirmationUrl: 'https://yoomoney/pay', amount: '1990.00' });
+
+  const [call] = seen;
+  assert.ok(call);
+  const body = JSON.parse(String(call.init.body)) as Record<string, any>;
+  assert.equal(body.amount.value, '1990.00');
+  assert.equal(body.amount.currency, 'RUB');
+  assert.equal(body.capture, true);
+  assert.equal(body.confirmation.return_url, 'https://food.example/billing/done');
+  // The whole reason we create payments ourselves: the webhook reads this back.
+  assert.deepEqual(body.metadata, { plan: 'yearly' });
+  assert.equal(body.receipt, undefined, 'no receipt unless the shop asks for one');
+  assert.equal((call.init.headers as Record<string, string>)['Idempotence-Key'], 'fixed-key');
+});
+
+test('checkout: a renewal names the licence it tops up; a receipt names the buyer', async () => {
+  const { seen, impl } = captureFetch();
+  const create = createYooKassaPaymentCreator({
+    shopId: 'shop',
+    secretKey: 'secret',
+    fetchImpl: impl,
+    prices: { monthly: { amount: '199.00', description: 'месяц' } },
+    receipt: true,
+    vatCode: 1,
+  });
+
+  await create({
+    plan: 'monthly',
+    returnUrl: 'https://food.example/billing/done',
+    email: 'buyer@example.com',
+    licenseKey: 'ABCD-EFGH-JKLM-NPQR',
+  });
+
+  const body = JSON.parse(String(seen[0]?.init.body)) as Record<string, any>;
+  assert.deepEqual(body.metadata, { plan: 'monthly', license_key: 'ABCD-EFGH-JKLM-NPQR' });
+  assert.equal(body.receipt.customer.email, 'buyer@example.com');
+  assert.equal(body.receipt.items[0].amount.value, '199.00');
+  assert.equal(body.receipt.items[0].vat_code, 1);
+});
+
+test('checkout: a 200 without a confirmation url is a failure, not a payment', async () => {
+  const { impl } = captureFetch({ id: 'pay-new' });
+  const create = createYooKassaPaymentCreator({
+    shopId: 'shop',
+    secretKey: 'secret',
+    fetchImpl: impl,
+    prices: { monthly: { amount: '199.00', description: 'месяц' } },
+  });
+  await assert.rejects(() => create({ plan: 'monthly', returnUrl: 'https://food.example/billing/done' }));
+});
+
+test('checkout: a broken price env falls back instead of selling for nothing', () => {
+  assert.equal(formatAmount('249', 199), '249.00');
+  assert.equal(formatAmount('', 199), '199.00');
+  assert.equal(formatAmount('очень дорого', 199), '199.00');
+  assert.equal(formatAmount('-5', 199), '199.00');
+  assert.equal(resolvePrices({} as NodeJS.ProcessEnv).monthly?.amount, '199.00');
+});
+
+test('checkout route: an unknown plan is refused rather than quietly charged as monthly', async () => {
+  const { base, stop } = await startApp({
+    getYooKassaPayment: async (id) => ({ id, status: 'succeeded' }),
+    createYooKassaPayment: async () => ({ id: 'pay-x', confirmationUrl: 'https://yoomoney/x', amount: '199.00' }),
+    licensesPath: '',
+    entitlementsPath: '',
+  });
+  try {
+    const res = await realFetch(`${base}/billing/checkout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan: 'forever' }),
+    });
+    assert.equal(res.status, 400);
+    assert.equal(((await res.json()) as any).error.code, 'unknown_plan');
+  } finally {
+    await stop();
+  }
+});
+
+test('checkout route: a licence key we never issued stops the sale', async () => {
+  const { base, stop } = await startApp({
+    getYooKassaPayment: async (id) => ({ id, status: 'succeeded' }),
+    createYooKassaPayment: async () => ({ id: 'pay-x', confirmationUrl: 'https://yoomoney/x', amount: '199.00' }),
+    licensesPath: '',
+    entitlementsPath: '',
+  });
+  try {
+    const res = await realFetch(`${base}/billing/checkout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan: 'monthly', license_key: 'ZZZZ-ZZZZ-ZZZZ-ZZZZ' }),
+    });
+    // Otherwise the typo itself becomes the new key and the buyer never finds it.
+    assert.equal(res.status, 404);
+    assert.equal(((await res.json()) as any).error.code, 'unknown_license');
+  } finally {
+    await stop();
+  }
+});
+
+test('checkout route: the payer gets somewhere to pay, and comes back to us', async () => {
+  const drafts: unknown[] = [];
+  const { base, stop } = await startApp({
+    getYooKassaPayment: async (id) => ({ id, status: 'succeeded' }),
+    createYooKassaPayment: async (draft) => {
+      drafts.push(draft);
+      return { id: 'pay-77', confirmationUrl: 'https://yoomoney/77', amount: '199.00' };
+    },
+    licensesPath: '',
+    entitlementsPath: '',
+  });
+  try {
+    const res = await realFetch(`${base}/billing/checkout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan: 'monthly', email: 'buyer@example.com' }),
+    });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as any;
+    assert.equal(body.payment_id, 'pay-77');
+    assert.equal(body.confirmation_url, 'https://yoomoney/77');
+    assert.match(String((drafts[0] as any).returnUrl), /\/billing\/done$/);
+  } finally {
+    await stop();
+  }
+});
+
+test('checkout route: ЮKassa refusing to create the payment is not the payer’s fault', async () => {
+  const { base, stop } = await startApp({
+    getYooKassaPayment: async (id) => ({ id, status: 'succeeded' }),
+    createYooKassaPayment: async () => {
+      throw new Error('yookassa is down');
+    },
+    licensesPath: '',
+    entitlementsPath: '',
+  });
+  try {
+    const res = await realFetch(`${base}/billing/checkout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plan: 'monthly' }),
+    });
+    assert.equal(res.status, 502);
+    assert.equal(((await res.json()) as any).error.code, 'store_unreachable');
+  } finally {
+    await stop();
+  }
+});
+
+test('checkout page: prices, the seller’s details and no way to inject markup', async () => {
+  process.env.BILLING_SELLER = 'ИП <b>Тест</b>, ИНН 000000000000';
+  process.env.BILLING_CONTACT = 'help@example.com';
+  try {
+    const { base, stop } = await startApp({
+      getYooKassaPayment: async (id) => ({ id, status: 'succeeded' }),
+      createYooKassaPayment: async () => ({ id: 'p', confirmationUrl: 'u', amount: '199.00' }),
+      licensesPath: '',
+      entitlementsPath: '',
+    });
+    try {
+      const res = await realFetch(`${base}/billing/pay`);
+      assert.equal(res.status, 200);
+      assert.match(res.headers.get('content-type') ?? '', /text\/html/);
+      const html = await res.text();
+      assert.match(html, /199 ₽/);
+      // ЮKassa moderates this page: seller, contact and refund rules must be on it.
+      assert.match(html, /ИНН 000000000000/);
+      assert.match(html, /help@example\.com/);
+      assert.match(html, /Возврат/);
+      assert.ok(!html.includes('<b>Тест</b>'), 'seller details are escaped, not rendered');
+    } finally {
+      await stop();
+    }
+  } finally {
+    delete process.env.BILLING_SELLER;
+    delete process.env.BILLING_CONTACT;
+  }
+});
+
+test('checkout page: the return page is served even when the shop is switched off', async () => {
+  const { base, stop } = await startApp({ licensesPath: '', entitlementsPath: '' });
+  try {
+    // A buyer returning from an older payment must still be able to read their key.
+    assert.equal((await realFetch(`${base}/billing/done`)).status, 200);
+    // …while a new sale is honestly refused.
+    assert.equal((await realFetch(`${base}/billing/pay`)).status, 503);
+  } finally {
+    await stop();
+  }
+});

@@ -34,7 +34,26 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
         await ensureSettings(opened);
         // Fire-and-forget: the AI-quota meter id must never block (or fail) DB
         // provisioning — without it requests just use the server's ip bucket.
-        void ensureInstallId(opened).catch((e) => console.warn('install id init failed:', e));
+        // Re-registering the licence key on launch is not redundant: the server
+        // stores only a hash of it and cannot re-check a purchase on its own, so
+        // the client resending it is what turns a refund or an expiry into ended
+        // access — and what carries a subscription onto a new install id after a
+        // reinstall or a backup restore.
+        //
+        // CHAINED behind the id rather than fired alongside it: the purchase is
+        // bound to the install id, and a refresh that starts first would find
+        // none cached yet and silently do nothing on most launches.
+        void ensureInstallId(opened)
+          .catch((e) => {
+            console.warn('install id init failed:', e);
+            return null;
+          })
+          .then(async (id) => {
+            if (id == null) return;
+            const { refreshEntitlement } = await import('../services/billing');
+            await refreshEntitlement(opened);
+          })
+          .catch((e) => console.warn('subscription refresh failed:', e));
         if (mounted) setDb(opened);
       } catch (e) {
         console.warn('DB init failed:', e);
