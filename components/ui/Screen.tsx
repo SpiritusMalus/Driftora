@@ -24,6 +24,21 @@ export function Screen({
       ]}
       contentInsetAdjustmentBehavior="automatic"
       keyboardShouldPersistTaps="handled"
+      // Nothing in the app handled the keyboard: it opened OVER the field being
+      // typed into, and on the short screens (вес, настройки, дневник) the input
+      // ended up under it with no way to scroll to it. Every input screen but
+      // one goes through this component, so the fix belongs here rather than in
+      // nine places.
+      //
+      // iOS: RN adds the keyboard's height as a content inset and takes it back
+      // on dismiss — no KeyboardAvoidingView, so no fighting over the header
+      // offset (the usual source of a jumping layout). Android needs nothing
+      // here: `softwareKeyboardLayoutMode: 'resize'` in app.json makes the OS
+      // shrink the window, and the platform scrolls the focused field into view.
+      automaticallyAdjustKeyboardInsets
+      // Dismissing by dragging is what people already expect; on Android
+      // 'interactive' is not supported, so it gets the honest equivalent.
+      keyboardDismissMode={theme.isIOS ? 'interactive' : 'on-drag'}
     >
       {children}
     </ScrollView>

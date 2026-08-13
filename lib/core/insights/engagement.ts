@@ -67,15 +67,26 @@ export function weeklyStreak(
   logDays: Set<string>,
   today: Date,
   minDaysPerWeek: number = WEEKLY_STREAK_MIN_DAYS,
+  /// «Начать заново»: the walk backwards stops at the week containing this
+  /// moment, so weeks before it never join the tally. Null/undefined = count
+  /// over the whole history, which is the behaviour everyone had before.
+  ///
+  /// Deliberately a BOUNDARY and not a deletion: every logged day stays, the
+  /// averages and the history screens are untouched, and clearing the restart
+  /// brings the old streak back exactly as it was. A counter someone asked to
+  /// reset must not quietly take their records with it.
+  restartedAt?: Date | null,
 ): WeeklyStreak {
   const currentWeekStart = startOfWeek(today);
   const currentWeekDays = logDaysInWeek(logDays, currentWeekStart);
   const currentWeekQualified = currentWeekDays >= minDaysPerWeek;
 
+  const floor = restartedAt != null ? startOfWeek(restartedAt) : null;
+
   let weeks = currentWeekQualified ? 1 : 0;
   const cursor = new Date(currentWeekStart);
   cursor.setDate(cursor.getDate() - 7); // step back to the previous week
-  while (logDaysInWeek(logDays, cursor) >= minDaysPerWeek) {
+  while ((floor == null || cursor >= floor) && logDaysInWeek(logDays, cursor) >= minDaysPerWeek) {
     weeks += 1;
     cursor.setDate(cursor.getDate() - 7);
   }
