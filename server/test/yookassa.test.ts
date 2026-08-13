@@ -472,55 +472,30 @@ test('checkout route: ЮKassa refusing to create the payment is not the payer’
   }
 });
 
-test('checkout page: prices, the seller’s details and no way to inject markup', async () => {
-  process.env.BILLING_SELLER = 'ИП <b>Тест</b>, ИНН 000000000000';
-  process.env.BILLING_CONTACT = 'help@example.com';
+test('checkout page: /billing/pay points at the one page that sells', async () => {
+  const { base, stop } = await startApp({
+    getYooKassaPayment: async (id) => ({ id, status: 'succeeded' }),
+    createYooKassaPayment: async () => ({ id: 'p', confirmationUrl: 'u', amount: '199.00' }),
+    licensesPath: '',
+    entitlementsPath: '',
+  });
   try {
-    const { base, stop } = await startApp({
-      getYooKassaPayment: async (id) => ({ id, status: 'succeeded' }),
-      createYooKassaPayment: async () => ({ id: 'p', confirmationUrl: 'u', amount: '199.00' }),
-      licensesPath: '',
-      entitlementsPath: '',
-    });
-    try {
-      const res = await realFetch(`${base}/billing/pay`);
-      assert.equal(res.status, 200);
-      assert.match(res.headers.get('content-type') ?? '', /text\/html/);
-      const html = await res.text();
-      assert.match(html, /199 ₽/);
-      // ЮKassa moderates this page: seller, contact and refund rules must be on it.
-      assert.match(html, /ИНН 000000000000/);
-      assert.match(html, /help@example\.com/);
-      assert.match(html, /Возврат/);
-      assert.ok(!html.includes('<b>Тест</b>'), 'seller details are escaped, not rendered');
-    } finally {
-      await stop();
-    }
+    const res = await realFetch(`${base}/billing/pay`, { redirect: 'manual' });
+    // The purchase page lives on the site now: keeping a second copy here meant a
+    // second place for the price and the refund rules to go stale unnoticed.
+    assert.equal(res.status, 302);
+    assert.match(res.headers.get('location') ?? '', /family-pie\.ru\/driftora\/subscription$/);
   } finally {
-    delete process.env.BILLING_SELLER;
-    delete process.env.BILLING_CONTACT;
+    await stop();
   }
 });
 
-test('checkout page: reviewable before the shop exists, and unbuyable until it does', async () => {
+test('return page is served even when the shop is switched off', async () => {
   const { base, stop } = await startApp({ licensesPath: '', entitlementsPath: '' });
   try {
     // A buyer returning from an older payment must still be able to read their key.
     assert.equal((await realFetch(`${base}/billing/done`)).status, 200);
-
-    // The chicken-and-egg this ordering exists for: ЮKassa reviews the page a
-    // shop sells from BEFORE enabling the shop, so 503 here would mean the page
-    // can never be reviewed at all. Full content, no button.
-    const pay = await realFetch(`${base}/billing/pay`);
-    assert.equal(pay.status, 200);
-    const html = await pay.text();
-    assert.match(html, /ИНН 504414138460/, 'seller details without any env set');
-    assert.match(html, /Возврат/);
-    assert.match(html, /199 ₽/);
-    assert.ok(!html.includes('Перейти к оплате'), 'nothing to press until a shop exists');
-    assert.ok(!html.includes('getElementById'), 'no script for a button that is not there');
-
-    // …and the sale itself is still honestly refused.
+    // …while the sale itself is honestly refused.
     const checkout = await realFetch(`${base}/billing/checkout`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

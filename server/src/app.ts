@@ -31,7 +31,7 @@ import {
   type CreatedPayment,
   type YooKassaPayment,
 } from './billing/yookassa.js';
-import { renderDonePage, renderPayPage } from './billing/checkoutPage.js';
+import { renderDonePage } from './billing/returnPage.js';
 import { buildLimiters, type RateLimits, resolveLimits } from './rateLimit.js';
 import {
   coercePer100,
@@ -300,6 +300,40 @@ function looksLikeEmail(value: string): boolean {
 }
 
 /**
+ * Origins allowed to drive a purchase from a browser: our own marketing site.
+ *
+ * This is both the CORS allowlist for `/billing/*` and the allowlist a
+ * `return_url` must match. One list, because they answer the same question —
+ * "is this page ours?" — and two lists would drift until one of them let a
+ * stranger's page send our buyers somewhere after paying.
+ */
+function siteOrigins(): string[] {
+  const raw = process.env.BILLING_WEB_ORIGINS ?? 'https://family-pie.ru,https://www.family-pie.ru';
+  return raw
+    .split(',')
+    .map((s) => s.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+}
+
+/**
+ * Is this somewhere we are willing to send a payer after they pay?
+ *
+ * Compared as a parsed origin, never as a string prefix: `startsWith` would
+ * accept `https://family-pie.ru.evil.test/…`, which is exactly the open redirect
+ * this guard exists to prevent.
+ */
+function isAllowedReturnUrl(value: string, allowed: string[]): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return false;
+  return allowed.includes(parsed.origin);
+}
+
+/**
  * Build the Express app (no listener — see `server.ts`). A custom `resolver`
  * can be injected for tests; production wires it from env-configured providers.
  */
@@ -436,13 +470,45 @@ export function createApp(
    */
   const prices = resolvePrices();
   const receiptRequired = process.env.BILLING_RECEIPT === '1';
+  const webOrigins = siteOrigins();
+  // Where the purchase page lives. The app never opens it (it creates payments
+  // natively), so this is purely the web front door.
+  const salesPageUrl = process.env.BILLING_SALES_URL || `${webOrigins[0] ?? ''}/driftora/subscription`;
+
+  /**
+   * CORS for the billing endpoints only.
+   *
+   * The global handler above answers to `ALLOWED_ORIGIN`, which is unset in prod
+   * (the app is native and needs no CORS). The purchase page is a browser page
+   * on another origin, so it needs its own, narrower grant — and it stays
+   * narrow: named origins, no credentials, and only on `/billing/*`.
+   */
+  app.use('/billing', (req: Request, res: Response, next: NextFunction) => {
+    const origin = req.get('origin');
+    if (origin && webOrigins.includes(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Vary', 'Origin');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
+    }
+    if (req.method === 'OPTIONS') {
+      res.sendStatus(204);
+      return;
+    }
+    next();
+  });
 
   app.post('/billing/checkout', limiters.billingDaily, async (req: Request, res: Response) => {
     if (!createYooKassaPayment) {
       fail(res, 503, 'billing_unavailable', 'This deployment does not sell subscriptions.');
       return;
     }
-    const body = (req.body ?? {}) as { plan?: unknown; email?: unknown; license_key?: unknown };
+    const body = (req.body ?? {}) as {
+      plan?: unknown;
+      email?: unknown;
+      license_key?: unknown;
+      return_url?: unknown;
+    };
 
     // An unknown plan is REJECTED rather than defaulted: silently falling back to
     // monthly would charge someone who asked for a year the wrong amount and
@@ -475,12 +541,21 @@ export function createApp(
       return;
     }
 
+    // The web page sends its own return page; the app sends nothing and gets the
+    // service's own. Allowlisted by ORIGIN — an unchecked return_url here would
+    // turn a payment link into an open redirect wearing our domain.
+    const askedReturn = typeof body.return_url === 'string' ? body.return_url.trim() : '';
+    if (askedReturn && !isAllowedReturnUrl(askedReturn, webOrigins)) {
+      fail(res, 400, 'invalid_return_url', 'That return_url is not one of ours.');
+      return;
+    }
+
     try {
       const payment = await createYooKassaPayment({
         plan,
         email: email || undefined,
         licenseKey: licenseKey || undefined,
-        returnUrl: `${publicBaseUrl(req)}/billing/done`,
+        returnUrl: askedReturn || `${publicBaseUrl(req)}/billing/done`,
       });
       res.json({
         payment_id: payment.id,
@@ -531,27 +606,20 @@ export function createApp(
   }
 
   /**
-   * The plan picker, and the page the payment provider reviews before it
-   * enables the shop.
+   * Kept as the stable address of "where you buy", now pointing at the real
+   * page on the site.
    *
-   * Served EVEN WHEN NOTHING IS CONFIGURED, and that ordering is not a
-   * preference: ЮKassa moderates the page a shop sells from before switching
-   * the shop on, so a page that 503s until the shop is on could never be
-   * reviewed. Without a shop the content is identical minus the button.
+   * The purchase page used to be rendered here, and moving it removed a second
+   * copy of the price, the refund rules and the seller's details — the exact
+   * duplication that goes stale in one of its two homes and is then wrong
+   * somewhere nobody is looking. The service keeps what only it can do (create
+   * the payment, issue the licence); the site keeps what it is good at.
+   *
+   * 302, not 301: a permanent redirect is cached by browsers forever, and this
+   * target is a deployment detail we may well want to move again.
    */
   app.get('/billing/pay', (_req: Request, res: Response) => {
-    sendPage(
-      res,
-      renderPayPage({
-        prices,
-        enabled: Boolean(createYooKassaPayment),
-        requireEmail: receiptRequired,
-        termsUrl: process.env.BILLING_TERMS_URL || '',
-        privacyUrl: process.env.BILLING_PRIVACY_URL || '',
-        seller: process.env.BILLING_SELLER || '',
-        contact: process.env.BILLING_CONTACT || '',
-      }),
-    );
+    res.redirect(302, salesPageUrl);
   });
 
   /**
