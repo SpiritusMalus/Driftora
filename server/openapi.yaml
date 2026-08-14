@@ -123,6 +123,57 @@ paths:
         '402': { description: The store does not recognize this purchase }
         '503': { description: Billing is not configured here, or the store could not be reached }
 
+  /billing/link:
+    post:
+      tags: [billing]
+      summary: Link a licence to a Google account, and sign this device in
+      description: |
+        What turns a forwardable string into a subscription. A licence key is a
+        bearer credential — whoever holds it is the subscriber, so a key posted
+        in a chat works for everyone who reads it. Once linked, the key stops
+        being the subscription and becomes merely how the account claimed it.
+
+        Send `licenseKey` alongside the token to CLAIM a licence for the account.
+        Send the token alone to sign a later device in — a new phone needs the
+        account, not the key, which is the point of the whole endpoint.
+
+        Only `sub` (a stable, opaque account id) is kept. Not the email, not the
+        name: what is never stored cannot leak.
+
+        `503 identity_unreachable` does NOT mean the sign-in was fake — Google
+        was unreachable. Retry; do not tell the user their account is invalid.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idToken]
+              properties:
+                idToken:
+                  type: string
+                  description: Google ID token. Verified against Google's published keys, with the algorithm pinned to RS256 and `aud` checked against our own client ids.
+                licenseKey:
+                  type: string
+                  description: Present when claiming a licence for this account; absent when signing in on a later device.
+      responses:
+        '200':
+          description: Signed in
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [linked, active, expires_at, state]
+                properties:
+                  linked: { type: boolean }
+                  active: { type: boolean }
+                  expires_at: { type: integer }
+                  state: { type: string, enum: [active, grace, paused, expired, revoked, none] }
+        '400': { description: Missing install id or no idToken }
+        '401': { description: The sign-in could not be verified, or the app token is missing }
+        '409': { description: That key cannot be linked — unknown, or already owned by another account }
+        '503': { description: Account sign-in is not configured here, or Google was unreachable }
+
   /billing/status:
     get:
       tags: [billing]
@@ -623,6 +674,10 @@ components:
                   invalid_email,
                   unknown_license,
                   invalid_return_url,
+                  identity_unavailable,
+                  identity_unreachable,
+                  invalid_id_token,
+                  license_not_claimable,
                 ]
             message: { type: string }
 
