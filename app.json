@@ -83,6 +83,7 @@
       "react-native-health-connect",
       "./plugins/withHealthConnect",
       "./plugins/withICloudKeychainSync",
+      "./plugins/withReleaseSigning",
       [
         "expo-build-properties",
         {
