@@ -2,9 +2,11 @@ name: Android APK (preview)
 
 # Cloud APK build that does NOT use the EAS build quota. Runs the Expo prebuild
 # + Gradle pipeline on a free GitHub-hosted runner and uploads the APK as a
-# build artifact. The release buildType in the default Expo template is signed
-# with the debug keystore, so the APK installs for internal testing without any
-# extra signing secrets.
+# build artifact. Release builds are signed with OUR key (secret
+# ANDROID_KEYSTORE_BASE64 + plugins/withReleaseSigning) and the signature is
+# asserted afterwards: the debug key the Expo template would otherwise use is
+# world-known, cannot anchor Google Sign-In, and produces APKs that refuse to
+# update an installed build. Without the secret the build still runs and warns.
 #
 # Trigger manually from the Actions tab (or `gh workflow run android-apk.yml`).
 
@@ -59,7 +61,28 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # The release key, restored from a secret. Without it the build still
+      # works — plugins/withReleaseSigning is a no-op and the template's debug
+      # signing stays — so a fork without the secret is not broken, it just
+      # produces an APK that cannot update an installed one.
+      - name: Restore release keystore
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::warning::ANDROID_KEYSTORE_BASE64 is not set — this APK will be signed with the debug key and will NOT update an installed build."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.p12"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.p12" >> "$GITHUB_ENV"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
       - name: Expo prebuild (android)
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: npx expo prebuild --platform android --no-install
 
       - name: Build APK (${{ inputs.variant }})
@@ -82,6 +105,31 @@ jobs:
           path="$(find android/app/build/outputs/apk -name '*.apk' | head -1)"
           echo "path=$path" >> "$GITHUB_OUTPUT"
           echo "Built: $path"
+
+      # A green build proves nothing about WHICH key signed it, and signing with
+      # the wrong one is invisible until an install refuses to update — or until
+      # Google Sign-In rejects the app for an unknown fingerprint. So assert the
+      # fingerprint, and fail the run if it is not ours.
+      - name: Verify APK signature
+        if: steps.signing.outputs.signed == 'true'
+        env:
+          EXPECTED_SHA1: ${{ vars.ANDROID_SIGNING_SHA1 }}
+        run: |
+          set -euo pipefail
+          apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort | tail -1)"
+          actual="$("$apksigner" verify --print-certs "${{ steps.apk.outputs.path }}" \
+            | grep -i 'SHA-1 digest' | head -1 | sed 's/.*: *//' | tr -d ':' | tr 'a-f' 'A-F')"
+          echo "signer SHA-1: $actual"
+          if [ -z "${EXPECTED_SHA1:-}" ]; then
+            echo "::warning::ANDROID_SIGNING_SHA1 variable is not set — signature not compared."
+            exit 0
+          fi
+          expected="$(printf '%s' "$EXPECTED_SHA1" | tr -d ':' | tr 'a-f' 'A-F')"
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::APK is signed with $actual, expected $expected — Google Sign-In and in-place updates will both break."
+            exit 1
+          fi
+          echo "signature matches the registered release key"
 
       - uses: actions/upload-artifact@v7
         with:
