@@ -38,6 +38,15 @@ export const DEFAULT_PLAN = 'monthly';
 export interface License {
   key: string;
   plan: string;
+  /**
+   * Google account that owns this licence, once the buyer linked one.
+   *
+   * Optional on purpose, and it is the difference between a subscription and a
+   * bearer token: an unlinked licence is whatever its holder says it is, so a
+   * key posted in a chat works for everyone who reads it. Linked, the key stops
+   * being the subscription and becomes merely how the account first claimed it.
+   */
+  accountId?: string;
   /** Epoch ms the paid access ends. */
   paidUntil: number;
   /** Every payment that fed this licence — the idempotency guard and the audit trail. */
@@ -54,6 +63,13 @@ export interface Licenses {
   applyPayment: (paymentId: string, plan: string, existingKey?: string) => License;
   byKey: (key: string) => License | undefined;
   byPaymentId: (paymentId: string) => License | undefined;
+  byAccount: (accountId: string) => License | undefined;
+  /**
+   * Bind a licence to an account. Idempotent for the same account; refuses a
+   * different one, because silently moving a paid licence to whoever signed in
+   * last would let a shared key be stolen outright by its recipient.
+   */
+  attachAccount: (key: string, accountId: string) => License | null;
   verifier: PurchaseVerifier;
   snapshot: () => Record<string, unknown>;
 }
@@ -92,7 +108,11 @@ export function createLicenses(opts: LicensesOptions = {}): Licenses {
 
   const log: RecordLog<License> = createRecordLog<License>(path, (r) => r.key, isLicense);
   const byPayment = new Map<string, string>(); // payment id → licence key
-  for (const lic of log.values()) for (const id of lic.paymentIds) byPayment.set(id, lic.key);
+  const byAccountId = new Map<string, string>(); // google sub → licence key
+  for (const lic of log.values()) {
+    for (const id of lic.paymentIds) byPayment.set(id, lic.key);
+    if (lic.accountId) byAccountId.set(lic.accountId, lic.key);
+  }
 
   function applyPayment(paymentId: string, plan: string, existingKey?: string): License {
     const alreadyApplied = byPayment.get(paymentId);
@@ -114,6 +134,8 @@ export function createLicenses(opts: LicensesOptions = {}): Licenses {
     const license: License = {
       key: current ? current.key : key || generateKey(),
       plan,
+      // Renewing keeps whoever already owns it.
+      ...(current?.accountId ? { accountId: current.accountId } : {}),
       paidUntil: base + days * DAY_MS,
       paymentIds: [...(current?.paymentIds ?? []), paymentId],
       updatedAt: ms,
@@ -135,11 +157,26 @@ export function createLicenses(opts: LicensesOptions = {}): Licenses {
     };
   };
 
+  function attachAccount(key: string, accountId: string): License | null {
+    const license = log.get(normalizeKey(key));
+    if (!license) return null;
+    if (license.accountId && license.accountId !== accountId) return null;
+    if (license.accountId === accountId) return license;
+    const updated: License = { ...license, accountId, updatedAt: now() };
+    log.put(updated);
+    byAccountId.set(accountId, updated.key);
+    return updated;
+  }
+
   function snapshot(): Record<string, unknown> {
     const ms = now();
     let active = 0;
-    for (const lic of log.values()) if (lic.paidUntil > ms) active += 1;
-    return { licenses: log.size(), active };
+    let linked = 0;
+    for (const lic of log.values()) {
+      if (lic.paidUntil > ms) active += 1;
+      if (lic.accountId) linked += 1;
+    }
+    return { licenses: log.size(), active, linked };
   }
 
   return {
@@ -149,6 +186,11 @@ export function createLicenses(opts: LicensesOptions = {}): Licenses {
       const key = byPayment.get(paymentId);
       return key ? log.get(key) : undefined;
     },
+    byAccount: (accountId) => {
+      const key = byAccountId.get(accountId);
+      return key ? log.get(key) : undefined;
+    },
+    attachAccount,
     verifier,
     snapshot,
   };

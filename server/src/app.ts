@@ -32,6 +32,10 @@ import {
   type YooKassaPayment,
 } from './billing/yookassa.js';
 import { renderDonePage } from './billing/returnPage.js';
+// Aliased: `resolveGoogleVerifier` in this file already means the Google PLAY
+// PURCHASE verifier. Identity and billing are different Googles, and one name
+// for both is how they get confused.
+import { resolveGoogleVerifier as resolveGoogleIdentity, type GoogleVerifier } from './billing/googleIdentity.js';
 import { buildLimiters, type RateLimits, resolveLimits } from './rateLimit.js';
 import {
   coercePer100,
@@ -202,6 +206,8 @@ export interface CreateAppOptions {
   createYooKassaPayment?: (draft: CheckoutDraft) => Promise<CreatedPayment>;
   /** Override the ЮKassa source-IP allowlist (tests). */
   yooKassaCidrs?: readonly string[];
+  /** Inject the Google ID-token verifier (tests); production builds one from env. */
+  verifyGoogleIdToken?: GoogleVerifier;
 }
 
 /**
@@ -383,6 +389,8 @@ export function createApp(
   if (getYooKassaPayment) verifiers.push(licenses.verifier);
   if (googleVerifier) verifiers.push(googleVerifier);
   const billingEnabled = verifiers.length > 0;
+
+  const verifyGoogleIdToken = opts.verifyGoogleIdToken ?? resolveGoogleIdentity();
 
   const entitlements = createEntitlements({
     verify: chainVerifiers(verifiers),
@@ -698,6 +706,71 @@ export function createApp(
       return;
     }
     res.json({ active: result.active, expires_at: result.expiresAt, state: result.state });
+  });
+
+  /**
+   * Link a licence to a Google account, and sign in on this device.
+   *
+   * This is what turns a forwardable string into a subscription. Sending the
+   * key alongside the token CLAIMS the licence for the account; sending the
+   * token alone signs a later device in — a new phone needs the account, not
+   * the key, which is the whole point.
+   */
+  app.post('/billing/link', requireToken, limiters.billingDaily, async (req: Request, res: Response) => {
+    if (!verifyGoogleIdToken) {
+      fail(res, 503, 'identity_unavailable', 'This deployment does not support account sign-in.');
+      return;
+    }
+    const installId = installIdOf(req);
+    if (!installId) {
+      fail(res, 400, 'install_id_required', 'Header "X-Install-Id" is required.');
+      return;
+    }
+    const body = (req.body ?? {}) as { idToken?: unknown; licenseKey?: unknown };
+    const idToken = typeof body.idToken === 'string' ? body.idToken.trim() : '';
+    if (!idToken) {
+      fail(res, 400, 'invalid_id_token', 'Field "idToken" is required.');
+      return;
+    }
+
+    let identity: Awaited<ReturnType<GoogleVerifier>>;
+    try {
+      identity = await verifyGoogleIdToken(idToken);
+    } catch (err) {
+      // Google unreachable is not "your token is fake" — same split the store
+      // adapters draw. Telling a paying user their account is invalid because
+      // Google had a bad minute is the failure this guards against.
+      console.error('billing: google verify failed:', err instanceof Error ? err.message : String(err));
+      fail(res, 503, 'identity_unreachable', 'Could not reach Google to check the sign-in. Retry later.');
+      return;
+    }
+    if (!identity) {
+      fail(res, 401, 'invalid_id_token', 'That sign-in could not be verified.');
+      return;
+    }
+
+    const claimKey = typeof body.licenseKey === 'string' ? body.licenseKey.trim() : '';
+    if (claimKey) {
+      const attached = licenses.attachAccount(claimKey, identity.sub);
+      if (!attached) {
+        // Either no such licence, or it already belongs to somebody else — and
+        // those two must read the same from outside, or this endpoint becomes a
+        // way to ask "is this key taken?".
+        fail(res, 409, 'license_not_claimable', 'That key cannot be linked to this account.');
+        return;
+      }
+    }
+
+    const license = licenses.byAccount(identity.sub);
+    if (!license) {
+      res.json({ linked: true, active: false, expires_at: 0, state: 'none' });
+      return;
+    }
+
+    // Reuse the entitlement path wholesale: the licence key is still what the
+    // quota consults, the account is only how we found it.
+    const result = await entitlements.register(license.key, license.plan, installId);
+    res.json({ linked: true, active: result.active, expires_at: result.expiresAt, state: result.state });
   });
 
   /** Current entitlement for this install — what the client gates its paywall on. */
