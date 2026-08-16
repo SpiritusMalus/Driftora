@@ -14,11 +14,12 @@ on:
   workflow_dispatch:
     inputs:
       variant:
-        description: Gradle variant
+        description: Gradle variant (bundleRelease = .aab for Google Play)
         type: choice
         default: assembleRelease
         options:
           - assembleRelease
+          - bundleRelease
           - assembleDebug
 
 permissions:
@@ -85,7 +86,7 @@ jobs:
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: npx expo prebuild --platform android --no-install
 
-      - name: Build APK (${{ inputs.variant }})
+      - name: Build (${{ inputs.variant }})
         working-directory: android
         run: |
           chmod +x ./gradlew
@@ -99,10 +100,18 @@ jobs:
           printf '\norg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g\n' >> gradle.properties
           ./gradlew ${{ inputs.variant }} --no-daemon --max-workers=2
 
-      - name: Locate APK
+      # bundleRelease emits the .aab Google Play requires (Play does not accept
+      # APKs); the same release key signs it and becomes the "upload key" once
+      # Play App Signing is enrolled on first upload. APK variants stay for
+      # direct installs and RuStore.
+      - name: Locate artifact
         id: apk
         run: |
-          path="$(find android/app/build/outputs/apk -name '*.apk' | head -1)"
+          if [ "${{ inputs.variant }}" = "bundleRelease" ]; then
+            path="$(find android/app/build/outputs/bundle -name '*.aab' | head -1)"
+          else
+            path="$(find android/app/build/outputs/apk -name '*.apk' | head -1)"
+          fi
           echo "path=$path" >> "$GITHUB_OUTPUT"
           echo "Built: $path"
 
@@ -116,9 +125,16 @@ jobs:
           EXPECTED_SHA1: ${{ vars.ANDROID_SIGNING_SHA1 }}
         run: |
           set -euo pipefail
-          apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort | tail -1)"
-          actual="$("$apksigner" verify --print-certs "${{ steps.apk.outputs.path }}" \
-            | grep -i 'SHA-1 digest' | head -1 | sed 's/.*: *//' | tr -d ':' | tr 'a-f' 'A-F')"
+          # apksigner does not read app bundles — an .aab carries a jar-style
+          # signature, so its certificate is read with keytool instead.
+          if [[ "${{ steps.apk.outputs.path }}" == *.aab ]]; then
+            actual="$(keytool -printcert -jarfile "${{ steps.apk.outputs.path }}" \
+              | grep -i 'SHA1:' | head -1 | sed 's/.*SHA1: *//' | tr -d ': ' | tr 'a-f' 'A-F')"
+          else
+            apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort | tail -1)"
+            actual="$("$apksigner" verify --print-certs "${{ steps.apk.outputs.path }}" \
+              | grep -i 'SHA-1 digest' | head -1 | sed 's/.*: *//' | tr -d ':' | tr 'a-f' 'A-F')"
+          fi
           echo "signer SHA-1: $actual"
           if [ -z "${EXPECTED_SHA1:-}" ]; then
             echo "::warning::ANDROID_SIGNING_SHA1 variable is not set — signature not compared."
@@ -133,7 +149,7 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: driftora-android-apk
+          name: driftora-android-${{ inputs.variant == 'bundleRelease' && 'aab' || 'apk' }}
           path: ${{ steps.apk.outputs.path }}
           if-no-files-found: error
           retention-days: 14

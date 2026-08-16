@@ -55,6 +55,9 @@ yarn-error.*
 # Exception: turning payments on is a sequence of steps against a live shop and
 # a live server — the one runbook whose absence costs real money to rediscover.
 !docs/billing-setup.md
+# Exception: the store listing (descriptions, Data-safety/rating answers, the
+# publication checklist) is a product artifact paired with docs/store/ assets.
+!docs/store-listing.md
 
 .claude/
 dist.stale.*
