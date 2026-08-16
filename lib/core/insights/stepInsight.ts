@@ -30,21 +30,21 @@ export function stepBand(steps: number, ageYears?: number): StepBand {
   return 'beneficial';
 }
 
-/// One honest sentence (Russian) about what today's steps mean, framed against
-/// the user's personal `goal` (not a universal target).
+/// One honest sentence about what today's steps mean, framed against the
+/// user's personal `goal` (not a universal target). Returns an i18n key under
+/// `insights.steps.*` — render with t() (the daySummary convention: the module
+/// stays pure, the words live in the locale files).
 export function stepInsight(steps: number, goal: number, ageYears?: number): string {
   switch (stepBand(steps, ageYears)) {
     case 'none':
-      return 'Сегодня шагов пока нет — даже короткая прогулка уже в плюс.';
+      return 'insights.steps.none';
     case 'low':
-      return 'Совсем немного движения. Небольшая прогулка ощутимо снизит риски для сердца и поможет нервной системе.';
+      return 'insights.steps.low';
     case 'building':
-      return 'Хорошее начало. Ближе к 5–7 тысячам шагов польза для сердца, сосудов и настроения растёт быстрее всего.';
+      return 'insights.steps.building';
     case 'beneficial':
-      return steps >= goal
-        ? 'Личная цель на сегодня достигнута — это уже заметная поддержка сердца, мозга и стрессоустойчивости.'
-        : 'Вы в зоне, где польза растёт быстрее всего: каждый шаг к ~7 тысячам заметно снижает риски и уровень кортизола.';
+      return steps >= goal ? 'insights.steps.goalMet' : 'insights.steps.beneficial';
     case 'ample':
-      return 'Отличный объём ходьбы — для здоровья этого более чем достаточно. Больше шагов уже не обязательно «лучше».';
+      return 'insights.steps.ample';
   }
 }

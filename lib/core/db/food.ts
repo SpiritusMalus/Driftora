@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lt } from 'drizzle-orm';
+import { and, desc, eq, gte, lt, notInArray } from 'drizzle-orm';
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
 import type {
@@ -342,7 +342,16 @@ export async function confirmFoodEntry(db: AnyDb, id: number): Promise<void> {
 /// the photo is never persisted (privacy §2) — so anything still pending after
 /// `maxAgeMin` belongs to a dead process and becomes an honest, retry-visible
 /// 'failed' («снимите заново») instead of spinning forever.
-export async function sweepStalePendingEntries(db: AnyDb, maxAgeMin = 15): Promise<void> {
+///
+/// `excludeIds` (see [runningParseEntryIds]): rows whose parse IS alive in this
+/// process right now. `ts` is the row's CREATION time — a retry of an old row
+/// keeps it, so without the exclusion the sweep would flip a live retry back to
+/// 'failed' the moment it notifies.
+export async function sweepStalePendingEntries(
+  db: AnyDb,
+  maxAgeMin = 15,
+  excludeIds: number[] = [],
+): Promise<void> {
   const cutoff = new Date(Date.now() - maxAgeMin * 60_000);
   await withDbLock(
     db,
@@ -350,7 +359,13 @@ export async function sweepStalePendingEntries(db: AnyDb, maxAgeMin = 15): Promi
       db
         .update(foodEntries)
         .set({ parseStatus: 'failed' })
-        .where(and(eq(foodEntries.parseStatus, 'pending'), lt(foodEntries.ts, cutoff))),
+        .where(
+          and(
+            eq(foodEntries.parseStatus, 'pending'),
+            lt(foodEntries.ts, cutoff),
+            ...(excludeIds.length > 0 ? [notInArray(foodEntries.id, excludeIds)] : []),
+          ),
+        ),
     'sweepStalePendingEntries',
   );
 }

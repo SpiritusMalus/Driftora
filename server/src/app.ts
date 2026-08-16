@@ -454,7 +454,11 @@ export function createApp(
     // monthly would charge someone who asked for a year the wrong amount and
     // give them the wrong thing, which is the one failure here that costs money.
     const plan = typeof body.plan === 'string' ? body.plan.trim() : DEFAULT_PLAN;
-    if (!(plan in PLAN_DAYS) || !prices[plan]) {
+    // Object.hasOwn, not `in`: `'constructor' in PLAN_DAYS` is true via the
+    // prototype, and prices['constructor'] is a (truthy) Function — the junk
+    // plan then reached ЮKassa as a payment without an amount and surfaced as
+    // a bogus 502 store_unreachable instead of this honest 400.
+    if (!Object.hasOwn(PLAN_DAYS, plan) || !prices[plan]) {
       fail(res, 400, 'unknown_plan', 'No such subscription plan.');
       return;
     }
@@ -874,9 +878,14 @@ export function createApp(
     // by side («по базе: Масло» + «через ИИ: Масло Простоквашино»), each with its
     // own per-100g and source tag — the user picks. The AI card needs consent
     // (`ai: true`); without it we still return whatever the DBs found.
+    // The AI card is a real LLM call — it must spend the same per-install AI
+    // budget as a parse, or the search box becomes a free side door around the
+    // quota (free 30/day vs the 300/day per-IP text cap). Out of budget → the
+    // DB candidates still return; only the card is withheld.
+    const wantAi = body.ai === true && aiQuota.tryConsume(req, res);
     const [candidates, aiCard] = await Promise.all([
       resolver.search(query, region).catch(() => []),
-      body.ai === true ? aiSearchCard(query, region).catch(() => null) : Promise.resolve(null),
+      wantAi ? aiSearchCard(query, region).catch(() => null) : Promise.resolve(null),
     ]);
     // Localize the English DB candidate labels to Russian (RU, behind the flag).
     // The AI card's name is already Russian (from the estimate), so it's appended
@@ -900,23 +909,34 @@ export function createApp(
       fail(res, 400, 'input_too_long', `Field "text" must be at most ${MAX_TEXT} characters.`);
       return;
     }
+    const startedAt = Date.now();
     try {
       const workouts = await parseWorkoutFromText(text);
+      metrics.recordWorkoutParse('workout_text', workouts.length === 0, Date.now() - startedAt);
       res.json({ workouts });
     } catch (err) {
-      failWorkoutParse(res, err);
+      failWorkoutParse(res, err, 'workout_text');
     }
   });
 
   /// Shared error tail for the workout parse family: the model only ever maps
   /// input → structured activities, so every route answers the same way.
-  function failWorkoutParse(res: Response, err: unknown): void {
+  /// Counted in /metrics like the food tail — without it, an upstream failure
+  /// on the workout schema kept the dashboard green while every input died
+  /// (the exact blindness recordFailure exists to prevent).
+  function failWorkoutParse(
+    res: Response,
+    err: unknown,
+    route: 'workout_text' | 'workout_photo' | 'workout_audio',
+  ): void {
     if (err instanceof VisionUnavailableError) {
+      metrics.recordFailure(route, 'llm_unavailable');
       fail(res, 503, 'llm_unavailable', 'The parsing service is temporarily unavailable.');
       return;
     }
     // Same privacy-safe visibility as the food tail: name+message, no content.
     console.error('workout parse failed:', err instanceof Error ? `${err.name}: ${err.message}` : String(err));
+    metrics.recordFailure(route, 'internal_error');
     fail(res, 500, 'internal_error', 'Internal server error.');
   }
 
@@ -929,11 +949,13 @@ export function createApp(
       return;
     }
     const format = audioFormat(file.mimetype, file.originalname);
+    const startedAt = Date.now();
     try {
       const workouts = await parseWorkoutFromAudio(file.buffer.toString('base64'), format);
+      metrics.recordWorkoutParse('workout_audio', workouts.length === 0, Date.now() - startedAt);
       res.json({ workouts });
     } catch (err) {
-      failWorkoutParse(res, err);
+      failWorkoutParse(res, err, 'workout_audio');
     }
   });
 
@@ -947,11 +969,13 @@ export function createApp(
       return;
     }
     const mimeType = sniffImageMime(file.buffer) ?? (file.mimetype || 'image/jpeg');
+    const startedAt = Date.now();
     try {
       const parsed = await parseWorkoutFromPhoto(file.buffer.toString('base64'), mimeType);
+      metrics.recordWorkoutParse('workout_photo', parsed.workouts.length === 0, Date.now() - startedAt);
       res.json(parsed);
     } catch (err) {
-      failWorkoutParse(res, err);
+      failWorkoutParse(res, err, 'workout_photo');
     }
   });
 

@@ -110,6 +110,10 @@ export interface LabelReading {
  *
  * Deliberately literal: no unit conversion, no inference, no filling gaps. A
  * field the phrase does not state stays absent.
+ *
+ * English panels («Nutrition Facts»: Protein/Fat/Carbohydrate + Calories) parse
+ * with the same word-then-number shape — imported goods and the US region must
+ * not silently lose the cross-check (an unchecked reading never earns `label`).
  */
 export function parsePanelText(text: unknown): LabelReading | undefined {
   if (typeof text !== 'string' || text.trim().length === 0) return undefined;
@@ -121,13 +125,14 @@ export function parsePanelText(text: unknown): LabelReading | undefined {
     const n = Number(m[1]);
     return Number.isFinite(n) ? n : undefined;
   };
-  // «белки — 16 г»: allow the label word, any dash/colon filler, then the number.
-  const macro = (word: string) => grab(new RegExp(`${word}[^\\d]{0,15}(\\d+(?:\\.\\d+)?)`));
+  // «белки — 16 г» / «Protein 16g»: the label word, any filler, then the number.
+  const macro = (word: string) => grab(new RegExp(`(?:${word})[^\\d]{0,15}(\\d+(?:\\.\\d+)?)`));
   return coerceLabel({
-    prot_100g: macro('белк\\w*'),
-    fat_100g: macro('жир\\w*'),
-    carb_100g: macro('углевод\\w*'),
-    kcal_100g: grab(/(\d+(?:\.\d+)?)\s*ккал/),
+    prot_100g: macro('белк\\w*|protein'),
+    fat_100g: macro('жир\\w*|fat'),
+    carb_100g: macro('углевод\\w*|carb\\w*'),
+    // RU prints «100 ккал» (number first), EN prints «Calories 250» (word first).
+    kcal_100g: grab(/(\d+(?:\.\d+)?)\s*(?:ккал|kcal)/) ?? macro('calorie\\w*'),
     net_weight_g: grab(/(?:масса\s+)?нетто[^\d]{0,15}(\d+(?:\.\d+)?)\s*г/),
   });
 }
@@ -162,7 +167,13 @@ export function crossCheckLabel(
     return Object.keys(out).length > 0 ? out : undefined;
   };
 
-  if (!modelLabel || !parsed) return withWeight(modelLabel ?? parsed);
+  // ONE reading only — the panel text didn't parse (a language the parser
+  // doesn't know, a smudged transcription) or the model produced no structured
+  // label. Composition is then unverifiable, and «по упаковке» is a claim of
+  // fact: keep the weight, drop the macros. The failure mode must stay
+  // «no label», never unchecked numbers (a fat↔carb swap by a single reading is
+  // exactly what this cross-check exists to catch).
+  if (!modelLabel || !parsed) return withWeight(undefined);
 
   const macrosAgree =
     agrees(modelLabel.prot_100g, parsed.prot_100g, 1) &&

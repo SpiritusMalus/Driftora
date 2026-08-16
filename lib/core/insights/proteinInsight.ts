@@ -7,8 +7,9 @@
  * a limit to police. We talk about satiety and keeping muscle while losing
  * weight — never calories, never "too much". One short, non-judgmental sentence.
  *
- * Returns Russian directly, matching `stepInsight` (the project is ru-first; the
- * insights library shares this convention).
+ * Returns an i18n key under `insights.protein.*`, matching `stepInsight` (the
+ * daySummary convention: the module stays pure, the words live in the locale
+ * files — the unit test enforces the ED rules on both locales' strings).
  */
 
 import { pickVariant } from './variant';
@@ -26,42 +27,28 @@ export function proteinBand(proteinG: number, targetG: number): ProteinBand {
   return 'met';
 }
 
-/// Honest phrasings per band — 3 warm variants each. Element 0 is the original
-/// wording (so `seed = 0` reproduces the legacy output byte-for-byte). ED rule:
-/// every variant is framed as a habit to grow / satiety / muscle — never a cap,
-/// never "too much", never calories.
+/// Honest phrasings per band — 3 warm variants each, as i18n keys. Slot 0 is
+/// the original wording (so `seed = 0` reproduces the legacy output). ED rule
+/// (enforced on the locale strings by the unit test): every variant is framed
+/// as a habit to grow / satiety / muscle — never a cap, never "too much",
+/// never calories.
 export const PROTEIN_COPY: Record<ProteinBand, readonly string[]> = {
-  unset: [
-    'Белок дольше держит сытость и бережёт мышцы. Задайте личную цель — так будет понятнее, к чему идти.',
-    'Белок помогает дольше оставаться сытым и сохранять мышцы. С личной целью будет яснее, к чему стремиться.',
-    'Белок — это сытость и поддержка мышц. Поставьте личную цель, и ориентир появится сам.',
-  ],
-  none: [
-    'Белка пока нет. Он дольше держит сытость и помогает сохранять мышцы — добавьте источник белка к следующему приёму.',
-    'Белка сегодня ещё не было. Он даёт сытость и бережёт мышцы — добавьте белковое к следующему приёму.',
-    'Пока без белка. Источник белка в следующий приём — и дольше будете сытым, и мышцы поддержите.',
-  ],
-  low: [
-    'Белка пока немного. Он помогает реже испытывать голод и беречь мышцы при снижении веса.',
-    'Белка пока маловато. Чуть больше — и сытость держится дольше, и мышцы под защитой.',
-    'Белок только набирается. Он помогает реже чувствовать голод и сохранять мышцы.',
-  ],
+  unset: ['insights.protein.unset0', 'insights.protein.unset1', 'insights.protein.unset2'],
+  none: ['insights.protein.none0', 'insights.protein.none1', 'insights.protein.none2'],
+  low: ['insights.protein.low0', 'insights.protein.low1', 'insights.protein.low2'],
   building: [
-    'Хороший задел по белку. Достаточный белок держит сытость и поддерживает мышцы.',
-    'Белок набирается хорошо. Он держит сытость и помогает беречь мышцы.',
-    'Уверенный задел по белку — это и сытость, и поддержка мышц.',
+    'insights.protein.building0',
+    'insights.protein.building1',
+    'insights.protein.building2',
   ],
-  met: [
-    'Цель по белку на сегодня закрыта — это поддержка сытости и мышц. Хорошая привычка.',
-    'Белковая цель на сегодня достигнута — сытость и мышцы под поддержкой. Так держать.',
-    'Цель по белку выполнена. Это помогает сытости и мышцам — отличная привычка.',
-  ],
+  met: ['insights.protein.met0', 'insights.protein.met1', 'insights.protein.met2'],
 };
 
 /// One honest sentence about what today's protein does for the body, framed
-/// against the personal `targetG` (a habit to grow, never a cap). `seed` lets a
-/// caller rotate phrasings deterministically (stable per meal/day); the default
-/// reproduces the legacy single-string output exactly.
+/// against the personal `targetG` (a habit to grow, never a cap) — returned as
+/// an i18n key, render with t(). `seed` lets a caller rotate phrasings
+/// deterministically (stable per meal/day); the default reproduces the legacy
+/// first variant.
 export function proteinInsight(proteinG: number, targetG: number, seed = 0): string {
   return pickVariant(PROTEIN_COPY[proteinBand(proteinG, targetG)], seed);
 }

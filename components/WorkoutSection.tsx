@@ -50,6 +50,7 @@ import {
   type ParsedWorkout,
 } from '@/lib/core/services/workoutParser';
 import { budgetKcal, formatWorkoutLine, formatWorkoutValue } from '@/lib/i18n/formatWorkout';
+import { pluralKey } from '@/lib/i18n/plural';
 import { type Theme, useTheme } from '@/lib/theme/theme';
 
 /// Whether an online AI parser is configured for this build (env at bundle time).
@@ -86,6 +87,10 @@ export function WorkoutSection({
   // past the whole form (device feedback 2026-07-21: «чтобы заново не вписывать»).
   const [quick, setQuick] = useState<QuickWorkout[]>([]);
   const [repeating, setRepeating] = useState(false);
+  // In-flight guard for the two add paths: inputs clear only after the awaited
+  // insert lands, so a double tap would write the same workout twice (the same
+  // class of bug onRepeat's `repeating` and the food ↻ `repeatingRef` prevent).
+  const [adding, setAdding] = useState(false);
   const [weightKg, setWeightKg] = useState(70);
   // Whether a real weigh-in backs the kcal math. Without one we fall back to
   // 70 kg — say so instead of silently mis-scaling a 100 kg user by 30%.
@@ -243,27 +248,32 @@ export function WorkoutSection({
   }
 
   async function add() {
-    if (!db) return;
-    if (supportsSets(type)) {
-      // Strength: sets → estimated minutes (~3 min each incl. rest); no stopwatch.
-      // Effort level picks the MET (light/moderate/heavy).
-      const n = Number(sets.replace(',', '.'));
-      const min = setsToMinutes(n);
-      if (!(min > 0)) return;
-      ackBudget(
-        await addWorkout(db, type, min, weightKg, null, new Date(), Math.round(n), intensity, restingRate),
-      );
-      setSets('');
-    } else {
-      const min = Number(minutes.replace(',', '.'));
-      if (!Number.isFinite(min) || min <= 0) return;
-      const kmh = supportsSpeed(type) ? Number(speed.replace(',', '.')) : NaN;
-      const speedKmh = Number.isFinite(kmh) && kmh > 0 ? kmh : null;
-      ackBudget(await addWorkout(db, type, min, weightKg, speedKmh, new Date(), null, null, restingRate));
-      setMinutes('');
-      setSpeed('');
+    if (!db || adding) return;
+    setAdding(true);
+    try {
+      if (supportsSets(type)) {
+        // Strength: sets → estimated minutes (~3 min each incl. rest); no stopwatch.
+        // Effort level picks the MET (light/moderate/heavy).
+        const n = Number(sets.replace(',', '.'));
+        const min = setsToMinutes(n);
+        if (!(min > 0)) return;
+        ackBudget(
+          await addWorkout(db, type, min, weightKg, null, new Date(), Math.round(n), intensity, restingRate),
+        );
+        setSets('');
+      } else {
+        const min = Number(minutes.replace(',', '.'));
+        if (!Number.isFinite(min) || min <= 0) return;
+        const kmh = supportsSpeed(type) ? Number(speed.replace(',', '.')) : NaN;
+        const speedKmh = Number.isFinite(kmh) && kmh > 0 ? kmh : null;
+        ackBudget(await addWorkout(db, type, min, weightKg, speedKmh, new Date(), null, null, restingRate));
+        setMinutes('');
+        setSpeed('');
+      }
+      await reload();
+    } finally {
+      setAdding(false);
     }
-    await reload();
   }
 
   /// «По часам»: log a measured kcal number typed straight off a tracker/watch.
@@ -271,14 +281,19 @@ export function WorkoutSection({
   /// «по трекеру», like the screenshot path. Still shown with «≈»: a watch's
   /// calorie figure is an estimate too, and a poorly validated one.
   async function addTracker() {
-    if (!db) return;
+    if (!db || adding) return;
     const kcal = Number(trackerKcal.replace(',', '.'));
     if (!(Number.isFinite(kcal) && kcal > 0)) return;
-    ackBudget(
-      await addTrackerWorkout(db, { kcal, minutes: 0, type: 'other', label: t('workouts.fromTracker') }),
-    );
-    setTrackerKcal('');
-    await reload();
+    setAdding(true);
+    try {
+      ackBudget(
+        await addTrackerWorkout(db, { kcal, minutes: 0, type: 'other', label: t('workouts.fromTracker') }),
+      );
+      setTrackerKcal('');
+      await reload();
+    } finally {
+      setAdding(false);
+    }
   }
 
   /// Persist a parsed activity list with an honest note. kcal is computed
@@ -669,11 +684,12 @@ export function WorkoutSection({
                   floating mid-card above the km/h field (device-visible fix). */}
               <Pressable
                 onPress={() => void add()}
+                disabled={adding}
                 accessibilityRole="button"
                 accessibilityLabel={t('workouts.add')}
                 style={({ pressed }) => [
                   styles.exactAddBtn,
-                  { backgroundColor: theme.primary, opacity: pressed ? 0.7 : 1 },
+                  { backgroundColor: theme.primary, opacity: adding ? 0.5 : pressed ? 0.7 : 1 },
                 ]}
               >
                 <Text style={[styles.addBtnText, { color: theme.onPrimary }, theme.font.bodySemiBold]}>
@@ -705,14 +721,15 @@ export function WorkoutSection({
                 <Text style={[styles.unit, { color: theme.subtle }, theme.font.body]}>{t('units.kcal')}</Text>
                 <Pressable
                   onPress={() => void addTracker()}
-                  disabled={!(Number(trackerKcal.replace(',', '.')) > 0)}
+                  disabled={adding || !(Number(trackerKcal.replace(',', '.')) > 0)}
                   accessibilityRole="button"
                   accessibilityLabel={t('workouts.add')}
                   style={({ pressed }) => [
                     styles.addBtn,
                     {
                       backgroundColor: theme.primary,
-                      opacity: !(Number(trackerKcal.replace(',', '.')) > 0) ? 0.5 : pressed ? 0.7 : 1,
+                      opacity:
+                        adding || !(Number(trackerKcal.replace(',', '.')) > 0) ? 0.5 : pressed ? 0.7 : 1,
                     },
                   ]}
                 >
@@ -843,7 +860,10 @@ export function WorkoutSection({
                       the workout's kcal and left the step earnings. */}
                   {r.source === 'device' && r.stepsInWindow != null && r.stepsInWindow > 0 ? (
                     <Text style={[styles.itemSub, { color: theme.subtle }, theme.font.body]}>
-                      {t('workouts.stepsInside', { steps: r.stepsInWindow })}
+                      {t('workouts.stepsInside', {
+                        steps: r.stepsInWindow,
+                        stepsWord: t(pluralKey('steps.unit', r.stepsInWindow)),
+                      })}
                     </Text>
                   ) : null}
                 </View>

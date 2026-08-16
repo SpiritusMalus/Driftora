@@ -72,6 +72,10 @@ export function mergeReparsedItems(
         ...fresh,
         grams: prior.grams,
         grams_source: 'confirmed' as const,
+        // The weight is the user's own — the fresh parse's estimate flag must
+        // not resurrect on it (portion_state would fall back to 'estimated'
+        // and the «≈» badge would return to a hand-entered number).
+        approximate: false,
         scaled: scaleToGrams(fresh.per100, prior.grams),
       };
     }

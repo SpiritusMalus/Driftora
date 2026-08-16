@@ -172,6 +172,10 @@ async function begin(Audio: any): Promise<ActiveRecording> {
       /* ignore */
     }
     await resetAudioMode(Audio);
+    // prepareToRecordAsync already created the file — without this, every
+    // failed start (mic held by another app) leaves an orphan m4a in cache,
+    // and the retry in startRecording adds a second one.
+    deleteRecordingFile(recording);
     throw e;
   }
 

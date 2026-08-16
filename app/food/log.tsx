@@ -89,6 +89,17 @@ export default function FoodLogScreen() {
   const [parsing, setParsing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState<MealDraft | null>(null);
+  // Latest committed draft for async consumers: a text parse can run up to
+  // ~25 s, and merging against the `draft` captured at tap time would revert
+  // every gram edit / removal / alternative pick made while it was in flight.
+  const draftRef = useRef<MealDraft | null>(null);
+  useEffect(() => {
+    draftRef.current = draft;
+  }, [draft]);
+  // Bumped on every dish removal: ItemCard holds internal state (manual macro
+  // strings, an open search panel) and the list is keyed by index, so without
+  // a remount the removed dish's state would bleed into its successor.
+  const [itemsGen, setItemsGen] = useState(0);
   // The user renamed the meal by hand — stop deriving the name from the dishes
   // until the next parse consumes the field as input again.
   const [titleTouched, setTitleTouched] = useState(false);
@@ -179,6 +190,12 @@ export default function FoodLogScreen() {
   regionRef.current = region;
   const dbRef = useRef(db);
   dbRef.current = db;
+  // The shot/clip parked behind an unanswered consent modal — the unmount
+  // cleanup must sweep their temp files (they are neither adopted nor queued).
+  const pendingPhotoRef = useRef<PhotoInput | null>(null);
+  pendingPhotoRef.current = pendingPhoto;
+  const pendingAudioRef = useRef<AudioInput | null>(null);
+  pendingAudioRef.current = pendingAudio;
   const [listening, setListening] = useState(false);
   // Why on-device recognition last failed (localized) — shown under the mic so a
   // dropped session explains itself instead of silently resetting. Cleared on a
@@ -277,6 +294,13 @@ export default function FoodLogScreen() {
       // exits) so an abandoned batch doesn't accumulate files. Adoption marks
       // its uris synchronously, so this order is race-free.
       for (const p of photoQueueRef.current) if (!isAdopted(p.uri)) deleteTempFile(p.uri);
+      // A shot/clip still waiting on the consent modal is neither adopted nor
+      // queued — walking away (system back) would strand its file in cache
+      // forever, one per abandoned first-time photo/voice log.
+      if (pendingPhotoRef.current && !isAdopted(pendingPhotoRef.current.uri)) {
+        deleteTempFile(pendingPhotoRef.current.uri);
+      }
+      if (pendingAudioRef.current) deleteTempFile(pendingAudioRef.current.uri);
     };
   }, []);
 
@@ -497,11 +521,14 @@ export default function FoodLogScreen() {
    *   word, so the dishes stay and only the explanatory message changes.
    */
   function nextDraftFromTextParse(parsed: MealDraft): MealDraft {
-    if (parsed.items.length > 0) return mergeReparsedDraft(draft, parsed, region);
-    if (!draft || draft.items.length === 0) return parsed;
+    // The ref, not the closure: the state captured when the parse was tapped
+    // is stale by the time the response lands (see draftRef above).
+    const current = draftRef.current;
+    if (parsed.items.length > 0) return mergeReparsedDraft(current, parsed, region);
+    if (!current || current.items.length === 0) return parsed;
     // Keep the dishes, but carry over the CLIENT-side flags (offline, quota,
     // auth, server error) so `acceptDraft` still explains what went wrong.
-    const kept = recomputeDraft(region, draft.items);
+    const kept = recomputeDraft(region, current.items);
     return {
       ...kept,
       flags: {
@@ -807,6 +834,9 @@ export default function FoodLogScreen() {
   /// нельзя» gap (device feedback 2026-07-20). Removing the last item closes
   /// the draft entirely: an empty result must not pretend to be a meal.
   function onItemRemove(index: number) {
+    // Remount the remaining cards (see itemsGen): the successor must not
+    // inherit the removed dish's typed macros or open search panel.
+    setItemsGen((g) => g + 1);
     setDraft((prev) => {
       if (!prev) return prev;
       const items = prev.items.filter((_, i) => i !== index);
@@ -1201,7 +1231,7 @@ export default function FoodLogScreen() {
         <View style={styles.results}>
           {draft.items.map((item, i) => (
             <ItemCard
-              key={i}
+              key={`${itemsGen}-${i}`}
               item={item}
               hideCalories={hideCalories}
               theme={theme}
@@ -1273,12 +1303,12 @@ export default function FoodLogScreen() {
               on Home (the banner alone doesn't stop this line from nagging). */}
           {proteinTarget > 0 && !paused ? (
             <Text style={[styles.proteinNote, { color: theme.subtle }, theme.font.body]}>
-              {proteinInsight(todayProteinG + draft.totals.prot, proteinTarget, Math.round(todayProteinG))}
+              {t(proteinInsight(todayProteinG + draft.totals.prot, proteinTarget, Math.round(todayProteinG)))}
             </Text>
           ) : null}
           {varietyCount > 0 ? (
             <Text style={[styles.proteinNote, { color: theme.subtle }, theme.font.body]}>
-              {varietyInsight(varietyCount)}
+              {t(varietyInsight(varietyCount))}
             </Text>
           ) : null}
           {savedAck ? (

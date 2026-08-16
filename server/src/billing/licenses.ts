@@ -123,7 +123,8 @@ export function createLicenses(opts: LicensesOptions = {}): Licenses {
 
     const key = existingKey ? normalizeKey(existingKey) : '';
     const current = key ? log.get(key) : undefined;
-    const days = PLAN_DAYS[plan] ?? PLAN_DAYS[DEFAULT_PLAN] ?? 30;
+    // Own keys only — a prototype name as `plan` would make `days` a Function.
+    const days = (Object.hasOwn(PLAN_DAYS, plan) ? PLAN_DAYS[plan] : undefined) ?? PLAN_DAYS[DEFAULT_PLAN] ?? 30;
     const ms = now();
 
     // Renewing early must ADD to the remaining time rather than restart the

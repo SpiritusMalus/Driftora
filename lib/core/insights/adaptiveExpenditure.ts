@@ -120,10 +120,16 @@ export function measuredExpenditure(
   const startIdx = endIdx - (windowDays - 1);
 
   // Intake: keep in-window logged days with a plausible positive total.
+  // TODAY is excluded — it is a PARTIAL day while the user is still eating, and
+  // a breakfast-only total entering the average as a full day drags the
+  // measured expenditure down every morning (and quietly un-drags it by
+  // midnight; typicalSteps excludes today for the same reason). Weigh-ins
+  // below keep the full window: a scale reading is a point measure, not a
+  // running total.
   const foodDays: number[] = [];
   for (const d of intake) {
     const x = dayIndex(d.date);
-    if (x == null || x < startIdx || x > endIdx) continue;
+    if (x == null || x < startIdx || x >= endIdx) continue;
     if (!Number.isFinite(d.kcal) || d.kcal <= 0) continue;
     foodDays.push(d.kcal);
   }

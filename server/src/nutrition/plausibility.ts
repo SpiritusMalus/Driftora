@@ -55,6 +55,17 @@ const BANDS: readonly Band[] = [
 const DRIED = /сушен|вялен|суш[её]н|dried|dehydrated|jerky/;
 
 /**
+ * Transformed forms whose WORD sits in a band their numbers legitimately leave:
+ * сгущённое/сухое/растительное «молоко» is not drinking dairy (320/476/45…),
+ * горячий шоколад and какао are drinks, not bars (~60–90 vs 350–650). Same
+ * rule as the table itself: when the word is ambiguous, don't judge by it —
+ * otherwise a CORRECT curated row gets demoted to an alternative and every
+ * such parse buys a needless (and slow) estimator call.
+ */
+const TRANSFORMED =
+  /сгущ|сухое молоко|сухого молока|кокосов|соев|миндальн|овсяное молоко|горячий шоколад|какао|шоколадное молоко|hot chocolate|drinking chocolate|chocolate milk|cocoa|condensed|milk powder|powdered milk|coconut milk|soy milk|almond milk|oat milk/;
+
+/**
  * True when the matched row's kcal is impossible for the food's CLASS — the
  * signal to treat the row like a weak match (estimate primary, row demoted to
  * an alternative). Judged on the USER-side name (what the food IS), never the
@@ -62,7 +73,7 @@ const DRIED = /сушен|вялен|суш[её]н|dried|dehydrated|jerky/;
  */
 export function kcalBandViolated(nameRu: string, nameEn: string, kcal: number): boolean {
   const hay = `${nameRu} ${nameEn}`.toLowerCase();
-  if (DRIED.test(hay)) return false;
+  if (DRIED.test(hay) || TRANSFORMED.test(hay)) return false;
   for (const band of BANDS) {
     if (band.pattern.test(hay)) return kcal < band.min || kcal > band.max;
   }

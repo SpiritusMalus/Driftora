@@ -67,11 +67,21 @@ export default function FoodEntryScreen() {
   // ignored and the user leaves sure the change landed.
   const [saveIssue, setSaveIssue] = useState(false);
   const [missing, setMissing] = useState(false);
+  // Bumped on every dish removal: ItemCard holds internal state (manual macro
+  // strings, an open search panel) and the list is keyed by index, so without
+  // a remount the removed dish's state would bleed into its successor.
+  const [itemsGen, setItemsGen] = useState(0);
 
   useEffect(() => {
     let active = true;
     void (async () => {
-      if (!db || !Number.isFinite(entryId)) return;
+      if (!db) return;
+      // A malformed deep link (`driftora://food/abc`) must land on the same
+      // honest «запись не найдена» as a missing row — not a forever-blank screen.
+      if (!Number.isFinite(entryId)) {
+        setMissing(true);
+        return;
+      }
       const [detail, settings] = await Promise.all([getFoodEntry(db, entryId), ensureSettings(db)]);
       if (!active) return;
       if (!detail) {
@@ -103,6 +113,9 @@ export default function FoodEntryScreen() {
   }
 
   function onRemove(index: number) {
+    // Remount the remaining cards (see itemsGen): the successor must not
+    // inherit the removed dish's typed macros or open search panel.
+    setItemsGen((g) => g + 1);
     setDraft((prev) => (prev ? removeDraftItem(prev, index) : prev));
   }
 
@@ -205,7 +218,7 @@ export default function FoodEntryScreen() {
         ) : (
           draft.items.map((item, i) => (
             <ItemCard
-              key={i}
+              key={`${itemsGen}-${i}`}
               item={item}
               hideCalories={hideCalories}
               theme={theme}

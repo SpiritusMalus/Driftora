@@ -62,6 +62,12 @@ export function applyRememberedChoices(
       per100: remembered.per100,
       matched_name: remembered.name, // transparency: whose numbers these are
       confidence: 1, // the user chose this match before — honor it confidently
+      // The old row's hints don't describe the remembered pick — the same
+      // contract as withItemReplacement. Left in place, a dry_basis banner
+      // would push the «впишите вес сухой части» fix against per-100g numbers
+      // that are already the cooked ones the user chose.
+      dry_basis: undefined,
+      micros_estimated: undefined,
       scaled: scaleToGrams(remembered.per100, it.grams),
     };
   });

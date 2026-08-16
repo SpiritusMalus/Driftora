@@ -143,7 +143,7 @@ export const en = {
       save: 'Save',
       saving: 'Saving…',
     },
-    northStar: 'Streak: {{weeks}} weeks running.',
+    northStar: 'Streak: {{weeks}} {{weeksWord}} running.',
     paused: {
       title: 'You are on a break',
       body: 'Goals and auto-wins are off. Your data is safe — pick it back up whenever you are ready.',
@@ -243,7 +243,7 @@ export const en = {
         standard: 'Moderate',
         standardDesc: '−15% (−20% at BMI ≥ 30) — recommended.',
         fast: 'Fast',
-        fastDesc: '−25% — assertive. We still never go below the healthy minimum.',
+        fastDesc: '−25% — aggressive. We still never go below the healthy minimum.',
       },
       gain: {
         soft: 'Lean',
@@ -450,7 +450,7 @@ export const en = {
     describeMedia: 'The buttons nearby: dictate it, or attach a screenshot from your tracker app.',
     describeAction: 'Parse',
     parsing: 'Parsing…',
-    parseAdded: 'Added {{count}} entr(ies). Check the time and burn.',
+    parseAdded: 'Entries added: {{count}}. Check the time and burn.',
     parseNone: 'Couldn’t parse that. Refine it, or use the buttons above.',
     parseDeclined: 'Free-text needs AI consent. The buttons above work offline.',
     // Voice note & fitness-tracker screenshot.
@@ -467,7 +467,7 @@ export const en = {
     // Auto-imported session tag + the honest line about its steps: they're in
     // the workout's kcal already, so the budget's step earnings exclude them.
     fromDevice: 'from watch',
-    stepsInside: '{{steps}} steps inside — counted in the workout, not in steps',
+    stepsInside: '{{steps}} {{stepsWord}} inside — counted in the workout, not in steps',
     // No figure: budgetAck follows with its own, and two different numbers in
     // a row is the very confusion the header was collapsed to avoid.
     trackerAdded: 'Logged from your tracker.',
@@ -760,6 +760,47 @@ export const en = {
     perMin: '/min',
     note: 'Informational, not medical data. Never part of the calorie math.',
   },
+  // Meaning-lines library (stepInsight/proteinInsight/varietyInsight): the
+  // modules return keys, the words live here. Same ED rules as Russian.
+  insights: {
+    steps: {
+      none: 'No steps yet today — even a short walk already counts.',
+      low: 'Very little movement so far. A short walk measurably lowers heart risks and helps the nervous system.',
+      building: 'A good start. Around 5–7 thousand steps is where the benefit for heart, vessels and mood grows fastest.',
+      goalMet: 'Personal goal for today reached — already real support for the heart, brain and stress resilience.',
+      beneficial: 'You are in the zone where the benefit grows fastest: every step toward ~7 thousand meaningfully lowers risks and cortisol.',
+      ample: 'An excellent amount of walking — plenty for health. Beyond this, extra steps aren’t automatically “better”.',
+    },
+    protein: {
+      unset0: 'Protein keeps you full longer and protects muscle. Set a personal goal — it makes the direction clearer.',
+      unset1: 'Protein helps you stay full and keep muscle. With a personal goal it’s easier to know what to aim for.',
+      unset2: 'Protein means satiety and muscle support. Set a personal goal and the reference point appears by itself.',
+      none0: 'No protein yet. It keeps you full longer and helps preserve muscle — add a protein source to your next meal.',
+      none1: 'No protein so far today. It brings satiety and protects muscle — add something protein-rich to your next meal.',
+      none2: 'Nothing with protein yet. A protein source at the next meal keeps you full longer and supports your muscles.',
+      low0: 'Not much protein yet. It helps you feel hungry less often and keeps muscle while losing weight.',
+      low1: 'Protein is still building up. A bit further — and satiety lasts longer while muscle stays protected.',
+      low2: 'Protein is only getting started. It helps you feel hunger less often and hold on to muscle.',
+      building0: 'A good protein base already. Enough protein keeps you full and supports muscle.',
+      building1: 'Protein is coming along well. It sustains satiety and helps protect muscle.',
+      building2: 'A solid protein base — that’s both satiety and muscle support.',
+      met0: 'Today’s protein goal is closed — support for satiety and muscle. A good habit.',
+      met1: 'Protein goal reached for today — satiety and muscle are covered. Keep it up.',
+      met2: 'Protein goal done. That helps satiety and muscle — an excellent habit.',
+    },
+    variety: {
+      none: 'Variety in food is gentle care for your body. The whole day is ahead.',
+      some: 'Already something to build the day from. Different foods are, by themselves, care for your body.',
+      varied: 'Several different foods in today’s meals — good support for your body.',
+    },
+  },
+  week: {
+    // Word beside the streak week count; picked via [pluralKey] (en only
+    // branches on 1, Few mirrors Many).
+    unitOne: 'week',
+    unitFew: 'weeks',
+    unitMany: 'weeks',
+  },
   steps: {
     placeholder: 'Steps today',
     unit: 'steps',
@@ -783,7 +824,7 @@ export const en = {
       unavailable: 'Health / Health Connect isn’t available on this device. Enter steps by hand.',
       update_required: 'Health Connect needs an update before it can grant access. Update it and try again.',
       unsupported: 'Automatic step counting isn’t available in this version of the app. Enter steps by hand.',
-      installAction: 'Open Health Connect in Google Play',
+      installAction: 'Open Health Connect on Google Play',
     },
     source: {
       manual: 'Entered by hand',
@@ -869,7 +910,7 @@ export const en = {
       minPart: 'not below {{kcal}}',
       forecastNote: 'Today’s steps aren’t logged yet — the budget stands on your usual count. Enter your steps and it firms up.',
       noMovement: 'These are calories without activity. Steps and workouts help compute the precise number.',
-      stepsBelowBase: 'Steps today — {{steps}}: the first ~3000 are already in the base; the budget grows above that.',
+      stepsBelowBase: 'Steps today — {{steps}}: the first ~3,000 are already in the base; the budget grows above that.',
       noMovementCta: 'add movement',
       how: 'how is the budget computed?',
     },
@@ -879,11 +920,11 @@ export const en = {
       offlineMedia: 'Looks like there’s no internet. Photos and voice need a connection — try later, or describe the food in words.',
       serverBusy: 'Recognition couldn’t handle this shot — your connection is fine. Try again, or describe the food in words.',
       failed: 'Couldn’t parse this. Check your connection and try again.',
-      quota: 'Today’s AI-parse limit is used up — it resets tomorrow. You can still log by hand, with chips, or via “Repeat”.',
+      quota: 'Today’s AI recognition limit is used up — it resets tomorrow. You can still log by hand, with chips, or via “Repeat”.',
       misconfigured:
         'Recognition isn’t available in this build — it’s not your internet and not your phone. Please write to support@family-pie.ru; meanwhile you can log food by hand or with chips.',
     },
-    quotaLeft: 'AI parses left today: {{n}}.',
+    quotaLeft: 'AI recognitions left today: {{n}}.',
     quotaSubscribe: 'Lift the cap — subscribe',
     entryGone: 'This entry has already been deleted.',
     prompt: {
@@ -993,7 +1034,7 @@ export const en = {
     per100: 'per 100 g',
     // Provenance: which DB row the numbers came from (so «what did it return?»
     // can't happen — the user sees the real match, not their own words echoed).
-    matchedAs: 'In database: {{name}}',
+    matchedAs: 'In the database: {{name}}',
     approx: '≈ approx',
     disclaimer:
       'Per-100 g figures come from the database. Until the weight is confirmed, the dish total is approximate.',
@@ -1007,7 +1048,7 @@ export const en = {
     // Prominent note above the chips: no weight given, show the assumed one and
     // invite a fix (the weight drives the whole number).
     gramsGuessed: 'No weight given — assumed {{grams}} g. Adjust if your portion differs.',
-    forGrams: 'per {{grams}} g',
+    forGrams: 'for {{grams}} g',
     otherOption: {
       open: 'Other option',
       openCount: 'Other option ({{count}})',
@@ -1055,7 +1096,7 @@ export const en = {
       needSex: 'Set your sex on the Weight screen — iron and several vitamin norms differ for men and women.',
       empty:
         'Today’s foods carry no micronutrient data — common for many local dishes. Log foods with data and the bars appear.',
-      ofNorm: '{{pct}}% of norm',
+      ofNorm: '{{pct}}% of the norm',
       // Quiet outlier attribution: the meal carrying almost all of an anomalous
       // sum, named and linked into its entry card (“In database” + “Other option”).
       donorLead: 'almost all from',
@@ -1279,7 +1320,7 @@ export const en = {
       moodWalkBody: 'If today feels heavy, a short walk gently steadies your nervous system and mood. No pressure.',
       afternoonWalkTitle: 'Stretch your legs?',
       afternoonWalkBody: 'You’ve moved a little less than usual today. 10 minutes on foot eases both heart and head.',
-      eveningWalkTitle: 'An evening step',
+      eveningWalkTitle: 'An evening stroll',
       eveningWalkBody: 'The day’s almost done. A short stroll is a pleasant way to close it out.',
     },
   },
@@ -1303,7 +1344,7 @@ export const en = {
     auto: {
       stepsGoal: 'Daily step goal reached — {{steps}} {{stepsWord}} 🎉',
       stepsGoal2: 'Step goal done today — {{steps}} {{stepsWord}}. Your legs carried you 🎉',
-      stepsGoal3: '{{steps}} {{stepsWord}} — daily goal taken. Your body thanks you 🚶',
+      stepsGoal3: '{{steps}} {{stepsWord}} — daily goal hit. Your body thanks you 🚶',
       stepsGoal4: 'Done: {{steps}} {{stepsWord}} today. A small win that counts ✨',
       proteinGoal: 'Protein goal reached — {{protein}} g 💪',
       proteinGoal2: 'Protein goal done — {{protein}} g. Muscle supported 💪',
@@ -1321,7 +1362,7 @@ export const en = {
     title: 'Weekly review',
     dbUnavailable: 'The review is available in a device dev build.',
     totalLabel: 'Days logged',
-    streak: 'Streak: {{weeks}} weeks running',
+    streak: 'Streak: {{weeks}} {{weeksWord}} running',
     restart: {
       action: 'Start the streak over',
       title: 'Start the streak over?',
@@ -1366,7 +1407,7 @@ export const en = {
     hero: 'You only pay for AI parsing.',
     heroLead: 'Diary, weight, mood and manual entry are always free.',
     aiOffBody:
-      'The subscription lifts the cap on AI food parsing, and that is currently off. Turn on “AI food parsing” in Settings first — then a subscription would actually buy you something.',
+      'The subscription lifts the cap on AI food recognition, but recognition itself is currently off. Turn on “AI food recognition” in Settings first — then the subscription actually buys you something.',
     stateActive: 'Subscription active',
     stateFree: 'Free tier',
     until: 'Valid until {{date}}.',
@@ -1387,7 +1428,7 @@ export const en = {
     payTitle: 'Payment',
     close: 'Close',
     emailLabel: 'Email for the receipt',
-    keySection: 'Licence key',
+    keySection: 'License key',
     savedKey: 'The key on this phone — you will need it to move the subscription:',
     forget: 'Unlink from this phone',
     activate: 'Activate key',

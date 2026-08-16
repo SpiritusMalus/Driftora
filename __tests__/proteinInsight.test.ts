@@ -1,6 +1,7 @@
 import { describe, expect, it } from '@jest/globals';
 
 import { PROTEIN_COPY, proteinBand, proteinInsight } from '@/lib/core/insights/proteinInsight';
+import i18n from '@/lib/i18n';
 
 describe('proteinBand', () => {
   it('treats a 0 target as "unset"', () => {
@@ -28,7 +29,7 @@ describe('proteinInsight', () => {
       [130, 120],
     ];
     for (const [p, target] of cases) {
-      const sentence = proteinInsight(p, target);
+      const sentence = String(i18n.t(proteinInsight(p, target)));
       expect(sentence.length).toBeGreaterThan(0);
       // ED safeguard: protein copy must not turn into calorie pressure.
       expect(sentence.toLowerCase()).not.toContain('калор');
@@ -67,14 +68,19 @@ describe('proteinInsight', () => {
     }
   });
 
-  it('keeps every variant ED-safe (no calories / cap / "too much" language)', () => {
+  it('keeps every variant ED-safe in both locales (no calories / cap / "too much")', () => {
     for (const variants of Object.values(PROTEIN_COPY)) {
       for (const v of variants) {
-        const low = v.toLowerCase();
-        expect(low).not.toContain('калор');
-        expect(low).not.toContain('слишком');
-        expect(low).not.toContain('лимит');
-        expect(low).not.toContain('много белка');
+        for (const lng of ['ru', 'en'] as const) {
+          const low = String(i18n.t(v, { lng })).toLowerCase();
+          expect(low).not.toContain('калор');
+          expect(low).not.toContain('слишком');
+          expect(low).not.toContain('лимит');
+          expect(low).not.toContain('много белка');
+          expect(low).not.toContain('calorie');
+          expect(low).not.toContain('too much');
+          expect(low).not.toContain('limit');
+        }
       }
     }
   });

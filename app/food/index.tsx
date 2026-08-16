@@ -28,7 +28,11 @@ import {
   type MicroDonorCallout,
   type MicroTotals,
 } from '@/lib/core/db/food';
-import { retryParse, subscribeBackgroundParses } from '@/lib/core/services/backgroundParses';
+import {
+  retryParse,
+  runningParseEntryIds,
+  subscribeBackgroundParses,
+} from '@/lib/core/services/backgroundParses';
 import { syncDayHealth } from '@/lib/core/db/healthSync';
 import { ensureSettings } from '@/lib/core/db/settings';
 import { typicalSteps } from '@/lib/core/db/steps';
@@ -120,7 +124,9 @@ export default function FoodDayScreen() {
     // sessions imported a moment ago.
     // Orphaned «разбирается…» rows from a killed process become retry-visible
     // 'failed' before the list renders — they can never finish on their own.
-    await sweepStalePendingEntries(db);
+    // …except the ones THIS process is parsing right now (a live retry of an
+    // old row would be swept back to 'failed' mid-upload otherwise).
+    await sweepStalePendingEntries(db, undefined, runningParseEntryIds());
     const settings = await ensureSettings(db);
     const health = await syncDayHealth(db, getHealthService(), new Date(), settings.healthImportExtended);
     const todaySteps = health.steps;
