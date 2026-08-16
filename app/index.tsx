@@ -270,7 +270,9 @@ export default function HomeScreen() {
   const stepsMeaningLine =
     stepsBaselineKind != null && stepsBaselineKind !== 'forming'
       ? t(`home.baseline.${stepsBaselineKind}`)
-      : stepsMeaning;
+      : stepsMeaning != null
+        ? t(stepsMeaning)
+        : null;
   // No steps yet is an INVITATION, not a locked feature — the input unfolds via
   // [+], so the old «Скоро» placeholder read as "doesn't work" (device
   // feedback 2026-07-10).
@@ -500,7 +502,10 @@ export default function HomeScreen() {
 
         {streakWeeks > 0 ? (
           <Text style={[styles.northStar, { color: theme.accent }, theme.font.bodyMedium]}>
-            {t('home.northStar', { weeks: streakWeeks })}
+            {t('home.northStar', {
+              weeks: streakWeeks,
+              weeksWord: t(pluralKey('week.unit', streakWeeks)),
+            })}
           </Text>
         ) : null}
       </ScrollView>

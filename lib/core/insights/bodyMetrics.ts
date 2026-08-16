@@ -781,13 +781,17 @@ export function suggestPlan(
   const heightM = profile.heightCm / 100;
   const bmi = weightKg / (heightM * heightM);
   // A goal only counts when plausible and pointing where the mode goes; an
-  // absurdly low goal is clamped to the BMI-18.5 floor — we never plan a body
-  // below the healthy band.
+  // absurdly low LOSE goal is clamped to the BMI-18.5 floor — we never plan a
+  // body below the healthy band. A gain goal that is still below the band is
+  // the user's own staging post TOWARD it: clamping it up would quietly stretch
+  // the path and misreport the ETA against a target they never set.
   const minHealthyKg = 18.5 * heightM * heightM;
   const goalPlausible = Number.isFinite(goalWeightKg) && goalWeightKg >= 20 && goalWeightKg <= 400;
   const goalKg =
     goalPlausible && ((mode === 'lose' && goalWeightKg < weightKg) || (mode === 'gain' && goalWeightKg > weightKg))
-      ? Math.max(goalWeightKg, minHealthyKg)
+      ? mode === 'lose'
+        ? Math.max(goalWeightKg, minHealthyKg)
+        : goalWeightKg
       : null;
 
   // Composition-aware BMR when we have body composition — a MEASURED body-fat %
@@ -912,7 +916,12 @@ export function restingRateForProfile(
   weightKg: number,
   now: Date = new Date(),
 ): number {
-  const plan = suggestPlan(profile, weightKg, 'maintain', now);
+  // Only the BMR is consumed here, and BMR does not depend on the activity
+  // factor — but suggestPlan gates on a VALID factor, and the wizard never
+  // persists activityLevel (it stays ''), which silently disabled the whole
+  // personal ladder and handed every profile the population 0.84. Probe with
+  // the sedentary factor forced, exactly like [restingPlan] below.
+  const plan = suggestPlan({ ...profile, activityLevel: 'sedentary' }, weightKg, 'maintain', now);
   return restingRateFor(plan?.bmrKcal, weightKg);
 }
 

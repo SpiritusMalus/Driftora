@@ -249,7 +249,7 @@ export function createYooKassaPaymentCreator(
   const auth = `Basic ${Buffer.from(`${shopId}:${secretKey}`).toString('base64')}`;
 
   return async function createPayment(draft: CheckoutDraft): Promise<CreatedPayment> {
-    const plan = draft.plan in prices ? draft.plan : DEFAULT_PLAN;
+    const plan = Object.hasOwn(prices, draft.plan) ? draft.plan : DEFAULT_PLAN;
     const price = prices[plan];
     if (!price) throw new Error(`no price configured for plan "${plan}"`);
 
@@ -364,7 +364,7 @@ export function createYooKassaWebhook(opts: WebhookOptions) {
 
     const metadata = payment.metadata ?? {};
     const claimedPlan = typeof metadata.plan === 'string' ? metadata.plan : DEFAULT_PLAN;
-    const plan = claimedPlan in PLAN_DAYS ? claimedPlan : DEFAULT_PLAN;
+    const plan = Object.hasOwn(PLAN_DAYS, claimedPlan) ? claimedPlan : DEFAULT_PLAN;
     // Present when the buyer is renewing an existing licence rather than
     // starting a new one; absent on a first purchase.
     const existingKey = typeof metadata.license_key === 'string' ? metadata.license_key : undefined;

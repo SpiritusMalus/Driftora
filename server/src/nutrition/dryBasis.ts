@@ -23,12 +23,21 @@ import type { Minerals, Per100 } from '../types.js';
  */
 
 /// Starches sold dry but eaten cooked (RU + the LLM's English names).
+/// «рис» needs a hand-made Cyrillic word start — JS \b is ASCII-only, so
+/// `\bрис` matched inside «ириска»/«барбариски» and flagged candy as rice.
 const DRY_STARCH_RE =
-  /(лапш|макарон|вермишел|спагетти|паст[аы]|\bрис\b|рис[а-я]|греч|булгур|кускус|перловк|овсянк|геркулес|пюре|noodle|pasta|spaghetti|vermicelli|\brice\b|buckwheat|groat|oatmeal|couscous|bulgur|instant\s+mash)/i;
+  /(лапш|макарон|вермишел|спагетти|паст[аы]|(?<![а-яё])рис|греч|булгур|кускус|перловк|овсянк|геркулес|пюре|noodle|pasta|spaghetti|vermicelli|\brice\b|buckwheat|groat|oatmeal|couscous|bulgur|instant\s+mash)/i;
 
 /// Below this, a starch is plausibly already cooked; at/above it the per-100g is
 /// almost certainly a dry-product label (cooked starches don't reach it).
 const DRY_KCAL_FLOOR = 250;
+
+/// Above this, the density is a fat-based spread's, not a dry starch's:
+/// «арахисовая/шоколадная/кунжутная паста» live at ~530–590, while real dry
+/// starches top out lower (pasta/rice/groats 330–390, fried instant noodles
+/// 400–470). Without the ceiling, the «паст…» word match handed nut spreads a
+/// dry-basis warning AND an invented «готовое» alternative at ÷2.5 kcal.
+const DRY_KCAL_CEIL = 500;
 
 /**
  * True when `per100` looks like a DRY-product label for a starch the user most
@@ -37,7 +46,7 @@ const DRY_KCAL_FLOOR = 250;
  */
 export function looksDryBasis(names: (string | undefined)[], per100: Per100): boolean {
   if (per100.source === 'estimate') return false; // a fabricated placeholder isn't a label
-  if (per100.kcal < DRY_KCAL_FLOOR) return false;
+  if (per100.kcal < DRY_KCAL_FLOOR || per100.kcal > DRY_KCAL_CEIL) return false;
   const hay = names.filter((n) => typeof n === 'string' && n.length > 0).join(' ');
   return DRY_STARCH_RE.test(hay);
 }
@@ -59,7 +68,7 @@ const DRY_STARCH_YIELD: readonly { re: RegExp; factor: number }[] = [
   { re: /овсянк|геркулес|oatmeal/, factor: 3.0 },
   { re: /булгур|bulgur/, factor: 2.8 },
   { re: /кускус|couscous/, factor: 2.8 },
-  { re: /\bрис\b|рис[а-я]|\brice\b/, factor: 2.9 },
+  { re: /(?<![а-яё])рис|\brice\b/, factor: 2.9 },
   { re: /перловк/, factor: 2.5 },
   { re: /лапш|макарон|вермишел|спагетти|паст[аы]|noodle|pasta|spaghetti|vermicelli/, factor: 2.5 },
 ];

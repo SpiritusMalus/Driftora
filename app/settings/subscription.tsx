@@ -314,7 +314,15 @@ export default function SubscriptionScreen() {
       <Modal
         visible={phase.kind === 'paying'}
         animationType="slide"
-        onRequestClose={() => setPhase({ kind: 'ready' })}
+        onRequestClose={() => {
+          // The platform gesture (Android hardware back / iOS swipe-dismiss) is
+          // the same «closed by hand» as the ✕ button: the payment may already
+          // have gone through in a step we did not see — check before concluding,
+          // otherwise a paid licence is silently never collected.
+          const paymentId = phase.kind === 'paying' ? phase.paymentId : '';
+          if (paymentId) void settle(paymentId);
+          else setPhase({ kind: 'ready' });
+        }}
       >
         <View style={[styles.sheet, { backgroundColor: theme.background }]}>
           <View style={styles.sheetBar}>

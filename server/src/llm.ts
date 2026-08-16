@@ -1,5 +1,6 @@
 import { TIMEOUT_MS } from './httpTimeout.js';
 import { metrics } from './metrics.js';
+import { energyFromMacros, energyInconsistent } from './nutrition/energy.js';
 import {
   ESTIMATE_SEARCH_SCHEMA,
   ESTIMATE_SEARCH_SYSTEM_PROMPT,
@@ -646,7 +647,16 @@ function parseEstimate(data: unknown, fallbackName: string): FoodEstimate | null
   // All zeros would render an authoritative-looking «0 kcal» card for any food.
   if (kcal === 0 && prot === 0 && fat === 0 && carb === 0) return null;
   const name = typeof o.name_ru === 'string' && o.name_ru.trim().length > 0 ? o.name_ru.trim() : fallbackName;
-  return { name, kcal: Math.round(kcal), prot: round1(prot), fat: round1(fat), carb: round1(carb) };
+  // Same reconcile as the referee path (nutrition-science §1): the model can
+  // leave a per-serving kcal against per-100g macros, or transpose fat↔carb —
+  // and this FoodEstimate feeds BOTH the search's «через ИИ» card and the
+  // resolver's DB-miss fill, so a kcal that visibly contradicts the P/F/C
+  // beside it must not leave this function. The model's kcal survives when it
+  // already agrees (it may encode specific-Atwater knowledge); only a gross
+  // contradiction falls back to the single formula.
+  const macros = { prot: round1(prot), fat: round1(fat), carb: round1(carb) };
+  const safeKcal = energyInconsistent({ kcal, ...macros }) ? energyFromMacros(macros) : kcal;
+  return { name, kcal: Math.round(safeKcal), ...macros };
 }
 
 /**

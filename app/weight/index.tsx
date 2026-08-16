@@ -192,16 +192,34 @@ export default function WeightScreen() {
     // Belt-and-braces: never calibrate onto a number that implies missed meals.
     if (looksUnderLogged(expenditure.kcalPerDay, formula.bmrKcal)) return;
     const stepsRows = await listStepsDays(db, ADAPTIVE_WINDOW_DAYS + 2);
-    const startKey = dayKey(new Date(Date.now() - (ADAPTIVE_WINDOW_DAYS - 1) * 86_400_000));
-    const todayK = dayKey();
-    const windowRows = stepsRows.filter((r) => r.date >= startKey && r.date <= todayK);
-    const earned: EarnedDay[] = await Promise.all(
-      windowRows.map(async (r) => ({
-        steps: Number(r.steps),
-        workoutSteps: Number(r.workoutSteps ?? 0),
-        workoutKcal: await todayWorkoutKcal(db, r.date),
-      })),
+    const stepsByDate = new Map(stepsRows.map((r) => [r.date, r]));
+    // Walk EVERY window day, not only the ones with a steps row: a manual
+    // workout log never creates a steps row, and a user without step
+    // permission has none at all — their workouts would otherwise vanish from
+    // avgEarned and be double-counted after calibration (folded into the
+    // resting base AND still eaten back per workout day). Days with neither
+    // steps nor workouts are still skipped, so partial step history doesn't
+    // dilute the average with phantom zero days.
+    const dates: string[] = [];
+    for (let i = 0; i < ADAPTIVE_WINDOW_DAYS; i++) {
+      dates.push(dayKey(new Date(Date.now() - i * 86_400_000)));
+    }
+    const probed = await Promise.all(
+      dates.map(async (date) => {
+        const r = stepsByDate.get(date);
+        return {
+          hasSteps: r != null,
+          day: {
+            steps: Number(r?.steps ?? 0),
+            workoutSteps: Number(r?.workoutSteps ?? 0),
+            workoutKcal: await todayWorkoutKcal(db, date),
+          },
+        };
+      }),
     );
+    const earned: EarnedDay[] = probed
+      .filter((e) => e.hasSteps || e.day.workoutKcal > 0)
+      .map((e) => e.day);
     const avgEarned = averageEarnedKcal(earned, latestKg);
     const factor = bmrFactorFromMeasured(expenditure.kcalPerDay, avgEarned, formula.bmrKcal);
     if (factor == null) return;

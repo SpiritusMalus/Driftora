@@ -197,7 +197,31 @@ export default function BodySetupScreen() {
       goalKg,
       tempo,
     );
-    if (p == null) return; // per-step validation makes this unreachable
+    if (p == null) {
+      // Unreachable from the full wizard walk (per-step validation), but a
+      // deep-linked edit can arrive with the REST of the profile incomplete —
+      // no weigh-in yet, sex unset — and restingPlan has nothing to compute.
+      // The old silent `return` swallowed the tap and lost the typed value.
+      // Save the valid fields, skip the plan, and go back to the rows that
+      // now show the new value.
+      if (editMode && db) {
+        setSaving(true);
+        try {
+          await updateSettings(db, {
+            ...(birthYearValid(yearNum) ? { birthYear: yearNum } : null),
+            ...(sex === 'male' || sex === 'female' ? { sex: sex as Sex } : null),
+            ...(heightValid(heightNum) ? { heightCm: heightNum } : null),
+            ...(fat > 0 ? { bodyFatPct: fat } : null),
+            ...(waist > 0 ? { waistCm: waist } : null),
+          });
+          if (weightValid(weightNum)) await upsertWeight(db, new Date(), weightNum);
+          router.back();
+        } finally {
+          setSaving(false);
+        }
+      }
+      return;
+    }
     setSaving(true);
     try {
       if (db) {

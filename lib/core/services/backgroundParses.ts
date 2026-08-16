@@ -7,6 +7,8 @@ import {
   savePendingEntry,
 } from '../db/food';
 import { loadRememberedChoices } from '../db/foodChoices';
+import { ensureSettings } from '../db/settings';
+import { needsAiConsent } from '../consent/consent';
 import { applyRememberedChoices, displayItemName } from './foodChoice';
 import type { MealDraft, PhotoInput, Region } from './foodParser';
 import { getFoodParser } from './foodParserProvider';
@@ -38,7 +40,6 @@ interface InFlightParse {
 interface RetryMaterial {
   photo: PhotoInput;
   region: Region;
-  consent: boolean;
 }
 
 let inFlight: InFlightParse | null = null;
@@ -47,7 +48,18 @@ let inFlight: InFlightParse | null = null;
 const adoptedUris = new Set<string>();
 /// entryId → what a retry needs. This process only: the photo dies with it.
 const retryMaterial = new Map<number, RetryMaterial>();
+/// entryIds whose parse is in flight IN THIS PROCESS (adopted or retrying).
+/// The day screen's stale-sweep excludes them — a row's ts is its CREATION
+/// time, so a retry of a >15-min-old row would otherwise be swept straight
+/// back to 'failed' while its upload is still running. Doubles as the
+/// double-tap guard in [retryParse].
+const runningEntries = new Set<number>();
 const listeners = new Set<() => void>();
+
+/// Sweep exclusion list for [sweepStalePendingEntries].
+export function runningParseEntryIds(): number[] {
+  return [...runningEntries];
+}
 
 export function registerInFlight(parse: InFlightParse): void {
   inFlight = parse;
@@ -96,6 +108,7 @@ export async function runAdoptedParse(
   draftPromise: Promise<MealDraft>,
   ctx: { region: Region; photo: PhotoInput },
 ): Promise<void> {
+  runningEntries.add(entryId);
   try {
     let draft = await draftPromise;
     // Same personal-journal memory as the on-screen path — an adopted parse
@@ -116,6 +129,7 @@ export async function runAdoptedParse(
     // not stay «разбирается…» forever.
     await markPendingFailed(db, entryId).catch(() => undefined);
   } finally {
+    runningEntries.delete(entryId);
     notify();
   }
 }
@@ -138,7 +152,7 @@ export function adoptOnUnmount(
     try {
       if (flight) {
         const entryId = await savePendingEntry(db, { source: 'photo', meal: ctx.meal });
-        retryMaterial.set(entryId, { photo: flight.photo, region: ctx.region, consent: ctx.consent });
+        retryMaterial.set(entryId, { photo: flight.photo, region: ctx.region });
         notify();
         // Reuses the ALREADY RUNNING request — adoption must not re-bill a
         // parse that is seconds from landing.
@@ -150,7 +164,7 @@ export function adoptOnUnmount(
       const queue: { entryId: number; photo: PhotoInput }[] = [];
       for (const photo of ctx.queued) {
         const entryId = await savePendingEntry(db, { source: 'photo', meal: ctx.meal });
-        retryMaterial.set(entryId, { photo, region: ctx.region, consent: ctx.consent });
+        retryMaterial.set(entryId, { photo, region: ctx.region });
         queue.push({ entryId, photo });
       }
       if (queue.length > 0) notify();
@@ -168,13 +182,23 @@ export function adoptOnUnmount(
 }
 
 /// Tap-to-retry on a 'failed' row. False when this process no longer holds the
-/// photo (app restarted) — the caller says «снимите заново» honestly.
+/// photo (app restarted) or AI consent has since been revoked — the caller
+/// says «снимите заново» honestly (a fresh shot re-runs the consent modal).
 export async function retryParse(db: AnyDb, entryId: number): Promise<boolean> {
   const kept = retryMaterial.get(entryId);
   if (!kept) return false;
+  // Already running (double tap, or a tap on a row the sweep briefly showed as
+  // 'failed'): one photo must not bill the AI budget twice, and the second run
+  // would fail on the temp file the first one deletes on success.
+  if (runningEntries.has(entryId)) return true;
+  // Consent is re-read NOW, not replayed from adoption time: revoking the AI
+  // toggle in Settings must stop this photo from leaving the device — the
+  // provider's gate is a hard one and every other path reads it at call time.
+  const settings = await ensureSettings(db);
+  if (needsAiConsent(settings)) return false;
   await markPendingRetrying(db, entryId);
   notify();
-  await runAdoptedParse(db, entryId, getFoodParser(kept.consent).parsePhoto(kept.photo, kept.region), {
+  await runAdoptedParse(db, entryId, getFoodParser(true).parsePhoto(kept.photo, kept.region), {
     region: kept.region,
     photo: kept.photo,
   });

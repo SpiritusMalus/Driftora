@@ -83,6 +83,13 @@ export interface InstallQuotaOptions {
 
 export interface InstallQuota {
   middleware: (req: Request, res: Response, next: NextFunction) => void;
+  /**
+   * Consume one unit WITHOUT failing the response — for routes where the LLM
+   * call is an optional extra beside a non-AI result (/food/search's AI card).
+   * False when the cap is spent; the caller degrades gracefully (DB rows still
+   * served) instead of 429ing the whole request.
+   */
+  tryConsume: (req: Request, res: Response) => boolean;
   /** Aggregate-only snapshot for /metrics — never contains an id. */
   snapshot: () => Record<string, unknown>;
 }
@@ -123,14 +130,14 @@ export function createInstallQuota(fail: FailFn, opts: InstallQuotaOptions = {})
     return `ip:${ipKeyGenerator(req.ip ?? '', IPV6_SUBNET)}`;
   }
 
-  function middleware(req: Request, res: Response, next: NextFunction): void {
+  function tryConsume(req: Request, res: Response): boolean {
     // The cap, not the counter, is what a purchase changes: a subscriber who
     // spent 20 parses on the free tier this morning keeps that spend and simply
     // gains headroom, rather than getting a suspiciously fresh budget the moment
     // they pay.
     const paid = isPaid(req);
     const cap = paid ? perDayPaid : perDay;
-    if (cap <= 0) return next(); // explicitly disabled
+    if (cap <= 0) return true; // explicitly disabled
 
     const ms = now();
     const day = dayOf(ms);
@@ -149,8 +156,7 @@ export function createInstallQuota(fail: FailFn, opts: InstallQuotaOptions = {})
       if (paid) quotaHitsPaid += 1;
       res.setHeader('X-AI-Quota-Remaining', '0');
       res.setHeader('Retry-After', String(secondsToReset(ms)));
-      fail(res, 429, 'ai_quota_exceeded', 'Daily AI parse quota reached for this install.');
-      return;
+      return false;
     }
 
     if (!counts.has(key) && counts.size >= MAX_KEYS) {
@@ -161,6 +167,14 @@ export function createInstallQuota(fail: FailFn, opts: InstallQuotaOptions = {})
     // The client shows a quiet «осталось N» once this runs low — the honest
     // alternative to a surprise 429 at the day's fifth meal.
     res.setHeader('X-AI-Quota-Remaining', String(cap - used - 1));
+    return true;
+  }
+
+  function middleware(req: Request, res: Response, next: NextFunction): void {
+    if (!tryConsume(req, res)) {
+      fail(res, 429, 'ai_quota_exceeded', 'Daily AI parse quota reached for this install.');
+      return;
+    }
     next();
   }
 
@@ -199,5 +213,5 @@ export function createInstallQuota(fail: FailFn, opts: InstallQuotaOptions = {})
     };
   }
 
-  return { middleware, snapshot };
+  return { middleware, tryConsume, snapshot };
 }

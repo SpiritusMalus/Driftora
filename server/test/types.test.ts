@@ -144,6 +144,9 @@ test('normalizeIdentified: carries a legible label, drops implausible/garbage fi
         est_grams: 120,
         confidence: 0.8,
         label: { kcal_100g: 66, prot_100g: 14, fat_100g: 1.2, carb_100g: 1.5, net_weight_g: 120 },
+        // The verbatim panel that backs the structured label — without it the
+        // composition is a single unchecked reading and must not survive.
+        panel_text: 'белки — 14 г; жиры — 1.2 г; углеводы — 1.5 г; 66 ккал; масса нетто 120 г',
       },
     ],
   });
@@ -164,11 +167,12 @@ test('normalizeIdentified: carries a legible label, drops implausible/garbage fi
   });
   assert.equal(bad!.label, undefined);
 
-  // A partial-but-legible label survives with only the fields it could read.
+  // A partial label without a verifiable panel keeps only the weight: partial
+  // composition can never meet the four-field agreement that earns `label`.
   const [partial] = normalizeIdentified({
     items: [{ name_ru: 'творог', name_en: 'quark', est_grams: 200, confidence: 0.7, label: { prot_100g: 17, net_weight_g: 200 } }],
   });
-  assert.deepEqual(partial!.label, { prot_100g: 17, net_weight_g: 200 });
+  assert.deepEqual(partial!.label, { net_weight_g: 200 });
 });
 
 test('normalizeIdentified: carries a legible AI estimate, drops implausible fields', () => {
@@ -398,11 +402,25 @@ test('crossCheckLabel: a transposed macro pair is DROPPED, not averaged', () => 
   assert.equal(out?.net_weight_g, 120, 'net weight is a separate, far easier read — keep it');
 });
 
-test('crossCheckLabel: one reading alone still counts', () => {
-  const only = { kcal_100g: 92, prot_100g: 10, fat_100g: 1.5, carb_100g: 7 };
-  assert.deepEqual(crossCheckLabel(only, undefined), only);
-  assert.deepEqual(crossCheckLabel(undefined, only), only);
+test('crossCheckLabel: one reading alone never earns the composition', () => {
+  // «по упаковке» is a claim of fact and needs TWO agreeing readings — a
+  // single unchecked one (panel text missing or unparsable) used to pass
+  // straight through, which is exactly the fat↔carb-swap hole the cross-check
+  // exists to close. The weight still rides: it is a separate, easier read.
+  const only = { kcal_100g: 92, prot_100g: 10, fat_100g: 1.5, carb_100g: 7, net_weight_g: 250 };
+  assert.deepEqual(crossCheckLabel(only, undefined), { net_weight_g: 250 });
+  assert.deepEqual(crossCheckLabel(undefined, only), { net_weight_g: 250 });
+  const noWeight = { kcal_100g: 92, prot_100g: 10, fat_100g: 1.5, carb_100g: 7 };
+  assert.equal(crossCheckLabel(noWeight, undefined), undefined);
   assert.equal(crossCheckLabel(undefined, undefined), undefined);
+});
+
+test('parsePanelText: reads an English Nutrition Facts panel', () => {
+  const parsed = parsePanelText('Calories 250, Total Fat 8g, Total Carbohydrate 40g, Protein 16g');
+  assert.equal(parsed?.kcal_100g, 250);
+  assert.equal(parsed?.fat_100g, 8);
+  assert.equal(parsed?.carb_100g, 40);
+  assert.equal(parsed?.prot_100g, 16);
 });
 
 test('normalizeIdentified: panel_text reconciles into the item label end-to-end', () => {

@@ -12,6 +12,7 @@ import { listDistortionTagsSince } from '@/lib/core/db/diary';
 import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
 import { weekReview, type WeekReview } from '@/lib/core/db/weekReview';
 import { thinkingTrapOfWeek, type ThinkingTrap } from '@/lib/core/insights/distortions';
+import { pluralKey } from '@/lib/i18n/plural';
 import { stepReference } from '@/lib/core/insights/stepNorms';
 import { useTheme } from '@/lib/theme/theme';
 
@@ -165,7 +166,10 @@ export default function ReviewScreen() {
           </Text>
           {review.streakWeeks > 0 ? (
             <Text style={[styles.heroStreak, { color: theme.subtle }, theme.font.bodyMedium]}>
-              {t('review.streak', { weeks: review.streakWeeks })}
+              {t('review.streak', {
+                weeks: review.streakWeeks,
+                weeksWord: t(pluralKey('week.unit', review.streakWeeks)),
+              })}
             </Text>
           ) : null}
         </View>
