@@ -99,7 +99,11 @@ export function FoodTodayWidget({
       </Animated.Text>
       {targetKcal > 0 ? (
         <View style={styles.kcalBar}>
-          <FillBar value={kcal} min={targetKcal} thickness={8} />
+          {/* Goal scale: the day budget filled = the bar filled. The old
+              headroom scale (a micro-nutrient idiom) left ~40% of track past
+              the tick, so a fully eaten day read as unfinished (device
+              feedback 2026-08-17: «заполнил всё, а шкалы не адаптивные»). */}
+          <FillBar value={kcal} min={targetKcal} scale="goal" thickness={8} />
         </View>
       ) : null}
       {movementHint ? (
@@ -112,7 +116,7 @@ export function FoodTodayWidget({
             <Text style={[styles.macroLabel, { color: theme.subtle }, theme.font.body]} numberOfLines={1}>
               {t(`macros.${m.key}`)} {Math.round(m.value)}/{m.target > 0 ? Math.round(m.target) : '—'}
             </Text>
-            {m.target > 0 ? <FillBar value={m.value} min={m.target} thickness={6} /> : null}
+            {m.target > 0 ? <FillBar value={m.value} min={m.target} scale="goal" thickness={6} /> : null}
           </View>
         ))}
       </View>

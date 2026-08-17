@@ -10,6 +10,15 @@ export interface FillBarProps {
   min: number;
   /// Optional safe upper limit — drawn as a second "don't exceed" tick (amber).
   max?: number;
+  /// How the track is scaled:
+  ///  - 'headroom' (default): the norm tick sits ~40% below the far end, so
+  ///    running PAST the norm stays visible — right for micronutrients, where
+  ///    exceeding the RDA is normal and the upper limit matters.
+  ///  - 'goal': the track IS the norm — a reached goal fills the whole bar
+  ///    (no ticks, fill clamps at full; over-goal switches to the calm amber).
+  ///    Right for the day budget, where «я всё съел» must LOOK complete
+  ///    (device feedback 2026-08-17: «заполнил всё, а шкалы не адаптивные»).
+  scale?: 'headroom' | 'goal';
   orientation?: 'horizontal' | 'vertical';
   /// Bar thickness (px): the height of a horizontal bar, the width of a vertical one.
   thickness?: number;
@@ -22,19 +31,29 @@ export interface FillBarProps {
 /// the safe upper limit (`max`). Honest by construction: it draws only what it's
 /// handed, so a 0 renders as an empty bar, never as an implied amount. Purely
 /// presentational; all norms/values are decided by the caller.
-export function FillBar({ value, min, max, orientation = 'horizontal', thickness = 10, length = 140 }: FillBarProps) {
+export function FillBar({
+  value,
+  min,
+  max,
+  scale = 'headroom',
+  orientation = 'horizontal',
+  thickness = 10,
+  length = 140,
+}: FillBarProps) {
   const theme = useTheme();
   const horizontal = orientation === 'horizontal';
+  const goal = scale === 'goal';
 
-  // Scale so the norm tick always sits below the far end (headroom above it) and
-  // the fill never clips, even when intake runs past the upper limit.
+  // Headroom: scale so the norm tick always sits below the far end and the fill
+  // never clips, even when intake runs past the upper limit. Goal: the far end
+  // IS the norm — the fill simply clamps there.
   const ceiling = Math.max(max ?? min * 1.4, min * 1.1, Number.EPSILON);
-  const scaleTop = Math.max(ceiling, value);
+  const scaleTop = goal ? Math.max(min, Number.EPSILON) : Math.max(ceiling, value);
   const frac = (n: number) => Math.max(0, Math.min(1, scaleTop > 0 ? n / scaleTop : 0));
   const fillFrac = frac(value);
   const minFrac = frac(min);
   const maxFrac = max != null ? frac(max) : null;
-  const over = max != null && value > max;
+  const over = goal ? value > min : max != null && value > max;
 
   const trackStyle = horizontal
     ? { height: thickness, width: '100%' as const }
@@ -72,9 +91,11 @@ export function FillBar({ value, min, max, orientation = 'horizontal', thickness
         end={horizontal ? { x: 1, y: 0 } : { x: 0, y: 0 }}
         style={[fillStyle, { borderRadius: thickness }]}
       />
-      {/* The norm tick (dark hairline) and, if any, the upper-limit tick (amber). */}
-      {notch(minFrac, theme.text, 'min')}
-      {maxFrac != null ? notch(maxFrac, theme.accent, 'max') : null}
+      {/* The norm tick (dark hairline) and, if any, the upper-limit tick (amber).
+          In goal mode the norm is the bar's far end — a tick there would be
+          invisible noise, so none are drawn. */}
+      {goal ? null : notch(minFrac, theme.text, 'min')}
+      {!goal && maxFrac != null ? notch(maxFrac, theme.accent, 'max') : null}
     </View>
   );
 }
