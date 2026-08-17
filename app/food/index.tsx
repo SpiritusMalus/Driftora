@@ -424,6 +424,19 @@ export default function FoodDayScreen() {
                         : t('food.untitled')}
                     </Text>
                     <Text style={[styles.rowTime, { color: theme.subtle }, theme.font.body]}>{formatTime(e.ts)}</Text>
+                    {/* ALWAYS-VISIBLE pencil (device feedback 2026-08-17: the
+                        edit link inside the unfolded body was easy to miss) —
+                        editing is one tap from any state, same icon-button
+                        idiom as ↻/✕. Destructive ✕ keeps the last slot. */}
+                    <Pressable
+                      onPress={() => router.push(`/food/${e.id}`)}
+                      hitSlop={10}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('food.items.edit')}
+                      style={({ pressed }) => [styles.repeatBtn, { opacity: pressed ? 0.5 : 1 }]}
+                    >
+                      <Ionicons name="create-outline" size={18} color={theme.primary} />
+                    </Pressable>
                     <Pressable
                       onPress={() => void onRepeat(e.id)}
                       hitSlop={10}
@@ -457,11 +470,7 @@ export default function FoodDayScreen() {
                     <AccordionChevron expanded={openIds.has(e.id)} color={theme.tertiary} />
                   </View>
                   <Collapsible open={openIds.has(e.id)}>
-                    <EntryItems
-                      items={itemsByEntry.get(e.id) ?? []}
-                      onEdit={() => router.push(`/food/${e.id}`)}
-                      theme={theme}
-                    />
+                    <EntryItems items={itemsByEntry.get(e.id) ?? []} theme={theme} />
                   </Collapsible>
                 </Card>
                 )}
@@ -634,18 +643,10 @@ function DayProgress({
 /// The unfolded body of a day row: the meal's stored breakdown, one line of
 /// numbers PER INGREDIENT (device feedback 2026-08-17: «нажал — и показалось
 /// КБЖУ на каждый ингредиент»). Honest when there's nothing to unfold: a meal
-/// logged as a single figure says so instead of rendering an empty hole. The
-/// «изменить состав» link keeps the old tap-to-edit path reachable now that
-/// the row tap folds/unfolds instead of navigating.
-function EntryItems({
-  items,
-  onEdit,
-  theme,
-}: {
-  items: FoodItem[];
-  onEdit: () => void;
-  theme: Theme;
-}) {
+/// logged as a single figure says so instead of rendering an empty hole.
+/// Editing lives on the row header's always-visible pencil — a link down here
+/// proved easy to miss (device feedback 2026-08-17, second pass).
+function EntryItems({ items, theme }: { items: FoodItem[]; theme: Theme }) {
   const { t } = useTranslation();
   return (
     <View style={[styles.itemsBody, { borderTopColor: theme.separator }]}>
@@ -673,11 +674,6 @@ function EntryItems({
           </View>
         ))
       )}
-      <Pressable onPress={onEdit} hitSlop={6} accessibilityRole="button">
-        <Text style={[styles.itemsEdit, { color: theme.primary }, theme.font.bodyMedium]}>
-          {t('food.items.edit')}
-        </Text>
-      </Pressable>
     </View>
   );
 }
@@ -876,8 +872,7 @@ const styles = StyleSheet.create({
   itemRow: { marginBottom: 8 },
   itemName: { fontSize: 14, lineHeight: 19 },
   itemMacros: { fontSize: 12, lineHeight: 17, marginTop: 1 },
-  itemsEmpty: { fontSize: 12, lineHeight: 17, marginBottom: 8 },
-  itemsEdit: { fontSize: 13, marginTop: 2 },
+  itemsEmpty: { fontSize: 12, lineHeight: 17 },
   dayCard: { marginBottom: 16 },
   dayHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
   dayTitle: { fontSize: 15 },

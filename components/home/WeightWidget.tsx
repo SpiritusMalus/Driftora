@@ -64,7 +64,8 @@ export function WeightWidget({
           <Ionicons name="scale-outline" size={18} color={theme.accent} />
           <View style={styles.headText}>
             <Text style={[styles.title, { color: theme.text }, theme.font.bodySemiBold]}>{t('home.feeders.weight')}</Text>
-            <Text style={[styles.subtitle, { color: theme.subtle }, theme.font.body]} numberOfLines={1}>
+            {/* Two lines — mirrors the other Home feeders' subtitles. */}
+            <Text style={[styles.subtitle, { color: theme.subtle }, theme.font.body]} numberOfLines={2}>
               {subtitle}
             </Text>
           </View>

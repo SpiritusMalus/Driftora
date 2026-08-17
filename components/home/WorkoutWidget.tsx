@@ -41,7 +41,8 @@ export function WorkoutWidget({
             <Text style={[styles.title, { color: theme.text }, theme.font.bodySemiBold]}>
               {t('home.feeders.workouts')}
             </Text>
-            <Text style={[styles.subtitle, { color: theme.subtle }, theme.font.body]} numberOfLines={1}>
+            {/* Two lines — same insight-sentence subtitle as the steps row. */}
+            <Text style={[styles.subtitle, { color: theme.subtle }, theme.font.body]} numberOfLines={2}>
               {subtitle}
             </Text>
           </View>
