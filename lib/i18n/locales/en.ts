@@ -889,6 +889,11 @@ export const en = {
     deleteConfirm: 'The entry and its items will be removed from this device. This cannot be undone.',
     deleteCancel: 'Keep it',
     untitled: 'Untitled',
+    // Unfolded day row: the meal's per-ingredient breakdown (card tap).
+    items: {
+      empty: 'No breakdown saved — this meal was logged as a single figure.',
+      edit: 'Edit breakdown',
+    },
     emptyDay: 'Nothing logged today yet. Add something whenever you are ready.',
     repeat: 'Log again',
     repeatNow: 'Log again now',
