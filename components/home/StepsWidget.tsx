@@ -67,7 +67,10 @@ export function StepsWidget({
           <Ionicons name="walk-outline" size={18} color={theme.accent} />
           <View style={styles.headText}>
             <Text style={[styles.title, { color: theme.text }, theme.font.bodySemiBold]}>{t('home.feeders.steps')}</Text>
-            <Text style={[styles.subtitle, { color: theme.subtle }, theme.font.body]} numberOfLines={1}>
+            {/* Two lines: the subtitle is a full insight sentence («14 000 —
+                отличный объём ходьбы…») and one line cut it mid-thought
+                (device screenshot 2026-08-17). */}
+            <Text style={[styles.subtitle, { color: theme.subtle }, theme.font.body]} numberOfLines={2}>
               {subtitle}
             </Text>
           </View>
