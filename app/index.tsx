@@ -376,9 +376,17 @@ export default function HomeScreen() {
 
   // While no movement is logged, the food widget's target is the RESTING budget
   // — say so explicitly, or the low number reads as the day's ceiling (device
-  // feedback: «не понял, что тренировки забустят»).
+  // feedback: «не понял, что тренировки забустят»). When steps ARE recorded but
+  // still under the ~3000-step resting baseline, «без учёта активности» is a
+  // lie — the steps are counted, they just live inside the base. Say that
+  // instead, or a freshly connected auto-count reads as "changed nothing"
+  // (device feedback 2026-08-17: «даже считал — не изменились калории»).
   const movementHint =
-    hasGoal && dayBase != null && earnedAdd === 0 ? t('home.food.movementHint') : null;
+    hasGoal && dayBase != null && earnedAdd === 0
+      ? (steps ?? 0) > 0
+        ? t('home.food.inBaseHint')
+        : t('home.food.movementHint')
+      : null;
   // Value ladder for the no-goal user: once a WEIGHT is logged, today's steps get
   // an honest «≈ N ккал» estimate — walking becomes a real number without needing
   // the full profile/goal. Suppressed once a goal is active (the food budget's

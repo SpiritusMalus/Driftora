@@ -141,6 +141,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
   contextual_nudges INTEGER NOT NULL DEFAULT 0,
   show_population_stats INTEGER NOT NULL DEFAULT 0,
   health_import_extended INTEGER NOT NULL DEFAULT 0,
+  health_connected INTEGER NOT NULL DEFAULT 0,
   region TEXT NOT NULL DEFAULT 'auto',
   legal_accepted_version TEXT NOT NULL DEFAULT '',
   legal_accepted_at INTEGER,
@@ -284,6 +285,11 @@ export const MIGRATIONS: string[] = [
   // typed in on the Subscription screen). Null = free tier, which is every
   // existing install.
   `ALTER TABLE app_settings ADD COLUMN license_key TEXT`,
+  // 2026-08-17: the base steps+sleep grant happened at least once. The steps
+  // screen previously inferred "auto counting works" only from today's row
+  // having source='device', so a freshly connected install with no OS data yet
+  // kept showing the «Подключить» card (device feedback 2026-08-17).
+  `ALTER TABLE app_settings ADD COLUMN health_connected INTEGER NOT NULL DEFAULT 0`,
 ];
 
 /// Runs each CREATE statement through [run], then the idempotent [MIGRATIONS].
