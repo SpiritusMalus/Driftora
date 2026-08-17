@@ -29,6 +29,7 @@ import { listWorkoutsForDay, todayWorkoutKcal } from '@/lib/core/db/workouts';
 import {
   dayBudgetKcal,
   EATBACK_FRACTION,
+  macrosWithEarned,
   restingPlan,
   stepsEarnedKcal,
   stepsOutsideWorkouts,
@@ -366,6 +367,22 @@ export default function HomeScreen() {
       ? dayBudgetKcal(dayBase.baseKcal, dayBase.minDayKcal, earnedAdd)
       : (settings?.targetKcal ?? 0) + earnedAdd
     : 0;
+  // Macro targets follow the raised budget too — earned kcal split into
+  // fat/carbs by the plan's own 30% rule, protein per-kilogram stays (device
+  // feedback 2026-08-17: «когда увеличивается калораж — не двигается БЖУ»).
+  // Same math as the food-day card, so Home and «Еда» never disagree.
+  const dayMacroTargets = hasGoal
+    ? macrosWithEarned(
+        dayBase != null
+          ? dayBase
+          : {
+              prot: settings!.targetProteinG,
+              fat: settings!.targetFatG,
+              carb: settings!.targetCarbG,
+            },
+        earnedAdd,
+      )
+    : null;
   // Forecast only makes the target «≈» when it actually moves the number.
   const foodTargetApprox = steps == null && usualSteps != null && stepsEarnedAdd > 0;
 
@@ -376,9 +393,17 @@ export default function HomeScreen() {
 
   // While no movement is logged, the food widget's target is the RESTING budget
   // — say so explicitly, or the low number reads as the day's ceiling (device
-  // feedback: «не понял, что тренировки забустят»).
+  // feedback: «не понял, что тренировки забустят»). When steps ARE recorded but
+  // still under the ~3000-step resting baseline, «без учёта активности» is a
+  // lie — the steps are counted, they just live inside the base. Say that
+  // instead, or a freshly connected auto-count reads as "changed nothing"
+  // (device feedback 2026-08-17: «даже считал — не изменились калории»).
   const movementHint =
-    hasGoal && dayBase != null && earnedAdd === 0 ? t('home.food.movementHint') : null;
+    hasGoal && dayBase != null && earnedAdd === 0
+      ? (steps ?? 0) > 0
+        ? t('home.food.inBaseHint')
+        : t('home.food.movementHint')
+      : null;
   // Value ladder for the no-goal user: once a WEIGHT is logged, today's steps get
   // an honest «≈ N ккал» estimate — walking becomes a real number without needing
   // the full profile/goal. Suppressed once a goal is active (the food budget's
@@ -472,11 +497,11 @@ export default function HomeScreen() {
           targetApprox={foodTargetApprox}
           movementHint={movementHint}
           prot={totals.proteinG}
-          targetProt={hasGoal ? (dayBase?.prot ?? settings!.targetProteinG) : 0}
+          targetProt={dayMacroTargets?.prot ?? 0}
           fat={totals.fatG}
-          targetFat={hasGoal ? (dayBase?.fat ?? settings!.targetFatG) : 0}
+          targetFat={dayMacroTargets?.fat ?? 0}
           carb={totals.carbG}
-          targetCarb={hasGoal ? (dayBase?.carb ?? settings!.targetCarbG) : 0}
+          targetCarb={dayMacroTargets?.carb ?? 0}
           onPress={() => router.push('/food')}
         />
         <WeightWidget db={db} subtitle={weightSubtitle} onSaved={reload} />

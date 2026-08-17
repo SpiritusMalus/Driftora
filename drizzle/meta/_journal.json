@@ -127,6 +127,13 @@
       "when": 1786872649854,
       "tag": "0017_worried_eternals",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1786982113322,
+      "tag": "0018_high_shinko_yamashiro",
+      "breakpoints": true
     }
   ]
 }

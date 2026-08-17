@@ -4,7 +4,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { AccordionChevron } from '@/components/ui/AccordionChevron';
 import { Card } from '@/components/ui/Card';
+import { Collapsible } from '@/components/ui/Collapsible';
 import { FillBar } from '@/components/ui/FillBar';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { RiseIn } from '@/components/ui/RiseIn';
@@ -12,14 +14,17 @@ import { Screen } from '@/components/ui/Screen';
 import {
   dayBudgetKcal,
   EATBACK_FRACTION,
+  macrosWithEarned,
   restingPlan,
   stepsEarnedKcal,
   stepsOutsideWorkouts,
 } from '@/lib/core/insights/bodyMetrics';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import {
+  confirmFoodEntry,
   deleteFoodEntry,
   listEntriesForDay,
+  listItemsForEntries,
   microDonor,
   repeatFoodEntry,
   sweepStalePendingEntries,
@@ -44,7 +49,7 @@ import { fiberTargetG } from '@/lib/core/insights/fiberTarget';
 import { dailyMicroNorms, type MicroRow } from '@/lib/core/insights/microNutrients';
 import { shortMealTitle } from '@/lib/core/insights/mealTitle';
 import { groupEntriesByMeal } from '@/lib/core/insights/mealType';
-import type { FoodEntry } from '@/lib/core/db/schema';
+import type { FoodEntry, FoodItem } from '@/lib/core/db/schema';
 import type { Sex } from '@/lib/core/insights/bodyMetrics';
 import { type Theme, useTheme } from '@/lib/theme/theme';
 
@@ -105,6 +110,13 @@ export default function FoodDayScreen() {
   // «Добавлено ещё раз ✓» after a one-tap repeat; cleared after a moment.
   const [repeatAck, setRepeatAck] = useState<string | null>(null);
   const ackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Unfold-in-place (device feedback 2026-08-17: «нажал — и показалось КБЖУ на
+  // каждый ингредиент»): which day rows are open, and every entry's stored item
+  // breakdown, fetched in ONE query per reload so an open row survives a
+  // refresh with fresh numbers. Editing moved to an explicit link inside the
+  // unfolded body — the row tap now folds/unfolds.
+  const [openIds, setOpenIds] = useState<Set<number>>(new Set());
+  const [itemsByEntry, setItemsByEntry] = useState<Map<number, FoodItem[]>>(new Map());
 
   useEffect(
     () => () => {
@@ -139,6 +151,7 @@ export default function FoodDayScreen() {
       todayWorkoutKcal(db),
     ]);
     setEntries(list);
+    setItemsByEntry(await listItemsForEntries(db, list.map((e) => e.id)));
     setTotals(tot);
     setMicros(mic);
     setSex(settings.sex);
@@ -261,6 +274,24 @@ export default function FoodDayScreen() {
     await reload();
   }
 
+  /// Fold/unfold a day row in place. Unfolding an adopted-but-unreviewed parse
+  /// IS the review now — the breakdown is exactly what there is to check — so
+  /// the «≈ проверьте» pill rests here just like it does on the detail screen.
+  function onToggleRow(e: FoodEntry) {
+    setOpenIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(e.id)) next.delete(e.id);
+      else next.add(e.id);
+      return next;
+    });
+    if (db && !e.confirmed && e.parseStatus == null && !openIds.has(e.id)) {
+      void confirmFoodEntry(db, e.id);
+      setEntries((prev) =>
+        prev ? prev.map((x) => (x.id === e.id ? { ...x, confirmed: true } : x)) : prev,
+      );
+    }
+  }
+
   function onDelete(id: number) {
     Alert.alert(t('food.deleteTitle'), t('food.deleteConfirm'), [
       { text: t('food.deleteCancel'), style: 'cancel' },
@@ -378,10 +409,19 @@ export default function FoodDayScreen() {
                     </View>
                   </Card>
                 ) : (
-                <Card style={styles.row} onPress={() => router.push(`/food/${e.id}`)}>
+                <Card style={styles.row} onPress={() => onToggleRow(e)}>
                   <View style={styles.rowHead}>
-                    <Text style={[styles.rowText, { color: theme.text }, theme.font.bodySemiBold]} numberOfLines={1}>
-                      {e.rawText ? shortMealTitle(e.rawText) : t('food.untitled')}
+                    {/* Open row = the full name, however long (the «выдвижной
+                        тайтл»); folded = the one-line dish summary as before. */}
+                    <Text
+                      style={[styles.rowText, { color: theme.text }, theme.font.bodySemiBold]}
+                      numberOfLines={openIds.has(e.id) ? undefined : 1}
+                    >
+                      {e.rawText
+                        ? openIds.has(e.id)
+                          ? e.rawText
+                          : shortMealTitle(e.rawText)
+                        : t('food.untitled')}
                     </Text>
                     <Text style={[styles.rowTime, { color: theme.subtle }, theme.font.body]}>{formatTime(e.ts)}</Text>
                     <Pressable
@@ -403,16 +443,26 @@ export default function FoodDayScreen() {
                       <Ionicons name="close" size={18} color={theme.tertiary} />
                     </Pressable>
                   </View>
-                  <Text style={[styles.rowMacros, { color: theme.subtle }, theme.font.body]}>
-                    {!e.confirmed ? (
-                      // Adopted parse the user hasn't looked at yet — opening
-                      // the row is the review, so the pill rests on first tap.
-                      <Text style={{ color: theme.accent }}>{t('food.bg.review')} · </Text>
-                    ) : null}
-                    {Math.round(e.kcal)} {t('units.kcal')} · {t('macros.protShort')} {Math.round(e.proteinG)} ·{' '}
-                    {t('macros.fatShort')} {Math.round(e.fatG)} · {t('macros.carbShort')} {Math.round(e.carbG)}{' '}
-                    {t('units.g')}
-                  </Text>
+                  <View style={styles.rowMacrosLine}>
+                    <Text style={[styles.rowMacros, { color: theme.subtle }, theme.font.body]}>
+                      {!e.confirmed ? (
+                        // Adopted parse the user hasn't looked at yet — unfolding
+                        // the row is the review, so the pill rests on first tap.
+                        <Text style={{ color: theme.accent }}>{t('food.bg.review')} · </Text>
+                      ) : null}
+                      {Math.round(e.kcal)} {t('units.kcal')} · {t('macros.protShort')} {Math.round(e.proteinG)} ·{' '}
+                      {t('macros.fatShort')} {Math.round(e.fatG)} · {t('macros.carbShort')} {Math.round(e.carbG)}{' '}
+                      {t('units.g')}
+                    </Text>
+                    <AccordionChevron expanded={openIds.has(e.id)} color={theme.tertiary} />
+                  </View>
+                  <Collapsible open={openIds.has(e.id)}>
+                    <EntryItems
+                      items={itemsByEntry.get(e.id) ?? []}
+                      onEdit={() => router.push(`/food/${e.id}`)}
+                      theme={theme}
+                    />
+                  </Collapsible>
                 </Card>
                 )}
                 </RiseIn>
@@ -506,16 +556,22 @@ function DayProgress({
   // (device feedback 2026-07-12). Real counts only: a forecast below the
   // baseline stays on the generic no-movement line.
   const stepsBelowBase = noMovementYet && steps > 0 && !stepsForecast;
+  // Macro targets follow the RAISED budget, not just the resting plan: earned
+  // kcal land in fat/carbs by the plan's own 30% fat-energy rule, protein stays
+  // per-kilogram (device feedback 2026-08-17: «когда увеличивается калораж —
+  // не двигается БЖУ»). So the macro row and the kcal hero above always tell
+  // the same story about the same day.
+  const dayMacros = macrosWithEarned(goal, stepsAdd + workoutAdd);
   // Fibre joins the macro rows only once the day actually has a figure: most
   // entries logged before fibre was tracked carry none, and a confident «0 г»
   // under a goal would read as "you ate no fibre" when the truth is "we don't
   // know". Target scales with the budget (docs/nutrition-science.md §5).
   const macros = [
-    { label: t('macros.protein'), eaten: Math.round(totals.proteinG), target: goal.prot },
-    { label: t('macros.fat'), eaten: Math.round(totals.fatG), target: goal.fat },
-    { label: t('macros.carbs'), eaten: Math.round(totals.carbG), target: goal.carb },
+    { label: t('macros.protein'), eaten: Math.round(totals.proteinG), target: dayMacros.prot },
+    { label: t('macros.fat'), eaten: Math.round(totals.fatG), target: dayMacros.fat },
+    { label: t('macros.carbs'), eaten: Math.round(totals.carbG), target: dayMacros.carb },
     ...(fiberG != null && fiberG > 0
-      ? [{ label: t('macros.fiber'), eaten: Math.round(fiberG), target: fiberTargetG(goal.kcal) }]
+      ? [{ label: t('macros.fiber'), eaten: Math.round(fiberG), target: fiberTargetG(target) }]
       : []),
   ];
   return (
@@ -572,6 +628,57 @@ function DayProgress({
         ))}
       </View>
     </Card>
+  );
+}
+
+/// The unfolded body of a day row: the meal's stored breakdown, one line of
+/// numbers PER INGREDIENT (device feedback 2026-08-17: «нажал — и показалось
+/// КБЖУ на каждый ингредиент»). Honest when there's nothing to unfold: a meal
+/// logged as a single figure says so instead of rendering an empty hole. The
+/// «изменить состав» link keeps the old tap-to-edit path reachable now that
+/// the row tap folds/unfolds instead of navigating.
+function EntryItems({
+  items,
+  onEdit,
+  theme,
+}: {
+  items: FoodItem[];
+  onEdit: () => void;
+  theme: Theme;
+}) {
+  const { t } = useTranslation();
+  return (
+    <View style={[styles.itemsBody, { borderTopColor: theme.separator }]}>
+      {items.length === 0 ? (
+        <Text style={[styles.itemsEmpty, { color: theme.subtle }, theme.font.body]}>
+          {t('food.items.empty')}
+        </Text>
+      ) : (
+        items.map((it) => (
+          <View key={it.id} style={styles.itemRow}>
+            <Text style={[styles.itemName, { color: theme.text }, theme.font.body]}>
+              {it.name}
+              {it.qtyG != null && it.qtyG > 0 ? (
+                <Text style={{ color: theme.subtle }}>
+                  {' '}
+                  · {Math.round(it.qtyG)} {t('units.g')}
+                </Text>
+              ) : null}
+            </Text>
+            <Text style={[styles.itemMacros, { color: theme.subtle }, theme.font.body]}>
+              {Math.round(it.kcal)} {t('units.kcal')} · {t('macros.protShort')} {Math.round(it.proteinG)} ·{' '}
+              {t('macros.fatShort')} {Math.round(it.fatG)} · {t('macros.carbShort')} {Math.round(it.carbG)}{' '}
+              {t('units.g')}
+            </Text>
+          </View>
+        ))
+      )}
+      <Pressable onPress={onEdit} hitSlop={6} accessibilityRole="button">
+        <Text style={[styles.itemsEdit, { color: theme.primary }, theme.font.bodyMedium]}>
+          {t('food.items.edit')}
+        </Text>
+      </Pressable>
+    </View>
   );
 }
 
@@ -761,7 +868,16 @@ const styles = StyleSheet.create({
   rowText: { fontSize: 15, flex: 1 },
   rowTime: { fontSize: 12 },
   repeatBtn: { marginLeft: 2 },
-  rowMacros: { fontSize: 13, marginTop: 4, lineHeight: 19 },
+  // The macros line carries the fold affordance: text flexes, chevron keeps its
+  // intrinsic width at the right edge.
+  rowMacrosLine: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
+  rowMacros: { fontSize: 13, marginTop: 4, lineHeight: 19, flex: 1 },
+  itemsBody: { borderTopWidth: 1, marginTop: 10, paddingTop: 10 },
+  itemRow: { marginBottom: 8 },
+  itemName: { fontSize: 14, lineHeight: 19 },
+  itemMacros: { fontSize: 12, lineHeight: 17, marginTop: 1 },
+  itemsEmpty: { fontSize: 12, lineHeight: 17, marginBottom: 8 },
+  itemsEdit: { fontSize: 13, marginTop: 2 },
   dayCard: { marginBottom: 16 },
   dayHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
   dayTitle: { fontSize: 15 },

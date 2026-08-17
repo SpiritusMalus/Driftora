@@ -69,6 +69,10 @@ export interface SettingsPatch {
   // Opt-in extended device import (weight/%жира/workouts/vitals) — gates every
   // extended read and the extended OS permission request. See schema.ts.
   healthImportExtended?: boolean;
+  // The base steps+sleep OS grant happened at least once — see schema.ts. Set
+  // true on a successful connect tap; reconciled with the real granted list on
+  // Android (revoking in Health Connect flips it back to false).
+  healthConnected?: boolean;
   region?: 'auto' | 'RU' | 'US';
   // РКН-safe consent fields — see schema.ts. The two consents are independent;
   // helpers in `lib/core/consent/consent.ts` set them with the right version +
@@ -127,6 +131,7 @@ export async function updateSettings(
   if (patch.contextualNudges != null) set.contextualNudges = patch.contextualNudges;
   if (patch.showPopulationStats != null) set.showPopulationStats = patch.showPopulationStats;
   if (patch.healthImportExtended != null) set.healthImportExtended = patch.healthImportExtended;
+  if (patch.healthConnected != null) set.healthConnected = patch.healthConnected;
   if (patch.region != null) set.region = patch.region;
   if (patch.legalAcceptedVersion != null) set.legalAcceptedVersion = patch.legalAcceptedVersion;
   // `…At` fields accept an explicit null (clearing consent on AI-off), so probe

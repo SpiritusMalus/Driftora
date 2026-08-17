@@ -1,0 +1,1 @@
+ALTER TABLE `app_settings` ADD `health_connected` integer DEFAULT false NOT NULL;

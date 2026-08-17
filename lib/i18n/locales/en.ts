@@ -137,6 +137,8 @@ export const en = {
     food: {
       title: 'Food today',
       movementHint: 'Before activity — steps & workouts raise the budget',
+      // Steps ARE recorded, just still under the ~3,000-step resting baseline.
+      inBaseHint: 'Steps counted: the first ~3,000 sit in the base, the budget grows above that',
     },
     weight: {
       placeholder: 'Weight today',
@@ -842,6 +844,8 @@ export const en = {
     todayMany: 'steps today',
     // Screen is open but there's no automatic or manual number for today yet.
     noneToday: 'No steps logged for today yet — connect automatic counting or enter them by hand.',
+    // Same, but auto counting IS already connected — the source writes lazily.
+    noneTodayConnected: 'No steps recorded for today yet — the source delivers them with a delay, the number will appear on its own.',
     // Honest «steps → budget» payoff, right on the screen that owns steps.
     earned: '≈ {{kcal}} kcal above resting from steps',
     inBase: 'The first ~3,000 are already in the base — the budget grows above that',
@@ -885,6 +889,11 @@ export const en = {
     deleteConfirm: 'The entry and its items will be removed from this device. This cannot be undone.',
     deleteCancel: 'Keep it',
     untitled: 'Untitled',
+    // Unfolded day row: the meal's per-ingredient breakdown (card tap).
+    items: {
+      empty: 'No breakdown saved — this meal was logged as a single figure.',
+      edit: 'Edit breakdown',
+    },
     emptyDay: 'Nothing logged today yet. Add something whenever you are ready.',
     repeat: 'Log again',
     repeatNow: 'Log again now',

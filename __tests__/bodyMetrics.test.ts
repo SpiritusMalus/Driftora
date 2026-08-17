@@ -9,6 +9,7 @@ import {
   dayBudgetKcal,
   EATBACK_FRACTION,
   katchMcArdleBmr,
+  macrosWithEarned,
   metForSpeed,
   mifflinBmr,
   MIN_PER_SET,
@@ -790,6 +791,30 @@ describe('dayBudgetKcal (earned movement adds on top of the floored base)', () =
 
   it('never counts negative earned kcal', () => {
     expect(dayBudgetKcal(2000, 0, -300)).toBe(2000);
+  });
+});
+
+describe('macrosWithEarned (macro targets follow the raised budget)', () => {
+  const base = { prot: 153, fat: 67, carb: 201 };
+
+  it('zero earned kcal leaves the base targets untouched', () => {
+    expect(macrosWithEarned(base, 0)).toEqual(base);
+    expect(macrosWithEarned(base, -200)).toEqual(base); // clamps like dayBudgetKcal
+  });
+
+  it('splits earned kcal 30% fat / 70% carbs; protein stays per-kilogram', () => {
+    // 600 earned: fat +600×0.3/9 = +20 г, carbs +600×0.7/4 = +105 г.
+    expect(macrosWithEarned(base, 600)).toEqual({ prot: 153, fat: 87, carb: 306 });
+  });
+
+  it('the macro increment re-adds the earned energy (within rounding)', () => {
+    for (const earned of [120, 455, 803]) {
+      const day = macrosWithEarned(base, earned);
+      const addedKcal = (day.fat - base.fat) * 9 + (day.carb - base.carb) * 4;
+      // Each of the two rounded grams is off by ≤ half a gram → ≤ 9/2 + 4/2 kcal.
+      expect(Math.abs(addedKcal - earned)).toBeLessThanOrEqual(6.5);
+      expect(day.prot).toBe(base.prot);
+    }
   });
 });
 

@@ -409,6 +409,25 @@ class AndroidHealthService implements HealthService {
     }
   }
 
+  /// The REAL current grant, straight from Health Connect — the persisted
+  /// "connected" flag is reconciled against this on the steps screen, so a
+  /// revoke in the Health Connect app shows the connect card again instead of
+  /// a forever-stale «авто-счёт включён». Null when the provider can't answer
+  /// (missing module/provider) — callers then fall back to the stored flag.
+  async hasStepsGrant(): Promise<boolean | null> {
+    if (!(await this.ensure())) return null;
+    try {
+      const granted = await this.hc.getGrantedPermissions();
+      if (!Array.isArray(granted)) return null;
+      return granted.some(
+        (p: { accessType?: string; recordType?: string }) =>
+          p?.accessType === 'read' && p?.recordType === 'Steps',
+      );
+    } catch {
+      return null;
+    }
+  }
+
   /// The extended read set (weight/body-fat/workouts/vitals) on top of the base
   /// steps+sleep. Health Connect grants are per-record-type, so a partial grant
   /// is fine — each read below degrades to null on its own.

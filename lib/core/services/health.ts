@@ -45,6 +45,13 @@ export interface HealthService {
   /// Requests read permission for steps (and sleep). Returns whether granted.
   requestPermissions(): Promise<boolean>;
 
+  /// Whether the STEPS read grant is currently held — true/false when the OS
+  /// can answer (Health Connect exposes the granted list), null when it can't
+  /// tell (HealthKit hides read grants by design). Optional — absent behaves
+  /// like null. Lets the steps screen reconcile its persisted "connected" flag
+  /// with reality instead of trusting a stale bit after a revoke.
+  hasStepsGrant?(): Promise<boolean | null>;
+
   /// Total steps for the given local day, or null if unavailable.
   stepsForDay(day: Date): Promise<number | null>;
 

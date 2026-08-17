@@ -6,6 +6,7 @@ import { applySchema } from '@/lib/core/db/init';
 import {
   getFoodEntry,
   listEntriesForDay,
+  listItemsForEntries,
   repeatFoodEntry,
   saveParsedEntry,
   todayMacroTotals,
@@ -78,6 +79,33 @@ describe('food logging (parse → save → totals)', () => {
     expect(detail!.items[0].name).toContain('Банан');
     const totals = await todayMacroTotals(db);
     expect(totals.kcal).toBeCloseTo(draft.totals.kcal, 1);
+
+    sqlite.close();
+  });
+
+  it('listItemsForEntries groups breakdowns by entry; single-figure meals stay absent', async () => {
+    const { sqlite, db } = makeDb();
+    await applySchema((stmt) => sqlite.exec(stmt));
+
+    // Two meals with stored items, plus one «single figure» meal whose only
+    // item is an unfilled miss (never persisted) — the day list's unfold shows
+    // the first two and says «состав не записан» for the third.
+    const first = fillMacros(await new StubFoodParser().parse('банан, кофе', 'RU'));
+    const second = fillMacros(await new StubFoodParser().parse('омлет', 'RU'));
+    const bare = await new StubFoodParser().parse('пончик', 'RU'); // miss stays unfilled
+    const firstId = await saveParsedEntry(db, { rawText: 'банан, кофе', source: 'text', draft: first });
+    const secondId = await saveParsedEntry(db, { rawText: 'омлет', source: 'text', draft: second });
+    const bareId = await saveParsedEntry(db, { rawText: 'пончик', source: 'text', draft: bare });
+
+    const byEntry = await listItemsForEntries(db, [firstId, secondId, bareId]);
+    expect(byEntry.get(firstId)).toHaveLength(2);
+    expect(byEntry.get(secondId)).toHaveLength(1);
+    expect(byEntry.has(bareId)).toBe(false);
+    // One query, keyed correctly — items never leak across entries.
+    expect(byEntry.get(firstId)!.every((it) => it.entryId === firstId)).toBe(true);
+
+    // Empty input short-circuits without touching the database.
+    expect((await listItemsForEntries(db, [])).size).toBe(0);
 
     sqlite.close();
   });

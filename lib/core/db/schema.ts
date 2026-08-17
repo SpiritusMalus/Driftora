@@ -320,6 +320,16 @@ export const appSettings = sqliteTable('app_settings', {
   healthImportExtended: integer('health_import_extended', { mode: 'boolean' })
     .notNull()
     .default(false),
+  // The BASE steps+sleep permission was granted at least once (the «Подключить»
+  // tap succeeded). The steps screen used to infer "auto counting works" from
+  // today's row having source='device' — but right after connecting the OS
+  // store often has NO steps yet (the phone/watch provider writes lazily), so
+  // the screen kept asking to connect on every visit until data arrived. This
+  // flag remembers the grant itself; on Android it is reconciled against the
+  // real granted-permissions list on each steps-screen visit (revoke → false).
+  healthConnected: integer('health_connected', { mode: 'boolean' })
+    .notNull()
+    .default(false),
   // GENERAL consent to use the app (Terms + Privacy Policy), captured by the
   // first-launch offer gate. Stored as the accepted text version + epoch ms;
   // an empty version means "not yet accepted". Kept SEPARATE from the AI

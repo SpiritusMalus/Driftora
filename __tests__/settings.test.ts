@@ -63,6 +63,21 @@ describe('updateSettings', () => {
     sqlite.close();
   });
 
+  it('defaults health_connected to false and remembers the grant', async () => {
+    const { sqlite, db } = makeDb();
+    await applySchema((s) => sqlite.exec(s));
+
+    // Fresh install: never connected — the steps screen shows the connect card.
+    expect((await ensureSettings(db)).healthConnected).toBe(false);
+    // The «Подключить» tap succeeded — the fact survives screen unmounts and
+    // app restarts, even while the OS store still has no steps to serve.
+    expect((await updateSettings(db, { healthConnected: true })).healthConnected).toBe(true);
+    // Revoked in Health Connect → the reconciliation flips it back.
+    expect((await updateSettings(db, { healthConnected: false })).healthConnected).toBe(false);
+
+    sqlite.close();
+  });
+
   it('round-trips reminder times through JSON', async () => {
     const { sqlite, db } = makeDb();
     await applySchema((s) => sqlite.exec(s));

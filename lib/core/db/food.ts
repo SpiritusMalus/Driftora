@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, lt, notInArray } from 'drizzle-orm';
+import { and, desc, eq, gte, inArray, lt, notInArray } from 'drizzle-orm';
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
 import type {
@@ -805,6 +805,29 @@ export async function listEntriesForDay(
     .from(foodEntries)
     .where(and(gte(foodEntries.ts, start), lt(foodEntries.ts, end)))
     .orderBy(desc(foodEntries.ts))) as FoodEntry[];
+}
+
+/// Item breakdowns for a set of entries, grouped by entry id — one IN query,
+/// not a query per row. Powers the day list's unfold-in-place (device feedback
+/// 2026-08-17: «нажал — и показалось КБЖУ на каждый ингредиент»). An entry
+/// absent from the map has no stored breakdown (logged as a single figure).
+export async function listItemsForEntries(
+  db: AnyDb,
+  entryIds: readonly number[],
+): Promise<Map<number, FoodItem[]>> {
+  const byEntry = new Map<number, FoodItem[]>();
+  if (entryIds.length === 0) return byEntry;
+  const rows = (await db
+    .select()
+    .from(foodItems)
+    .where(inArray(foodItems.entryId, entryIds as number[]))
+    .orderBy(foodItems.id)) as FoodItem[];
+  for (const row of rows) {
+    const list = byEntry.get(row.entryId) ?? [];
+    list.push(row);
+    byEntry.set(row.entryId, list);
+  }
+  return byEntry;
 }
 
 /// Per-day macro totals for the last [days] local calendar days, today

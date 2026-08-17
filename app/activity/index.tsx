@@ -14,7 +14,7 @@ import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { getHealthDay } from '@/lib/core/db/healthDays';
 import { syncDayHealth } from '@/lib/core/db/healthSync';
 import type { StepsRow, WeightRow } from '@/lib/core/db/schema';
-import { ensureSettings } from '@/lib/core/db/settings';
+import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
 import { dayKey, listStepsDays, setManualSteps } from '@/lib/core/db/steps';
 import { latestWeight } from '@/lib/core/db/weight';
 import { stepsEarnedKcal, stepsOutsideWorkouts } from '@/lib/core/insights/bodyMetrics';
@@ -56,6 +56,12 @@ export default function ActivityScreen() {
   const [manualOpen, setManualOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [health, setHealth] = useState<HealthState>('idle');
+  // The PERSISTED «подключение состоялось» fact (app_settings.health_connected).
+  // In-session `health` state dies with the screen, and today's row appears only
+  // once the OS store actually has steps — often minutes-to-hours after the
+  // grant. Without this bit the screen re-asked to connect on every visit in
+  // that gap (device feedback 2026-08-17: «всё равно просил подключить»).
+  const [connectedFlag, setConnectedFlag] = useState(false);
 
   // Pull today's device data BEFORE listing, so the hero and the history's top
   // row are the live number, not whatever some earlier screen happened to store
@@ -64,7 +70,22 @@ export default function ActivityScreen() {
   const reloadSteps = useCallback(async () => {
     if (!db) return null;
     const s = await ensureSettings(db);
-    await syncDayHealth(db, getHealthService(), new Date(), s.healthImportExtended);
+    const svc = getHealthService();
+    // Reconcile the stored flag with the REAL grant when the OS can tell us
+    // (Health Connect can, HealthKit can't → null keeps the stored bit). This
+    // both heals installs that connected before the flag existed (a grant with
+    // flag=false) and notices a revoke in the Health Connect app (flag=true
+    // with no grant) — the card comes back instead of lying «включён».
+    let connected = s.healthConnected;
+    if (svc.hasStepsGrant) {
+      const grant = await svc.hasStepsGrant();
+      if (grant != null && grant !== connected) {
+        connected = grant;
+        await updateSettings(db, { healthConnected: grant });
+      }
+    }
+    setConnectedFlag(connected);
+    await syncDayHealth(db, svc, new Date(), s.healthImportExtended);
     return listStepsDays(db, 30);
   }, [db]);
 
@@ -128,6 +149,12 @@ export default function ActivityScreen() {
         setHealth('denied');
         return;
       }
+      // Persist the grant BEFORE the first read: the OS store frequently has
+      // no steps yet seconds after connecting (the phone/watch provider writes
+      // lazily), and this bit is what keeps the screen from re-asking to
+      // connect until the first number lands.
+      await updateSettings(db, { healthConnected: true });
+      setConnectedFlag(true);
       const list = await reloadSteps();
       if (list) setItems(list);
       setHealth('connected');
@@ -180,9 +207,11 @@ export default function ActivityScreen() {
       ? t('activity.inWorkouts', { steps: Math.min(workoutStepsToday, today.steps) })
       : null;
 
-  // Auto counting is "working" either after connecting this session, or whenever
-  // today's number came from the device — collapse the setup card to a quiet line.
-  const autoWorking = health === 'connected' || today?.source === 'device';
+  // Auto counting is "working" after connecting (this session OR any earlier
+  // one — the persisted flag), or whenever today's number came from the device.
+  // Data presence alone was the old signal, and it re-showed the connect card
+  // during the connected-but-no-data-yet gap right after the grant.
+  const autoWorking = health === 'connected' || connectedFlag || today?.source === 'device';
 
   const rows: RowSpec[] = history.map((s) => ({
     key: s.date,
@@ -230,7 +259,10 @@ export default function ActivityScreen() {
           </>
         ) : (
           <Text style={[styles.heroEmpty, { color: theme.subtle }, theme.font.body]}>
-            {t('activity.noneToday')}
+            {/* Connected but the store hasn't served a number yet: say THAT —
+                the generic «подключите авто-счёт» copy here read as "connecting
+                did nothing" during the provider's lazy first write. */}
+            {autoWorking ? t('activity.noneTodayConnected') : t('activity.noneToday')}
           </Text>
         )}
       </View>
