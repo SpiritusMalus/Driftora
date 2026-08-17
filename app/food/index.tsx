@@ -14,6 +14,7 @@ import { Screen } from '@/components/ui/Screen';
 import {
   dayBudgetKcal,
   EATBACK_FRACTION,
+  macrosWithEarned,
   restingPlan,
   stepsEarnedKcal,
   stepsOutsideWorkouts,
@@ -555,16 +556,22 @@ function DayProgress({
   // (device feedback 2026-07-12). Real counts only: a forecast below the
   // baseline stays on the generic no-movement line.
   const stepsBelowBase = noMovementYet && steps > 0 && !stepsForecast;
+  // Macro targets follow the RAISED budget, not just the resting plan: earned
+  // kcal land in fat/carbs by the plan's own 30% fat-energy rule, protein stays
+  // per-kilogram (device feedback 2026-08-17: «когда увеличивается калораж —
+  // не двигается БЖУ»). So the macro row and the kcal hero above always tell
+  // the same story about the same day.
+  const dayMacros = macrosWithEarned(goal, stepsAdd + workoutAdd);
   // Fibre joins the macro rows only once the day actually has a figure: most
   // entries logged before fibre was tracked carry none, and a confident «0 г»
   // under a goal would read as "you ate no fibre" when the truth is "we don't
   // know". Target scales with the budget (docs/nutrition-science.md §5).
   const macros = [
-    { label: t('macros.protein'), eaten: Math.round(totals.proteinG), target: goal.prot },
-    { label: t('macros.fat'), eaten: Math.round(totals.fatG), target: goal.fat },
-    { label: t('macros.carbs'), eaten: Math.round(totals.carbG), target: goal.carb },
+    { label: t('macros.protein'), eaten: Math.round(totals.proteinG), target: dayMacros.prot },
+    { label: t('macros.fat'), eaten: Math.round(totals.fatG), target: dayMacros.fat },
+    { label: t('macros.carbs'), eaten: Math.round(totals.carbG), target: dayMacros.carb },
     ...(fiberG != null && fiberG > 0
-      ? [{ label: t('macros.fiber'), eaten: Math.round(fiberG), target: fiberTargetG(goal.kcal) }]
+      ? [{ label: t('macros.fiber'), eaten: Math.round(fiberG), target: fiberTargetG(target) }]
       : []),
   ];
   return (

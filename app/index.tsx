@@ -29,6 +29,7 @@ import { listWorkoutsForDay, todayWorkoutKcal } from '@/lib/core/db/workouts';
 import {
   dayBudgetKcal,
   EATBACK_FRACTION,
+  macrosWithEarned,
   restingPlan,
   stepsEarnedKcal,
   stepsOutsideWorkouts,
@@ -366,6 +367,22 @@ export default function HomeScreen() {
       ? dayBudgetKcal(dayBase.baseKcal, dayBase.minDayKcal, earnedAdd)
       : (settings?.targetKcal ?? 0) + earnedAdd
     : 0;
+  // Macro targets follow the raised budget too — earned kcal split into
+  // fat/carbs by the plan's own 30% rule, protein per-kilogram stays (device
+  // feedback 2026-08-17: «когда увеличивается калораж — не двигается БЖУ»).
+  // Same math as the food-day card, so Home and «Еда» never disagree.
+  const dayMacroTargets = hasGoal
+    ? macrosWithEarned(
+        dayBase != null
+          ? dayBase
+          : {
+              prot: settings!.targetProteinG,
+              fat: settings!.targetFatG,
+              carb: settings!.targetCarbG,
+            },
+        earnedAdd,
+      )
+    : null;
   // Forecast only makes the target «≈» when it actually moves the number.
   const foodTargetApprox = steps == null && usualSteps != null && stepsEarnedAdd > 0;
 
@@ -480,11 +497,11 @@ export default function HomeScreen() {
           targetApprox={foodTargetApprox}
           movementHint={movementHint}
           prot={totals.proteinG}
-          targetProt={hasGoal ? (dayBase?.prot ?? settings!.targetProteinG) : 0}
+          targetProt={dayMacroTargets?.prot ?? 0}
           fat={totals.fatG}
-          targetFat={hasGoal ? (dayBase?.fat ?? settings!.targetFatG) : 0}
+          targetFat={dayMacroTargets?.fat ?? 0}
           carb={totals.carbG}
-          targetCarb={hasGoal ? (dayBase?.carb ?? settings!.targetCarbG) : 0}
+          targetCarb={dayMacroTargets?.carb ?? 0}
           onPress={() => router.push('/food')}
         />
         <WeightWidget db={db} subtitle={weightSubtitle} onSaved={reload} />

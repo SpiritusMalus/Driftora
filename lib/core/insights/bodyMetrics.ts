@@ -605,6 +605,36 @@ export function dayBudgetKcal(baseKcal: number, minDayKcal: number, earnedKcal: 
   return Math.max(baseKcal, minDayKcal) + Math.max(0, earnedKcal);
 }
 
+/// Share of any planned kcal figure allotted to FAT energy — the plan's own
+/// «fat is 30% of kcal» rule (see [suggestPlan]), named so the day-level macro
+/// scaling below can apply the SAME rule instead of a second opinion.
+export const FAT_KCAL_SHARE = 0.3;
+
+/// Macro targets for the day once earned activity raised the kcal budget
+/// (device feedback 2026-08-17: «когда увеличивается калораж — не двигается
+/// БЖУ»). The budget grew, the macro row didn't — so a walked-up day read as
+/// «ешь больше, но непонятно чего».
+///
+/// Protein stays PUT: the plan prescribes it per kilogram of body
+/// ([PROTEIN_PER_KG] × basis), and a walk doesn't change the body it protects —
+/// scaling it with kcal would inflate the one macro that's a floor, not a fuel.
+/// The earned kcal split between fat and carbs by the plan's own fat-energy
+/// share (30% → fat, the rest → carbs, the fuel of the movement that earned
+/// them). ADDITIVE on top of the base targets, so a hand-set manual plan keeps
+/// its chosen ratios — only the increment follows the formula.
+export function macrosWithEarned(
+  base: { prot: number; fat: number; carb: number },
+  earnedKcal: number,
+): { prot: number; fat: number; carb: number } {
+  const extra = Number.isFinite(earnedKcal) ? Math.max(0, earnedKcal) : 0;
+  if (extra === 0) return { prot: base.prot, fat: base.fat, carb: base.carb };
+  return {
+    prot: base.prot,
+    fat: base.fat + Math.round((extra * FAT_KCAL_SHARE) / 9),
+    carb: base.carb + Math.round((extra * (1 - FAT_KCAL_SHARE)) / 4),
+  };
+}
+
 export interface MacroTargets {
   kcal: number;
   prot: number;
@@ -873,7 +903,7 @@ export function suggestPlan(
     proteinBasis = 'adjusted';
   }
   const prot = Math.round(PROTEIN_PER_KG[mode] * basisKg);
-  const fat = Math.round((kcal * 0.3) / 9);
+  const fat = Math.round((kcal * FAT_KCAL_SHARE) / 9);
   const carb = Math.max(0, Math.round((kcal - prot * 4 - fat * 9) / 4));
   // ONE fiber goal in the app. This used to compute its own (14 g per 1000 kcal,
   // no floor) while the food screen showed `fiberTargetG` — so the same person
