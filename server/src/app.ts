@@ -206,6 +206,8 @@ export interface CreateAppOptions {
   createYooKassaPayment?: (draft: CheckoutDraft) => Promise<CreatedPayment>;
   /** Override the ЮKassa source-IP allowlist (tests). */
   yooKassaCidrs?: readonly string[];
+  /** Skip the webhook's source-IP gate (env: YOOKASSA_WEBHOOK_OPEN=1) — see WebhookOptions.open. */
+  yooKassaWebhookOpen?: boolean;
   /** Inject the Google ID-token verifier (tests); production builds one from env. */
   verifyGoogleIdToken?: GoogleVerifier;
 }
@@ -556,11 +558,20 @@ export function createApp(
    * payment through the API rather than believing the body.
    */
   const yooKassaWebhook = getYooKassaPayment
-    ? createYooKassaWebhook({ licenses, getPayment: getYooKassaPayment, cidrs: opts.yooKassaCidrs })
+    ? createYooKassaWebhook({
+        licenses,
+        getPayment: getYooKassaPayment,
+        cidrs: opts.yooKassaCidrs,
+        // fam's nginx SNI-router loses the client IP (backend sees 127.0.0.1),
+        // so the IP gate there rejects ЮKassa itself — see WebhookOptions.open.
+        open: opts.yooKassaWebhookOpen ?? process.env.YOOKASSA_WEBHOOK_OPEN === '1',
+      })
     : null;
   // Mounted unconditionally even when unconfigured, so the route stays visible
   // to the openapi contract test instead of vanishing from the spec's view.
-  app.post('/billing/yookassa/webhook', (req: Request, res: Response) => {
+  // billingDaily bounds the open-gate mode's spam surface (each POST is a
+  // potential API call to ЮKassa); a 429 is safe — they redeliver for 24h.
+  app.post('/billing/yookassa/webhook', limiters.billingDaily, (req: Request, res: Response) => {
     if (!yooKassaWebhook) {
       fail(res, 503, 'billing_unavailable', 'This deployment does not sell subscriptions.');
       return;

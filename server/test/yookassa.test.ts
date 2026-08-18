@@ -189,6 +189,49 @@ test('webhook: a notification from anywhere else is refused and sells nothing', 
   }
 });
 
+test('webhook: open mode admits a foreign address — the API re-read still decides alone', async () => {
+  // fam's proxy chain hands the backend 127.0.0.1 for everyone, so the IP gate
+  // there rejects ЮKassa itself. Open mode drops the gate; what keeps a spoofed
+  // body from selling anything is unchanged — the payment is re-read from the API.
+  const getYooKassaPayment = async (id: string): Promise<YooKassaPayment> => ({
+    id,
+    status: 'succeeded',
+    metadata: { plan: 'monthly' },
+  });
+  const { base, stop } = await startApp({
+    getYooKassaPayment,
+    yooKassaWebhookOpen: true,
+    licensesPath: '',
+    entitlementsPath: '',
+  });
+  try {
+    const res = await notify(base, '8.8.8.8', succeeded);
+    assert.equal(res.status, 200, 'the gate must not refuse when open');
+    const claim = await realFetch(`${base}/billing/license?payment_id=pay-1`);
+    assert.equal(claim.status, 200, 'a genuinely settled payment mints its licence');
+  } finally {
+    await stop();
+  }
+});
+
+test('webhook: open mode still sells nothing the API does not confirm', async () => {
+  const getYooKassaPayment = async (id: string): Promise<YooKassaPayment> => ({ id, status: 'pending' });
+  const { base, stop } = await startApp({
+    getYooKassaPayment,
+    yooKassaWebhookOpen: true,
+    licensesPath: '',
+    entitlementsPath: '',
+  });
+  try {
+    const res = await notify(base, '8.8.8.8', succeeded);
+    assert.equal(res.status, 200);
+    const claim = await realFetch(`${base}/billing/license?payment_id=pay-1`);
+    assert.equal(claim.status, 404, 'an unsettled payment must not mint a licence, gate or no gate');
+  } finally {
+    await stop();
+  }
+});
+
 test('webhook: the body claiming success is not enough — the API decides', async () => {
   // The whole point: anyone who reaches an allowed address could POST
   // "payment.succeeded". Only ЮKassa's own answer settles it.
