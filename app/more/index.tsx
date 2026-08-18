@@ -108,6 +108,18 @@ export default function MoreScreen() {
       onPress: () => router.push('/more/how-it-works'),
     },
     {
+      // The paid tier's ONLY navigation entry used to be inside Settings —
+      // effectively invisible (owner feedback 2026-08-18). This row is the
+      // discoverable door; the screen itself still explains rather than sells.
+      key: 'subscription',
+      icon: 'sparkles-outline',
+      tint: theme.primary,
+      iconBg: coralTile,
+      title: t('subscription.openRow'),
+      subtitle: t('subscription.openRowNote'),
+      onPress: () => router.push('/settings/subscription'),
+    },
+    {
       key: 'settings',
       icon: 'settings-outline',
       tint: theme.isIOS ? '#8E8E93' : theme.subtle,
