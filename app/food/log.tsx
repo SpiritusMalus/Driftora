@@ -180,6 +180,12 @@ export default function FoodLogScreen() {
   // mount-time (empty) queue and leak the downscaled JPEGs still waiting in it.
   const photoQueueRef = useRef<PhotoInput[]>([]);
   photoQueueRef.current = photoQueue;
+  // Lookahead-1 pipeline for the batch: while the user reviews the current
+  // shot, the NEXT queued one is already parsing. The server still never sees
+  // two concurrent requests — the overlap is with human review time, not with
+  // another parse. Kills the «подтвердил еду и жду прогрузки» wait between
+  // batch photos (owner feedback 2026-08-18).
+  const prefetchRef = useRef<{ uri: string; promise: Promise<MealDraft> } | null>(null);
   // Same live-mirror idiom for the background hand-off (adoptOnUnmount): the
   // unmount cleanup runs once, where state would be frozen at mount time.
   const mealRef = useRef<MealType | null>(null);
@@ -282,8 +288,12 @@ export default function FoodLogScreen() {
       // opened). Only the consented online path adopts — the offline stub
       // can't parse a photo, so adopting it would just mint failed rows.
       if (dbRef.current && consentRef.current && AI_CONFIGURED) {
+        // The lookahead shot is registered as THE in-flight parse and still
+        // sits in the queue — passing it in `queued` too would mint a second
+        // pending row and re-bill the same photo.
+        const prefetchedUri = prefetchRef.current?.uri;
         adoptOnUnmount(dbRef.current, {
-          queued: photoQueueRef.current,
+          queued: photoQueueRef.current.filter((p) => p.uri !== prefetchedUri),
           region: regionRef.current,
           meal: mealRef.current,
           consent: consentRef.current,
@@ -556,13 +566,35 @@ export default function FoodLogScreen() {
     }
   }
 
+  /// Quietly start the NEXT queued photo's parse while the current one sits on
+  /// screen for review (lookahead of exactly 1). Registered as the in-flight
+  /// parse so leaving the screen adopts THIS running request instead of billing
+  /// the same photo a second time.
+  function prefetchNext(consentNow: boolean, justParsedUri: string) {
+    const next = photoQueueRef.current[0];
+    // The uri guard is belt-and-suspenders against a stale ref still holding
+    // the shot whose parse just landed (the queue is dequeued synchronously on
+    // advance, but a skipped prefetch beats a double-billed photo).
+    if (!next || !consentNow || next.uri === justParsedUri) return;
+    if (prefetchRef.current?.uri === next.uri) return;
+    const promise = getFoodParser(consentNow).parsePhoto(next, region);
+    // Errors are handled (with UI) when the advance consumes this promise.
+    promise.catch(() => undefined);
+    registerInFlight({ promise, photo: next });
+    prefetchRef.current = { uri: next.uri, promise };
+  }
+
   async function runPhotoParse(photo: PhotoInput, consentNow: boolean) {
     setParsing(true);
     setParseIssue(null);
+    // A batch advance may find its parse already running (or done): the
+    // lookahead above started it during the previous shot's review.
+    const pre = prefetchRef.current?.uri === photo.uri ? prefetchRef.current : null;
+    if (pre) prefetchRef.current = null;
     // The promise is captured BEFORE the await so that leaving the screen
     // mid-parse can hand this exact in-flight request to the background
     // service — adoption must not re-bill a parse that is seconds from landing.
-    const parseP = getFoodParser(consentNow).parsePhoto(photo, region);
+    const parseP = pre?.promise ?? getFoodParser(consentNow).parsePhoto(photo, region);
     registerInFlight({ promise: parseP, photo });
     try {
       const parsed = await parseP;
@@ -570,6 +602,9 @@ export default function FoodLogScreen() {
       // itself — this (possibly unmounted) closure stands down.
       if (isAdopted(photo.uri)) return;
       acceptDraft(await applyMemory(parsed), consentNow, 'photo');
+      // Pipeline the batch — but not off the offline/quota stub: every queued
+      // parse would fail the same way, burning a request to learn nothing.
+      if (!parsed.flags.offline_fallback) prefetchNext(consentNow, photo.uri);
     } catch {
       if (!isAdopted(photo.uri)) setParseIssue('failed');
     } finally {
@@ -817,6 +852,12 @@ export default function FoodLogScreen() {
     setMeal(null);
     // Abandon any remaining batch — «очистить» means the whole capture is off.
     // The queued shots never reach their parse's own cleanup, so sweep here.
+    // The lookahead parse (if any) is unregistered FIRST: an unmount right
+    // after must not adopt — and save — a shot the user just discarded.
+    if (prefetchRef.current) {
+      clearInFlight(prefetchRef.current.uri);
+      prefetchRef.current = null;
+    }
     for (const p of photoQueue) deleteTempFile(p.uri);
     setPhotoQueue([]);
     setBatchTotal(0);
@@ -915,6 +956,10 @@ export default function FoodLogScreen() {
       if (photoQueue.length > 0) {
         const [next, ...rest] = photoQueue;
         setPhotoQueue(rest);
+        // Sync the ref NOW: `next`'s prefetched parse may already be resolved,
+        // and its continuation (which prefetches the shot after) runs on a
+        // microtask — before the re-render that would re-sync the ref.
+        photoQueueRef.current = rest;
         setSaving(false);
         startPhoto(next);
         return;
@@ -938,6 +983,9 @@ export default function FoodLogScreen() {
     if (photoQueue.length === 0) return;
     const [next, ...rest] = photoQueue;
     setPhotoQueue(rest);
+    // Same microtask race as the save-path advance: keep the ref honest before
+    // a resolved prefetch promise reads it.
+    photoQueueRef.current = rest;
     startPhoto(next);
   }
 
@@ -1153,10 +1201,24 @@ export default function FoodLogScreen() {
         </>
       ) : quotaLeft !== null && quotaLeft <= 3 ? (
         /* Honest heads-up instead of a surprise «лимит» at the day's fifth
-           meal — rendered only once the server-reported budget runs low. */
-        <Text style={[styles.parseIssue, { color: theme.subtle }, theme.font.body]}>
-          {t('food.quotaLeft', { n: quotaLeft })}
-        </Text>
+           meal — rendered only once the server-reported budget runs low. The
+           subscription link rides along here too: waiting for the wall to
+           mention the remedy made the paid tier undiscoverable (owner
+           feedback 2026-08-18). Same quiet link, one line, no modal. */
+        <>
+          <Text style={[styles.parseIssue, { color: theme.subtle }, theme.font.body]}>
+            {t('food.quotaLeft', { n: quotaLeft })}
+          </Text>
+          <Pressable
+            onPress={() => router.push('/settings/subscription')}
+            hitSlop={8}
+            accessibilityRole="link"
+          >
+            <Text style={[styles.parseIssue, { color: theme.primary }, theme.font.bodyMedium]}>
+              {t('food.quotaSubscribe')}
+            </Text>
+          </Pressable>
+        </>
       ) : null}
 
       {/* «Из моего рациона» — while IDLE it sits right under the parse button
