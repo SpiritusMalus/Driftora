@@ -311,6 +311,17 @@ export interface WebhookOptions {
   getPayment: (id: string) => Promise<YooKassaPayment>;
   /** Override the allowlist (tests). */
   cidrs?: readonly string[];
+  /**
+   * Skip the source-IP gate entirely. For deployments behind a proxy chain
+   * that loses the client address (fam: nginx SNI-router → Caddy hands the
+   * backend `X-Forwarded-For: 127.0.0.1`) — there the gate rejects ЮKassa
+   * itself, silently. Authenticity does NOT rest on this gate: the handler
+   * never believes the body and re-reads the payment through the API with
+   * shop credentials, so an open webhook can only mint what was truly paid.
+   * The gate is spam armor — with it off, the route's rate limiter is the
+   * remaining bound on API-call amplification.
+   */
+  open?: boolean;
 }
 
 /**
@@ -324,8 +335,11 @@ export function createYooKassaWebhook(opts: WebhookOptions) {
   const cidrs = opts.cidrs ?? YOOKASSA_CIDRS;
 
   return async function handle(req: Request, res: Response): Promise<void> {
-    if (!isYooKassaAddress(req.ip, cidrs)) {
+    if (!opts.open && !isYooKassaAddress(req.ip, cidrs)) {
       // Not ЮKassa. Retrying is meaningless, so this is a flat refusal.
+      // Logged because a legitimate notification landing here (proxy ate the
+      // real IP) is otherwise invisible — it cost a night to find once.
+      console.error(`yookassa: webhook refused by IP gate: ${req.ip ?? 'no ip'}`);
       res.status(403).json({ error: { code: 'forbidden', message: 'Not a ЮKassa source address.' } });
       return;
     }
