@@ -306,6 +306,17 @@ export const appSettings = sqliteTable('app_settings', {
   contextualNudges: integer('contextual_nudges', { mode: 'boolean' })
     .notNull()
     .default(false),
+  // Opt-in (default OFF): share confirmed foods with the SHARED base — the
+  // dishes no composition table has (шаурма, хачапури, домашние сырники), so
+  // the next person who types the name finds the numbers instead of typing them
+  // again. What leaves the phone is the food NAME and its per-100g macros, and
+  // nothing else: not the meal, not the weight, not the time, not the install id
+  // (lib/core/services/communityShare.ts decides; httpFoodParser sends). The
+  // base is public, so this is its own switch and never bundled with the AI
+  // consent it also requires — reading FROM the base needs neither.
+  communityFoodShare: integer('community_food_share', { mode: 'boolean' })
+    .notNull()
+    .default(false),
   // Opt-in (default off): show sourced step reference points vs. the user's
   // average. Off by default — social comparison can demotivate (Roadmap §5).
   showPopulationStats: integer('show_population_stats', { mode: 'boolean' })

@@ -65,10 +65,18 @@ Metro runs on **:8081** (the Expo SDK 54 default).
 
 ## Food-parse proxy (`server/`)
 
-A small stateless service: it identifies a food from a photo, text, or voice note with an LLM via
+A small service: it identifies a food from a photo, text, or voice note with an LLM via
 **OpenRouter** (identification only), then resolves nutrition numbers from authoritative tables (USDA FoodData Central for the US;
 a regional table for RU, plus OpenFoodFacts) with an optional paid API-Ninjas fallback. **API keys
 live only on the server and are never bundled into the app.**
+
+The one thing it stores is the **shared food base** (`COMMUNITY_FOODS_PATH`, off unless set): the
+local dishes no composition table carries — шаурма, хачапури, домашние сырники — contributed by
+people who typed the numbers themselves, served back as the median of every confirmation and
+labeled `community` so a crowd figure never reads as a measurement. A row is a food name, a region
+and per-100 g macros; no install id, address or time is written, so it cannot be traced back to
+whoever contributed it. Sharing is opt-in in the app (Settings → «Делиться блюдами с общей базой»,
+default off); searching the base is not.
 
 ```bash
 cd server
@@ -95,7 +103,7 @@ numbers do and don't mean. Operating it (SLOs, alerts, runbook, rollback) is `do
 
 Key env (`server/.env.example`): `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` (default
 `google/gemini-3.5-flash`), `USDA_API_KEY`, `DEFAULT_REGION` (US|RU), `PORT` (default **8787**),
-optional `APP_TOKEN`, `ALLOWED_ORIGIN`. The app points at the proxy via the
+optional `APP_TOKEN`, `ALLOWED_ORIGIN`, `COMMUNITY_FOODS_PATH` (shared food base; off when unset). The app points at the proxy via the
 `EXPO_PUBLIC_FOOD_API_URL` env var; when the server enforces `APP_TOKEN`, the app sends it from
 `EXPO_PUBLIC_FOOD_API_TOKEN` as a Bearer header — set it in a local `.env` (dev) and in EAS
 environment variables (cloud builds), never in `eas.json`: this repo is public.
@@ -121,8 +129,9 @@ pytest
 
 Local-first: your data stays on the device in encrypted SQLite (SQLCipher). The optional cloud
 backup is **end-to-end encrypted** (TweetNaCl / X25519) to a destination you control; the food proxy
-is stateless and identity-free. Legal text canon lives in `legal/`; the public pages are hosted at
-`family-pie.ru/driftora/legal`.
+is identity-free — it keeps no request logs and mints no user records, and the one thing it does
+store (the shared food base above) holds foods rather than people. Legal text canon lives in
+`legal/`; the public pages are hosted at `family-pie.ru/driftora/legal`.
 
 ---
 Planning, briefs and decisions live in the Obsidian vault: `../obsidian-vault/Driftora/`.

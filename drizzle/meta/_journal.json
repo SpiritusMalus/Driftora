@@ -134,6 +134,13 @@
       "when": 1786982113322,
       "tag": "0018_high_shinko_yamashiro",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1787165952456,
+      "tag": "0019_cool_sentry",
+      "breakpoints": true
     }
   ]
 }

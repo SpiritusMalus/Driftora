@@ -13,7 +13,7 @@ import type {
 
 import { setAiQuotaRemaining } from './aiQuota';
 
-const SOURCES: readonly NutritionSource[] = ['usda', 'skurikhin', 'openfoodfacts', 'apininjas', 'fatsecret', 'label', 'ai_estimate', 'estimate'];
+const SOURCES: readonly NutritionSource[] = ['usda', 'skurikhin', 'openfoodfacts', 'apininjas', 'fatsecret', 'label', 'ai_estimate', 'estimate', 'community'];
 /** Text/search: a typed query is answered in 3–6 s and the user is actively
  *  waiting on it, so the ceiling stays near the answer time — the server gives
  *  this path a tight two-attempt budget of its own (10s + 12s, server
@@ -68,6 +68,10 @@ function isItem(v: unknown): v is NutritionItem {
 function isAlternative(v: unknown): v is NutritionAlternative {
   if (v === null || typeof v !== 'object') return false;
   const a = v as Record<string, unknown>;
+  // `votes` is optional and only the shared base sets it — a stale server that
+  // never heard of it still passes, and a nonsense value is dropped rather than
+  // shown as a count.
+  if (a.votes !== undefined && (typeof a.votes !== 'number' || !Number.isFinite(a.votes))) return false;
   return typeof a.name === 'string' && isPer100(a.per100);
 }
 
@@ -177,11 +181,19 @@ function deriveSearchEndpoint(endpoint: string): string {
   return /\/food\/parse$/.test(endpoint) ? endpoint.replace(/\/food\/parse$/, '/food/search') : `${endpoint}-search`;
 }
 
+/** Derive the shared-base endpoint from the text one (/food/parse → /food/contribute). */
+function deriveContributeEndpoint(endpoint: string): string {
+  return /\/food\/parse$/.test(endpoint)
+    ? endpoint.replace(/\/food\/parse$/, '/food/contribute')
+    : `${endpoint}-contribute`;
+}
+
 /** Optional endpoint overrides + the static app token (server-side `APP_TOKEN`). */
 export interface HttpFoodParserOptions {
   photoEndpoint?: string;
   audioEndpoint?: string;
   searchEndpoint?: string;
+  contributeEndpoint?: string;
   /** When set, every request carries `Authorization: Bearer <token>`. */
   token?: string;
   /** Lazy getter for the per-install id (`X-Install-Id`) — lazy because the id
@@ -195,6 +207,7 @@ export class HttpFoodParser implements FoodParser {
   private readonly photoEndpoint: string;
   private readonly audioEndpoint: string;
   private readonly searchEndpoint: string;
+  private readonly contributeEndpoint: string;
   /** Extra headers on every request — `Authorization` when a token is set. */
   private readonly authHeaders: Record<string, string>;
   /** Lazy per-install id for the server's AI-quota meter (may appear late). */
@@ -211,6 +224,7 @@ export class HttpFoodParser implements FoodParser {
     this.photoEndpoint = opts.photoEndpoint ?? deriveEndpoint(endpoint, 'photo');
     this.audioEndpoint = opts.audioEndpoint ?? deriveEndpoint(endpoint, 'audio');
     this.searchEndpoint = opts.searchEndpoint ?? deriveSearchEndpoint(endpoint);
+    this.contributeEndpoint = opts.contributeEndpoint ?? deriveContributeEndpoint(endpoint);
     this.authHeaders = opts.token ? { Authorization: `Bearer ${opts.token}` } : {};
     this.installId = opts.installId;
     this.uploadTimeoutMs = opts.uploadTimeoutMs ?? UPLOAD_TIMEOUT_MS;
@@ -248,6 +262,54 @@ export class HttpFoodParser implements FoodParser {
       return candidates.filter(isAlternative);
     } catch {
       return this.fallback.searchFoods(query, region);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Add ONE confirmed food to the SHARED base.
+   *
+   * The request body is the name, the region and the per-100g MACROS — nothing
+   * else, on purpose. Not the meal it came from, not the weight eaten, not the
+   * time: the point of the base is the food, and a row in it must not be able to
+   * describe the person who logged it. The install id every AI route sends for
+   * its quota is deliberately NOT attached here either, so `headers()` is
+   * bypassed for the static auth header alone.
+   *
+   * Total by construction: it resolves on a refusal, a timeout, an error and an
+   * offline device alike. This runs AFTER a save the user already completed —
+   * their meal is logged either way, and a failed donation is not their problem
+   * to see.
+   */
+  async contributeFood(food: NutritionAlternative, region: Region): Promise<void> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      await fetch(this.contributeEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...this.authHeaders },
+        body: JSON.stringify({
+          name: food.name,
+          region,
+          // Macros only. Minerals and vitamins are not sent even when the local
+          // row happens to carry them: the base stores none (nobody reads iron
+          // off a shawarma), so sending them would only widen what leaves the
+          // phone for data that is thrown away on arrival.
+          per100: {
+            kcal: food.per100.kcal,
+            prot: food.per100.prot,
+            fat: food.per100.fat,
+            carb: food.per100.carb,
+            ...(food.per100.fiber === undefined ? {} : { fiber: food.per100.fiber }),
+            ...(food.per100.sugar === undefined ? {} : { sugar: food.per100.sugar }),
+            ...(food.per100.satFat === undefined ? {} : { satFat: food.per100.satFat }),
+          },
+        }),
+        signal: controller.signal,
+      });
+    } catch {
+      // Nothing to report and nobody to report it to — see the doc comment.
     } finally {
       clearTimeout(timer);
     }

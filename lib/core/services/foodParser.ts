@@ -12,6 +12,10 @@ export type Region = 'RU' | 'US';
 /// `ai_estimate` = the model's own rough figures when no DB has the food (shown
 /// as «≈ оценка ИИ», counted but flagged); `manual` = the user typed the macros
 /// in; `history` = re-logged from the user's own earlier entry (real, their data).
+/// `community` = the SHARED base people fill by logging (opt-in): the local
+/// dishes no table carries — шаурма, хачапури, домашние сырники — as the median
+/// of what everyone who logged them confirmed. Other people's numbers, labeled
+/// as such, never a measurement and never ahead of a real DB row.
 export type NutritionSource =
   | 'usda'
   | 'skurikhin'
@@ -22,7 +26,8 @@ export type NutritionSource =
   | 'ai_estimate'
   | 'estimate'
   | 'manual'
-  | 'history';
+  | 'history'
+  | 'community';
 
 /// Mineral set v1 — mg per 100 g (or scaled). Any subset may be present.
 export interface Minerals {
@@ -75,6 +80,10 @@ export interface Per100 extends NutrientValues {
 export interface NutritionAlternative {
   name: string;
   per100: Per100; // EXACT composition (carries its own source label)
+  /// How many logged confirmations stand behind a `community` row. Present ONLY
+  /// for that source — a composition table is not voted on. The picker shows it
+  /// («записей: 12») so a crowd number never reads as a measurement.
+  votes?: number;
 }
 
 /// One resolved component — exact per-100g + the scaled-to-grams total.
@@ -191,4 +200,10 @@ export interface FoodParser {
   /// candidates the user can swap an item to. Online it queries the backend;
   /// offline it returns an empty list (no on-device nutrition DB).
   searchFoods(query: string, region: Region): Promise<NutritionAlternative[]>;
+  /// Add ONE confirmed food to the SHARED base (opt-in, see `communityShare`).
+  /// Sends the name and the per-100g and nothing else — no meal text, no weight,
+  /// no time, no install id. Fire-and-forget and total: a refusal, a timeout or
+  /// an offline device all resolve, because this rides behind a save the user
+  /// already completed and must never surface as a failure of theirs.
+  contributeFood(food: NutritionAlternative, region: Region): Promise<void>;
 }

@@ -16,6 +16,13 @@ import {
 } from './llm.js';
 import { metrics } from './metrics.js';
 import { Resolver } from './nutrition/resolver.js';
+import {
+  createCommunityFoods,
+  CommunityProvider,
+  sanitizeFoodName,
+  sanitizeSample,
+  type CommunityFoods,
+} from './nutrition/community.js';
 import { buildMealDraft, buildProviders } from './orchestrator.js';
 import { localizeAlternatives, localizeDraft } from './nutrition/translateNames.js';
 import { createInstallQuota, installIdOf } from './installQuota.js';
@@ -50,6 +57,11 @@ import {
 const APP_TOKEN = process.env.APP_TOKEN || '';
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '';
 const MAX_TEXT = 1000;
+// Where the SHARED food base lives. Unset ⇒ the feature is OFF: nothing is
+// stored, nothing is served, and the provider chain is exactly what it was
+// before it existed. A deliberate switch, because this is the one store in the
+// service that holds anything a user typed.
+const COMMUNITY_FOODS_PATH = process.env.COMMUNITY_FOODS_PATH || '';
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024; // 8 MB — client downscales to ≤~1024px
 const MAX_AUDIO_BYTES = 8 * 1024 * 1024; // 8 MB — short voice clips are far under this
 
@@ -342,22 +354,39 @@ function isAllowedReturnUrl(value: string, allowed: string[]): boolean {
 }
 
 /**
+ * The process-wide SHARED food base.
+ *
+ * Exactly one instance, because the provider that SERVES community rows and the
+ * route that RECORDS them have to be looking at the same store — two would mean
+ * a contribution shows up only after a restart. Lazy, so a deployment without
+ * `COMMUNITY_FOODS_PATH` never opens a file for a feature it does not run.
+ */
+let communityFoodsSingleton: CommunityFoods | null = null;
+function defaultCommunityFoods(): CommunityFoods {
+  communityFoodsSingleton ??= createCommunityFoods(COMMUNITY_FOODS_PATH);
+  return communityFoodsSingleton;
+}
+
+/**
  * Build the Express app (no listener — see `server.ts`). A custom `resolver`
  * can be injected for tests; production wires it from env-configured providers.
  */
 export function createApp(
   // The estimator fills DB misses for the photo path, which no longer asks the
   // vision model for nutrition numbers — see IDENTIFY_PHOTO_SYSTEM_PROMPT.
-  resolver: Resolver = new Resolver(buildProviders(), async (name, region) => {
-    // Timed wrapper: the on-demand estimator is a whole extra model call per
-    // suspicious row — stage_ms.estimator is how we notice it getting greedy.
-    const t0 = Date.now();
-    try {
-      return await estimateFoodPer100(name, region);
-    } finally {
-      metrics.recordStage('estimator', Date.now() - t0);
-    }
-  }),
+  resolver: Resolver = new Resolver(
+    buildProviders(COMMUNITY_FOODS_PATH ? new CommunityProvider(defaultCommunityFoods()) : undefined),
+    async (name, region) => {
+      // Timed wrapper: the on-demand estimator is a whole extra model call per
+      // suspicious row — stage_ms.estimator is how we notice it getting greedy.
+      const t0 = Date.now();
+      try {
+        return await estimateFoodPer100(name, region);
+      } finally {
+        metrics.recordStage('estimator', Date.now() - t0);
+      }
+    },
+  ),
   opts: CreateAppOptions = {},
 ): express.Express {
   const app = express();
@@ -398,6 +427,12 @@ export function createApp(
     verify: chainVerifiers(verifiers),
     path: opts.entitlementsPath,
   });
+
+  // The SHARED food base — the same instance the provider chain reads, so a
+  // contribution is findable by the next person immediately rather than after a
+  // restart. Unconfigured ⇒ memory-only: writes are accepted and forgotten, and
+  // the chain has no community provider at all.
+  const communityFoods = defaultCommunityFoods();
 
   // Per-install daily AI budget (the CGNAT-safe layer; per-IP caps stay as the
   // abuse backstop). Mounted on the six LLM-burning parse routes only — the DB
@@ -903,6 +938,34 @@ export function createApp(
     // after localization untouched.
     const localized = await localizeAlternatives(candidates, region);
     res.json({ candidates: aiCard ? [...localized, aiCard] : localized });
+  });
+
+  /**
+   * Contribute ONE confirmed food to the shared base — the only write path into
+   * it, and deliberately the narrowest possible one.
+   *
+   * The body is `{ name, region, per100: { kcal, prot, fat, carb, … } }` and
+   * NOTHING else is read: not the meal it came from, not the weight eaten, not
+   * when, not by whom. The install id the AI routes meter on is not consulted
+   * here and is never written — a row in this base is a food, not a person's
+   * food. Refusals are silent by design (`{ ok: true, votes: 0 }`): the device
+   * fires this in the background after a save, and a food that failed the
+   * plausibility gate is not something to interrupt a user about.
+   *
+   * Free of AI quota (no model runs) but under the per-IP daily text cap, which
+   * is what bounds a flood.
+   */
+  app.post('/food/contribute', requireToken, limiters.textDaily, (req: Request, res: Response) => {
+    const body = (req.body ?? {}) as { name?: unknown; region?: unknown; per100?: unknown };
+    const region = regionOf(body);
+    const name = sanitizeFoodName(body.name);
+    const sample = sanitizeSample(body.per100);
+    if (!name || !sample) {
+      res.json({ ok: true, votes: 0 });
+      return;
+    }
+    const votes = communityFoods.add(region, name, sample);
+    res.json({ ok: true, votes });
   });
 
   // Free-text WORKOUT parse: `{ text }` → `{ workouts: ParsedWorkout[] }`. The

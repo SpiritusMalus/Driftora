@@ -1,0 +1,1 @@
+ALTER TABLE `app_settings` ADD `community_food_share` integer DEFAULT false NOT NULL;

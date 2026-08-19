@@ -111,4 +111,10 @@ export class StubFoodParser implements FoodParser {
   async searchFoods(_query: string, _region: Region): Promise<NutritionAlternative[]> {
     return [];
   }
+
+  /// Nothing leaves an offline device. This is also the parser the app holds
+  /// whenever AI consent is absent, which makes the no-op a GUARANTEE and not
+  /// just a fallback: without consent there is no path from here to the shared
+  /// base at all, whatever the sharing setting says.
+  async contributeFood(): Promise<void> {}
 }

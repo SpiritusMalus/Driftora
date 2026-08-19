@@ -1034,6 +1034,19 @@ export const en = {
       empty: 'Nothing found',
     },
     dbUnavailable: 'The database is only available in a device dev build.',
+    // The shared base: the dishes no table carries, filled by the people eating them.
+    community: {
+      title: 'Shared food base',
+      open: 'Search the shared base',
+      hide: 'Hide the shared base',
+      placeholder: 'Dish name: shawarma, khachapuri…',
+      action: 'Search',
+      searching: 'Searching…',
+      empty: 'Not in the base yet. Enter the numbers yourself and it will be there for the next person.',
+      votes: 'entries: {{n}}',
+      hint: 'Search by name: the reference tables first, then the shared base — the home-made and local dishes people entered themselves. Every row says where its numbers came from; “from the shared base” is the middle of what others confirmed, not a measurement.',
+      offline: 'The shared base works when food recognition is on.',
+    },
     favorites: 'Favorites',
     recent: 'Recent',
     sameAsYesterday: 'Same as yesterday',
@@ -1094,6 +1107,7 @@ export const en = {
       estimate: 'estimate (not in DB)',
       manual: 'entered manually',
       history: 'from your log',
+      community: 'from the shared base',
     },
     micros: {
       title: 'Vitamins & minerals',
@@ -1305,6 +1319,9 @@ export const en = {
     aiOn: 'On. Food and workout descriptions, photos and voice go to OpenRouter (USA). Turn off to keep text-only counting from the built-in table.',
     hideCalories: 'Hide calories (focus on protein and habits)',
     llmDiaryAssist: 'Gentle diary hints (optional, off by default). Computed on the phone, nothing is sent anywhere.',
+    communityFoodShare: 'Share dishes with the shared base',
+    communityFoodShareNote:
+      'When you type the numbers for a dish no reference table carries, it goes to the shared base — and other people find it by name. Only the name and the per-100 g numbers leave: no weight, no time, no entry text, and nothing tied to you. The name is public, so keep anything personal out of it. Off by default; you can search the base without sharing.',
     showPopulationStats: 'Step reference comparison (optional)',
     showPopulationStatsNote: 'Shows your step average next to research reference points — not a leaderboard. Off by default: comparison doesn’t help everyone.',
     regionTitle: 'Nutrition region',

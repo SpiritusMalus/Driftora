@@ -22,6 +22,7 @@ const noopFallback = {
   parsePhoto: async () => VALID,
   parseAudio: async () => VALID,
   searchFoods: async () => [],
+  contributeFood: async () => {},
 };
 
 function mockFetch(impl: (...a: unknown[]) => Promise<unknown>): void {

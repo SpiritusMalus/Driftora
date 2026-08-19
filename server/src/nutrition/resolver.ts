@@ -273,6 +273,8 @@ export class Resolver {
         alternatives: results.slice(1, 1 + MAX_ALTERNATIVES).map((r) => ({
           name: r.name ?? name,
           per100: coercePer100(r.per100),
+          // Only the shared base sets it; on every other source it stays absent.
+          ...(r.votes === undefined ? {} : { votes: r.votes }),
         })),
       };
       if (queryCoverage(name, primary.name ?? name) < MIN_CHAIN_COVERAGE) {
@@ -377,6 +379,9 @@ export class Resolver {
     const out = merged.slice(0, MAX_SEARCH_RESULTS).map((r) => ({
       name: r.name ?? trimmed,
       per100: coercePer100(r.per100),
+      // The shared base's confirmation count — the one thing that makes a crowd
+      // row honest in the picker. Absent on every table source.
+      ...(r.votes === undefined ? {} : { votes: r.votes }),
     }));
     // Misses stay uncached — a later DB import may resolve them.
     if (out.length > 0) this.searchCache.set(key, out);

@@ -32,7 +32,15 @@ export type NutritionSource =
   | 'fatsecret'
   | 'label'
   | 'ai_estimate'
-  | 'estimate';
+  | 'estimate'
+  /**
+   * The SHARED food base people fill by logging (`nutrition/community.ts`): a
+   * local dish no table carries — шаурма из ларька, домашний плов, бабушкины
+   * сырники — as the median of what everyone who logged it confirmed. Honest
+   * about what it is: neither a composition table nor a guess, but other
+   * people's numbers, labeled as such and never outranking a real DB row.
+   */
+  | 'community';
 
 /** Mineral set v1 (BUILD SPEC §10). mg per 100 g. Extend as data allows. */
 export interface Minerals {
@@ -232,6 +240,10 @@ export interface Identified {
 export interface NutritionAlternative {
   name: string; // display name from the source
   per100: Per100; // EXACT composition (carries its own source label)
+  // How many logged confirmations stand behind a `community` row. Present ONLY
+  // for that source — a table row is not "voted" on. Sent so the picker can say
+  // «записей: 12» instead of passing crowd numbers off as a measurement.
+  votes?: number;
 }
 
 export interface NutritionItem {
@@ -525,6 +537,7 @@ const SOURCES: readonly NutritionSource[] = [
   'label',
   'ai_estimate',
   'estimate',
+  'community',
 ];
 
 /** Coerce a raw provider/cache per-100g into a valid `Per100`. */

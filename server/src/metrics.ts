@@ -31,6 +31,7 @@ class MetricsRegistry {
     label: 0,
     ai_estimate: 0,
     estimate: 0,
+    community: 0,
   };
   /** Requests that produced NO draft, by route and by cause — see recordFailure. */
   private readonly failures: Record<string, number> = {

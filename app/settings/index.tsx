@@ -61,6 +61,7 @@ export default function SettingsScreen() {
   const [paused, setPaused] = useState(false);
   const [contextualNudges, setContextualNudges] = useState(false);
   const [showPopulationStats, setShowPopulationStats] = useState(false);
+  const [communityFoodShare, setCommunityFoodShare] = useState(false);
   const [region, setRegion] = useState<'auto' | 'RU' | 'US'>('auto');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -88,6 +89,7 @@ export default function SettingsScreen() {
         setPaused(s.paused);
         setContextualNudges(s.contextualNudges);
         setShowPopulationStats(s.showPopulationStats);
+        setCommunityFoodShare(s.communityFoodShare);
         setRegion(s.region);
         setAiConsent(s.aiFoodParseConsent);
         setAiConsentVersion(s.aiFoodParseConsentVersion);
@@ -140,6 +142,7 @@ export default function SettingsScreen() {
         paused,
         contextualNudges,
         showPopulationStats,
+        communityFoodShare,
         region,
       });
       await syncReminders();
@@ -369,6 +372,25 @@ export default function SettingsScreen() {
       <ToggleRow label={t('settings.aiToggle')} value={aiConsent} onChange={onToggleAi} theme={theme} />
       <Note theme={theme}>{aiConsent ? t('settings.aiOn') : t('settings.aiOff')}</Note>
 
+      {/* Sharing to the SHARED food base. Under the AI toggle because it rides
+          the same online service — with AI off the app holds the offline parser,
+          whose contribute is a no-op, so the row is shown disabled rather than
+          promising something that cannot happen. Persisted via Save like the
+          other preferences: this is a preference about OUTGOING data, not a
+          consent to a transfer the app performs on its own (the AI consent above
+          is that, and it is captured separately, as 152-ФЗ requires). */}
+      <ToggleRow
+        label={t('settings.communityFoodShare')}
+        value={communityFoodShare && aiConsent}
+        disabled={!aiConsent}
+        onChange={(v) => {
+          setCommunityFoodShare(v);
+          dirty();
+        }}
+        theme={theme}
+      />
+      <Note theme={theme}>{t('settings.communityFoodShareNote')}</Note>
+
       {/* Subscription sits right under the AI toggle because that is the only
           thing it changes — the daily ceiling on AI parses. Shown even with AI
           off: the screen then explains rather than sells. */}
@@ -466,18 +488,32 @@ function ToggleRow({
   value,
   onChange,
   theme,
+  disabled = false,
 }: {
   label: string;
   value: boolean;
   onChange: (v: boolean) => void;
   theme: Theme;
+  /// The switch cannot do anything yet — its precondition is off. Dimmed and
+  /// inert rather than hidden: a row that vanishes leaves the user hunting for
+  /// a setting they were told exists.
+  disabled?: boolean;
 }) {
   return (
     <Card style={styles.toggleRow} padded={false}>
-      <Text style={[styles.toggleLabel, { color: theme.text }, theme.font.body]}>{label}</Text>
+      <Text
+        style={[
+          styles.toggleLabel,
+          { color: disabled ? theme.subtle : theme.text },
+          theme.font.body,
+        ]}
+      >
+        {label}
+      </Text>
       <Switch
         value={value}
         onValueChange={onChange}
+        disabled={disabled}
         trackColor={{ true: theme.primary, false: theme.separator }}
         ios_backgroundColor={theme.separator}
       />

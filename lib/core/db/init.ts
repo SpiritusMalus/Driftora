@@ -140,6 +140,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
   paused INTEGER NOT NULL DEFAULT 0,
   contextual_nudges INTEGER NOT NULL DEFAULT 0,
   show_population_stats INTEGER NOT NULL DEFAULT 0,
+  community_food_share INTEGER NOT NULL DEFAULT 0,
   health_import_extended INTEGER NOT NULL DEFAULT 0,
   health_connected INTEGER NOT NULL DEFAULT 0,
   region TEXT NOT NULL DEFAULT 'auto',
@@ -290,6 +291,10 @@ export const MIGRATIONS: string[] = [
   // having source='device', so a freshly connected install with no OS data yet
   // kept showing the «Подключить» card (device feedback 2026-08-17).
   `ALTER TABLE app_settings ADD COLUMN health_connected INTEGER NOT NULL DEFAULT 0`,
+  // 2026-08-19: opt-in sharing to the SHARED food base (the dishes no table has).
+  // Ships OFF for every existing install — nothing starts leaving a phone because
+  // it updated.
+  `ALTER TABLE app_settings ADD COLUMN community_food_share INTEGER NOT NULL DEFAULT 0`,
 ];
 
 /// Runs each CREATE statement through [run], then the idempotent [MIGRATIONS].

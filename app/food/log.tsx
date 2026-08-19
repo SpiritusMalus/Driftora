@@ -35,6 +35,7 @@ import {
   displayItemName,
   lookupNameForItem,
 } from '@/lib/core/services/foodChoice';
+import { contributableFoods } from '@/lib/core/services/communityShare';
 import { getAiQuotaRemaining } from '@/lib/core/services/aiQuota';
 import {
   adoptOnUnmount,
@@ -139,6 +140,17 @@ export default function FoodLogScreen() {
   // ack window later yanks the user off whatever screen they moved to.
   const exitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [hideCalories, setHideCalories] = useState(false);
+  // Opt-in sharing to the SHARED food base (settings, default off). Read here so
+  // the post-save donation never has to hit the database on the way out.
+  const [communityShare, setCommunityShare] = useState(false);
+  // «Общая база»: the by-name way IN to the dishes other people entered — open
+  // state, the query, and the last result set. Sits beside «Из моего рациона»:
+  // one is the food you have eaten before, the other is the food someone else
+  // has. Both append to the draft and both need a weight typed after.
+  const [baseOpen, setBaseOpen] = useState(false);
+  const [baseQuery, setBaseQuery] = useState('');
+  const [baseSearching, setBaseSearching] = useState(false);
+  const [baseResults, setBaseResults] = useState<NutritionAlternative[] | null>(null);
   // Cross-border AI consent — mirrors app_settings; drives the parser gate, the
   // just-in-time prompt and the on-screen notice. Starts false (opt-in).
   const [aiConsent, setAiConsent] = useState(false);
@@ -398,6 +410,7 @@ export default function FoodLogScreen() {
       setRegionSetting(settings.region);
       setAiConsent(settings.aiFoodParseConsent);
       setAiConsentVersion(settings.aiFoodParseConsentVersion);
+      setCommunityShare(settings.communityFoodShare);
       setQuick(quickAdd);
     })();
     return () => {
@@ -818,16 +831,51 @@ export default function FoodLogScreen() {
     setDraft((prev) => (prev ? withItemAlternative(prev, index, altIndex) : prev));
   }
 
+  /// Consent that is BOTH given and current. A stale one (the disclosure version
+  /// moved after a sub-processor change) is not consent: it falls back to the
+  /// offline stub, exactly like no consent at all.
+  function consentCurrent(): boolean {
+    return (
+      aiConsent &&
+      !needsAiConsent({ aiFoodParseConsent: aiConsent, aiFoodParseConsentVersion: aiConsentVersion })
+    );
+  }
+
   // Manual DB search for one item ("найти вручную") and the swap when the user
   // picks a result. The query text goes to the same online parser, so it is
-  // gated like a parse: consent must exist AT THE CURRENT disclosure version —
-  // after a sub-processor change a stale consent falls back to the stub.
+  // gated like a parse.
   function onItemSearch(query: string): Promise<NutritionAlternative[]> {
-    const consentCurrent =
-      aiConsent &&
-      !needsAiConsent({ aiFoodParseConsent: aiConsent, aiFoodParseConsentVersion: aiConsentVersion });
-    return getFoodParser(consentCurrent).searchFoods(query, region);
+    return getFoodParser(consentCurrent()).searchFoods(query, region);
   }
+
+  /// «Общая база» — the by-name way into the dishes other people entered.
+  ///
+  /// Same online endpoint as the per-item «найти вручную» picker (the shared
+  /// base is one more source in it), so it is gated identically: consent must
+  /// exist AT THE CURRENT disclosure version, or the app is holding the offline
+  /// stub and there is nothing to search.
+  async function onBaseSearch() {
+    const query = baseQuery.trim();
+    if (query.length === 0) return;
+    setBaseSearching(true);
+    try {
+      setBaseResults(await onItemSearch(query));
+    } finally {
+      setBaseSearching(false);
+    }
+  }
+
+  /// A dish picked out of the search results joins the draft exactly like one
+  /// picked from «мой рацион»: appended at 100 g with the weight still to be
+  /// typed. `userChosen` because it WAS chosen — that is what makes it stick in
+  /// the personal journal on save.
+  function onBasePick(found: NutritionAlternative) {
+    onMemoryPick({ name: found.name, per100: found.per100 });
+    setBaseResults(null);
+    setBaseQuery('');
+    setBaseOpen(false);
+  }
+
   function onItemReplace(index: number, replacement: NutritionAlternative) {
     setDraft((prev) => (prev ? withItemReplacement(prev, index, replacement) : prev));
   }
@@ -937,6 +985,19 @@ export default function FoodLogScreen() {
           });
         }
       }
+      // Offer the dishes the user typed the numbers for to the SHARED base, so
+      // the next person who logs «шаурма» finds them instead of typing them
+      // again. Fire-and-forget on purpose: the meal is already saved, the send
+      // carries a food name and a per-100g and nothing else, and a failure is
+      // not the user's problem to see (contributeFood never rejects). Off unless
+      // BOTH the setting and a current AI consent say yes — without consent the
+      // app holds the offline parser, whose contribute is a no-op anyway.
+      if (communityShare && consentCurrent()) {
+        const parser = getFoodParser(true);
+        for (const food of contributableFoods(draft, region)) {
+          void parser.contributeFood(food, region);
+        }
+      }
       // Warm, rotating acknowledgment of the *act* of logging (SDT relatedness)
       // — never a score or a limit. Briefly shown, then we return to Home.
       setSavedAck(
@@ -966,9 +1027,18 @@ export default function FoodLogScreen() {
       }
       setBatchTotal(0);
       // Land on the day's food list (not a bare back to Home) so the just-saved
-      // entry is visibly there and can be reopened/edited. `replace` keeps the
-      // log screen out of the back stack.
-      exitTimerRef.current = setTimeout(() => router.replace('/food'), 1100);
+      // entry is visibly there and can be reopened/edited.
+      //
+      // `dismissTo`, NOT `replace` (device feedback 2026-08-19: «записал 3-4 еды
+      // — из главного меню выкидывает обратно в еду»). The day list is where the
+      // «+ Добавить» that opened this screen lives, so it is ALREADY on the
+      // stack: `replace` swapped the log screen for a SECOND «Еда» on top of the
+      // first, and every meal logged in one sitting stacked one more. Four meals
+      // → four back presses that each land on «Еда» again before Home appears.
+      // `dismissTo` pops back to the existing «Еда» when there is one, and
+      // replaces the current screen (exactly the old behavior) when there isn't
+      // — the Home mic/text FAB path, which never had a day list behind it.
+      exitTimerRef.current = setTimeout(() => router.dismissTo('/food'), 1100);
     } catch {
       // Never fail into silence: the write threw, so say so — otherwise the
       // user leaves sure the meal was logged.
@@ -1025,6 +1095,102 @@ export default function FoodLogScreen() {
         </View>
       </View>
     ) : null;
+
+  /// «Общая база блюд» — the by-name way IN to what other people entered.
+  ///
+  /// A collapsed link until asked for, because it is the RARE path: most meals
+  /// parse, and a wall of search UI above the parse button would suggest typing
+  /// is not enough. It opens where «Из моего рациона» already sits — the two
+  /// answer the same question («добавить блюдо, не разбирая текст») from the
+  /// two places the numbers can come from: your own past, and everyone else's.
+  ///
+  /// Only when the online parser is actually reachable: offline there is nothing
+  /// behind the field, and a search box that always answers «ничего не найдено»
+  /// is worse than a line saying why.
+  const communityBaseSection = AI_CONFIGURED ? (
+    <View style={styles.quick}>
+      <View style={styles.quickGroup}>
+        <Pressable onPress={() => setBaseOpen((v) => !v)} hitSlop={6} accessibilityRole="button">
+          <Text style={[styles.baseToggle, { color: theme.primary }, theme.font.bodySemiBold]}>
+            {baseOpen ? t('food.community.hide') : t('food.community.open')}
+          </Text>
+        </Pressable>
+        {baseOpen ? (
+          !consentCurrent() ? (
+            <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>
+              {t('food.community.offline')}
+            </Text>
+          ) : (
+            <>
+              <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>
+                {t('food.community.hint')}
+              </Text>
+              <View style={styles.baseRow}>
+                <TextField
+                  value={baseQuery}
+                  onChangeText={setBaseQuery}
+                  onSubmitEditing={onBaseSearch}
+                  placeholder={t('food.community.placeholder')}
+                  style={styles.baseInput}
+                />
+                <Pressable
+                  onPress={onBaseSearch}
+                  disabled={baseSearching || baseQuery.trim().length === 0}
+                  style={({ pressed }) => [
+                    styles.baseBtn,
+                    {
+                      borderColor: theme.separator,
+                      backgroundColor: theme.card,
+                      opacity: pressed || baseSearching ? 0.6 : 1,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.chipText, { color: theme.primary }, theme.font.bodySemiBold]}>
+                    {baseSearching ? t('food.community.searching') : t('food.community.action')}
+                  </Text>
+                </Pressable>
+              </View>
+              {baseResults != null && baseResults.length === 0 && !baseSearching ? (
+                <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>
+                  {t('food.community.empty')}
+                </Text>
+              ) : null}
+              <View style={styles.quickWrap}>
+                {(baseResults ?? []).map((found, i) => (
+                  <Pressable
+                    key={i}
+                    onPress={() => onBasePick(found)}
+                    style={({ pressed }) => [
+                      styles.chip,
+                      { backgroundColor: theme.card, borderColor: theme.separator, opacity: pressed ? 0.6 : 1 },
+                    ]}
+                  >
+                    <Text numberOfLines={1} style={[styles.chipText, { color: theme.text }, theme.font.bodySemiBold]}>
+                      {found.name}
+                    </Text>
+                    {/* Provenance on every row, and the confirmation count where
+                        there is one — «из общей базы · записей: 12» is the whole
+                        difference between other people's numbers and a claim. */}
+                    <Text style={[styles.chipMacro, { color: theme.subtle }, theme.font.body]}>
+                      {[
+                        hideCalories
+                          ? `${t('macros.protein')} ${Math.round(found.per100.prot)} ${t('units.g')}`
+                          : `${Math.round(found.per100.kcal)} ${t('units.kcal')} / 100 ${t('units.g')}`,
+                        t(`food.source.${found.per100.source}`),
+                        found.votes === undefined ? null : t('food.community.votes', { n: found.votes }),
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </>
+          )
+        ) : null}
+      </View>
+    </View>
+  ) : null;
 
   return (
     <Screen>
@@ -1227,6 +1393,7 @@ export default function FoodLogScreen() {
           cards buried what was just parsed off-screen, reading as «ничего не
           нашлось» (device feedback 2026-07-16). */}
       {draft == null ? myDietSection : null}
+      {draft == null ? communityBaseSection : null}
 
       {draft == null && quickPickList.length > 0 ? (
         <View style={styles.quick}>
@@ -1400,6 +1567,7 @@ export default function FoodLogScreen() {
       {/* Mid-draft the diet chips stay reachable — below the results, so
           appending another food is one scroll away but never buries the cards. */}
       {draft != null ? myDietSection : null}
+      {draft != null ? communityBaseSection : null}
 
       <ConsentModal
         visible={consentPrompt === 'text' || consentPrompt === 'audio'}
@@ -1516,4 +1684,8 @@ const styles = StyleSheet.create({
   chip: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 9 },
   chipText: { fontSize: 14, maxWidth: 240 },
   chipMacro: { fontSize: 11, marginTop: 2 },
+  baseToggle: { fontSize: 14, marginBottom: 8 },
+  baseRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  baseInput: { flex: 1 },
+  baseBtn: { borderWidth: 1, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 14 },
 });

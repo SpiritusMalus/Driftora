@@ -12,6 +12,13 @@ export interface ProviderResult {
    * on top would double-count. Only the curated RU table sets this.
    */
   prepared?: boolean;
+  /**
+   * How many logged confirmations stand behind the row. Only the SHARED base
+   * (`community`) sets this — a composition table is not voted on. It rides to
+   * the client on the alternatives the user picks between, which is where the
+   * count actually changes a decision («записей: 12» vs «записей: 1»).
+   */
+  votes?: number;
 }
 
 /**

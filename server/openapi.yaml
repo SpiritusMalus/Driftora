@@ -507,6 +507,58 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '429': { $ref: '#/components/responses/RateLimited' }
 
+  /food/contribute:
+    post:
+      tags: [food]
+      summary: Add one confirmed food to the shared base
+      description: |
+        The SHARED food base: the local dishes no composition table carries —
+        шаурма, хачапури, домашние сырники — as the median of what the people
+        eating them confirmed. Opt-in on the device and identity-free here: the
+        name, the region and the per-100 g macros are the only fields read, and
+        nothing else about the request is stored. No install id, no address, no
+        time, no meal it came from.
+
+        Always answers `200`. A contribution that fails the plausibility gate
+        (macros over 100 g per 100 g, energy irreconcilable with them, a name
+        that is not a name) is dropped and reported as `votes: 0` — the device
+        sends this in the background after a save, and a refusal is not
+        something to interrupt anyone about.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, per100]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 60 }
+                region: { $ref: '#/components/schemas/Region' }
+                per100:
+                  allOf:
+                    - $ref: '#/components/schemas/NutrientValues'
+                  description: |
+                    Macros per 100 g. Minerals and vitamins are ignored: nobody
+                    reads iron off a shawarma, so the base stores none rather
+                    than inventing them.
+      responses:
+        '200':
+          description: Recorded, or silently refused
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, votes]
+                properties:
+                  ok: { type: boolean }
+                  votes:
+                    type: integer
+                    description: |
+                      Confirmations now standing behind this food, `0` when the
+                      contribution was refused.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
   /workout/parse:
     post:
       tags: [workout]
@@ -686,9 +738,10 @@ components:
       description: |
         Where the per-100 g numbers came from. `estimate` is a database MISS
         whose numbers the client hides until the user fills them in; `ai_estimate`
-        is the model's own guess. Both are shown to the user as such — the
-        provenance is part of the answer, not metadata.
-      enum: [usda, skurikhin, openfoodfacts, apininjas, fatsecret, label, ai_estimate, estimate]
+        is the model's own guess; `community` is the shared base people fill by
+        logging. All three are shown to the user as such — the provenance is part
+        of the answer, not metadata.
+      enum: [usda, skurikhin, openfoodfacts, apininjas, fatsecret, label, ai_estimate, estimate, community]
 
     NutrientValues:
       type: object
@@ -740,6 +793,13 @@ components:
       properties:
         name: { type: string }
         per100: { $ref: '#/components/schemas/Per100' }
+        votes:
+          type: integer
+          description: |
+            Confirmations behind a `community` row. Present only for that
+            source — a composition table is not voted on — so the picker can
+            say how much weight the number carries instead of presenting a
+            stranger's entry as a measurement.
 
     NutritionItem:
       type: object

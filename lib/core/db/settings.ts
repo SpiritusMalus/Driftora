@@ -66,6 +66,9 @@ export interface SettingsPatch {
   paused?: boolean;
   contextualNudges?: boolean;
   showPopulationStats?: boolean;
+  // Opt-in sharing to the SHARED food base — see schema.ts for exactly what
+  // leaves the phone (a food name and its per-100g, nothing else).
+  communityFoodShare?: boolean;
   // Opt-in extended device import (weight/%жира/workouts/vitals) — gates every
   // extended read and the extended OS permission request. See schema.ts.
   healthImportExtended?: boolean;
@@ -130,6 +133,7 @@ export async function updateSettings(
   if (patch.paused != null) set.paused = patch.paused;
   if (patch.contextualNudges != null) set.contextualNudges = patch.contextualNudges;
   if (patch.showPopulationStats != null) set.showPopulationStats = patch.showPopulationStats;
+  if (patch.communityFoodShare != null) set.communityFoodShare = patch.communityFoodShare;
   if (patch.healthImportExtended != null) set.healthImportExtended = patch.healthImportExtended;
   if (patch.healthConnected != null) set.healthConnected = patch.healthConnected;
   if (patch.region != null) set.region = patch.region;
