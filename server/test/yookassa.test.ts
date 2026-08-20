@@ -343,7 +343,7 @@ test('billing routes: a made-up licence key is rejected as an invalid purchase',
 
 // ------------------------------------------------------------- checkout
 
-const { createYooKassaPaymentCreator, formatAmount, resolvePrices } = await import('../src/billing/yookassa.js');
+const { createYooKassaPaymentCreator, formatAmount, positiveIntOrUndefined, resolvePrices } = await import('../src/billing/yookassa.js');
 
 /** A fetch that records the one request it gets and answers like ЮKassa. */
 function captureFetch(answer: unknown = { id: 'pay-new', confirmation: { confirmation_url: 'https://yoomoney/pay' } }) {
@@ -404,6 +404,90 @@ test('checkout: a renewal names the licence it tops up; a receipt names the buye
   assert.equal(body.receipt.customer.email, 'buyer@example.com');
   assert.equal(body.receipt.items[0].amount.value, '199.00');
   assert.equal(body.receipt.items[0].vat_code, 1);
+});
+
+test('checkout: the taxation system is sent only when the shop configured one', async () => {
+  // A shop with ONE taxation system has ЮKassa fill this in. Sending a guess
+  // there would print the wrong tax regime on a real fiscal receipt, so an
+  // unconfigured value means "omit", never a default.
+  const bare = captureFetch();
+  await createYooKassaPaymentCreator({
+    shopId: 'shop',
+    secretKey: 'secret',
+    fetchImpl: bare.impl,
+    prices: { monthly: { amount: '199.00', description: 'месяц' } },
+    receipt: true,
+  })({ plan: 'monthly', returnUrl: 'https://food.example/billing/done', email: 'buyer@example.com' });
+  const without = JSON.parse(String(bare.seen[0]?.init.body)) as Record<string, any>;
+  assert.equal(without.receipt.tax_system_code, undefined);
+
+  // A shop with SEVERAL must send it — ЮKassa rejects the payment otherwise.
+  const set = captureFetch();
+  await createYooKassaPaymentCreator({
+    shopId: 'shop',
+    secretKey: 'secret',
+    fetchImpl: set.impl,
+    prices: { monthly: { amount: '199.00', description: 'месяц' } },
+    receipt: true,
+    taxSystemCode: 2,
+  })({ plan: 'monthly', returnUrl: 'https://food.example/billing/done', email: 'buyer@example.com' });
+  const withCode = JSON.parse(String(set.seen[0]?.init.body)) as Record<string, any>;
+  assert.equal(withCode.receipt.tax_system_code, 2);
+});
+
+test('checkout: payment_mode ships as предоплата and follows the shop’s setting', async () => {
+  const preset = captureFetch();
+  await createYooKassaPaymentCreator({
+    shopId: 'shop',
+    secretKey: 'secret',
+    fetchImpl: preset.impl,
+    prices: { monthly: { amount: '199.00', description: 'месяц' } },
+    receipt: true,
+  })({ plan: 'monthly', returnUrl: 'https://food.example/billing/done', email: 'buyer@example.com' });
+  const dflt = JSON.parse(String(preset.seen[0]?.init.body)) as Record<string, any>;
+  assert.equal(dflt.receipt.items[0].payment_mode, 'full_prepayment');
+
+  const chosen = captureFetch();
+  await createYooKassaPaymentCreator({
+    shopId: 'shop',
+    secretKey: 'secret',
+    fetchImpl: chosen.impl,
+    prices: { monthly: { amount: '199.00', description: 'месяц' } },
+    receipt: true,
+    paymentMode: 'full_payment',
+  })({ plan: 'monthly', returnUrl: 'https://food.example/billing/done', email: 'buyer@example.com' });
+  const custom = JSON.parse(String(chosen.seen[0]?.init.body)) as Record<string, any>;
+  assert.equal(custom.receipt.items[0].payment_mode, 'full_payment');
+});
+
+test('checkout: a receipt with nobody to send it to never reaches ЮKassa', async () => {
+  // The checkout route already demands an email when receipts are on; this is
+  // the second lock. Without it the call goes out as `customer: {}` and comes
+  // back a 400 naming a JSON field — a long walk to the real cause.
+  const { seen, impl } = captureFetch();
+  const create = createYooKassaPaymentCreator({
+    shopId: 'shop',
+    secretKey: 'secret',
+    fetchImpl: impl,
+    prices: { monthly: { amount: '199.00', description: 'месяц' } },
+    receipt: true,
+  });
+  await assert.rejects(
+    () => create({ plan: 'monthly', returnUrl: 'https://food.example/billing/done' }),
+    /email/,
+  );
+  assert.equal(seen.length, 0, 'nothing was sent');
+});
+
+test('checkout: an unusable tax code is refused, never silently defaulted', () => {
+  // Every value is a DIFFERENT tax regime, so there is no defensible fallback —
+  // unlike a mistyped price, which falls back to a real price.
+  assert.equal(positiveIntOrUndefined('2'), 2);
+  assert.equal(positiveIntOrUndefined(''), undefined);
+  assert.equal(positiveIntOrUndefined(undefined), undefined);
+  assert.equal(positiveIntOrUndefined('усн'), undefined);
+  assert.equal(positiveIntOrUndefined('0'), undefined);
+  assert.equal(positiveIntOrUndefined('2.5'), undefined);
 });
 
 test('checkout: a 200 without a confirmation url is a failure, not a payment', async () => {

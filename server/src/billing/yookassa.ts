@@ -221,8 +221,40 @@ export interface PaymentCreatorOptions extends YooKassaClientOptions {
   receipt?: boolean;
   /** 1 = «без НДС» — the right code for the ИП-on-УСН this ships for. */
   vatCode?: number;
+  /**
+   * Taxation system for the receipt (`tax_system_code`): 1 ОСН, 2 УСН доходы,
+   * 3 УСН доходы−расходы, 4 ЕНВД, 5 ЕСХН, 6 патент.
+   *
+   * OMITTED when unset, which is correct and is why there is no default: a shop
+   * with ONE taxation system registered has ЮKassa fill it in, and sending the
+   * wrong one there would print a lie on a real fiscal receipt. A shop with more
+   * than one MUST send it — ЮKassa rejects the payment otherwise — and only the
+   * owner (their accountant, really) knows which applies.
+   */
+  taxSystemCode?: number;
+  /**
+   * `payment_mode` for the receipt line — how the money relates to delivery.
+   * Ships «full_prepayment» (полная предоплата): the subscription is paid for a
+   * period that starts now and runs forward. A shop whose accountant reads the
+   * same facts as «полный расчёт» sets `full_payment` instead. Not a guess we
+   * are entitled to make silently, so it is configurable and documented.
+   */
+  paymentMode?: string;
   /** Injectable for deterministic tests. */
   newIdempotenceKey?: () => string;
+}
+
+/**
+ * A positive integer from the environment, or undefined.
+ *
+ * Undefined on junk rather than a fallback, and the reason differs from the
+ * price parser next door: a mistyped price falls back to a defensible number,
+ * while a mistyped tax code has no defensible substitute — every value is a
+ * DIFFERENT tax regime, and guessing one prints it on a fiscal document.
+ */
+export function positiveIntOrUndefined(raw: string | undefined): number | undefined {
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : undefined;
 }
 
 /**
@@ -245,6 +277,8 @@ export function createYooKassaPaymentCreator(
   const prices = opts.prices ?? resolvePrices();
   const withReceipt = opts.receipt ?? process.env.BILLING_RECEIPT === '1';
   const vatCode = opts.vatCode ?? (Number(process.env.BILLING_VAT_CODE) || 1);
+  const taxSystemCode = opts.taxSystemCode ?? positiveIntOrUndefined(process.env.BILLING_TAX_SYSTEM_CODE);
+  const paymentMode = opts.paymentMode || process.env.BILLING_PAYMENT_MODE || 'full_prepayment';
   const newKey = opts.newIdempotenceKey ?? (() => randomUUID());
   const auth = `Basic ${Buffer.from(`${shopId}:${secretKey}`).toString('base64')}`;
 
@@ -264,6 +298,12 @@ export function createYooKassaPaymentCreator(
       metadata: draft.licenseKey ? { plan, license_key: draft.licenseKey } : { plan },
     };
     if (withReceipt) {
+      // A receipt with no one to send it to is not a receipt. The checkout route
+      // already demands an email when receipts are on; this is the second lock,
+      // for any other caller — without it `customer: { email: undefined }` goes
+      // out as `customer: {}` and ЮKassa answers with a 400 that names a JSON
+      // field, which is a much longer walk to the actual cause.
+      if (!draft.email) throw new Error('a 54-ФЗ receipt needs the buyer’s email');
       body.receipt = {
         customer: { email: draft.email },
         items: [
@@ -273,9 +313,12 @@ export function createYooKassaPaymentCreator(
             amount,
             vat_code: vatCode,
             payment_subject: 'service',
-            payment_mode: 'full_prepayment',
+            payment_mode: paymentMode,
           },
         ],
+        // Only when configured — see `taxSystemCode`. A shop with one taxation
+        // system has ЮKassa fill this in correctly on its own.
+        ...(taxSystemCode === undefined ? {} : { tax_system_code: taxSystemCode }),
       };
     }
 
