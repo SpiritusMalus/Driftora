@@ -1,12 +1,16 @@
 /**
  * Client side of the per-install AI quota: the install-id header rides on
  * requests, a 429 `ai_quota_exceeded` becomes the honest `quota_exceeded` flag
- * (never «нет интернета»), and the X-AI-Quota-Remaining header lands in the
- * aiQuota store for the quiet «осталось N» line.
+ * (never «нет интернета»), and the X-AI-Quota-Remaining / -Scope headers land in
+ * the aiQuota store for the quiet «осталось N» line.
+ *
+ * The SCOPE is load-bearing: it is what decides between «завтра снова
+ * заработает» and «бесплатные закончились», and the wrong one of those is a
+ * promise the app cannot keep.
  */
 import { afterEach, expect, jest, test } from '@jest/globals';
 
-import { getAiQuotaRemaining, setAiQuotaRemaining } from '../lib/core/services/aiQuota';
+import { getAiQuotaRemaining, getAiQuotaScope, setAiQuotaRemaining, setAiQuotaScope } from '../lib/core/services/aiQuota';
 import { HttpFoodParser } from '../lib/core/services/httpFoodParser';
 import { newInstallId } from '../lib/core/services/installId';
 import { StubFoodParser } from '../lib/core/services/stubFoodParser';
@@ -26,6 +30,7 @@ const validDraft = {
 afterEach(() => {
   globalThis.fetch = realFetch;
   setAiQuotaRemaining(null);
+  setAiQuotaScope(null);
 });
 
 test('newInstallId: 32 hex chars, unique per mint', () => {
@@ -42,7 +47,7 @@ test('parse: sends X-Install-Id and stores the remaining-budget header', async (
     calls.push({ headers: init?.headers as Record<string, string> });
     return new Response(JSON.stringify(validDraft), {
       status: 200,
-      headers: { 'Content-Type': 'application/json', 'X-AI-Quota-Remaining': '4' },
+      headers: { 'Content-Type': 'application/json', 'X-AI-Quota-Remaining': '4', 'X-AI-Quota-Scope': 'total' },
     });
   }) as unknown as typeof fetch;
 
@@ -54,13 +59,14 @@ test('parse: sends X-Install-Id and stores the remaining-budget header', async (
   expect(draft.region).toBe('RU');
   expect(calls[0]?.headers?.['X-Install-Id']).toBe('device-test-1234');
   expect(getAiQuotaRemaining()).toBe(4);
+  expect(getAiQuotaScope()).toBe('total');
 });
 
 test('parse: 429 ai_quota_exceeded → quota_exceeded flag, not a generic offline lie', async () => {
   globalThis.fetch = jest.fn(async () =>
     new Response(JSON.stringify({ error: { code: 'ai_quota_exceeded', message: 'quota' } }), {
       status: 429,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-AI-Quota-Scope': 'total' },
     }),
   ) as unknown as typeof fetch;
 
@@ -72,6 +78,23 @@ test('parse: 429 ai_quota_exceeded → quota_exceeded flag, not a generic offlin
   expect(draft.flags.quota_exceeded).toBe(true);
   expect(draft.flags.offline_fallback).toBe(true);
   expect(getAiQuotaRemaining()).toBe(0);
+  // The wall the screen must describe: a spent trial, not a spent day.
+  expect(getAiQuotaScope()).toBe('total');
+});
+
+test('parse: an unreported scope stays null — the screen must not invent a reset', async () => {
+  globalThis.fetch = jest.fn(async () =>
+    new Response(JSON.stringify(validDraft), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'X-AI-Quota-Remaining': '2' },
+    }),
+  ) as unknown as typeof fetch;
+
+  const parser = new HttpFoodParser('https://food.test/food/parse', new StubFoodParser(), undefined, {});
+  await parser.parse('борщ', 'RU');
+
+  expect(getAiQuotaRemaining()).toBe(2);
+  expect(getAiQuotaScope()).toBeNull();
 });
 
 test('parse: a generic 429 (per-IP rate limit) stays a server fallback, NOT a quota', async () => {

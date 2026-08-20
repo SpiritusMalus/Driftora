@@ -281,7 +281,7 @@ test('paid path end to end: payment → licence key → paid AI cap', async () =
   });
   const { base, stop } = await startApp({
     limits: { textPerDay: 1000, burstPerMin: 1000 },
-    aiQuotaPerDay: 1,
+    aiQuotaFreeTotal: 1,
     aiQuotaPerDayPaid: 3,
     getYooKassaPayment,
     licensesPath: '',
@@ -317,10 +317,11 @@ test('paid path end to end: payment → licence key → paid AI cap', async () =
     assert.equal(reg.status, 200);
     assert.equal(((await reg.json()) as { active?: boolean }).active, true);
 
-    // 4. The ceiling is raised, and the day already spent is not refunded.
+    // 4. The spent free trial is replaced by a whole paid day.
     const after = await postText();
     assert.equal(after.status, 200);
-    assert.equal(after.headers.get('x-ai-quota-remaining'), '1');
+    assert.equal(after.headers.get('x-ai-quota-remaining'), '2');
+    assert.equal(after.headers.get('x-ai-quota-scope'), 'day');
   } finally {
     await stop();
   }

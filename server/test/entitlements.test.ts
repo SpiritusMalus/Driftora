@@ -245,10 +245,10 @@ afterEach(() => {
   globalThis.fetch = realFetch;
 });
 
-test('quota tier: buying raises the ceiling without refunding the day already spent', async () => {
+test('quota tier: buying swaps the spent trial for a full paid day', async () => {
   const { base, stop } = await startApp({
     limits: { textPerDay: 1000, burstPerMin: 1000 },
-    aiQuotaPerDay: 1,
+    aiQuotaFreeTotal: 1,
     aiQuotaPerDayPaid: 3,
     verifyPurchase: okVerifier,
     entitlementsPath: '',
@@ -263,10 +263,14 @@ test('quota tier: buying raises the ceiling without refunding the day already sp
     assert.equal(reg.status, 200);
     assert.equal(((await reg.json()) as { active?: boolean }).active, true);
 
-    // Headroom, not a fresh budget: 1 of 3 was already spent, so 2 remain.
+    // A purchase does not top up the trial, it REPLACES it: the free budget is a
+    // one-off lifetime allowance, so carrying its spend into the paid day would
+    // sell someone 3 parses and hand them 2. The first paid day is whole.
     const after = await postText(base, id);
     assert.equal(after.status, 200);
-    assert.equal(after.headers.get('x-ai-quota-remaining'), '1');
+    assert.equal(after.headers.get('x-ai-quota-remaining'), '2');
+    assert.equal(after.headers.get('x-ai-quota-scope'), 'day');
+    assert.equal((await postText(base, id)).status, 200);
     assert.equal((await postText(base, id)).status, 200);
     assert.equal((await postText(base, id)).status, 429);
   } finally {
