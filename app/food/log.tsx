@@ -36,7 +36,7 @@ import {
   lookupNameForItem,
 } from '@/lib/core/services/foodChoice';
 import { contributableFoods } from '@/lib/core/services/communityShare';
-import { getAiQuotaRemaining } from '@/lib/core/services/aiQuota';
+import { getAiQuotaRemaining, getAiQuotaScope, type AiQuotaScope } from '@/lib/core/services/aiQuota';
 import {
   adoptOnUnmount,
   clearInFlight,
@@ -70,6 +70,16 @@ import { useTheme } from '@/lib/theme/theme';
 /// the on-screen AI notice only matter when it is — otherwise everything is
 /// offline and nothing can leave the device.
 const AI_CONFIGURED = !!process.env.EXPO_PUBLIC_FOOD_API_URL;
+
+/// When the quiet «осталось N» line appears, per budget shape.
+///
+/// The two numbers differ because the two budgets end differently. A paid day
+/// refills at midnight, so a warning is a heads-up for the evening — three is
+/// enough. The free trial ends for good, so the warning is the last chance to
+/// decide whether to subscribe; at three left a person is already at the wall,
+/// and finding out then reads as a trap. Ten is roughly two days' notice.
+const DAY_QUOTA_WARN_AT = 3;
+const FREE_QUOTA_WARN_AT = 10;
 
 
 /// Text/voice → parse → two-tier honest result (exact per-100g + approximate
@@ -123,14 +133,25 @@ export default function FoodLogScreen() {
   // feedback 2026-07-12): 'offline' = server silent, the offline table still
   // produced items (rougher numbers); 'offlineEmpty' = server silent AND the
   // offline table knows nothing of this text; 'offlineMedia' = photo/voice
-  // can't be parsed offline at all; 'quota' = today's per-install AI budget is
-  // spent (manual/chip paths remain); 'failed' = the parse itself threw locally.
+  // can't be parsed offline at all; 'quota' = today's paid AI budget is spent
+  // and returns tomorrow; 'quotaFree' = the free trial is spent and does NOT
+  // return (manual/chip paths remain either way); 'failed' = the parse itself
+  // threw locally.
   const [parseIssue, setParseIssue] = useState<
-    'offline' | 'offlineEmpty' | 'offlineMedia' | 'serverBusy' | 'quota' | 'misconfigured' | 'failed' | null
+    | 'offline'
+    | 'offlineEmpty'
+    | 'offlineMedia'
+    | 'serverBusy'
+    | 'quota'
+    | 'quotaFree'
+    | 'misconfigured'
+    | 'failed'
+    | null
   >(null);
-  // Server-reported remaining daily AI budget (X-AI-Quota-Remaining) — drives
+  // Server-reported remaining AI budget (X-AI-Quota-Remaining / -Scope) — drives
   // the quiet «осталось N» line once it runs low. Null = never reported.
   const [quotaLeft, setQuotaLeft] = useState<number | null>(null);
+  const [quotaScope, setQuotaScope] = useState<AiQuotaScope | null>(null);
   const [savedAck, setSavedAck] = useState<string | null>(null);
   // The DB write itself threw. Without a visible line the tap looks ignored and
   // the user walks away sure the meal was logged.
@@ -506,11 +527,16 @@ export default function FoodLogScreen() {
     setParseIssue(
       !offline
         ? null
-        : // Today's per-install AI budget is spent (429) — «нет интернета» would
-          // be a lie the user can see through; the remedy is the manual/chip
-          // paths until the daily reset, not hunting for signal.
+        : // The per-install AI budget is spent (429) — «нет интернета» would be
+          // a lie the user can see through; the remedy is the manual/chip paths,
+          // not hunting for signal. WHICH budget decides the sentence: the paid
+          // one comes back at midnight, the free trial never does, and promising
+          // «завтра снова заработает» to someone whose trial is gone is the
+          // worse of the two possible lies.
           parsed.flags.quota_exceeded
-          ? 'quota'
+          ? getAiQuotaScope() === 'total'
+            ? 'quotaFree'
+            : 'quota'
           : // The build has no API token, so EVERY parse here fails the same way.
             // Checked before the others: it is the one cause the user genuinely
             // cannot work around, and mislabelling it sends a whole test group
@@ -528,6 +554,7 @@ export default function FoodLogScreen() {
                   : 'offline',
     );
     setQuotaLeft(getAiQuotaRemaining());
+    setQuotaScope(getAiQuotaScope());
   }
 
   /**
@@ -1353,7 +1380,7 @@ export default function FoodLogScreen() {
               already says the free budget returns tomorrow and that the manual
               paths still work. This is the shortcut for someone who would rather
               not wait — not a wall in front of the food they just ate. */}
-          {parseIssue === 'quota' ? (
+          {parseIssue === 'quota' || parseIssue === 'quotaFree' ? (
             <Pressable
               onPress={() => router.push('/settings/subscription')}
               hitSlop={8}
@@ -1365,7 +1392,7 @@ export default function FoodLogScreen() {
             </Pressable>
           ) : null}
         </>
-      ) : quotaLeft !== null && quotaLeft <= 3 ? (
+      ) : quotaLeft !== null && quotaLeft <= (quotaScope === 'total' ? FREE_QUOTA_WARN_AT : DAY_QUOTA_WARN_AT) ? (
         /* Honest heads-up instead of a surprise «лимит» at the day's fifth
            meal — rendered only once the server-reported budget runs low. The
            subscription link rides along here too: waiting for the wall to
@@ -1373,7 +1400,9 @@ export default function FoodLogScreen() {
            feedback 2026-08-18). Same quiet link, one line, no modal. */
         <>
           <Text style={[styles.parseIssue, { color: theme.subtle }, theme.font.body]}>
-            {t('food.quotaLeft', { n: quotaLeft })}
+            {quotaScope === 'total'
+              ? t('food.quotaLeftTotal', { n: quotaLeft })
+              : t('food.quotaLeft', { n: quotaLeft })}
           </Text>
           <Pressable
             onPress={() => router.push('/settings/subscription')}

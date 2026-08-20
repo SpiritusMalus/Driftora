@@ -37,6 +37,26 @@ const TIMEOUT_MS = 15_000;
 
 export type EntitlementState = 'active' | 'grace' | 'paused' | 'expired' | 'revoked' | 'none' | 'unknown';
 
+/**
+ * This install's AI budget as the server sees it — the numbers the subscription
+ * screen states out loud.
+ *
+ * Both caps travel, not just the applicable one: the screen has to say what a
+ * subscription BUYS as well as what is left of the free trial, and a client that
+ * hardcodes either number is a client that will one day contradict the server
+ * (both are env-tunable by design — installQuota.ts).
+ */
+export interface AiQuota {
+  /** 'total' = the free lifetime trial. 'day' = the paid daily allowance. */
+  scope: 'total' | 'day';
+  /** The cap that applies to this caller right now. */
+  cap: number;
+  used: number;
+  remaining: number;
+  freeTotal: number;
+  perDayPaid: number;
+}
+
 export interface BillingStatus {
   /** False when the server sells nothing — the screen then explains, not sells. */
   billingEnabled: boolean;
@@ -44,6 +64,8 @@ export interface BillingStatus {
   /** Epoch ms the paid period ends. 0 = the server did not say. */
   expiresAt: number;
   state: EntitlementState;
+  /** Null when the server is older than the meter, or the quota is switched off. */
+  quota: AiQuota | null;
 }
 
 export type ActivationFailure =
@@ -54,7 +76,7 @@ export type ActivationFailure =
 
 export type ActivationResult = { ok: true; status: BillingStatus } | { ok: false; reason: ActivationFailure };
 
-const OFFLINE: BillingStatus = { billingEnabled: false, active: false, expiresAt: 0, state: 'unknown' };
+const OFFLINE: BillingStatus = { billingEnabled: false, active: false, expiresAt: 0, state: 'unknown', quota: null };
 
 /**
  * Origin of the food server, derived from the configured parse endpoint
@@ -116,7 +138,25 @@ function parseStatus(body: unknown): BillingStatus {
     active: b.active === true,
     expiresAt: typeof b.expires_at === 'number' ? b.expires_at : 0,
     state: typeof b.state === 'string' ? (b.state as EntitlementState) : 'unknown',
+    quota: parseQuota(b.ai_quota),
   };
+}
+
+/** All-or-nothing: a half-read budget would be shown as a confident wrong number. */
+function parseQuota(raw: unknown): AiQuota | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const q = raw as Record<string, unknown>;
+  const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null);
+  const cap = num(q.cap);
+  const used = num(q.used);
+  const remaining = num(q.remaining);
+  const freeTotal = num(q.free_total);
+  const perDayPaid = num(q.per_day_paid);
+  const scope = q.scope === 'total' || q.scope === 'day' ? q.scope : null;
+  if (scope === null || cap === null || used === null || remaining === null || freeTotal === null || perDayPaid === null) {
+    return null;
+  }
+  return { scope, cap, used, remaining, freeTotal, perDayPaid };
 }
 
 /** What the server currently thinks of this install. Never throws. */

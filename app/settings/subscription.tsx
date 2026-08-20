@@ -180,6 +180,7 @@ export default function SubscriptionScreen() {
   }
 
   const active = status?.active === true;
+  const quota = status?.quota ?? null;
   const busy = phase.kind === 'creating' || phase.kind === 'settling' || phase.kind === 'activating';
   const price = plans.find((p) => p.id === selected)?.amount ?? '';
 
@@ -196,9 +197,38 @@ export default function SubscriptionScreen() {
           <Text style={[styles.body, { color: theme.subtle }, theme.font.body]}>
             {t('subscription.until', { date: new Date(status.expiresAt).toLocaleDateString() })}
           </Text>
-        ) : (
+        ) : null}
+        {/* The count, in the one place a person comes to ask for it. Until this
+            line existed the only way to learn the free tier's size was to spend
+            it: the food screen mentions the budget at three left, and nothing
+            else in the app names a number (owner feedback 2026-08-20). */}
+        {quota ? (
+          <>
+            <Text style={[styles.quota, { color: theme.text }, theme.font.bodySemiBold]}>
+              {quota.scope === 'day'
+                ? t('subscription.dayLeft', { n: quota.remaining, cap: quota.cap })
+                : quota.remaining > 0
+                  ? t('subscription.freeLeft', { n: quota.remaining, cap: quota.cap })
+                  : t('subscription.freeSpent')}
+            </Text>
+            {/* Said out loud because «30 разборов» is read as «30 в день» by
+                default — that is what every other app means by a limit. */}
+            {quota.scope === 'total' ? (
+              <Text style={[styles.body, { color: theme.subtle }, theme.font.body]}>
+                {t('subscription.freeShape')}
+              </Text>
+            ) : null}
+            {!active ? (
+              <Text style={[styles.body, { color: theme.subtle }, theme.font.body]}>
+                {t('subscription.paidOffer', { n: quota.perDayPaid })}
+              </Text>
+            ) : null}
+          </>
+        ) : !active ? (
+          /* Older server (or the meter switched off): say the shape without
+             inventing a number this build cannot know. */
           <Text style={[styles.body, { color: theme.subtle }, theme.font.body]}>{t('subscription.freeNote')}</Text>
-        )}
+        ) : null}
       </Card>
 
       {phase.kind === 'done' ? (
@@ -380,6 +410,7 @@ const styles = StyleSheet.create({
   hero: { marginBottom: 16 },
   heroLine: { fontSize: 20, lineHeight: 26 },
   state: { fontSize: 20, marginBottom: 4 },
+  quota: { marginTop: 6 },
   body: { marginTop: 2 },
   small: { fontSize: 13, marginTop: 6 },
   label: { fontSize: 13, marginTop: 16, marginBottom: 6 },

@@ -11,7 +11,7 @@ import type {
   Region,
 } from './foodParser';
 
-import { setAiQuotaRemaining } from './aiQuota';
+import { setAiQuotaRemaining, setAiQuotaScope, type AiQuotaScope } from './aiQuota';
 
 const SOURCES: readonly NutritionSource[] = ['usda', 'skurikhin', 'openfoodfacts', 'apininjas', 'fatsecret', 'label', 'ai_estimate', 'estimate', 'community'];
 /** Text/search: a typed query is answered in 3–6 s and the user is actively
@@ -120,10 +120,12 @@ function asServerFallback(draft: MealDraft): MealDraft {
 }
 
 /**
- * 429 `ai_quota_exceeded`: today's per-install AI budget is spent. A narrowing
- * of `offline_fallback` (same pattern as `server_error`) — the connection is
- * fine and an immediate retry is pointless, so the honest message is «дневной
- * лимит», with the manual/chip paths as the remedy.
+ * 429 `ai_quota_exceeded`: this install's AI budget is spent. A narrowing of
+ * `offline_fallback` (same pattern as `server_error`) — the connection is fine
+ * and an immediate retry is pointless, so the honest message is about the limit,
+ * with the manual/chip paths as the remedy. WHICH limit (the free trial, gone
+ * for good, or today's paid allowance) comes from the scope header, not from
+ * this flag.
  */
 function asQuotaFallback(draft: MealDraft): MealDraft {
   return { ...draft, flags: { ...draft.flags, offline_fallback: true, quota_exceeded: true } };
@@ -158,12 +160,24 @@ async function isQuotaExceeded(res: Response): Promise<boolean> {
   }
 }
 
-/** Surface the server's remaining-budget header for the quiet «осталось N» line.
- *  Best-effort BY DESIGN: minimal response doubles (tests, exotic polyfills) may
- *  lack `headers` — a telemetry helper must never flip a good parse into a
- *  fallback, so it degrades to «no report» instead of throwing. */
+/** Read one response header, tolerating response doubles that have none.
+ *  Best-effort BY DESIGN: minimal doubles (tests, exotic polyfills) may lack
+ *  `headers` — a telemetry helper must never flip a good parse into a fallback,
+ *  so it degrades to «no report» instead of throwing. */
+function header(res: Response, name: string): string | null {
+  return typeof res.headers?.get === 'function' ? res.headers.get(name) : null;
+}
+
+/** Which budget the server just metered this call against. */
+function captureQuotaScope(res: Response): void {
+  const raw = header(res, 'x-ai-quota-scope');
+  if (raw === 'total' || raw === 'day') setAiQuotaScope(raw as AiQuotaScope);
+}
+
+/** Surface the server's remaining-budget header for the quiet «осталось N» line. */
 function captureQuotaRemaining(res: Response): void {
-  const raw = typeof res.headers?.get === 'function' ? res.headers.get('x-ai-quota-remaining') : null;
+  captureQuotaScope(res);
+  const raw = header(res, 'x-ai-quota-remaining');
   if (raw === null) return;
   const n = Number(raw);
   if (Number.isFinite(n) && n >= 0) setAiQuotaRemaining(n);
@@ -328,6 +342,7 @@ export class HttpFoodParser implements FoodParser {
       if (!res.ok) {
         if (await isQuotaExceeded(res)) {
           setAiQuotaRemaining(0);
+          captureQuotaScope(res);
           return asQuotaFallback(await this.fallback.parse(text, region));
         }
         if (isAuthFailure(res)) return asAuthFallback(await this.fallback.parse(text, region));
@@ -372,6 +387,7 @@ export class HttpFoodParser implements FoodParser {
       if (!res.ok) {
         if (await isQuotaExceeded(res)) {
           setAiQuotaRemaining(0);
+          captureQuotaScope(res);
           return asQuotaFallback(await this.fallback.parsePhoto(photo, region));
         }
         if (isAuthFailure(res)) return asAuthFallback(await this.fallback.parsePhoto(photo, region));
@@ -415,6 +431,7 @@ export class HttpFoodParser implements FoodParser {
       if (!res.ok) {
         if (await isQuotaExceeded(res)) {
           setAiQuotaRemaining(0);
+          captureQuotaScope(res);
           return asQuotaFallback(await this.fallback.parseAudio(audio, region));
         }
         if (isAuthFailure(res)) return asAuthFallback(await this.fallback.parseAudio(audio, region));

@@ -930,10 +930,13 @@ export const en = {
       serverBusy: 'Recognition couldn’t handle this shot — your connection is fine. Try again, or describe the food in words.',
       failed: 'Couldn’t parse this. Check your connection and try again.',
       quota: 'Today’s AI recognition limit is used up — it resets tomorrow. You can still log by hand, with chips, or via “Repeat”.',
+      quotaFree:
+        'The free AI recognitions are used up — they do not refill. You can still log by hand, with chips, or via “Repeat”.',
       misconfigured:
         'Recognition isn’t available in this build — it’s not your internet and not your phone. Please write to support@family-pie.ru; meanwhile you can log food by hand or with chips.',
     },
     quotaLeft: 'AI recognitions left today: {{n}}.',
+    quotaLeftTotal: 'Free AI recognitions left: {{n}} — they do not refill.',
     quotaSubscribe: 'Lift the cap — subscribe',
     entryGone: 'This entry has already been deleted.',
     prompt: {
@@ -1429,7 +1432,7 @@ export const en = {
   subscription: {
     title: 'Subscription',
     openRow: 'AI parsing subscription',
-    openRowNote: 'Lifts the daily cap on parsing food by photo, voice and text.',
+    openRowNote: 'Free AI food parses run out — a subscription gives you a daily allowance.',
     hero: 'You only pay for AI parsing.',
     heroLead: 'Diary, weight, mood and manual entry are always free.',
     aiOffBody:
@@ -1437,7 +1440,12 @@ export const en = {
     stateActive: 'Subscription active',
     stateFree: 'Free tier',
     until: 'Valid until {{date}}.',
-    freeNote: 'A few AI parses a day, photos included. Everything else is unlimited.',
+    freeLeft: '{{n}} of {{cap}} AI parses left.',
+    freeSpent: 'You have used up the free AI parses.',
+    freeShape: 'That is the whole free allowance — it does not refill each day.',
+    dayLeft: '{{n}} of {{cap}} AI parses left today.',
+    paidOffer: 'With a subscription — {{n}} AI parses a day.',
+    freeNote: 'AI parses are limited in number. Everything else is unlimited.',
     thanks: 'Done — the subscription is on. The key is saved on this phone.',
     buySection: 'Subscribe',
     extendSection: 'Extend',

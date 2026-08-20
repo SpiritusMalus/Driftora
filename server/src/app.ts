@@ -202,10 +202,12 @@ async function aiSearchCard(query: string, region: Region): Promise<NutritionAlt
 export interface CreateAppOptions {
   /** Override per-IP rate limits (tests set tiny, deterministic caps). */
   limits?: Partial<RateLimits>;
-  /** Override the per-install daily AI quota (tests set tiny caps; 0 disables). */
-  aiQuotaPerDay?: number;
+  /** Override the free-tier LIFETIME AI quota (tests set tiny caps; 0 disables). */
+  aiQuotaFreeTotal?: number;
   /** Override the paid-tier daily AI quota. */
   aiQuotaPerDayPaid?: number;
+  /** Where free-tier lifetime spend persists. Empty string = memory only (tests). */
+  aiQuotaPath?: string;
   /** Inject a purchase verifier (tests); production builds one from env. */
   verifyPurchase?: PurchaseVerifier;
   /** Where entitlements persist. Empty string = memory only (tests). */
@@ -447,13 +449,14 @@ export function createApp(
   // the chain has no community provider at all.
   const communityFoods = defaultCommunityFoods();
 
-  // Per-install daily AI budget (the CGNAT-safe layer; per-IP caps stay as the
-  // abuse backstop). Mounted on the six LLM-burning parse routes only — the DB
-  // search stays under the per-IP caps, so a quota'd-out user can still look
-  // things up by hand.
+  // Per-install AI budget (the CGNAT-safe layer; per-IP caps stay as the abuse
+  // backstop): a LIFETIME free trial, a daily cap once someone pays. Mounted on
+  // the six LLM-burning parse routes only — the DB search stays under the per-IP
+  // caps, so a quota'd-out user can still look things up by hand.
   const aiQuota = createInstallQuota(fail, {
-    perDay: opts.aiQuotaPerDay,
+    freeTotal: opts.aiQuotaFreeTotal,
     perDayPaid: opts.aiQuotaPerDayPaid,
+    path: opts.aiQuotaPath,
     isPaid: entitlements.isPaid,
   });
 
@@ -839,11 +842,26 @@ export function createApp(
   /** Current entitlement for this install — what the client gates its paywall on. */
   app.get('/billing/status', requireToken, (req: Request, res: Response) => {
     const status = entitlements.statusOf(installIdOf(req));
+    // The AI budget rides along, because the subscription screen is the one
+    // place a person goes to ask «сколько мне осталось?» — and until it could
+    // answer, the only way to learn the free tier's size was to spend it
+    // (owner feedback 2026-08-20). Both caps are sent, not just the active one:
+    // the screen has to state what the subscription BUYS, and hardcoding a
+    // number the server can retune by env is how the two drift apart.
+    const quota = aiQuota.stateOf(req);
     res.json({
       billing_enabled: billingEnabled,
       active: status.active,
       expires_at: status.expiresAt,
       state: status.state,
+      ai_quota: quota && {
+        scope: quota.scope,
+        cap: quota.cap,
+        used: quota.used,
+        remaining: quota.remaining,
+        free_total: quota.freeTotal,
+        per_day_paid: quota.perDayPaid,
+      },
     });
   });
 
