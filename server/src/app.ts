@@ -368,6 +368,19 @@ function defaultCommunityFoods(): CommunityFoods {
 }
 
 /**
+ * One line for the startup log: is the shared food base on, and how many foods
+ * did it load. Reported because "off" and "broken" look identical from a phone —
+ * an unset COMMUNITY_FOODS_PATH gives an app whose «общая база» search answers
+ * «ничего не нашлось» forever and whose sharing toggle does nothing visible.
+ */
+export function communityBaseStatus(): string {
+  if (!COMMUNITY_FOODS_PATH) {
+    return 'OFF (COMMUNITY_FOODS_PATH is not set — nothing is stored or served)';
+  }
+  return `ON — ${defaultCommunityFoods().size()} foods from ${COMMUNITY_FOODS_PATH}`;
+}
+
+/**
  * Build the Express app (no listener — see `server.ts`). A custom `resolver`
  * can be injected for tests; production wires it from env-configured providers.
  */
