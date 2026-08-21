@@ -153,4 +153,31 @@ export const CURATED_RU: SkurikhinEntry[] = [
     per100: { kcal: 275, prot: 11.9, fat: 12.4, carb: 29, fiber: 1.9, minerals: {} } },
   { name: 'печенье', aliases: ['печенье', 'печеньки'], source: 'skurikhin', prepared: true,
     per100: { kcal: 417, prot: 7.5, fat: 11.8, carb: 74.4, fiber: 2, minerals: {} } },
+
+  // — Уличная еда и быстрые блюда (UX-аудит 2026-08-20: топ повседневных
+  //   запросов, дававших ПУСТО в RU-таблицах — уходили в EN-цепочку/ИИ). Те же
+  //   editorial reference figures, что и выше; вариативность рецептов лечит
+  //   «не то?»-пикер. —
+  { name: 'плов', aliases: ['плов', 'плов с мясом', 'плов с говядиной', 'плов с бараниной'], source: 'skurikhin', prepared: true,
+    per100: { kcal: 165, prot: 8.4, fat: 6.4, carb: 18.6, fiber: 1, minerals: {} } },
+  { name: 'плов с курицей', aliases: ['плов с курицей', 'куриный плов'], source: 'skurikhin', prepared: true,
+    per100: { kcal: 142, prot: 9.5, fat: 4.4, carb: 16, fiber: 1, minerals: {} } },
+  { name: 'шаурма', aliases: ['шаурма', 'шаверма', 'шаурма с курицей', 'донер', 'донер кебаб'], source: 'skurikhin', prepared: true,
+    per100: { kcal: 198, prot: 9, fat: 10, carb: 18, fiber: 1.4, minerals: {} } },
+  { name: 'лапша быстрого приготовления', aliases: ['лапша быстрого приготовления', 'доширак', 'ролтон', 'лапша с приправами'], source: 'skurikhin', prepared: true,
+    per100: { kcal: 134, prot: 3, fat: 6, carb: 17, fiber: 0.9, minerals: {} } },
+  { name: 'сосиска в тесте', aliases: ['сосиска в тесте'], source: 'skurikhin', prepared: true,
+    per100: { kcal: 289, prot: 9, fat: 17, carb: 25, fiber: 1.2, minerals: {} } },
+  { name: 'беляш', aliases: ['беляш', 'беляши', 'беляш с мясом'], source: 'skurikhin', prepared: true,
+    per100: { kcal: 320, prot: 10, fat: 20, carb: 25, fiber: 1.1, minerals: {} } },
+  { name: 'чебурек', aliases: ['чебурек', 'чебуреки', 'чебурек с мясом'], source: 'skurikhin', prepared: true,
+    per100: { kcal: 261, prot: 9, fat: 13, carb: 27, fiber: 1.2, minerals: {} } },
+  { name: 'хинкали', aliases: ['хинкали'], source: 'skurikhin', prepared: true,
+    per100: { kcal: 228, prot: 10, fat: 12, carb: 20, fiber: 1.1, minerals: {} } },
+  { name: 'хачапури', aliases: ['хачапури', 'хачапури с сыром', 'хачапури по имеретински'], source: 'skurikhin', prepared: true,
+    per100: { kcal: 270, prot: 9.5, fat: 12, carb: 31, fiber: 1.2, minerals: {} } },
+  { name: 'бутерброд с колбасой', aliases: ['бутерброд с колбасой', 'бутерброд с копченой колбасой'], source: 'skurikhin', prepared: true,
+    per100: { kcal: 267, prot: 9, fat: 15, carb: 24, fiber: 1.3, minerals: {} } },
+  { name: 'бутерброд с сыром', aliases: ['бутерброд с сыром', 'бутерброд с маслом и сыром'], source: 'skurikhin', prepared: true,
+    per100: { kcal: 270, prot: 11, fat: 14, carb: 25, fiber: 1.2, minerals: {} } },
 ];

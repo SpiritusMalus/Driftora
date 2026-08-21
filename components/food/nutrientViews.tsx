@@ -160,12 +160,14 @@ const styles = StyleSheet.create({
   detailRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   detailLabel: { fontSize: 12 },
   detailValue: { fontSize: 12 },
-  detailCaption: { fontSize: 10, fontStyle: 'italic', marginTop: 4, lineHeight: 14 },
+  // 12, не 10: 10px-курсив на телефоне нечитаем (UX-аудит 2026-08-20), а это
+  // строки честности — их как раз должны дочитывать.
+  detailCaption: { fontSize: 12, fontStyle: 'italic', marginTop: 4, lineHeight: 16 },
   microGroup: { marginTop: 8, gap: 6 },
   microGroupHeading: { fontSize: 11, letterSpacing: 0.6, textTransform: 'uppercase' },
   microRow: { gap: 3 },
   microRowHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   microName: { fontSize: 12 },
   microVal: { fontSize: 11 },
-  microNote: { fontSize: 10, fontStyle: 'italic', marginTop: 6, lineHeight: 14 },
+  microNote: { fontSize: 12, fontStyle: 'italic', marginTop: 6, lineHeight: 16 },
 });

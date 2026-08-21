@@ -929,11 +929,11 @@ export const en = {
       offlineMedia: 'Looks like there’s no internet. Photos and voice need a connection — try later, or describe the food in words.',
       serverBusy: 'Recognition couldn’t handle this shot — your connection is fine. Try again, or describe the food in words.',
       failed: 'Couldn’t parse this. Check your connection and try again.',
-      quota: 'Today’s AI recognition limit is used up — it resets tomorrow. You can still log by hand, with chips, or via “Repeat”.',
+      quota: 'Today’s AI recognition limit is used up — it resets tomorrow. You can still log by hand, from the “Quick” lane, or via “Repeat”.',
       quotaFree:
-        'The free AI recognitions are used up — they do not refill. You can still log by hand, with chips, or via “Repeat”.',
+        'The free AI recognitions are used up — they do not refill. You can still log by hand, from the “Quick” lane, or via “Repeat”.',
       misconfigured:
-        'Recognition isn’t available in this build — it’s not your internet and not your phone. Please write to support@family-pie.ru; meanwhile you can log food by hand or with chips.',
+        'Recognition isn’t available in this build — it’s not your internet and not your phone. Please write to support@family-pie.ru; meanwhile you can log food by hand or from the “Quick” lane.',
     },
     quotaLeft: 'AI recognitions left today: {{n}}.',
     quotaLeftTotal: 'Free AI recognitions left: {{n}} — they do not refill.',
@@ -998,6 +998,9 @@ export const en = {
     photo: '📷 Camera',
     photoLibrary: '🖼 From gallery',
     photoError: 'Couldn’t process that photo. Try another one, or type the meal instead.',
+    // Visible for the ~10–25 s a photo parse takes: the greyed-out button was
+    // the only signal before (voice had a spinner, photo didn't).
+    photoProcessing: 'Reading the photo…',
     bg: {
       parsing: 'Parsing…',
       failed: 'Couldn’t parse — tap to retry',
@@ -1046,6 +1049,10 @@ export const en = {
       action: 'Search',
       searching: 'Searching…',
       empty: 'Not in the base yet. Enter the numbers yourself and it will be there for the next person.',
+      // The shared base is OFF on this server: promising «for the next person»
+      // over a dropped write would be a lie — honest replacement.
+      emptyOff:
+        'Not in the base yet — and the shared base isn’t open in this build. Enter the numbers yourself; they stay in your own diet list.',
       votes: 'entries: {{n}}',
       hint: 'Search by name: the reference tables first, then the shared base — the home-made and local dishes people entered themselves. Every row says where its numbers came from; “from the shared base” is the middle of what others confirmed, not a measurement.',
       offline: 'The shared base works when food recognition is on.',

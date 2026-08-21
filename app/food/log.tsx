@@ -35,6 +35,7 @@ import {
   displayItemName,
   lookupNameForItem,
 } from '@/lib/core/services/foodChoice';
+import { communityBaseAvailable } from '@/lib/core/services/communityBase';
 import { contributableFoods } from '@/lib/core/services/communityShare';
 import { getAiQuotaRemaining, getAiQuotaScope, type AiQuotaScope } from '@/lib/core/services/aiQuota';
 import {
@@ -1179,7 +1180,15 @@ export default function FoodLogScreen() {
               </View>
               {baseResults != null && baseResults.length === 0 && !baseSearching ? (
                 <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>
-                  {t('food.community.empty')}
+                  {/* «появится для остальных» is a promise — with the shared
+                      base OFF on the server the contribute is dropped, so the
+                      copy switches to an honest one. Unknown (older server,
+                      offline stub) keeps the normal text. */}
+                  {t(
+                    communityBaseAvailable() === false
+                      ? 'food.community.emptyOff'
+                      : 'food.community.empty',
+                  )}
                 </Text>
               ) : null}
               <View style={styles.quickWrap}>
@@ -1363,6 +1372,18 @@ export default function FoodLogScreen() {
       ) : null}
       {inputMode === 'photo' && photoError ? (
         <Text style={[styles.voiceError, { color: theme.subtle }, theme.font.body]}>{photoError}</Text>
+      ) : null}
+      {/* A photo parse runs up to ~25 s — without this line the only feedback
+          was the greyed-out «Считаю…» button (the voice path already had its
+          spinner; the flagship input went blind). Outside the segment gate on
+          purpose: switching tabs mid-parse must not hide the progress. */}
+      {parsing && source === 'photo' ? (
+        <View style={styles.processingRow}>
+          <ActivityIndicator size="small" color={theme.primary} />
+          <Text style={[styles.micText, { color: theme.subtle }, theme.font.body]}>
+            {t('food.photoProcessing')}
+          </Text>
+        </View>
       ) : null}
       <PrimaryButton
         label={parsing ? t('food.parsing') : t('food.parse')}
