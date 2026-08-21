@@ -11,6 +11,7 @@ import { ApproxBadge, MicroScales, NutrientDetail } from '@/components/food/nutr
 import { Card } from '@/components/ui/Card';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
+import { WaitScene } from '@/components/ui/wait/WaitScene';
 import { TextField } from '@/components/ui/TextField';
 import { Waveform } from '@/components/ui/Waveform';
 import { pushLevel } from '@/components/ui/waveformBuffer';
@@ -1373,18 +1374,11 @@ export default function FoodLogScreen() {
       {inputMode === 'photo' && photoError ? (
         <Text style={[styles.voiceError, { color: theme.subtle }, theme.font.body]}>{photoError}</Text>
       ) : null}
-      {/* A photo parse runs up to ~25 s — without this line the only feedback
-          was the greyed-out «Считаю…» button (the voice path already had its
-          spinner; the flagship input went blind). Outside the segment gate on
-          purpose: switching tabs mid-parse must not hide the progress. */}
-      {parsing && source === 'photo' ? (
-        <View style={styles.processingRow}>
-          <ActivityIndicator size="small" color={theme.primary} />
-          <Text style={[styles.micText, { color: theme.subtle }, theme.font.body]}>
-            {t('food.photoProcessing')}
-          </Text>
-        </View>
-      ) : null}
+      {/* A photo parse runs up to ~25 s — a random signal-room scene keeps the
+          wait alive (WaitScene: nine rotating vignettes, spinner+label below).
+          Outside the segment gate on purpose: switching tabs mid-parse must
+          not hide the progress. */}
+      {parsing && source === 'photo' ? <WaitScene label={t('food.photoProcessing')} /> : null}
       <PrimaryButton
         label={parsing ? t('food.parsing') : t('food.parse')}
         onPress={onParse}
