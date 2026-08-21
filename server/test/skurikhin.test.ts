@@ -193,3 +193,50 @@ test('RU routing: resolver uses Skurikhin, never USDA', async () => {
   assert.equal(r.grams_source, 'estimated');
   assert.equal(r.approximate, true);
 });
+
+test('a wrong fat grade is demoted below the client picker floor, not served as fact', async () => {
+  // Real-table repro (UX audit 2026-08-20): «творог 5%» reached «творог 2%» at
+  // 0.77 through the shared «творог» words — above the client's 0.5 floor, so
+  // the alternatives picker never opened on a silently wrong grade.
+  const p = new SkurikhinProvider([
+    { name: 'творог 2%', aliases: ['творог'], per100: { kcal: 99, prot: 18, fat: 2, carb: 3.3, minerals: {} } },
+    { name: 'творог 9%', aliases: [], per100: { kcal: 157, prot: 16.7, fat: 9, carb: 2, minerals: {} } },
+  ]);
+  const top = await p.search('творог 5%', 'RU');
+  assert.ok(top); // still offered (better than nothing)…
+  assert.ok(top!.confidence < 0.5); // …but low enough that the picker opens
+  const many = await p.searchMany('творог 5%', 'RU');
+  assert.ok(many.every((r) => r.confidence < 0.5));
+});
+
+test('a number-free generic row outranks a contradicting graded one', async () => {
+  const p = new SkurikhinProvider([
+    { name: 'молоко 3.2%', aliases: ['молоко коровье'], per100: { kcal: 61, prot: 2.9, fat: 3.2, carb: 4.7, minerals: {} } },
+    { name: 'молоко', aliases: [], per100: { kcal: 52, prot: 3, fat: 2.5, carb: 4.7, minerals: {} } },
+  ]);
+  // «1.8%» exists in neither row: the honest generic wins, the wrong grade sinks.
+  const top = await p.search('молоко 1.8%', 'RU');
+  assert.equal(top!.name, 'молоко');
+  assert.ok(top!.confidence >= 0.5);
+});
+
+test('the exact grade keeps its confident match, and no-number queries are untouched', async () => {
+  const p = new SkurikhinProvider([
+    { name: 'творог 2%', aliases: ['творог'], per100: { kcal: 99, prot: 18, fat: 2, carb: 3.3, minerals: {} } },
+  ]);
+  const exact = await p.search('творог 2%', 'RU');
+  assert.equal(exact!.per100.kcal, 99);
+  assert.ok(exact!.confidence >= 0.9); // exact key match stays near-certain
+  const plain = await p.search('творог', 'RU');
+  assert.ok(plain!.confidence >= 0.9); // number-free query: no cap applies
+});
+
+test('street-food staples resolve from the RU table (плов, шаурма, доширак)', async () => {
+  const p = new SkurikhinProvider();
+  for (const [q, kcal] of [['плов', 165], ['шаурма', 198], ['шаверма', 198], ['доширак', 134], ['бутерброд с колбасой', 267]] as const) {
+    const r = await p.search(q, 'RU');
+    assert.ok(r, `«${q}» must hit the RU table`);
+    assert.equal(r!.per100.kcal, kcal, `«${q}» → wrong row: ${r!.name}`);
+    assert.ok(r!.confidence >= 0.85, `«${q}» must be a confident hit`);
+  }
+});

@@ -968,6 +968,10 @@ export function createApp(
     // The AI card's name is already Russian (from the estimate), so it's appended
     // after localization untouched.
     const localized = await localizeAlternatives(candidates, region);
+    // Honesty marker for the client: is the SHARED base actually on? With it
+    // off, «впишите — появится для остальных» is a false promise (contribute
+    // drops the row), so the client swaps that empty-state copy for an honest one.
+    res.setHeader('X-Community-Base', COMMUNITY_FOODS_PATH ? '1' : '0');
     res.json({ candidates: aiCard ? [...localized, aiCard] : localized });
   });
 

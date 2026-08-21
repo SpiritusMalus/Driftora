@@ -42,6 +42,24 @@ const MIN_SCORE = 0.55;
 /** Ranked candidates the manual picker gets from this table. */
 const MAX_CANDIDATES = 5;
 
+/** Numeric tokens of a normalized phrase («5», «1.8») — the fat grades and
+ * percentages people type. `normalizeRu` already keeps decimals whole. */
+function numericTokens(s: string): Set<string> {
+  return new Set(s.split(' ').filter((t) => /^\d+(\.\d+)?$/.test(t)));
+}
+
+/**
+ * Confidence cap for a GRADE CONTRADICTION: the query names a number and the
+ * row's own numbers (across name + aliases) are all different. The decimal
+ * guard in `normalizeRu` only stops a grade from MATCHING the wrong grade's
+ * token — the row still gets in through its shared words («творог 5%» reached
+ * «творог 2%» at 0.77 via plain «творог»), which the client shows as fact (its
+ * alternatives picker only opens below 0.5). Capped under that floor, the
+ * wrong grade is still offered but the picker opens on it. A number-free row
+ * (plain «молоко») is not a contradiction — unspecified, not wrong.
+ */
+const GRADE_MISMATCH_CONFIDENCE = 0.45;
+
 /**
  * RU nutrition from the Skurikhin composition table (BUILD SPEC §6) — the RU
  * launch's data source. Looks up an EXACT per-100g (incl. minerals); the model
@@ -102,15 +120,39 @@ export class SkurikhinProvider implements NutritionProvider {
     return score >= 0.999 ? 0.95 : Math.min(0.9, 0.45 + 0.5 * score);
   }
 
+  /**
+   * rank() with honest confidence: grade contradictions capped below the
+   * client's picker floor AND re-sorted, so a clean number-free row («молоко»)
+   * outranks a contradicting graded one («молоко 3.2%» on an «1.8%» query)
+   * that happened to score higher on shared words.
+   */
+  private ranked(name: string): { entry: SkurikhinEntry; confidence: number }[] {
+    const qNums = numericTokens(normalizeRu(name));
+    return this.rank(name)
+      .map(({ entry, score }) => {
+        let confidence = this.confidenceOf(score);
+        if (qNums.size > 0) {
+          const rowNums = numericTokens(
+            [entry.name, ...entry.aliases].map(normalizeRu).join(' '),
+          );
+          if (rowNums.size > 0 && ![...qNums].some((n) => rowNums.has(n))) {
+            confidence = Math.min(confidence, GRADE_MISMATCH_CONFIDENCE);
+          }
+        }
+        return { entry, confidence };
+      })
+      .sort((a, b) => b.confidence - a.confidence);
+  }
+
   async search(name: string, _region: Region): Promise<ProviderResult | null> {
-    const top = this.rank(name)[0];
-    return top ? this.toResult(top.entry, this.confidenceOf(top.score)) : null;
+    const top = this.ranked(name)[0];
+    return top ? this.toResult(top.entry, top.confidence) : null;
   }
 
   /** Ranked candidates for the manual "find it yourself" picker. */
   async searchMany(name: string, _region: Region): Promise<ProviderResult[]> {
-    return this.rank(name)
+    return this.ranked(name)
       .slice(0, MAX_CANDIDATES)
-      .map((r) => this.toResult(r.entry, this.confidenceOf(r.score)));
+      .map((r) => this.toResult(r.entry, r.confidence));
   }
 }
