@@ -3,6 +3,7 @@ import BetterSqlite3 from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 
 import { deriveQuickMeals, orderByMeal, quickMeals, type QuickMeal } from '@/lib/core/db/food';
+import { itemFromQuickMeal } from '@/lib/core/services/mealDraft';
 import { applySchema } from '@/lib/core/db/init';
 import * as schema from '@/lib/core/db/schema';
 import type { MealType } from '@/lib/core/insights/mealType';
@@ -41,6 +42,7 @@ describe('deriveQuickMeals', () => {
       carbG: 0,
       count: 4,
       meal: 'lunch', // hour 12, no keyword/chip → clock says обед
+      totalG: null, // plain source entries carry no portion grams
     });
 
     // favorites: only repeats (count ≥ 2), most-repeated first.
@@ -94,6 +96,7 @@ describe('orderByMeal', () => {
     carbG: 0,
     count: 1,
     meal,
+    totalG: null,
   });
 
   it('leads with the current meal-of-day, preserving order within each partition', () => {
@@ -139,5 +142,59 @@ describe('quickMeals (db)', () => {
     expect(recents.map((m) => m.rawText).sort()).toEqual(['Кофе', 'Овсянка']);
     expect(favorites.map((m) => m.rawText)).toEqual(['Овсянка']);
     sqlite.close();
+  });
+});
+
+// ---- Кесадилья-баг (2026-08-21): порция «за 100 г» при реальных 300 г ------
+
+describe('quickMeals portion grams (db)', () => {
+  it('carries totalG when every item has a weight, null when any is missing', async () => {
+    const sqlite = new BetterSqlite3(':memory:');
+    const db = drizzle(sqlite, { schema });
+    await applySchema((s) => sqlite.exec(s));
+
+    const entry = async (rawText: string, day: number, items: (number | null)[]) => {
+      const [row] = await db
+        .insert(schema.foodEntries)
+        .values({ ts: new Date(2026, 5, day, 12), rawText, source: 'text', kcal: 900, proteinG: 40, fatG: 45, carbG: 80, confirmed: true })
+        .returning({ id: schema.foodEntries.id });
+      for (const qtyG of items) {
+        await db.insert(schema.foodItems).values({ entryId: row.id, name: rawText, qtyG, kcal: 300 });
+      }
+    };
+
+    await entry('Кесадилья', 10, [180, 120]); // full weights → 300 г
+    await entry('Суп на глаз', 11, [250, null]); // one weightless item → null
+    await entry('Одним числом', 12, []); // gramless single-figure entry → null
+
+    const { recents } = await quickMeals(db);
+    const byName = new Map(recents.map((m) => [m.rawText, m.totalG]));
+    expect(byName.get('Кесадилья')).toBe(300);
+    expect(byName.get('Суп на глаз')).toBeNull();
+    expect(byName.get('Одним числом')).toBeNull();
+    sqlite.close();
+  });
+});
+
+describe('itemFromQuickMeal', () => {
+  const meal = { rawText: 'Кесадилья', kcal: 900, proteinG: 40, fatG: 45, carbG: 80 };
+
+  it('with known portion grams: item = real grams, per-100g derived, totals verbatim', () => {
+    const it300 = itemFromQuickMeal({ ...meal, totalG: 300 });
+    expect(it300.grams).toBe(300);
+    expect(it300.grams_source).toBe('confirmed');
+    // «на 100 г» is now an honest baseline, not the whole meal.
+    expect(it300.per100.kcal).toBe(300);
+    expect(it300.per100.prot).toBeCloseTo(13.3, 1);
+    // The eaten figures stay the STORED totals — no re-derivation drift.
+    expect(it300.scaled.kcal).toBe(900);
+    expect(it300.scaled.prot).toBe(40);
+  });
+
+  it('gramless legacy entry keeps the 100-g frame with totals at scale 1', () => {
+    const legacy = itemFromQuickMeal({ ...meal, totalG: null });
+    expect(legacy.grams).toBe(100);
+    expect(legacy.per100.kcal).toBe(900);
+    expect(legacy.scaled.kcal).toBe(900);
   });
 });

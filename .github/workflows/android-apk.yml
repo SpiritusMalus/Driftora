@@ -21,6 +21,20 @@ on:
           - assembleRelease
           - bundleRelease
           - assembleDebug
+      arch:
+        # APK-only knob. The prebuild default packs FOUR ABIs into one
+        # universal APK (~135 MB); arm64-v8a alone covers effectively every
+        # active Android since ~2017 and weighs ~⅓ of that. bundleRelease
+        # IGNORES this on purpose: the .aab must keep all ABIs so the store
+        # can slice per device — an arm64-only bundle would silently cut off
+        # armv7 store users.
+        description: APK CPU architectures (ignored for bundleRelease)
+        type: choice
+        default: arm64-v8a
+        options:
+          - arm64-v8a
+          - armeabi-v7a,arm64-v8a
+          - armeabi-v7a,arm64-v8a,x86,x86_64
 
 permissions:
   contents: read
@@ -98,7 +112,14 @@ jobs:
           # gradle.properties wins. --max-workers caps how many memory-hungry
           # tasks run at once.
           printf '\norg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g\n' >> gradle.properties
-          ./gradlew ${{ inputs.variant }} --no-daemon --max-workers=2
+          # ABI trim for APKs only (see the arch input): the store bundle keeps
+          # every ABI, a sideload APK ships just what real phones run.
+          if [ "${{ inputs.variant }}" = "bundleRelease" ]; then
+            ./gradlew ${{ inputs.variant }} --no-daemon --max-workers=2
+          else
+            ./gradlew ${{ inputs.variant }} --no-daemon --max-workers=2 \
+              -PreactNativeArchitectures="${{ inputs.arch || 'arm64-v8a' }}"
+          fi
 
       # bundleRelease emits the .aab Google Play requires (Play does not accept
       # APKs); the same release key signs it and becomes the "upload key" once
