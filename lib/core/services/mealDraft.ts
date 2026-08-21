@@ -245,3 +245,46 @@ export function withItemReplacement(
   });
   return recomputeDraft(draft.region, items);
 }
+
+/// One-tap re-log of a past meal («Быстро»/«Как вчера»): rebuild an honest
+/// NutritionItem from the stored entry totals.
+///
+/// When the entry's portion grams are known, the item carries THEM and the
+/// per-100g baseline is derived by division — the old shape stuffed the
+/// whole-portion КБЖУ into `per100` at «100 г», so the card claimed
+/// «900 ккал · за 100 г» for a 300-g кесадилья, and — remembered on save —
+/// poisoned «Из моего рациона» with meal totals masquerading as per-100g
+/// (device report 2026-08-21). A gramless entry (saved as a single figure)
+/// keeps the legacy 100-g frame: nothing better is stored, and its totals at
+/// scale 1 are still the truth.
+export function itemFromQuickMeal(meal: {
+  rawText: string;
+  kcal: number;
+  proteinG: number;
+  fatG: number;
+  carbG: number;
+  totalG?: number | null;
+}): NutritionItem {
+  const grams = meal.totalG != null && meal.totalG > 0 ? meal.totalG : 100;
+  const f = 100 / grams;
+  const r1 = (n: number) => Math.round(n * 10) / 10;
+  return {
+    name_ru: meal.rawText,
+    name_en: meal.rawText,
+    grams,
+    grams_source: 'confirmed',
+    confidence: 1,
+    per100: {
+      source: 'history',
+      kcal: Math.round(meal.kcal * f),
+      prot: r1(meal.proteinG * f),
+      fat: r1(meal.fatG * f),
+      carb: r1(meal.carbG * f),
+      minerals: {},
+    },
+    // The eaten figures are the STORED totals verbatim — re-deriving them from
+    // the rounded per-100g would drift the number the user already confirmed.
+    scaled: { kcal: meal.kcal, prot: meal.proteinG, fat: meal.fatG, carb: meal.carbG, minerals: {} },
+    approximate: false,
+  };
+}

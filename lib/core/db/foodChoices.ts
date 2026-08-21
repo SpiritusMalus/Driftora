@@ -54,20 +54,37 @@ export async function listFoodChoices(
     .select()
     .from(foodChoices)
     .where(like(foodChoices.key, `${region}::%`))
-    .orderBy(desc(foodChoices.ts))) as { name: string; per100: string }[];
+    .orderBy(desc(foodChoices.ts))) as { key: string; name: string; per100: string }[];
   const out: RememberedFood[] = [];
   const seen = new Set<string>();
+  // Rows poisoned by the quick-pick bug (whole-meal totals remembered as
+  // per-100g under source 'history', device report 2026-08-21). Legit journal
+  // rows never carry 'history' — that source exists only on meal echoes, which
+  // are no longer remembered — so the marker identifies the bad rows exactly.
+  // Deleted lazily right here: this list loads on every log-screen visit.
+  const poisoned: string[] = [];
   for (const row of rows) {
     const norm = normalizeChoiceName(row.name);
     if (seen.has(norm)) continue;
     try {
       const per100 = JSON.parse(row.per100) as Per100;
+      if (per100.source === 'history') {
+        poisoned.push(row.key);
+        continue;
+      }
       seen.add(norm);
       out.push({ name: row.name, per100 });
     } catch {
       // corrupt row — ignore
     }
     if (out.length >= limit) break;
+  }
+  if (poisoned.length > 0) {
+    await withDbLock(
+      db,
+      () => db.delete(foodChoices).where(inArray(foodChoices.key, poisoned)),
+      'purgePoisonedChoices',
+    );
   }
   return out;
 }
@@ -92,6 +109,9 @@ export async function loadRememberedChoices(
   for (const row of rows) {
     try {
       const per100 = JSON.parse(row.per100) as Per100;
+      // A poisoned quick-pick row (see [listFoodChoices]) must never "correct"
+      // a fresh parse — it would rewrite an honest per-100g with meal totals.
+      if (per100.source === 'history') continue;
       out.set(row.key, { name: row.name, per100 });
     } catch {
       // corrupt row — ignore

@@ -603,6 +603,19 @@ export async function distinctFoodItemsToday(
   return distinct.size;
 }
 
+/// Whole-portion grams of an entry, when EVERY stored item carries a weight —
+/// otherwise null: a partial sum would claim a portion size the entry never
+/// stated, and «за N г» on the re-log card must never be a guess.
+function entryTotalG(items: FoodItem[] | undefined): number | null {
+  if (!items || items.length === 0) return null;
+  let sum = 0;
+  for (const it of items) {
+    if (it.qtyG == null || it.qtyG <= 0) return null;
+    sum += it.qtyG;
+  }
+  return Math.round(sum);
+}
+
 /// A one-tap re-loggable meal derived from history (no LLM, no typing).
 export interface QuickMeal {
   rawText: string;
@@ -615,6 +628,11 @@ export interface QuickMeal {
   /// ties → latest). Lets the log screen surface breakfast history first when the
   /// user is logging breakfast. Always set by [groupMeals].
   meal: MealType;
+  /// Whole-portion grams of the latest occurrence, when every stored item
+  /// carried a weight — null otherwise. Without it the re-log card had to file
+  /// the whole meal's КБЖУ under «100 г» («кесадилья 300 г» re-picked read as
+  /// 900 ккал/100 г — device report 2026-08-21).
+  totalG: number | null;
 }
 
 interface QuickSourceEntry {
@@ -627,6 +645,8 @@ interface QuickSourceEntry {
   /// The user's stored meal chip, if any. Absent/null → the keyword/clock
   /// heuristic decides, same rule the day view uses.
   meal?: MealType | null;
+  /// See [QuickMeal.totalG]; absent in older callers/tests → null.
+  totalG?: number | null;
 }
 
 /// Derives quick-add lists from past entries. `recents` = the most recent
@@ -698,6 +718,7 @@ function groupMeals(entries: QuickSourceEntry[]): { meal: QuickMeal; latestTs: n
           carbG: e.carbG,
           count: 1,
           meal: eff,
+          totalG: e.totalG ?? null,
         },
       });
       continue;
@@ -715,6 +736,7 @@ function groupMeals(entries: QuickSourceEntry[]): { meal: QuickMeal; latestTs: n
         proteinG: e.proteinG,
         fatG: e.fatG,
         carbG: e.carbG,
+        totalG: e.totalG ?? null,
       };
     }
   }
@@ -756,6 +778,7 @@ export async function quickMeals(
 ): Promise<{ recents: QuickMeal[]; favorites: QuickMeal[]; yesterday: QuickMeal[] }> {
   const rows = (await db
     .select({
+      id: foodEntries.id,
       rawText: foodEntries.rawText,
       ts: foodEntries.ts,
       kcal: foodEntries.kcal,
@@ -767,7 +790,7 @@ export async function quickMeals(
     .from(foodEntries)
     .where(eq(foodEntries.confirmed, true))
     .orderBy(desc(foodEntries.ts))
-    .limit(opts.scan ?? 200)) as QuickSourceEntry[];
+    .limit(opts.scan ?? 200)) as (QuickSourceEntry & { id: number })[];
   const yesterdayDate = new Date(now);
   yesterdayDate.setDate(yesterdayDate.getDate() - 1);
   // Yesterday's meals get their OWN day-bounded query. Deriving them from the
@@ -777,6 +800,7 @@ export async function quickMeals(
   const { start, end } = dayBounds(yesterdayDate);
   const yesterdayRows = (await db
     .select({
+      id: foodEntries.id,
       rawText: foodEntries.rawText,
       ts: foodEntries.ts,
       kcal: foodEntries.kcal,
@@ -787,7 +811,15 @@ export async function quickMeals(
     })
     .from(foodEntries)
     .where(and(eq(foodEntries.confirmed, true), gte(foodEntries.ts, start), lt(foodEntries.ts, end)))
-    .orderBy(desc(foodEntries.ts))) as QuickSourceEntry[];
+    .orderBy(desc(foodEntries.ts))) as (QuickSourceEntry & { id: number })[];
+  // Portion grams for every candidate entry, ONE items query for both lists —
+  // this is what lets the re-log card say «за 300 г» instead of filing the
+  // whole meal under «100 г» (device report 2026-08-21, кесадилья).
+  const itemsByEntry = await listItemsForEntries(db, [
+    ...new Set([...rows, ...yesterdayRows].map((r) => r.id)),
+  ]);
+  for (const r of rows) r.totalG = entryTotalG(itemsByEntry.get(r.id));
+  for (const r of yesterdayRows) r.totalG = entryTotalG(itemsByEntry.get(r.id));
   return {
     ...deriveQuickMeals(rows, opts),
     yesterday: deriveDayMeals(yesterdayRows, yesterdayDate, opts.recentLimit ?? 6),

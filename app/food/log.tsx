@@ -62,7 +62,7 @@ import {
 import type { AudioInput, MealDraft, NutritionAlternative, NutritionItem, PhotoInput, Region } from '@/lib/core/services/foodParser';
 import type { Sex } from '@/lib/core/insights/bodyMetrics';
 import { getFoodParser, resolveRegion } from '@/lib/core/services/foodParserProvider';
-import { recomputeDraft, scaleToGrams, withItemAlternative, withItemGrams, withItemManualMacros, withItemReplacement } from '@/lib/core/services/mealDraft';
+import { itemFromQuickMeal, recomputeDraft, scaleToGrams, withItemAlternative, withItemGrams, withItemManualMacros, withItemReplacement } from '@/lib/core/services/mealDraft';
 import { mergeReparsedDraft } from '@/lib/core/services/reparseMerge';
 import { capturePhoto, isPhotoCaptureAvailable, type PhotoSource } from '@/lib/core/services/photoProvider';
 import { getSpeechService } from '@/lib/core/services/speechProvider';
@@ -442,22 +442,14 @@ export default function FoodLogScreen() {
   }, [db]);
 
   /// One tap re-loads a past meal as an already-confirmed draft (no parse) — the
-  /// user still reviews and saves.
+  /// user still reviews and saves. The item carries the entry's REAL portion
+  /// grams when they're stored ([itemFromQuickMeal]) — «за 100 г» on a 300-g
+  /// meal was the кесадилья bug (device report 2026-08-21).
   function onQuickPick(meal: QuickMeal) {
     setText(meal.rawText);
     setSource('text');
     setParseIssue(null);
-    const item: NutritionItem = {
-      name_ru: meal.rawText,
-      name_en: meal.rawText,
-      grams: 100,
-      grams_source: 'confirmed',
-      confidence: 1,
-      per100: { source: 'history', kcal: meal.kcal, prot: meal.proteinG, fat: meal.fatG, carb: meal.carbG, minerals: {} },
-      scaled: { kcal: meal.kcal, prot: meal.proteinG, fat: meal.fatG, carb: meal.carbG, minerals: {} },
-      approximate: false,
-    };
-    setFreshDraft(recomputeDraft(region, [item]));
+    setFreshDraft(recomputeDraft(region, [itemFromQuickMeal(meal)]));
   }
 
   /// «Из моего рациона»: add a food the user has eaten before to the current draft
@@ -1003,7 +995,12 @@ export default function FoodLogScreen() {
       const REMEMBER_CONFIDENCE_FLOOR = 0.5;
       for (const it of draft.items) {
         const src = it.per100.source;
-        const realSource = src !== 'estimate' && src !== 'ai_estimate';
+        // 'history' is a MEAL echo, not a food: its per-100g is derived from a
+        // whole-portion total (or IS the total for gramless legacy entries).
+        // Remembering it poisoned «Из моего рациона» with «900 ккал/100 г»
+        // кесадильями (device report 2026-08-21) — the meal already lives in
+        // the «Быстро» lane, the journal adds nothing here.
+        const realSource = src !== 'estimate' && src !== 'ai_estimate' && src !== 'history';
         const trustworthy = it.userChosen || it.confidence >= REMEMBER_CONFIDENCE_FLOOR;
         if (realSource && trustworthy) {
           // Key by the RAW typed name (so the correction sticks to what the user
