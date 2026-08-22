@@ -85,3 +85,29 @@ test('словарь марок ловит бренд, совпадающий с
     setKnownBrands([]); // модульное состояние — за собой убираем
   }
 });
+
+test('живой OFF по штрихкоду отдаёт ИМЯ товара, а не молчит о нём', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        status: 1,
+        product: {
+          product_name: 'Coca-Cola',
+          product_name_ru: 'Кока-Кола',
+          nutriments: { 'energy-kcal_100g': 42, proteins_100g: 0, fat_100g: 0, carbohydrates_100g: 10.6 },
+        },
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    )) as typeof fetch;
+  try {
+    const { OpenFoodFactsProvider } = await import('../src/nutrition/openfoodfacts.js');
+    const hit = await new OpenFoodFactsProvider().search('5449000000996', 'RU');
+    // Без имени вызывающий код подставляет сам запрос — и карточка называется
+    // «5449000000996». Ровно это поймал verify на проде.
+    assert.equal(hit?.name, 'Кока-Кола');
+    assert.equal(hit?.per100.kcal, 42);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
