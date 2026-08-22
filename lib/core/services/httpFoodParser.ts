@@ -1,5 +1,6 @@
 import type {
   AudioInput,
+  BarcodeLookup,
   FoodParser,
   MealDraft,
   NutrientValues,
@@ -12,7 +13,7 @@ import type {
 } from './foodParser';
 
 import { setAiQuotaRemaining, setAiQuotaScope, type AiQuotaScope } from './aiQuota';
-import { setCommunityBaseAvailable } from './communityBase';
+import { setCommunityBaseAvailable, setSearchSourcesDown } from './communityBase';
 
 const SOURCES: readonly NutritionSource[] = ['usda', 'skurikhin', 'openfoodfacts', 'apininjas', 'fatsecret', 'label', 'ai_estimate', 'estimate', 'community'];
 /** Text/search: a typed query is answered in 3–6 s and the user is actively
@@ -196,6 +197,11 @@ function deriveSearchEndpoint(endpoint: string): string {
   return /\/food\/parse$/.test(endpoint) ? endpoint.replace(/\/food\/parse$/, '/food/search') : `${endpoint}-search`;
 }
 
+/** `…/food/parse` → `…/food/barcode` (та же схема, что и у поиска). */
+function deriveBarcodeEndpoint(endpoint: string): string {
+  return /\/food\/parse$/.test(endpoint) ? endpoint.replace(/\/food\/parse$/, '/food/barcode') : `${endpoint}-barcode`;
+}
+
 /** Derive the shared-base endpoint from the text one (/food/parse → /food/contribute). */
 function deriveContributeEndpoint(endpoint: string): string {
   return /\/food\/parse$/.test(endpoint)
@@ -222,6 +228,7 @@ export class HttpFoodParser implements FoodParser {
   private readonly photoEndpoint: string;
   private readonly audioEndpoint: string;
   private readonly searchEndpoint: string;
+  private readonly barcodeEndpoint: string;
   private readonly contributeEndpoint: string;
   /** Extra headers on every request — `Authorization` when a token is set. */
   private readonly authHeaders: Record<string, string>;
@@ -239,6 +246,7 @@ export class HttpFoodParser implements FoodParser {
     this.photoEndpoint = opts.photoEndpoint ?? deriveEndpoint(endpoint, 'photo');
     this.audioEndpoint = opts.audioEndpoint ?? deriveEndpoint(endpoint, 'audio');
     this.searchEndpoint = opts.searchEndpoint ?? deriveSearchEndpoint(endpoint);
+    this.barcodeEndpoint = deriveBarcodeEndpoint(endpoint);
     this.contributeEndpoint = opts.contributeEndpoint ?? deriveContributeEndpoint(endpoint);
     this.authHeaders = opts.token ? { Authorization: `Bearer ${opts.token}` } : {};
     this.installId = opts.installId;
@@ -270,7 +278,10 @@ export class HttpFoodParser implements FoodParser {
         body: JSON.stringify({ query, region, ai: true }),
         signal: controller.signal,
       });
-      if (!res.ok) return this.fallback.searchFoods(query, region);
+      if (!res.ok) {
+        setSearchSourcesDown(true);
+        return this.fallback.searchFoods(query, region);
+      }
       // Honesty marker: the server says whether the SHARED base is actually on
       // (older servers stay silent → null). The empty-state copy reads it — a
       // promise «появится для остальных» must not render over a dropped write.
@@ -282,9 +293,52 @@ export class HttpFoodParser implements FoodParser {
       const data: unknown = await res.json();
       const candidates = (data as { candidates?: unknown })?.candidates;
       if (!Array.isArray(candidates)) return this.fallback.searchFoods(query, region);
+      // Second honesty marker: an empty list because a source was unreachable
+      // must not read as «этой еды нет» (see communityBase.ts).
+      setSearchSourcesDown((data as { sources_down?: unknown })?.sources_down === true);
       return candidates.filter(isAlternative);
     } catch {
+      // We never reached the server at all — the empty result the offline stub
+      // returns says nothing about whether the food exists.
+      setSearchSourcesDown(true);
       return this.fallback.searchFoods(query, region);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * ШТРИХКОД → продукт. Обычный разбор стоит вызова модели и секунд ожидания,
+   * а код — это точный ключ: сервер ищет его двоичным поиском по локальному
+   * индексу и отвечает за миллисекунды, НЕ списывая разбор из квоты.
+   *
+   * `null` возвращается в трёх честно разных случаях, которые экран объясняет
+   * по-своему: кода нет в базе, база не ответила, устройство офлайн. Ни один из
+   * них не значит «такого продукта не существует».
+   */
+  async lookupBarcode(code: string, region: Region): Promise<BarcodeLookup> {
+    const trimmed = code.trim();
+    if (trimmed.length === 0) return { item: null };
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const res = await fetch(this.barcodeEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...this.headers() },
+        body: JSON.stringify({ code: trimmed, region }),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        setSearchSourcesDown(true);
+        return { item: null };
+      }
+      const data = (await res.json()) as { item?: unknown; sources_down?: unknown; identified_name?: unknown };
+      setSearchSourcesDown(data.sources_down === true);
+      const name = typeof data.identified_name === 'string' ? data.identified_name : undefined;
+      return { item: isItem(data.item) ? data.item : null, ...(name ? { name } : {}) };
+    } catch {
+      setSearchSourcesDown(true);
+      return { item: null };
     } finally {
       clearTimeout(timer);
     }

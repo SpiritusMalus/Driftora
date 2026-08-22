@@ -1,6 +1,11 @@
+import { readFileSync } from 'node:fs';
+
 import { ApiNinjasProvider } from './nutrition/apininjas.js';
 import { FatSecretProvider } from './nutrition/fatsecret.js';
+import { BarcodeIndex } from './nutrition/barcodeIndex.js';
+import { OffLocalProvider } from './nutrition/offLocal.js';
 import { OpenFoodFactsProvider } from './nutrition/openfoodfacts.js';
+import { setKnownBrands } from './nutrition/specificity.js';
 import type { NutritionProvider } from './nutrition/provider.js';
 import { Resolver } from './nutrition/resolver.js';
 import { SkurikhinProvider } from './nutrition/skurikhin.js';
@@ -29,6 +34,47 @@ import { assembleMealDraft, type IdentifiedItem, type MealDraft, type Region } f
  * route; omitted (unconfigured deployment, tests) ⇒ the chain is exactly as it
  * was before the feature existed.
  */
+/**
+ * Loads the local OFF snapshot and the brand dictionary beside it. Both are
+ * DEPLOY ARTIFACTS, not repo content: the data is ODbL-licensed and belongs to
+ * Open Food Facts (attributed on every row via `source: 'openfoodfacts'`), and
+ * this repository is public. A missing or unreadable file is not an error — the
+ * service simply runs without the snapshot, exactly as it did before.
+ */
+function loadOffLocal(): OffLocalProvider | undefined {
+  const path = process.env.OFF_LOCAL_PATH || '';
+  if (!path) return undefined;
+  // Индекс по штрихкодам — тот же снимок, другой срез (весь мир, поиск по коду).
+  // Отдельная переменная, потому что это ~100 МБ на диске: развёртывание без
+  // сканера кодов может его не класть, и всё остальное продолжит работать.
+  let barcodes: BarcodeIndex | undefined;
+  const barcodePrefix = process.env.OFF_BARCODES_PATH || '';
+  if (barcodePrefix) {
+    try {
+      barcodes = BarcodeIndex.open(`${barcodePrefix}.bin`, `${barcodePrefix}.names`);
+      console.log(`[off-local] индекс штрихкодов: ${barcodes.size} товаров`);
+    } catch (err) {
+      console.error(`[off-local] индекс штрихкодов не открылся: ${(err as Error).message}`);
+    }
+  }
+  let provider: OffLocalProvider;
+  try {
+    provider = OffLocalProvider.fromFile(path, barcodes);
+  } catch (err) {
+    console.error(`[off-local] не прочитался ${path}: ${(err as Error).message} — работаем без снимка`);
+    return undefined;
+  }
+  const brandsPath = process.env.OFF_BRANDS_PATH || path.replace(/\.jsonl$/, '-brands.txt');
+  try {
+    const brands = readFileSync(brandsPath, 'utf8').split('\n').filter((b) => b.trim().length > 0);
+    setKnownBrands(brands);
+    console.log(`[off-local] ${provider.size} продуктов, ${brands.length} марок`);
+  } catch {
+    console.log(`[off-local] ${provider.size} продуктов, словарь марок не найден (${brandsPath})`);
+  }
+  return provider;
+}
+
 export function buildProviders(community?: NutritionProvider): NutritionProvider[] {
   const providers: NutritionProvider[] = [];
   // RU-first and US-first cores. The resolver filters by region, so order here
@@ -36,10 +82,20 @@ export function buildProviders(community?: NutritionProvider): NutritionProvider
   providers.push(new SkurikhinProvider());
   providers.push(new UsdaProvider(process.env.USDA_API_KEY || ''));
   if (community) providers.push(community);
+  // LOCAL copy of the RU part of Open Food Facts (scripts/offRuImport.ts), when
+  // deployed. It sits AHEAD of the English sources because it is the only one
+  // that can explain a brand: «отруби овсяные мистраль» is answered here in
+  // microseconds instead of losing the brand in translation and then depending
+  // on OFF's public API, which throttles anonymous traffic (503) — the outage
+  // that started all of this. Absent file ⇒ the chain is exactly as before.
+  const offLocal = loadOffLocal();
+  if (offLocal) providers.push(offLocal);
   // Broad free-text fallback (both regions) — only when credentials are set.
   if (process.env.FATSECRET_CLIENT_ID && process.env.FATSECRET_CLIENT_SECRET) {
     providers.push(new FatSecretProvider(process.env.FATSECRET_CLIENT_ID, process.env.FATSECRET_CLIENT_SECRET));
   }
+  // The live API stays LAST: it is the freshest (a product added to OFF today is
+  // not in our snapshot) but also the only one that can be throttled.
   providers.push(new OpenFoodFactsProvider());
   if (process.env.APININJAS_KEY) {
     providers.push(new ApiNinjasProvider(process.env.APININJAS_KEY));

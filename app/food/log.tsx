@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useTranslation } from 'react-i18next';
 
@@ -11,7 +11,8 @@ import { ApproxBadge, MicroScales, NutrientDetail } from '@/components/food/nutr
 import { Card } from '@/components/ui/Card';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
-import { WaitScene } from '@/components/ui/wait/WaitScene';
+import { BarcodeScanner, type BarcodeOutcome } from '@/components/food/BarcodeScanner';
+import { WaitOverlay } from '@/components/ui/wait/WaitOverlay';
 import { TextField } from '@/components/ui/TextField';
 import { Waveform } from '@/components/ui/Waveform';
 import { pushLevel } from '@/components/ui/waveformBuffer';
@@ -36,7 +37,7 @@ import {
   displayItemName,
   lookupNameForItem,
 } from '@/lib/core/services/foodChoice';
-import { communityBaseAvailable } from '@/lib/core/services/communityBase';
+import { communityBaseAvailable, searchSourcesDown } from '@/lib/core/services/communityBase';
 import { contributableFoods } from '@/lib/core/services/communityShare';
 import { getAiQuotaRemaining, getAiQuotaScope, type AiQuotaScope } from '@/lib/core/services/aiQuota';
 import {
@@ -256,7 +257,14 @@ export default function FoodLogScreen() {
   // Which capture method the segmented control shows. The text field stays
   // visible in every mode — it's the shared surface where voice/photo echo what
   // they understood — so this only swaps the secondary control row (mic/photo).
-  const [inputMode, setInputMode] = useState<'text' | 'voice' | 'photo'>('text');
+  const [inputMode, setInputMode] = useState<'text' | 'voice' | 'photo' | 'barcode'>('text');
+  /// Идёт поиск по считанному коду. Отдельно от `parsing`: модель не зовётся,
+  /// экран не затемняется — ожидание тут миллисекундное, а камера должна
+  /// оставаться видимой, чтобы человек не убирал телефон от упаковки.
+  const [barcodeBusy, setBarcodeBusy] = useState(false);
+  /// Итог последнего кода. Пока он на экране, превью гаснет и внимание уходит
+  /// на ответ — целиться уже не нужно.
+  const [barcodeOutcome, setBarcodeOutcome] = useState<BarcodeOutcome | null>(null);
   // The `?voice=<token>` value we've already acted on. A fresh token (each Home
   // mic tap sends a unique one) re-triggers voice; probes resolving mid-flight
   // don't re-fire the same token. Replaces a plain boolean that couldn't tell a
@@ -897,6 +905,44 @@ export default function FoodLogScreen() {
     setBaseOpen(false);
   }
 
+  /**
+   * Считан штрихкод. Это единственный путь добавления еды, который НЕ зовёт
+   * модель: код опознаёт товар точно, поэтому сервер просто ищет его в базе и
+   * отвечает за миллисекунды, не списывая разбор из квоты.
+   *
+   * Промах объясняем ЧЕСТНО и по-разному: кода нет в базе — предлагаем снять
+   * состав с упаковки (фото этикетки уже умеет давать точные числа); база не
+   * ответила — это не «такого продукта нет», и повтор имеет смысл.
+   */
+  async function onBarcode(code: string) {
+    if (barcodeBusy) return;
+    setBarcodeBusy(true);
+    setBarcodeOutcome(null);
+    try {
+      const { item, name } = await getFoodParser(consentCurrent()).lookupBarcode(code, region);
+      if (!item) {
+        // Три разных «нет» — три разных фразы: источник молчит, товар опознан но
+        // состава нигде нет, или кода не знает никто.
+        setBarcodeOutcome(
+          searchSourcesDown()
+            ? { kind: 'unavailable' }
+            : name
+              ? { kind: 'identified', name }
+              : { kind: 'missing' },
+        );
+        return;
+      }
+      setSource('text');
+      setParseIssue(null);
+      setDraft((prev) => recomputeDraft(region, [...(prev?.items ?? []), item]));
+      setBarcodeOutcome({ kind: 'found', name: item.name_ru, kcal: Math.round(item.scaled.kcal) });
+    } catch {
+      setBarcodeOutcome({ kind: 'unavailable' });
+    } finally {
+      setBarcodeBusy(false);
+    }
+  }
+
   function onItemReplace(index: number, replacement: NutritionAlternative) {
     setDraft((prev) => (prev ? withItemReplacement(prev, index, replacement) : prev));
   }
@@ -954,8 +1000,10 @@ export default function FoodLogScreen() {
     });
   }
 
-  const visibleModes = (['text', 'voice', 'photo'] as const).filter(
-    (m) => m === 'text' || (m === 'voice' ? voiceMode : photoAvailable),
+  // Сканер показываем там же, где и фото: он тоже про камеру и тоже бесполезен
+  // без онлайн-парсера (база продуктов живёт на сервере).
+  const visibleModes = (['text', 'voice', 'photo', 'barcode'] as const).filter((m) =>
+    m === 'text' ? true : m === 'voice' ? voiceMode : m === 'photo' ? photoAvailable : AI_CONFIGURED,
   );
 
   // One «Быстро» lane instead of three stacked headers («Как вчера»/«Избранное»/
@@ -1181,11 +1229,15 @@ export default function FoodLogScreen() {
                   {/* «появится для остальных» is a promise — with the shared
                       base OFF on the server the contribute is dropped, so the
                       copy switches to an honest one. Unknown (older server,
-                      offline stub) keeps the normal text. */}
+                      offline stub) keeps the normal text. And before either:
+                      «пока такого блюда нет» is only sayable when the sources
+                      actually answered — a dead one gets its own sentence. */}
                   {t(
-                    communityBaseAvailable() === false
-                      ? 'food.community.emptyOff'
-                      : 'food.community.empty',
+                    searchSourcesDown()
+                      ? 'food.community.unavailable'
+                      : communityBaseAvailable() === false
+                        ? 'food.community.emptyOff'
+                        : 'food.community.empty',
                   )}
                 </Text>
               ) : null}
@@ -1226,8 +1278,23 @@ export default function FoodLogScreen() {
     </View>
   ) : null;
 
+  // В режиме сканера экран занят ОДНИМ делом. Поле ввода, кнопка «Посчитать» и
+  // ленты быстрого выбора к нему не относятся: они предлагают другой способ
+  // добавить еду и тянут внимание на себя ровно в тот момент, когда человек
+  // целится камерой в упаковку. Поэтому в этом режиме их нет — акцент там же,
+  // где выбор пользователя. Результаты разбора ниже остаются: это ИТОГ работы
+  // сканера, ради него всё и затевалось.
+  // Поле прячем, только пока набирать нечего: когда блюда уже собраны, это поле
+  // — ИМЯ приёма, то есть часть результата сканирования, а не конкурент ему.
+  const scanning = inputMode === 'barcode';
+  const hideComposer = scanning && draft == null;
+
   return (
+    // The wait overlay must cover the WHOLE viewport (scrim over the scroll
+    // content), so the scrolling Screen gets a plain flex wrapper around it.
+    <View style={styles.screenWrap}>
     <Screen>
+      {hideComposer ? null : (
       <TextField
         value={text}
         onChangeText={(v) => {
@@ -1244,6 +1311,7 @@ export default function FoodLogScreen() {
         multiline
         style={styles.input}
       />
+      )}
       {/* Capture method. The text field above stays in EVERY mode (it's also
           where voice/photo echo what they understood), so the segment only swaps
           the secondary control row — never the input itself. A mode's segment
@@ -1258,7 +1326,12 @@ export default function FoodLogScreen() {
             return (
               <Pressable
                 key={key}
-                onPress={() => setInputMode(key)}
+                onPress={() => {
+                  // Карточка результата принадлежит сканеру: уходя из него,
+                  // человек не должен возвращаться к ответу на прошлый код.
+                  if (key !== 'barcode') setBarcodeOutcome(null);
+                  setInputMode(key);
+                }}
                 accessibilityRole="button"
                 accessibilityState={{ selected: active }}
                 style={({ pressed }) => [
@@ -1304,14 +1377,8 @@ export default function FoodLogScreen() {
                 {recording ? t('food.voiceRecording') : t('food.voiceNote')}
               </Text>
             </Pressable>
-            {parsing && source === 'voice' ? (
-              <View style={styles.processingRow}>
-                <ActivityIndicator size="small" color={theme.primary} />
-                <Text style={[styles.micText, { color: theme.subtle }, theme.font.body]}>
-                  {t('food.voiceProcessing')}
-                </Text>
-              </View>
-            ) : null}
+            {/* Разбор записи показывает WaitOverlay (в конце рендера) — тот же
+                прогресс, что у текста и фото, без третьего инлайн-спиннера. */}
           </>
         ) : (
           <Pressable
@@ -1371,16 +1438,26 @@ export default function FoodLogScreen() {
       {inputMode === 'photo' && photoError ? (
         <Text style={[styles.voiceError, { color: theme.subtle }, theme.font.body]}>{photoError}</Text>
       ) : null}
-      {/* A photo parse runs up to ~25 s — a random signal-room scene keeps the
-          wait alive (WaitScene: nine rotating vignettes, spinner+label below).
-          Outside the segment gate on purpose: switching tabs mid-parse must
-          not hide the progress. */}
-      {parsing && source === 'photo' ? <WaitScene label={t('food.photoProcessing')} /> : null}
-      <PrimaryButton
-        label={parsing ? t('food.parsing') : t('food.parse')}
-        onPress={onParse}
-        disabled={parsing || listening || recording || text.trim().length === 0}
-      />
+      {/* ШТРИХКОД: своя съёмка — камера смотрит на упаковку, рамка ждёт код
+          внутри, кадры не покидают телефон (наружу уходят только 13 цифр).
+          Ответ приходит за миллисекунды и не тратит разбор из квоты. */}
+      {inputMode === 'barcode' ? (
+        <BarcodeScanner
+          onCode={(code) => void onBarcode(code)}
+          busy={barcodeBusy}
+          outcome={barcodeOutcome}
+          onDismiss={() => setBarcodeOutcome(null)}
+        />
+      ) : null}
+      {/* A photo parse runs up to ~25 s — the WaitOverlay at the end of this
+          render shows a random signal-room scene over the dimmed screen. */}
+      {scanning ? null : (
+        <PrimaryButton
+          label={parsing ? t('food.parsing') : t('food.parse')}
+          onPress={onParse}
+          disabled={parsing || listening || recording || text.trim().length === 0}
+        />
+      )}
       {/* Never fail into silence: say the server didn't answer (offline stub
           filled in) or that the parse broke — the button above IS the retry. */}
       {parseIssue ? (
@@ -1433,10 +1510,10 @@ export default function FoodLogScreen() {
           instead (see after the results block): a wall of diet chips above the
           cards buried what was just parsed off-screen, reading as «ничего не
           нашлось» (device feedback 2026-07-16). */}
-      {draft == null ? myDietSection : null}
-      {draft == null ? communityBaseSection : null}
+      {draft == null && !scanning ? myDietSection : null}
+      {draft == null && !scanning ? communityBaseSection : null}
 
-      {draft == null && quickPickList.length > 0 ? (
+      {draft == null && !scanning && quickPickList.length > 0 ? (
         <View style={styles.quick}>
           <View style={styles.quickGroup}>
             <Text style={[styles.quickLabel, { color: theme.labelCaps }, theme.font.bodyBold]}>
@@ -1630,6 +1707,25 @@ export default function FoodLogScreen() {
         onDecline={onConsentDecline}
       />
     </Screen>
+    {/* Any parse in flight (text / voice clip / photo) → the signal-room scene
+        in a centered card, everything else dimmed. One overlay instead of the
+        three inline spinners that drowned in the screen's text (owner,
+        2026-08-22). Deliberately outside the input-mode segment gate:
+        switching tabs mid-parse must not hide the progress. The multi-photo
+        LOOKAHEAD parse never sets `parsing`, so reviewing a shot while the
+        next one parses stays undimmed. */}
+    {parsing ? (
+      <WaitOverlay
+        label={
+          source === 'photo'
+            ? t('food.photoProcessing')
+            : source === 'voice'
+              ? t('food.voiceProcessing')
+              : t('food.parsing')
+        }
+      />
+    ) : null}
+    </View>
   );
 }
 
@@ -1691,7 +1787,8 @@ const styles = StyleSheet.create({
   altWrap: { marginTop: 8 },
   altToggle: { fontSize: 13 },
   detailBox: { marginTop: 6, gap: 3 },
-  processingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 8 },
+  // The WaitOverlay needs a non-scrolling ancestor covering the viewport.
+  screenWrap: { flex: 1 },
   clearBtn: { alignSelf: 'center', marginTop: 12, paddingVertical: 4 },
   clearText: { fontSize: 13, textDecorationLine: 'underline' },
   hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },

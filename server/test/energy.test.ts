@@ -81,3 +81,17 @@ test('ruler: the single formula reproduces curated RU kcal', () => {
   assert.ok(median <= 0.06, `median gap ${(median * 100).toFixed(1)}% exceeds 6%`);
   assert.ok(within15 >= 0.85, `only ${(within15 * 100).toFixed(0)}% within 15%`);
 });
+
+// --- ГЕЙТ ДАННЫХ: каждая курируемая строка сходится с единой формулой ---------
+// Ловит ошибку, которую иначе видит только пользователь с пачкой в руках: я сам
+// внёс овсяные отруби с измеренным USDA-числом (246 при формульных 366) —
+// расхождение на треть внутри таблицы, построенной на одной формуле
+// (docs/nutrition-science.md §1). Порог тот же, что у energyInconsistent: гейт
+// ловит грубое расхождение, а не пару процентов округления.
+test('CURATED_RU: kcal каждой строки согласован с единой формулой', async () => {
+  const { CURATED_RU } = await import('../src/nutrition/curatedRu.js');
+  const off = CURATED_RU.filter((row) => energyInconsistent({ kcal: row.per100.kcal, ...row.per100 })).map(
+    (row) => `${row.name}: указано ${row.per100.kcal}, по формуле ${Math.round(energyFromMacros(row.per100))}`,
+  );
+  assert.deepEqual(off, [], `строки расходятся с формулой:\n${off.join('\n')}`);
+});

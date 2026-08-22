@@ -14,10 +14,21 @@ import {
 import type { FoodEstimate } from '../llm.js';
 import { cookedFromDry, dryStarchYield, looksDryBasis } from './dryBasis.js';
 import { energyFromMacros, energyInconsistent } from './energy.js';
-import type { NutritionProvider, ProviderResult } from './provider.js';
+import { ProviderUnavailable, type NutritionProvider, type ProviderResult } from './provider.js';
 import { kcalBandViolated } from './plausibility.js';
 import { hasCyrillic } from './ruSearch.js';
 import { demoteContradictions, MIN_CHAIN_COVERAGE, queryCoverage } from './scoring.js';
+import { translationLost, unexplainedSpecifics } from './specificity.js';
+
+/**
+ * Manual-search result. `sourcesDown` separates «looked everywhere, this food
+ * isn't there» from «a source never answered» — the difference between an
+ * honest empty state and a claim we have no right to make.
+ */
+export interface SearchOutcome {
+  candidates: NutritionAlternative[];
+  sourcesDown: boolean;
+}
 
 /** How many runner-up matches to carry as switchable alternatives. */
 const MAX_ALTERNATIVES = 4;
@@ -36,6 +47,15 @@ interface LookupResult {
   // tried and this was merely the least-bad row. The caller prefers the model's
   // estimate over it (see the weak-match branch in `resolve`).
   weak?: boolean;
+  // The row covers the FOOD but not the SPECIFIC product asked for: a brand or
+  // variety («мистраль», «черноголовка») that no source explained. Unlike
+  // `weak` the numbers are a real row for the right food class, so it stays
+  // primary — but demoted, with the picker opened and an AI estimate offered.
+  qualifierUnmatched?: boolean;
+  // A source was unreachable while this answer was assembled — so it may be
+  // WORSE than what the same query deserves. Transient bookkeeping, never sent
+  // to the client: its only job is to keep the outage out of the cache.
+  degraded?: boolean;
   alternatives: NutritionAlternative[];
 }
 
@@ -206,12 +226,18 @@ export class Resolver {
    */
   private readonly estimator?: (name: string, region: Region) => Promise<FoodEstimate | null>;
 
+  /** Told about every unreachable source, so an outage is a number rather than
+   *  a silently worse answer. Optional — tests and offline runs pass nothing. */
+  private readonly onSourceUnavailable?: (source: string) => void;
+
   constructor(
     private readonly providers: NutritionProvider[],
     estimator?: (name: string, region: Region) => Promise<FoodEstimate | null>,
+    onSourceUnavailable?: (source: string) => void,
   ) {
     this.usda = providers.find((p) => p.name === 'usda');
     this.estimator = estimator;
+    this.onSourceUnavailable = onSourceUnavailable;
   }
 
   /** US uses the English name; RU uses the Russian name (BUILD SPEC §6). */
@@ -232,11 +258,25 @@ export class Resolver {
     return native;
   }
 
-  /** A provider's ranked candidates, preferring `searchMany` over single `search`. */
-  private async candidatesFrom(provider: NutritionProvider, name: string, region: Region): Promise<ProviderResult[]> {
-    if (provider.searchMany) return provider.searchMany(name, region).catch(() => []);
-    const one = await provider.search(name, region).catch(() => null);
-    return one ? [one] : [];
+  /**
+   * A provider's ranked candidates, preferring `searchMany` over single `search`.
+   * A source that could not be REACHED reports so via `unavailable` — an empty
+   * list then means «looked, found nothing», which is a different sentence.
+   */
+  private async candidatesFrom(
+    provider: NutritionProvider,
+    name: string,
+    region: Region,
+  ): Promise<{ results: ProviderResult[]; unavailable: boolean }> {
+    try {
+      if (provider.searchMany) return { results: await provider.searchMany(name, region), unavailable: false };
+      const one = await provider.search(name, region);
+      return { results: one ? [one] : [], unavailable: false };
+    } catch (err) {
+      const unavailable = err instanceof ProviderUnavailable;
+      if (unavailable) this.onSourceUnavailable?.(provider.name);
+      return { results: [], unavailable };
+    }
   }
 
   /**
@@ -249,16 +289,37 @@ export class Resolver {
    * черноголовка» used to return before Open Food Facts — where the branded drink
    * actually lives — was ever asked. If nothing stronger turns up, the best thin
    * hit comes back flagged `weak` so the caller can prefer the model's estimate.
+   *
+   * The SAME must hold one level up, for the specific PRODUCT and not just the
+   * food: a hit that leaves a brand or variety unexplained no longer stops the
+   * walk either (`specificity.ts`). That is the hole the coverage gate cannot
+   * see — an English-queried source is checked against OUR OWN translation, and
+   * the brand died inside it, so «отруби овсяные мистраль» settled on a generic
+   * 246 kcal row at 0.95 confidence before Open Food Facts (which carries the
+   * actual «Овсяные отруби Мистраль») was ever asked, and offered bagels and
+   * bran bread as the alternatives (owner report, 2026-08-22). Now the walk
+   * continues; a source that DOES explain the brand wins outright, and when
+   * none does, the generic row comes back flagged `qualifierUnmatched` — still
+   * primary (it is a real row for the right food), but demoted so the client
+   * opens the picker and the model's estimate rides along as an alternative.
    */
-  private async runChain(region: Region, nameFor: (p: NutritionProvider) => string): Promise<LookupResult | null> {
+  private async runChain(
+    region: Region,
+    nameFor: (p: NutritionProvider) => string,
+    userQuery: string,
+  ): Promise<LookupResult | null> {
     let weakFallback: LookupResult | null = null;
+    let genericFallback: LookupResult | null = null;
+    let degraded = false;
     for (const provider of chainFor(this.providers, region)) {
       const name = nameFor(provider);
       if (name.length === 0) continue;
       // Drop zero-confidence rows (no name overlap at all) BEFORE picking a
       // primary: a broad free-text provider that returns off-topic junk (milk
       // rows for a salad query) must not stop the chain or beat the estimate.
-      const candidates = (await this.candidatesFrom(provider, name, region)).filter((c) => c.confidence > 0);
+      const answered = await this.candidatesFrom(provider, name, region);
+      if (answered.unavailable) degraded = true;
+      const candidates = answered.results.filter((c) => c.confidence > 0);
       // Name ranking alone can pick a product the query explicitly negated
       // («без сахара» → sugared row); composition-aware demotion fixes the
       // order and honestly drops confidence when only contradictions exist.
@@ -283,9 +344,24 @@ export class Resolver {
         if (!weakFallback) weakFallback = { ...hit, weak: true };
         continue;
       }
-      return hit;
+      // Did this row explain the SPECIFIC product? Measured in the language the
+      // provider was actually asked in — comparing a Cyrillic query against an
+      // English row name would flag every RU food outside our own table.
+      const unexplained =
+        provider.queryLang === 'en' && !hasCyrillic(name)
+          ? translationLost(userQuery, name) // the brand died in the translation
+          : unexplainedSpecifics(userQuery, primary.name ?? name).length > 0;
+      if (unexplained) {
+        // Keep the FIRST such hit for the same reason as above, and keep looking:
+        // a later source may carry the branded product itself.
+        if (!genericFallback) genericFallback = { ...hit, qualifierUnmatched: true };
+        continue;
+      }
+      return degraded ? { ...hit, degraded } : hit;
     }
-    return weakFallback;
+    // A row for the right food beats a thin one that barely matched anything.
+    const best = genericFallback ?? weakFallback;
+    return best && degraded ? { ...best, degraded } : best;
   }
 
   /** Item lookup: providers may be queried by name_ru or name_en (queryLang). */
@@ -294,10 +370,16 @@ export class Resolver {
     const cached = this.cache.get(key);
     if (cached) return cached;
 
-    const found = await this.runChain(region, (p) => this.nameFor(p, item, region));
+    // The user-side name (RU in the RU region) is what the chain measures its
+    // own answers against — the translation is ours, not the user's question.
+    const found = await this.runChain(region, (p) => this.nameFor(p, item, region), this.nativeName(item, region));
     if (found) {
       const enriched = await this.backfillMicros(found, item.name_en);
-      this.cache.set(key, enriched);
+      // A источник lay down during this walk, so this answer may be worse than
+      // the food deserves («отруби овсяные мистраль» settling for the generic
+      // row because Open Food Facts was throttled). Caching it would freeze one
+      // bad minute in for the life of the process — the next parse asks again.
+      if (!enriched.degraded) this.cache.set(key, enriched);
       return enriched;
     }
     return { per100: ESTIMATE_PER100, matchConfidence: 0, alternatives: [] };
@@ -339,7 +421,7 @@ export class Resolver {
   private async usdaMicros(nameEn: string): Promise<{ minerals: Minerals; vitamins?: Vitamins; fiber?: number } | null> {
     if (!this.usda) return null;
     // USDA is English-only; the resolver queries it with name_en in every region.
-    const [top] = await this.candidatesFrom(this.usda, nameEn, 'US');
+    const [top] = (await this.candidatesFrom(this.usda, nameEn, 'US')).results;
     if (!top || clamp01(top.confidence) < MICRO_BACKFILL_MIN_CONFIDENCE) return null;
     const p = coercePer100(top.per100);
     const hasMinerals = Object.keys(p.minerals).length > 0;
@@ -360,22 +442,30 @@ export class Resolver {
    * hides the branded products, and each row carries an EXACT per-100g with its
    * source. Empty on a full miss.
    */
-  async search(name: string, region: Region): Promise<NutritionAlternative[]> {
+  async search(name: string, region: Region): Promise<SearchOutcome> {
     const trimmed = name.trim();
-    if (trimmed.length === 0) return [];
+    if (trimmed.length === 0) return { candidates: [], sourcesDown: false };
     const key = cacheKey(trimmed, region);
     const cached = this.searchCache.get(key);
-    if (cached) return cached;
+    if (cached) return { candidates: cached, sourcesDown: false };
 
     // An English-only corpus (USDA) cannot match Cyrillic text — skip the
     // round-trip instead of paying its latency for guaranteed zero results.
+    // Sources that declare `acceptsCyrillic` (FatSecret with its RU
+    // localization) still get the query: for Cyrillic text OFF used to be the
+    // ONLY provider left, so one flaky OFF timeout read as «нет в базе».
     const cyrillic = hasCyrillic(trimmed);
     const lists = await Promise.all(
       chainFor(this.providers, region).map((p) =>
-        cyrillic && p.queryLang === 'en' ? Promise.resolve([]) : this.candidatesFrom(p, trimmed, region),
+        cyrillic && p.queryLang === 'en' && !p.acceptsCyrillic
+          ? Promise.resolve({ results: [], unavailable: false })
+          : this.candidatesFrom(p, trimmed, region),
       ),
     );
-    const merged = demoteContradictions(trimmed, lists.flat().filter((c) => c.confidence > 0));
+    const merged = demoteContradictions(
+      trimmed,
+      lists.flatMap((l) => l.results).filter((c) => c.confidence > 0),
+    );
     const out = merged.slice(0, MAX_SEARCH_RESULTS).map((r) => ({
       name: r.name ?? trimmed,
       per100: coercePer100(r.per100),
@@ -383,9 +473,14 @@ export class Resolver {
       // row honest in the picker. Absent on every table source.
       ...(r.votes === undefined ? {} : { votes: r.votes }),
     }));
-    // Misses stay uncached — a later DB import may resolve them.
-    if (out.length > 0) this.searchCache.set(key, out);
-    return out;
+    // Misses stay uncached — a later DB import may resolve them. So does a list
+    // assembled while a source was down: it is a partial answer, and freezing it
+    // in would keep serving one bad minute after the source recovers.
+    const sourcesDown = lists.some((l) => l.unavailable);
+    if (out.length > 0 && !sourcesDown) this.searchCache.set(key, out);
+    // An empty list after a source went down is not «этой еды нет» — the client
+    // needs to know which sentence it is allowed to say.
+    return { candidates: out, sourcesDown };
   }
 
   async resolveItem(item: IdentifiedItem, region: Region): Promise<NutritionItem> {
@@ -502,7 +597,14 @@ export class Resolver {
     // food's class («кабачки» at 306/100 g) — the one error a name match can't
     // see and the LLM referee never inspects. Treated exactly like a weak match.
     const bandViolated = found.matchConfidence > 0 && kcalBandViolated(item.name_ru, item.name_en, found.per100.kcal);
-    if (!aiFull && this.estimator && (found.weak || gradeMiss || bandViolated || (graded && found.matchConfidence < 0.9))) {
+    // A brand/variety nobody explained is exactly the case where the model's
+    // class-level band is worth its call: it becomes the honest «≈ оценка ИИ для
+    // <того, что человек написал>» alternative beside the generic DB row.
+    if (
+      !aiFull &&
+      this.estimator &&
+      (found.weak || found.qualifierUnmatched || gradeMiss || bandViolated || (graded && found.matchConfidence < 0.9))
+    ) {
       try {
         const est = await this.estimator(this.nativeName(item, region), region);
         if (est) {
@@ -577,10 +679,13 @@ export class Resolver {
     const gradeSuspect = !!aiFull && graded && found.matchConfidence < 0.9;
     // A thin match with NO estimate to fall back on still can't pass as fact —
     // demote it so the client opens the picker instead of reading it as a hit.
+    // A generic row standing in for a named product is suspect by the same
+    // logic as a wrong grade: right food, not the thing that was asked for.
     const suspect =
       (aiFull && refereeEstimate ? estimateMismatch(found.per100, refereeEstimate) : false) ||
       gradeSuspect ||
       bandViolated ||
+      !!found.qualifierUnmatched ||
       !!found.weak;
     const confidence = suspect
       ? REFEREE_DEMOTED_CONFIDENCE

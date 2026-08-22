@@ -507,6 +507,60 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '429': { $ref: '#/components/responses/RateLimited' }
 
+  /food/barcode:
+    post:
+      tags: [food]
+      summary: Product by barcode — the one parse that never calls a model
+      description: |
+        A barcode identifies a product exactly: no language, no word forms, no
+        typos, and it verifies itself through the EAN-13 check digit. So this is
+        a lookup by number, not recognition — answered from the local snapshot
+        in microseconds and, deliberately, WITHOUT spending the caller's AI
+        parse budget.
+
+        `item: null` is an honest "we do not have this code", never an error:
+        the app then offers to photograph the nutrition panel. `sources_down`
+        distinguishes "a source never answered" from "this product is unknown" —
+        the two must not be told to the user as the same sentence. A code whose
+        check digit does not add up is rejected before any database is asked
+        (`reason: invalid_code`), so a garbled scan can never return a
+        neighbouring product.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  description: EAN-13 or EAN-8 digits.
+                  pattern: '^[0-9]{8}$|^[0-9]{13}$'
+                region: { $ref: '#/components/schemas/Region' }
+      responses:
+        '200':
+          description: The product, or an honest null
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [item]
+                properties:
+                  item:
+                    nullable: true
+                    allOf: [{ $ref: '#/components/schemas/NutritionItem' }]
+                  reason:
+                    type: string
+                    enum: [invalid_code]
+                    description: Present when the check digit did not add up.
+                  sources_down:
+                    type: boolean
+                    description: A source was unreachable — absence proves nothing.
+        '400': { $ref: '#/components/responses/BadInput' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
   /food/contribute:
     post:
       tags: [food]

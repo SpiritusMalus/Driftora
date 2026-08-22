@@ -1,4 +1,4 @@
-import type { AudioInput, FoodParser, MealDraft, Minerals, NutritionAlternative, NutritionItem, Per100, PhotoInput, Region } from './foodParser';
+import type { AudioInput, BarcodeLookup, FoodParser, MealDraft, Minerals, NutritionAlternative, NutritionItem, Per100, PhotoInput, Region } from './foodParser';
 import { recomputeDraft, scaleToGrams } from './mealDraft';
 
 /**
@@ -110,6 +110,12 @@ export class StubFoodParser implements FoodParser {
   /// picker shows "ничего не найдено" rather than offering coarse estimates.
   async searchFoods(_query: string, _region: Region): Promise<NutritionAlternative[]> {
     return [];
+  }
+
+  /// Базы продуктов на устройстве нет, поэтому по коду ответить нечем — и это
+  /// честный «не знаю», а не «такого продукта не существует».
+  async lookupBarcode(_code: string, _region: Region): Promise<BarcodeLookup> {
+    return { item: null };
   }
 
   /// Nothing leaves an offline device. This is also the parser the app holds

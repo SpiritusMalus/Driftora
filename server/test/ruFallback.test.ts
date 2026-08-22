@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
 
+import { ProviderUnavailable } from '../src/nutrition/provider.js';
 import { OpenFoodFactsProvider } from '../src/nutrition/openfoodfacts.js';
 import type { NutritionProvider, ProviderResult } from '../src/nutrition/provider.js';
 import { Resolver } from '../src/nutrition/resolver.js';
@@ -169,13 +170,34 @@ test('OFF search: a barcode delegates to the exact product lookup', async () => 
   assert.equal(results[0]!.per100.kcal, 52);
 });
 
-test('OFF search: network failure yields an empty list, never a throw', async () => {
+test('OFF search: a network failure is REPORTED as unavailable, not as «нет такой еды»', async () => {
   globalThis.fetch = (async () => {
     throw new Error('boom');
   }) as typeof fetch;
 
+  // The provider now says WHICH it was. An empty list from it means «looked,
+  // found nothing»; an unreachable source must not be able to impersonate that
+  // (a single OFF timeout used to read to the user as «нет в базе»).
   const off = new OpenFoodFactsProvider();
-  assert.deepEqual(await off.searchMany('кефир', 'RU'), []);
+  await assert.rejects(() => off.searchMany('кефир', 'RU'), ProviderUnavailable);
+});
+
+test('a dead source still never breaks a lookup — the resolver absorbs it', async () => {
+  globalThis.fetch = (async () => {
+    throw new Error('boom');
+  }) as typeof fetch;
+
+  // The old guarantee, kept where it belongs: callers get a graceful degrade.
+  const resolver = new Resolver([new OpenFoodFactsProvider()]);
+  const outcome = await resolver.search('кефир', 'RU');
+  assert.deepEqual(outcome.candidates, []);
+  assert.equal(outcome.sourcesDown, true, 'и honest-флаг для клиента');
+
+  const item = await resolver.resolveItem(
+    { name_ru: 'кефир', name_en: 'kefir', est_grams: 200, confidence: 0.9 },
+    'RU',
+  );
+  assert.equal(item.per100.source, 'estimate'); // честная заглушка, как и раньше
 });
 
 // ---- resolver: composition-aware demotion («без сахара» bug) ----------------

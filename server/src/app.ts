@@ -15,6 +15,7 @@ import {
   VisionUnavailableError,
 } from './llm.js';
 import { metrics } from './metrics.js';
+import { BarcodeIndex, validEan } from './nutrition/barcodeIndex.js';
 import { Resolver } from './nutrition/resolver.js';
 import {
   createCommunityFoods,
@@ -47,6 +48,7 @@ import { buildLimiters, type RateLimits, resolveLimits } from './rateLimit.js';
 import {
   coercePer100,
   emptyMealDraft,
+  scaleToGrams,
   type IdentifiedItem,
   type LabelReading,
   type MealDraft,
@@ -142,6 +144,27 @@ function rememberLabel(key: string, value: LabelReading): void {
   }
 }
 
+/**
+ * Индекс имён по штрихкодам из того же снимка (`OFF_BARCODES_PATH`). Открывается
+ * один раз на процесс; отсутствие файла — не ошибка, просто маршрут кода не
+ * сможет доискивать состав по названию.
+ */
+let barcodeNamesCache: BarcodeIndex | null | undefined;
+function defaultBarcodeNames(): BarcodeIndex | undefined {
+  if (barcodeNamesCache !== undefined) return barcodeNamesCache ?? undefined;
+  const prefix = process.env.OFF_BARCODES_PATH || '';
+  if (!prefix) {
+    barcodeNamesCache = null;
+    return undefined;
+  }
+  try {
+    barcodeNamesCache = BarcodeIndex.open(`${prefix}.bin`, `${prefix}.names`);
+  } catch {
+    barcodeNamesCache = null;
+  }
+  return barcodeNamesCache ?? undefined;
+}
+
 function defaultRegion(): Region {
   return process.env.DEFAULT_REGION === 'RU' ? 'RU' : 'US';
 }
@@ -210,6 +233,9 @@ export interface CreateAppOptions {
   aiQuotaPath?: string;
   /** Inject a purchase verifier (tests); production builds one from env. */
   verifyPurchase?: PurchaseVerifier;
+  /** Индекс «штрихкод → имя товара». Нужен, когда у кода нет состава: товар
+   *  опознан, и состав доискивается по названию, ничего не спрашивая у человека. */
+  barcodeNames?: BarcodeIndex;
   /** Where entitlements persist. Empty string = memory only (tests). */
   entitlementsPath?: string;
   /** Where issued ЮKassa licences persist. Empty string = memory only (tests). */
@@ -401,10 +427,17 @@ export function createApp(
         metrics.recordStage('estimator', Date.now() - t0);
       }
     },
+    // An unreachable source is a metric, not a shrug: /metrics.source_outages is
+    // how a throttled Open Food Facts shows up as a number instead of quietly
+    // downgrading branded lookups to generic rows.
+    (source) => metrics.recordSourceUnavailable(source),
   ),
   opts: CreateAppOptions = {},
 ): express.Express {
   const app = express();
+  // Индекс имён по штрихкодам: нужен там, где у кода НЕТ состава — тогда товар
+  // всё равно опознан, и состав доискивается по его названию (см. /food/barcode).
+  const barcodeNames = opts.barcodeNames ?? defaultBarcodeNames();
 
   // Caddy is a single hop (family-pie/Caddyfile reverse_proxy → 127.0.0.1:8787),
   // so trust exactly 1 proxy and read the real client IP from X-Forwarded-For.
@@ -960,19 +993,131 @@ export function createApp(
     // quota (free 30/day vs the 300/day per-IP text cap). Out of budget → the
     // DB candidates still return; only the card is withheld.
     const wantAi = body.ai === true && aiQuota.tryConsume(req, res);
-    const [candidates, aiCard] = await Promise.all([
-      resolver.search(query, region).catch(() => []),
+    const [found, aiCard] = await Promise.all([
+      resolver.search(query, region).catch(() => ({ candidates: [], sourcesDown: true })),
       wantAi ? aiSearchCard(query, region).catch(() => null) : Promise.resolve(null),
     ]);
     // Localize the English DB candidate labels to Russian (RU, behind the flag).
     // The AI card's name is already Russian (from the estimate), so it's appended
     // after localization untouched.
-    const localized = await localizeAlternatives(candidates, region);
+    const localized = await localizeAlternatives(found.candidates, region);
     // Honesty marker for the client: is the SHARED base actually on? With it
     // off, «впишите — появится для остальных» is a false promise (contribute
     // drops the row), so the client swaps that empty-state copy for an honest one.
     res.setHeader('X-Community-Base', COMMUNITY_FOODS_PATH ? '1' : '0');
-    res.json({ candidates: aiCard ? [...localized, aiCard] : localized });
+    // Same kind of marker for a DIFFERENT lie: an empty list because a source
+    // never answered is not «этой еды нет в базе». The client says so instead of
+    // inviting the user to type the food in as if it were genuinely missing.
+    res.json({
+      candidates: aiCard ? [...localized, aiCard] : localized,
+      ...(found.sourcesDown ? { sources_down: true } : {}),
+    });
+  });
+
+  /**
+   * ШТРИХКОД → ПРОДУКТ. Единственный путь разбора, который НЕ ЗОВЁТ МОДЕЛЬ.
+   *
+   * Код опознаёт товар точно — ни языка, ни падежей, ни опечаток, и он сам себя
+   * проверяет контрольной цифрой. Поэтому здесь нет ни распознавания, ни
+   * ранжирования: двоичный поиск по локальному индексу (~20 мкс) и, если там
+   * пусто, живой Open Food Facts. Ответ приходит за миллисекунды вместо
+   * секунд — и, что важнее, НЕ ТРАТИТ разбор из пользовательской квоты: платить
+   * за то, что решается поиском по числу, было бы нечестно.
+   *
+   * Пустой ответ (`item: null`) — это честное «такого кода у нас нет», а не
+   * ошибка: клиент предлагает снять состав с упаковки.
+   */
+  app.post('/food/barcode', requireToken, limiters.textDaily, async (req: Request, res: Response) => {
+    const body = (req.body ?? {}) as { code?: unknown; region?: unknown };
+    const code = typeof body.code === 'string' ? body.code.trim() : '';
+    const region = regionOf(body);
+    if (code.length === 0) {
+      fail(res, 400, 'empty_input', 'Field "code" is required and cannot be empty.');
+      return;
+    }
+    // Контрольная цифра — первый фильтр: искажённое считывание не должно даже
+    // доходить до баз, иначе оно вернёт чужой товар с похожим кодом.
+    if (!validEan(code)) {
+      res.json({ item: null, reason: 'invalid_code' });
+      return;
+    }
+    const startedAt = Date.now();
+    // Резолвер уже умеет штрихкоды: и локальный индекс, и живой OFF ловят их по
+    // самому виду строки, поэтому отдельного пути к источникам не нужно.
+    const found = await resolver
+      .search(code, region)
+      .catch(() => ({ candidates: [], sourcesDown: true }));
+    let top = found.candidates[0];
+
+    // СОСТАВА У КОДА НЕТ, НО ТОВАР ОПОЗНАН. Так устроены 2.3 млн записей в
+    // выгрузке: имя и марка есть, БЖУ никто не заполнил. Тупик здесь означал бы
+    // «сфотографируйте этикетку», то есть просьбу доделать нашу работу — вместо
+    // этого доискиваем состав по НАЗВАНИЮ той же цепочкой, что и обычный ввод.
+    // Человек не делает ничего; провенанс останется честным, потому что строка
+    // придёт из таблицы со своим источником, а не из воздуха.
+    let identifiedName: string | undefined;
+    if (!top && barcodeNames) {
+      identifiedName = barcodeNames.lookup(code)?.name;
+      if (identifiedName) {
+        const byName = await resolver.search(identifiedName, region).catch(() => ({ candidates: [], sourcesDown: true }));
+        top = byName.candidates[0];
+      }
+    }
+    // ТРЕТЬЯ СТУПЕНЬ. Товар опознан, но ни одна база не знает даже похожей еды
+    // (замер 22.08.2026: по названию разрешается около половины таких кодов).
+    // Оставить здесь пустоту значило бы сказать «доснимите этикетку сами» — то
+    // самое, чего быть не должно. Поэтому спрашиваем модель ОДНУ вещь: типичный
+    // состав вот этого продукта. Число придёт помеченным как «≈ оценка ИИ» и
+    // никогда не выдаст себя за строку из базы.
+    //
+    // Это единственная ветка маршрута, которая тратит разбор из квоты, и это
+    // честно: здесь действительно работает модель. Квота кончилась — отвечаем
+    // пустотой, а не молча подсовываем догадку без пометки.
+    let aiCard: NutritionAlternative | null = null;
+    if (!top && identifiedName && aiQuota.tryConsume(req, res)) {
+      aiCard = await aiSearchCard(identifiedName, region).catch(() => null);
+    }
+    metrics.recordStage('barcode', Date.now() - startedAt);
+    if (!top && !aiCard) {
+      res.json({
+        item: null,
+        ...(identifiedName ? { identified_name: identifiedName } : {}),
+        ...(found.sourcesDown ? { sources_down: true } : {}),
+      });
+      return;
+    }
+    // Вес не угадываем: сколько съедено — знает только человек, и он поставит
+    // это на карточке. 100 г — отправная точка, честно помеченная как оценка.
+    const grams = 100;
+    // ЧЕСТНАЯ УВЕРЕННОСТЬ. Состав из самой записи кода — это состав ЭТОГО товара,
+    // тут 0.9 заслужены. Состав, добранный по названию, — это состав ПОХОЖЕЙ еды
+    // под именем конкретной пачки, и выдавать его за факт нельзя: ставим ниже
+    // клиентского порога, чтобы пикер «не то?» открылся сам и альтернативы были
+    // видны сразу. Человека ни о чём не просим — просто не врём ему.
+    const byName = identifiedName !== undefined;
+    const confidence = byName ? 0.3 : 0.9;
+    // Из базы — если нашлась строка; иначе честно помеченная оценка модели.
+    const per100 = top ? top.per100 : (aiCard as NutritionAlternative).per100;
+    const matchedName = top?.name;
+    // Что показать заголовком: имя товара с пачки, если код его знает; иначе имя
+    // найденной строки. Пустым он быть не может — сюда мы попадаем только с
+    // одним из двух.
+    const title = identifiedName ?? top?.name ?? (aiCard as NutritionAlternative).name;
+    res.json({
+      item: {
+        // Заголовок — имя ТОВАРА с упаковки, если оно известно: человек
+        // сканировал конкретную пачку и должен увидеть именно её.
+        name_ru: title,
+        name_en: title,
+        grams,
+        grams_source: 'estimated',
+        confidence,
+        per100,
+        scaled: scaleToGrams(per100, grams),
+        approximate: true,
+        ...(matchedName ? { matched_name: matchedName } : {}),
+      },
+    });
   });
 
   /**

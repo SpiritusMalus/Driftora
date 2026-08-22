@@ -212,3 +212,187 @@ test('POST /food/search miss → empty candidates, not an error', async () => {
     await stop();
   }
 });
+
+test('POST /food/search Cyrillic reaches FatSecret (RU localization) when OFF is down', async () => {
+  process.env.FATSECRET_CLIENT_ID = 'test-fs-id';
+  process.env.FATSECRET_CLIENT_SECRET = 'test-fs-secret';
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input.toString();
+    if (url.includes('127.0.0.1')) return realFetch(input as never, init);
+    if (url.includes('api.nal.usda.gov')) throw new Error('USDA must not be queried with Cyrillic text');
+    if (url.includes('oauth.fatsecret.com')) return json({ access_token: 'tok', expires_in: 86400 });
+    if (url.includes('platform.fatsecret.com')) {
+      // The RU-localized corpus answers the raw Cyrillic query.
+      assert.ok(decodeURIComponent(url).includes('отруби'), 'FatSecret must get the Cyrillic query');
+      return json({
+        foods: {
+          food: {
+            food_name: 'Овсяные Отруби',
+            food_type: 'Generic',
+            food_description: 'Per 100g - Calories: 246kcal | Fat: 7.03g | Carbs: 66.22g | Protein: 17.30g',
+          },
+        },
+      });
+    }
+    if (url.includes('openfoodfacts.org')) throw new Error('OFF is down today'); // the reported flake
+    throw new Error(`unexpected fetch in test: ${url}`);
+  }) as typeof fetch;
+
+  const { base, stop } = await startApp();
+  try {
+    const res = await post(base, '/food/search', { query: 'овсяные отруби', region: 'RU' });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { candidates: { name: string; per100: { kcal: number; source: string } }[] };
+    // A flaky OFF must no longer read as «нет в базе»: FatSecret's RU row stands.
+    assert.ok(
+      body.candidates.some((c) => c.per100.source === 'fatsecret' && c.per100.kcal === 246),
+      `expected a fatsecret candidate, got: ${JSON.stringify(body.candidates)}`,
+    );
+  } finally {
+    delete process.env.FATSECRET_CLIENT_ID;
+    delete process.env.FATSECRET_CLIENT_SECRET;
+    await stop();
+  }
+});
+
+test('POST /food/search: упавший источник → sources_down, а не молчаливое «ничего не найдено»', async () => {
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input.toString();
+    if (url.includes('127.0.0.1')) return realFetch(input as never, init);
+    throw new Error('сеть легла'); // все внешние источники недоступны
+  }) as typeof fetch;
+
+  const { base, stop } = await startApp();
+  try {
+    // Слова нет в локальной RU-таблице, значит ответить мог только внешний
+    // источник — а он лёг: список пуст ИМЕННО поэтому, а не из-за отсутствия еды.
+    const res = await post(base, '/food/search', { query: 'мивина', region: 'RU' });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { candidates: unknown[]; sources_down?: boolean };
+    assert.deepEqual(body.candidates, []);
+    // Пустой список сам по себе врал: «этой еды нет» про еду, которую не искали.
+    assert.equal(body.sources_down, true);
+  } finally {
+    await stop();
+  }
+});
+
+test('POST /food/barcode: код с битой контрольной цифрой до базы не доходит', async () => {
+  const { base, stop } = await startApp();
+  try {
+    const res = await post(base, '/food/barcode', { code: '5449000000997', region: 'RU' });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { item: unknown; reason?: string };
+    assert.equal(body.item, null);
+    assert.equal(body.reason, 'invalid_code');
+  } finally {
+    await stop();
+  }
+});
+
+test('POST /food/barcode: валидный код ищется в базе и НЕ тратит вызов модели', async () => {
+  let llmCalls = 0;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input.toString();
+    if (url.includes('127.0.0.1')) return realFetch(input as never, init);
+    if (url.includes('openrouter.ai')) {
+      llmCalls += 1;
+      throw new Error('модель не должна вызываться на пути штрихкода');
+    }
+    if (url.includes('openfoodfacts.org')) {
+      return json({
+        status: 1,
+        product: {
+          nutriments: {
+            'energy-kcal_100g': 42,
+            proteins_100g: 0,
+            fat_100g: 0,
+            carbohydrates_100g: 10.6,
+          },
+        },
+      });
+    }
+    throw new Error(`unexpected fetch in test: ${url}`);
+  }) as typeof fetch;
+
+  const { base, stop } = await startApp();
+  try {
+    const res = await post(base, '/food/barcode', { code: '5449000000996', region: 'RU' });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { item: { per100: { kcal: number }; grams: number } | null };
+    assert.equal(body.item?.per100.kcal, 42);
+    assert.equal(body.item?.grams, 100, 'вес не выдумываем — отправная точка, её ставит человек');
+    assert.equal(llmCalls, 0, 'путь штрихкода обязан обходиться без модели');
+  } finally {
+    await stop();
+  }
+});
+
+test('POST /food/barcode: у кода нет состава → доискиваем по названию, но НЕ выдаём за факт', async () => {
+  const { mkdtempSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { BARCODE_COMPOSITION_ABSENT, BARCODE_FIBER_ABSENT, BARCODE_RECORD_BYTES, BarcodeIndex } = await import(
+    '../src/nutrition/barcodeIndex.js'
+  );
+
+  // Запись «товар опознан, состава нет» — так выглядят 2 млн строк выгрузки.
+  const name = Buffer.from('Творожок Простоквашино персик', 'utf8');
+  const bin = Buffer.alloc(BARCODE_RECORD_BYTES);
+  bin.writeBigUInt64LE(BigInt('4600605032251'), 0);
+  bin.writeUInt16LE(BARCODE_COMPOSITION_ABSENT, 8);
+  bin.writeUInt16LE(BARCODE_FIBER_ABSENT, 16);
+  bin.writeUInt32LE(0, 18);
+  bin.writeUInt16LE(name.length, 22);
+  const dir = mkdtempSync(join(tmpdir(), 'bc-route-'));
+  writeFileSync(join(dir, 'i.bin'), bin);
+  writeFileSync(join(dir, 'i.names'), name);
+
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input.toString();
+    if (url.includes('127.0.0.1')) return realFetch(input as never, init);
+    if (url.includes('openrouter.ai')) throw new Error('модель на пути штрихкода не нужна');
+    // Живая база кода не знает…
+    if (url.includes('openfoodfacts.org/api/v2/product')) return json({ status: 0 });
+    // …но по НАЗВАНИЮ товар находится: это и есть автоматическое доразрешение.
+    if (url.includes('openfoodfacts.org/cgi/search.pl')) {
+      return json({
+        products: [
+          {
+            product_name_ru: 'Творожок Простоквашино',
+            nutriments: {
+              'energy-kcal_100g': 110,
+              proteins_100g: 7,
+              fat_100g: 3.8,
+              carbohydrates_100g: 12,
+            },
+          },
+        ],
+      });
+    }
+    if (url.includes('api.nal.usda.gov')) return json({ foods: [] });
+    throw new Error(`unexpected fetch in test: ${url}`);
+  }) as typeof fetch;
+
+  const server = createApp(undefined, {
+    barcodeNames: BarcodeIndex.open(join(dir, 'i.bin'), join(dir, 'i.names')),
+  }).listen(0);
+  await new Promise<void>((resolve) => server.once('listening', () => resolve()));
+  const { port } = server.address() as import('node:net').AddressInfo;
+  try {
+    const res = await post(`http://127.0.0.1:${port}`, '/food/barcode', {
+      code: '4600605032251',
+      region: 'RU',
+    });
+    const body = (await res.json()) as {
+      item: { name_ru: string; confidence: number; matched_name?: string } | null;
+    };
+    // Имя — с ПАЧКИ, которую отсканировали; человек ничего не доснимает.
+    assert.equal(body.item?.name_ru, 'Творожок Простоквашино персик');
+    // …но числа взяты у похожей еды, поэтому пикер обязан открыться сам.
+    assert.ok((body.item?.confidence ?? 1) <= 0.3, `было ${body.item?.confidence}`);
+    assert.ok(body.item?.matched_name, 'видно, ЧТО за строка дала числа');
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});

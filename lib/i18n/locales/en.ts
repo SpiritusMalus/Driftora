@@ -962,6 +962,26 @@ export const en = {
       text: 'Text',
       voice: 'Voice',
       photo: 'Photo',
+      barcode: 'Barcode',
+    },
+    // Barcode scanner: it films the package, not the plate. Frames never leave
+    // the phone — the device decodes locally and only the digits are sent.
+    barcode: {
+      hint: 'Point the frame at the barcode — it scans itself. No photo is sent anywhere.',
+      permission: 'Scanning a barcode needs camera access. No photos are sent anywhere — the phone decodes the code itself.',
+      allow: 'Allow camera',
+      torch: 'Torch',
+      // Card over the darkened preview: WHAT we found first, then what's next.
+      addedSub: '{{kcal}} kcal per 100 g — added below, set the weight',
+      scanMore: 'Scan another',
+      retry: 'Try again',
+      // The product is known but its composition isn't recorded anywhere —
+      // saying «unknown code» here would be false.
+      identifiedSub: 'We know the product, but nobody has recorded its composition. Enter the macros if you know them — or keep scanning.',
+      // Nobody knows this code — the one real dead end. We never ask for extra
+      // photos: that would be our job handed back to the user.
+      missing: 'No database knows this code. Keep scanning — or type the product in words.',
+      unavailable: 'The database didn’t answer, so the code couldn’t be checked. That doesn’t mean the product is unknown.',
     },
     // One quick-pick lane instead of three headers (yesterday/favorites/recent).
     quickPick: 'Quick',
@@ -1038,6 +1058,9 @@ export const en = {
       action: 'Search',
       searching: 'Searching…',
       empty: 'Nothing found',
+      // A source never answered: «nothing found» would be a claim about a food
+      // we never actually got to look up.
+      unavailable: 'The database didn’t answer — couldn’t check. Try again.',
     },
     dbUnavailable: 'The database is only available in a device dev build.',
     // The shared base: the dishes no table carries, filled by the people eating them.
@@ -1053,6 +1076,9 @@ export const en = {
       // over a dropped write would be a lie — honest replacement.
       emptyOff:
         'Not in the base yet — and the shared base isn’t open in this build. Enter the numbers yourself; they stay in your own diet list.',
+      // Same principle as emptyOff: never say «not there» about a food a dead
+      // source was never asked about.
+      unavailable: 'The database didn’t answer — couldn’t check. Try again, or enter the numbers yourself.',
       votes: 'entries: {{n}}',
       hint: 'Search by name: the reference tables first, then the shared base — the home-made and local dishes people entered themselves. Every row says where its numbers came from; “from the shared base” is the middle of what others confirmed, not a measurement.',
       offline: 'The shared base works when food recognition is on.',
@@ -1081,6 +1107,15 @@ export const en = {
     // invite a fix (the weight drives the whole number).
     gramsGuessed: 'No weight given — assumed {{grams}} g. Adjust if your portion differs.',
     forGrams: 'for {{grams}} g',
+    // Piece-based entry for foods with a standard unit size (eggs, fruit,
+    // dumplings): the counter multiplies the visible per-piece weight — grams
+    // stay the source of truth.
+    pieces: {
+      unit: 'pcs',
+      per: '≈ {{grams}} g each',
+      minus: 'one piece less',
+      plus: 'one piece more',
+    },
     otherOption: {
       open: 'Other option',
       openCount: 'Other option ({{count}})',

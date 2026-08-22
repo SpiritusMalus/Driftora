@@ -1,6 +1,6 @@
 import { TIMEOUT_MS } from '../httpTimeout.js';
 import type { Minerals, Per100, Region } from '../types.js';
-import type { NutritionProvider, ProviderResult } from './provider.js';
+import { ProviderUnavailable, type NutritionProvider, type ProviderResult } from './provider.js';
 import { rankByName, scoreToConfidence } from './scoring.js';
 
 const TOKEN_URL = 'https://oauth.fatsecret.com/connect/token';
@@ -104,10 +104,15 @@ export function parsePer100(description: string, name = ''): Per100 | null {
 export class FatSecretProvider implements NutritionProvider {
   readonly name = 'fatsecret';
   readonly regions = ['RU', 'US'] as const;
-  // FatSecret's free tier is an English/US corpus (Cyrillic queries return 0),
-  // so the resolver queries it with the LLM's `name_en` in every region — that's
-  // what lets it cover foods the RU table misses (device feedback 2026-07-13).
+  // The EN corpus is by far the deeper one («oat bran» ≈ 2000 rows vs a handful
+  // for «отруби»), so the parse chain queries with the LLM's `name_en` in every
+  // region — that's what covers foods the RU table misses (2026-07-13).
   readonly queryLang = 'en' as const;
+  // But the API DOES answer raw Cyrillic when `region=RU&language=ru` ride along
+  // (verified live 2026-08-22: «отруби овсяные» → a real RU-labelled row), so the
+  // manual-search path may hand it the user's text instead of skipping it — the
+  // thin RU corpus still beats depending on flaky OFF alone for Cyrillic queries.
+  readonly acceptsCyrillic = true;
 
   // Cached client-credentials token; refreshed lazily a touch before it expires.
   private token: { value: string; expiresAt: number } | null = null;
@@ -183,17 +188,17 @@ export class FatSecretProvider implements NutritionProvider {
         headers: { Authorization: `Bearer ${token}` },
         signal: AbortSignal.timeout(TIMEOUT_MS.fatsecret),
       });
-    } catch {
-      return [];
+    } catch (err) {
+      throw new ProviderUnavailable(this.name, err); // unreachable ≠ no such food
     }
     if (res.status === 401) {
       // The cached token was revoked or expired early — drop it so the NEXT
       // call mints a fresh one instead of the provider staying silently dead
       // for up to a day on the stale cache.
       this.token = null;
-      return [];
+      throw new ProviderUnavailable(this.name, 401);
     }
-    if (!res.ok) return [];
+    if (!res.ok) throw new ProviderUnavailable(this.name, res.status);
 
     const data = await res.json().catch(() => null);
     const ranked = rankByName(

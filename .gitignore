@@ -58,6 +58,10 @@ yarn-error.*
 # Exception: the store listing (descriptions, Data-safety/rating answers, the
 # publication checklist) is a product artifact paired with docs/store/ assets.
 !docs/store-listing.md
+# Exception: rebuilding the Open Food Facts snapshot is a sequence of steps
+# against a 1.28 GB upstream dump and the live server — the numbers in it
+# (what the dump does and does not contain) cost a day to rediscover.
+!docs/off-snapshot.md
 
 .claude/
 dist.stale.*
@@ -73,3 +77,10 @@ dist.stale.*
 # future-proofs the rebrand rename — keep both.
 /Driftora/
 /HealthRoutine/
+
+# Снимок Open Food Facts — артефакт деплоя, не содержимое репозитория
+# (данные ODbL, репозиторий публичный; готовится npm run import:off)
+server/data/off-ru.jsonl
+server/data/off-ru-brands.txt
+server/data/off-barcodes.bin
+server/data/off-barcodes.names

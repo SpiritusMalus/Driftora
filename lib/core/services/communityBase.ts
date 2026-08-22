@@ -14,3 +14,18 @@ export function setCommunityBaseAvailable(v: boolean): void {
 export function communityBaseAvailable(): boolean | null {
   return available;
 }
+
+/// Did the LAST search come back empty because a nutrition source never
+/// answered? Same reason this module exists: an empty list has two meanings and
+/// only one of them permits «этой еды нет — впишите её». Saying that about a
+/// food the server never actually got to look up is a claim we can't stand
+/// behind, and it's what a single Open Food Facts timeout used to produce.
+let lastSearchDegraded = false;
+
+export function setSearchSourcesDown(v: boolean): void {
+  lastSearchDegraded = v;
+}
+
+export function searchSourcesDown(): boolean {
+  return lastSearchDegraded;
+}
