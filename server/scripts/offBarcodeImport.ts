@@ -18,7 +18,12 @@ import { createReadStream, writeFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { createGunzip } from 'node:zlib';
 
-import { BARCODE_FIBER_ABSENT, BARCODE_RECORD_BYTES, validEan } from '../src/nutrition/barcodeIndex.js';
+import {
+  BARCODE_COMPOSITION_ABSENT,
+  BARCODE_FIBER_ABSENT,
+  BARCODE_RECORD_BYTES,
+  validEan,
+} from '../src/nutrition/barcodeIndex.js';
 import { energyInconsistent } from '../src/nutrition/energy.js';
 
 const COLUMNS = [
@@ -72,6 +77,8 @@ async function main(): Promise<void> {
   const seen = new Set<string>();
   let total = 0;
   let noMacros = 0;
+  let noName = 0;
+  let withComposition = 0;
   let badEan = 0;
   let implausible = 0;
   let duplicate = 0;
@@ -96,31 +103,38 @@ async function main(): Promise<void> {
     const f = line.split('\t');
     const at = (c: Column): string | undefined => f[index[c] as number];
 
-    const kcal = num(at('energy-kcal_100g'));
-    const prot = num(at('proteins_100g'));
-    const fat = num(at('fat_100g'));
-    const carb = num(at('carbohydrates_100g'));
-    if (kcal === undefined || prot === undefined || fat === undefined || carb === undefined) {
-      noMacros += 1;
-      continue;
-    }
-
     const code = (at('code') ?? '').replace(/["\s]/g, '');
     if (!validEan(code)) {
       badEan += 1;
       continue;
     }
 
+    const kcal = num(at('energy-kcal_100g'));
+    const prot = num(at('proteins_100g'));
+    const fat = num(at('fat_100g'));
+    const carb = num(at('carbohydrates_100g'));
+    // Состава нет — запись всё равно берём. Имя и марка опознают товар, а числа
+    // найдёт цепочка по названию; выбрасывать такую строку значило бы упереться
+    // в тупик и попросить человека доснять этикетку за нас.
+    const hasComposition = kcal !== undefined && prot !== undefined && fat !== undefined && carb !== undefined;
+    if (!hasComposition) noMacros += 1;
+
     const fiber = num(at('fiber_100g'));
     // Те же проверки правдоподобия, что и у поиска по названию: строка с
     // «углеводы 900» не должна попасть в базу и выдать себя за факт.
     if (
-      prot < 0 || fat < 0 || carb < 0 ||
-      prot > 100 || fat > 100 || carb > 100 ||
-      prot + fat + carb > 105 ||
-      kcal < 0 || kcal > 950 ||
-      (kcal === 0 && prot === 0 && fat === 0 && carb === 0) ||
-      energyInconsistent({ kcal, prot, fat, carb, fiber }, { tol: 0.3, absFloor: 60 })
+      hasComposition &&
+      ((prot as number) < 0 || (fat as number) < 0 || (carb as number) < 0 ||
+        (prot as number) > 100 || (fat as number) > 100 || (carb as number) > 100 ||
+        (prot as number) + (fat as number) + (carb as number) > 105 ||
+        (kcal as number) < 0 || (kcal as number) > 950 ||
+        // Ноль по всем полям НЕ отбрасываем: это законный состав воды, чёрного
+        // кофе и «зеро»-напитков. Отсутствие состава теперь помечается отдельно,
+        // так что путать его с нулём больше не нужно.
+        energyInconsistent(
+          { kcal: kcal as number, prot: prot as number, fat: fat as number, carb: carb as number, fiber },
+          { tol: 0.3, absFloor: 60 },
+        ))
     ) {
       implausible += 1;
       continue;
@@ -143,15 +157,22 @@ async function main(): Promise<void> {
     // символам могла бы разъехаться с длиной, записанной в индексе.
     while (Buffer.byteLength(name, 'utf8') > MAX_NAME_BYTES) name = name.slice(0, -1);
 
+    // Имени нет вовсе — вот такую строку брать бессмысленно: она не опознаёт
+    // товар и не несёт чисел.
+    if (name.length === 0) {
+      noName += 1;
+      continue;
+    }
     records.push({
       code: BigInt(code),
-      kcal: Math.round(kcal),
-      prot: fixed(prot),
-      fat: fixed(fat),
-      carb: fixed(carb),
-      fiber: fiber === undefined ? BARCODE_FIBER_ABSENT : fixed(fiber),
+      kcal: hasComposition ? Math.round(kcal as number) : BARCODE_COMPOSITION_ABSENT,
+      prot: hasComposition ? fixed(prot as number) : 0,
+      fat: hasComposition ? fixed(fat as number) : 0,
+      carb: hasComposition ? fixed(carb as number) : 0,
+      fiber: !hasComposition || fiber === undefined ? BARCODE_FIBER_ABSENT : fixed(fiber),
       name,
     });
+    if (hasComposition) withComposition += 1;
   }
 
   console.error(`сортировка ${records.length.toLocaleString('ru')} записей…`);
@@ -184,10 +205,13 @@ async function main(): Promise<void> {
       '',
       `прочитано строк:      ${total.toLocaleString('ru')}`,
       `в индексе:            ${records.length.toLocaleString('ru')}`,
+      `  с составом:         ${withComposition.toLocaleString('ru')}`,
+      `  только опознание:   ${(records.length - withComposition).toLocaleString('ru')} (состав найдём по названию)`,
       `  ${outPrefix}.bin     ${mb(bin.length)}`,
       `  ${outPrefix}.names   ${mb(nameOffset)}`,
       `отброшено:`,
-      `  без полного БЖУ         ${noMacros.toLocaleString('ru')}`,
+      `  строк без БЖУ (взяты)   ${noMacros.toLocaleString('ru')}`,
+      `  без имени               ${noName.toLocaleString('ru')}`,
       `  без валидного EAN       ${badEan.toLocaleString('ru')}`,
       `  неправдоподобные        ${implausible.toLocaleString('ru')}`,
       `  повторы кода            ${duplicate.toLocaleString('ru')}`,

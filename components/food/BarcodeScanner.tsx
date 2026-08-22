@@ -22,6 +22,13 @@ import { useTheme } from '@/lib/theme/theme';
  * ответом и следующим шагом. Экран в каждый момент показывает ОДНУ вещь, ради
  * которой он открыт.
  *
+ * ЧЕЛОВЕК НИЧЕГО НЕ ДОДЕЛЫВАЕТ ЗА НАС. Если у кода нет состава, сервер сам
+ * доискивает его по названию товара, а в крайнем случае берёт честно помеченную
+ * оценку — просьбы «сфотографируйте этикетку» здесь нет и быть не должно
+ * (владелец, 2026-08-22: «никто не будет сидеть отфоткивать что-то
+ * дополнительно»). Единственный тупик — код, которого не знает вообще никто; там
+ * мы просто говорим об этом и продолжаем сканировать.
+ *
  * ЧТО ЗДЕСЬ НЕ ПРОИСХОДИТ. Кадры никуда не уходят: распознавание делает сам
  * телефон (на Android — ML Kit, на iOS — AVFoundation), наружу летят только
  * цифры кода. Фотография не сохраняется и не отправляется — этот экран вообще
@@ -64,7 +71,6 @@ export function BarcodeScanner({
   busy,
   outcome,
   onDismiss,
-  onShootLabel,
 }: {
   /** Найденный код (уже отфильтрованный по рамке). */
   onCode: (code: string) => void;
@@ -74,8 +80,6 @@ export function BarcodeScanner({
   outcome: BarcodeOutcome | null;
   /** Убрать карточку и снова целиться. */
   onDismiss: () => void;
-  /** Перейти к съёмке этикетки — честное продолжение, когда кода нет в базе. */
-  onShootLabel: () => void;
 }) {
   const { t } = useTranslation();
   const theme = useTheme();
@@ -172,19 +176,6 @@ export function BarcodeScanner({
                 </Text>
               ) : null}
               <View style={styles.resultActions}>
-                {outcome.kind === 'missing' ? (
-                  <Pressable
-                    onPress={onShootLabel}
-                    style={({ pressed }) => [
-                      styles.resultBtn,
-                      { backgroundColor: theme.primary, opacity: pressed ? 0.7 : 1 },
-                    ]}
-                  >
-                    <Text style={[styles.resultBtnText, { color: theme.onPrimary }, theme.font.bodySemiBold]}>
-                      {t('food.barcode.shootLabel')}
-                    </Text>
-                  </Pressable>
-                ) : null}
                 <Pressable
                   onPress={onDismiss}
                   style={({ pressed }) => [

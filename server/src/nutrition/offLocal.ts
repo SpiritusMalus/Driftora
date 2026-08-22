@@ -186,7 +186,9 @@ export class OffLocalProvider implements NutritionProvider {
     // продукт, либо ничего. Контрольная цифра проверяется внутри индекса, так
     // что искажённый код сюда просто не доходит.
     const byCode = this.barcodes?.lookup(name.trim());
-    if (byCode) return [{ per100: byCode.per100, name: byCode.name, confidence: BARCODE_CONFIDENCE }];
+    // Состав есть — отвечаем им. Записи без состава этот путь пропускает: товар
+    // опознан, но числа ищет уже маршрут штрихкода, по названию.
+    if (byCode?.per100) return [{ per100: byCode.per100, name: byCode.name, confidence: BARCODE_CONFIDENCE }];
     return this.ranked(name).map(({ entry, score }) => ({
       per100: entry.per100,
       name: entry.name,

@@ -327,3 +327,72 @@ test('POST /food/barcode: валидный код ищется в базе и Н
     await stop();
   }
 });
+
+test('POST /food/barcode: у кода нет состава → доискиваем по названию, но НЕ выдаём за факт', async () => {
+  const { mkdtempSync, writeFileSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { BARCODE_COMPOSITION_ABSENT, BARCODE_FIBER_ABSENT, BARCODE_RECORD_BYTES, BarcodeIndex } = await import(
+    '../src/nutrition/barcodeIndex.js'
+  );
+
+  // Запись «товар опознан, состава нет» — так выглядят 2 млн строк выгрузки.
+  const name = Buffer.from('Творожок Простоквашино персик', 'utf8');
+  const bin = Buffer.alloc(BARCODE_RECORD_BYTES);
+  bin.writeBigUInt64LE(BigInt('4600605032251'), 0);
+  bin.writeUInt16LE(BARCODE_COMPOSITION_ABSENT, 8);
+  bin.writeUInt16LE(BARCODE_FIBER_ABSENT, 16);
+  bin.writeUInt32LE(0, 18);
+  bin.writeUInt16LE(name.length, 22);
+  const dir = mkdtempSync(join(tmpdir(), 'bc-route-'));
+  writeFileSync(join(dir, 'i.bin'), bin);
+  writeFileSync(join(dir, 'i.names'), name);
+
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input.toString();
+    if (url.includes('127.0.0.1')) return realFetch(input as never, init);
+    if (url.includes('openrouter.ai')) throw new Error('модель на пути штрихкода не нужна');
+    // Живая база кода не знает…
+    if (url.includes('openfoodfacts.org/api/v2/product')) return json({ status: 0 });
+    // …но по НАЗВАНИЮ товар находится: это и есть автоматическое доразрешение.
+    if (url.includes('openfoodfacts.org/cgi/search.pl')) {
+      return json({
+        products: [
+          {
+            product_name_ru: 'Творожок Простоквашино',
+            nutriments: {
+              'energy-kcal_100g': 110,
+              proteins_100g: 7,
+              fat_100g: 3.8,
+              carbohydrates_100g: 12,
+            },
+          },
+        ],
+      });
+    }
+    if (url.includes('api.nal.usda.gov')) return json({ foods: [] });
+    throw new Error(`unexpected fetch in test: ${url}`);
+  }) as typeof fetch;
+
+  const server = createApp(undefined, {
+    barcodeNames: BarcodeIndex.open(join(dir, 'i.bin'), join(dir, 'i.names')),
+  }).listen(0);
+  await new Promise<void>((resolve) => server.once('listening', () => resolve()));
+  const { port } = server.address() as import('node:net').AddressInfo;
+  try {
+    const res = await post(`http://127.0.0.1:${port}`, '/food/barcode', {
+      code: '4600605032251',
+      region: 'RU',
+    });
+    const body = (await res.json()) as {
+      item: { name_ru: string; confidence: number; matched_name?: string } | null;
+    };
+    // Имя — с ПАЧКИ, которую отсканировали; человек ничего не доснимает.
+    assert.equal(body.item?.name_ru, 'Творожок Простоквашино персик');
+    // …но числа взяты у похожей еды, поэтому пикер обязан открыться сам.
+    assert.ok((body.item?.confidence ?? 1) <= 0.3, `было ${body.item?.confidence}`);
+    assert.ok(body.item?.matched_name, 'видно, ЧТО за строка дала числа');
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});

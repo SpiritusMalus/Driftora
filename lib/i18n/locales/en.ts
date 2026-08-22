@@ -975,8 +975,9 @@ export const en = {
       addedSub: '{{kcal}} kcal per 100 g — added below, set the weight',
       scanMore: 'Scan another',
       retry: 'Try again',
-      shootLabel: 'Photograph the label',
-      missing: 'That code isn’t in the database — but the panel is printed on the pack, and that we can read.',
+      // Nobody knows this code — the one real dead end. We never ask for extra
+      // photos: that would be our job handed back to the user.
+      missing: 'No database knows this code. Keep scanning — or type the product in words.',
       unavailable: 'The database didn’t answer, so the code couldn’t be checked. That doesn’t mean the product is unknown.',
     },
     // One quick-pick lane instead of three headers (yesterday/favorites/recent).

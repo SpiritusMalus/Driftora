@@ -16,9 +16,17 @@ import type { Minerals, Per100 } from '../types.js';
  * отсортированному файлу — это ~21 чтение по 24 байта, страницы оседают в
  * кеше ОС, а наша куча не растёт вообще. Ноль зависимостей, ноль SQLite.
  *
+ * ЗАПИСЬ БЕЗ СОСТАВА — ТОЖЕ ЗНАНИЕ. У 2.3 млн товаров в выгрузке есть имя и
+ * марка, но нет БЖУ (человек отсканировал упаковку и не заполнил состав). Такие
+ * записи мы храним ТОЖЕ: код всё равно опознаёт товар, а состав по названию
+ * найдёт обычная цепочка источников. Просить человека доснять этикетку значит
+ * перекладывать на него нашу работу (владелец, 2026-08-22) — поэтому отсутствие
+ * состава помечается отдельным значением, и вызывающий код идёт искать по имени
+ * сам, ничего не спрашивая.
+ *
  * ФОРМАТ (записи по 24 байта, отсортированы по коду):
  *   0..7   код EAN как uint64 LE (13 цифр < 2^44, влезает с запасом)
- *   8..9   ккал                       uint16
+ *   8..9   ккал                       uint16 (0xFFFF = состава нет; 0 — законный)
  *   10..11 белки  ×10                 uint16
  *   12..13 жиры   ×10                 uint16
  *   14..15 углеводы ×10               uint16
@@ -32,10 +40,20 @@ import type { Minerals, Per100 } from '../types.js';
 
 const RECORD_BYTES = 24;
 const FIBER_ABSENT = 0xffff;
+/**
+ * Метка «состава в выгрузке не было» в поле ккал. Это ИМЕННО метка, а не ноль:
+ * ноль калорий — законный состав (вода, «Кока-кола Зеро», чёрный кофе), и если
+ * бы отсутствие обозначалось нулями, весь класс диетических напитков считался
+ * бы по составу их сахарных тёзок. Настоящая калорийность не превышает 950, так
+ * что 65535 свободно.
+ */
+const COMPOSITION_ABSENT = 0xffff;
 
 export interface BarcodeHit {
   name: string;
-  per100: Per100;
+  /** Состав, если он в выгрузке был. Иначе null — товар опознан, но числа
+   *  придётся искать по названию (это делает вызывающий код, не пользователь). */
+  per100: Per100 | null;
 }
 
 /**
@@ -109,16 +127,23 @@ export class BarcodeIndex {
     const nameBuf = Buffer.allocUnsafe(nameLength);
     readSync(this.namesFd, nameBuf, 0, nameLength, nameOffset);
 
+    const kcal = buf.readUInt16LE(8);
+    const prot = dec(10);
+    const fat = dec(12);
+    const carb = dec(14);
+    const hasComposition = kcal !== COMPOSITION_ABSENT;
     const minerals: Minerals = {};
-    const per100: Per100 = {
-      source: 'openfoodfacts',
-      kcal: buf.readUInt16LE(8),
-      prot: dec(10),
-      fat: dec(12),
-      carb: dec(14),
-      ...(fiberRaw === FIBER_ABSENT ? {} : { fiber: fiberRaw / 10 }),
-      minerals,
-    };
+    const per100: Per100 | null = hasComposition
+      ? {
+          source: 'openfoodfacts',
+          kcal,
+          prot,
+          fat,
+          carb,
+          ...(fiberRaw === FIBER_ABSENT ? {} : { fiber: fiberRaw / 10 }),
+          minerals,
+        }
+      : null;
     return { name: nameBuf.toString('utf8'), per100 };
   }
 }
@@ -126,3 +151,4 @@ export class BarcodeIndex {
 /** Ширина записи — нужна импортёру, чтобы писать тот же формат. */
 export const BARCODE_RECORD_BYTES = RECORD_BYTES;
 export const BARCODE_FIBER_ABSENT = FIBER_ABSENT;
+export const BARCODE_COMPOSITION_ABSENT = COMPOSITION_ABSENT;

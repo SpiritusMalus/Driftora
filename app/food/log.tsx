@@ -1439,12 +1439,6 @@ export default function FoodLogScreen() {
           busy={barcodeBusy}
           outcome={barcodeOutcome}
           onDismiss={() => setBarcodeOutcome(null)}
-          onShootLabel={() => {
-            // Честное продолжение промаха: кода нет, но состав напечатан на
-            // упаковке, а читать этикетку приложение уже умеет.
-            setBarcodeOutcome(null);
-            setInputMode('photo');
-          }}
         />
       ) : null}
       {/* A photo parse runs up to ~25 s — the WaitOverlay at the end of this

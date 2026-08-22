@@ -15,7 +15,7 @@ import {
   VisionUnavailableError,
 } from './llm.js';
 import { metrics } from './metrics.js';
-import { validEan } from './nutrition/barcodeIndex.js';
+import { BarcodeIndex, validEan } from './nutrition/barcodeIndex.js';
 import { Resolver } from './nutrition/resolver.js';
 import {
   createCommunityFoods,
@@ -144,6 +144,27 @@ function rememberLabel(key: string, value: LabelReading): void {
   }
 }
 
+/**
+ * Индекс имён по штрихкодам из того же снимка (`OFF_BARCODES_PATH`). Открывается
+ * один раз на процесс; отсутствие файла — не ошибка, просто маршрут кода не
+ * сможет доискивать состав по названию.
+ */
+let barcodeNamesCache: BarcodeIndex | null | undefined;
+function defaultBarcodeNames(): BarcodeIndex | undefined {
+  if (barcodeNamesCache !== undefined) return barcodeNamesCache ?? undefined;
+  const prefix = process.env.OFF_BARCODES_PATH || '';
+  if (!prefix) {
+    barcodeNamesCache = null;
+    return undefined;
+  }
+  try {
+    barcodeNamesCache = BarcodeIndex.open(`${prefix}.bin`, `${prefix}.names`);
+  } catch {
+    barcodeNamesCache = null;
+  }
+  return barcodeNamesCache ?? undefined;
+}
+
 function defaultRegion(): Region {
   return process.env.DEFAULT_REGION === 'RU' ? 'RU' : 'US';
 }
@@ -212,6 +233,9 @@ export interface CreateAppOptions {
   aiQuotaPath?: string;
   /** Inject a purchase verifier (tests); production builds one from env. */
   verifyPurchase?: PurchaseVerifier;
+  /** Индекс «штрихкод → имя товара». Нужен, когда у кода нет состава: товар
+   *  опознан, и состав доискивается по названию, ничего не спрашивая у человека. */
+  barcodeNames?: BarcodeIndex;
   /** Where entitlements persist. Empty string = memory only (tests). */
   entitlementsPath?: string;
   /** Where issued ЮKassa licences persist. Empty string = memory only (tests). */
@@ -411,6 +435,9 @@ export function createApp(
   opts: CreateAppOptions = {},
 ): express.Express {
   const app = express();
+  // Индекс имён по штрихкодам: нужен там, где у кода НЕТ состава — тогда товар
+  // всё равно опознан, и состав доискивается по его названию (см. /food/barcode).
+  const barcodeNames = opts.barcodeNames ?? defaultBarcodeNames();
 
   // Caddy is a single hop (family-pie/Caddyfile reverse_proxy → 127.0.0.1:8787),
   // so trust exactly 1 proxy and read the real client IP from X-Forwarded-For.
@@ -1020,26 +1047,75 @@ export function createApp(
     const found = await resolver
       .search(code, region)
       .catch(() => ({ candidates: [], sourcesDown: true }));
+    let top = found.candidates[0];
+
+    // СОСТАВА У КОДА НЕТ, НО ТОВАР ОПОЗНАН. Так устроены 2.3 млн записей в
+    // выгрузке: имя и марка есть, БЖУ никто не заполнил. Тупик здесь означал бы
+    // «сфотографируйте этикетку», то есть просьбу доделать нашу работу — вместо
+    // этого доискиваем состав по НАЗВАНИЮ той же цепочкой, что и обычный ввод.
+    // Человек не делает ничего; провенанс останется честным, потому что строка
+    // придёт из таблицы со своим источником, а не из воздуха.
+    let identifiedName: string | undefined;
+    if (!top && barcodeNames) {
+      identifiedName = barcodeNames.lookup(code)?.name;
+      if (identifiedName) {
+        const byName = await resolver.search(identifiedName, region).catch(() => ({ candidates: [], sourcesDown: true }));
+        top = byName.candidates[0];
+      }
+    }
+    // ТРЕТЬЯ СТУПЕНЬ. Товар опознан, но ни одна база не знает даже похожей еды
+    // (замер 22.08.2026: по названию разрешается около половины таких кодов).
+    // Оставить здесь пустоту значило бы сказать «доснимите этикетку сами» — то
+    // самое, чего быть не должно. Поэтому спрашиваем модель ОДНУ вещь: типичный
+    // состав вот этого продукта. Число придёт помеченным как «≈ оценка ИИ» и
+    // никогда не выдаст себя за строку из базы.
+    //
+    // Это единственная ветка маршрута, которая тратит разбор из квоты, и это
+    // честно: здесь действительно работает модель. Квота кончилась — отвечаем
+    // пустотой, а не молча подсовываем догадку без пометки.
+    let aiCard: NutritionAlternative | null = null;
+    if (!top && identifiedName && aiQuota.tryConsume(req, res)) {
+      aiCard = await aiSearchCard(identifiedName, region).catch(() => null);
+    }
     metrics.recordStage('barcode', Date.now() - startedAt);
-    const top = found.candidates[0];
-    if (!top) {
-      res.json({ item: null, ...(found.sourcesDown ? { sources_down: true } : {}) });
+    if (!top && !aiCard) {
+      res.json({
+        item: null,
+        ...(identifiedName ? { identified_name: identifiedName } : {}),
+        ...(found.sourcesDown ? { sources_down: true } : {}),
+      });
       return;
     }
     // Вес не угадываем: сколько съедено — знает только человек, и он поставит
     // это на карточке. 100 г — отправная точка, честно помеченная как оценка.
     const grams = 100;
+    // ЧЕСТНАЯ УВЕРЕННОСТЬ. Состав из самой записи кода — это состав ЭТОГО товара,
+    // тут 0.9 заслужены. Состав, добранный по названию, — это состав ПОХОЖЕЙ еды
+    // под именем конкретной пачки, и выдавать его за факт нельзя: ставим ниже
+    // клиентского порога, чтобы пикер «не то?» открылся сам и альтернативы были
+    // видны сразу. Человека ни о чём не просим — просто не врём ему.
+    const byName = identifiedName !== undefined;
+    const confidence = byName ? 0.3 : 0.9;
+    // Из базы — если нашлась строка; иначе честно помеченная оценка модели.
+    const per100 = top ? top.per100 : (aiCard as NutritionAlternative).per100;
+    const matchedName = top?.name;
+    // Что показать заголовком: имя товара с пачки, если код его знает; иначе имя
+    // найденной строки. Пустым он быть не может — сюда мы попадаем только с
+    // одним из двух.
+    const title = identifiedName ?? top?.name ?? (aiCard as NutritionAlternative).name;
     res.json({
       item: {
-        name_ru: top.name,
-        name_en: top.name,
+        // Заголовок — имя ТОВАРА с упаковки, если оно известно: человек
+        // сканировал конкретную пачку и должен увидеть именно её.
+        name_ru: title,
+        name_en: title,
         grams,
         grams_source: 'estimated',
-        confidence: 0.9,
-        per100: top.per100,
-        scaled: scaleToGrams(top.per100, grams),
+        confidence,
+        per100,
+        scaled: scaleToGrams(per100, grams),
         approximate: true,
-        matched_name: top.name,
+        ...(matchedName ? { matched_name: matchedName } : {}),
       },
     });
   });
