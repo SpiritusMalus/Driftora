@@ -111,7 +111,7 @@ export class OpenFoodFactsProvider implements NutritionProvider {
 
     let res: Response;
     try {
-      res = await fetch(`${PRODUCT_URL}/${barcode}.json`, {
+      res = await fetch(`${PRODUCT_URL}/${barcode}.json?fields=product_name,product_name_ru,nutriments`, {
         method: 'GET',
         headers: { 'User-Agent': USER_AGENT },
         signal: AbortSignal.timeout(TIMEOUT_MS.openfoodfacts),
@@ -122,7 +122,7 @@ export class OpenFoodFactsProvider implements NutritionProvider {
     if (!res.ok) return null;
 
     const data = (await res.json().catch(() => null)) as
-      | { status?: number; product?: { nutriments?: OffNutriments } }
+      | { status?: number; product?: { nutriments?: OffNutriments; product_name?: string; product_name_ru?: string } }
       | null;
     const nutriments = data?.product?.nutriments;
     if (data?.status !== 1 || !nutriments) return null;
@@ -137,7 +137,15 @@ export class OpenFoodFactsProvider implements NutritionProvider {
 
     const per100 = toPer100(nutriments);
     if (per100.kcal === 0 && per100.prot === 0) return null;
-    return { per100, confidence: 0.9 };
+    // Имя товара обязательно: без него вызывающий код подставляет сам запрос, а
+    // запрос здесь — это цифры штрихкода, и карточка называлась бы
+    // «5449000000996» вместо «Coca-Cola» (поймано verify-запросом на проде
+    // 2026-08-22). Оно же питает строку «Как в базе».
+    const product = data.product ?? {};
+    const productName = (
+      region === 'RU' ? product.product_name_ru || product.product_name : product.product_name
+    )?.trim();
+    return { per100, confidence: 0.9, ...(productName ? { name: productName } : {}) };
   }
 
   /**
