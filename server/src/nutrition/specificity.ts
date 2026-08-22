@@ -120,6 +120,63 @@ const RU_FOOD_STEMS: ReadonlySet<string> = (() => {
   return stems;
 })();
 
+/**
+ * Слова торговых марок из выгрузки OFF (9 668 марок на 22.08.2026, включая те
+ * 43 тысячи продуктов, у которых состава нет вовсе — имя марки там всё равно
+ * записано). Это превращает эвристику «слова нет в словаре еды, значит уточнение»
+ * в точное знание «это марка» для тех случаев, где марка СОВПАДАЕТ с обычным
+ * словом («Красная цена», «Чудо», «Домик в деревне») и эвристика молчала бы.
+ *
+ * Пустой набор, пока файл не подложен: механизм работал и без него, список лишь
+ * добавляет точности. Слова, которые есть в словаре еды, в набор не попадают —
+ * иначе марка с названием «Молоко» сделала бы брендовым каждый запрос про молоко.
+ */
+let brandTokens: ReadonlySet<string> = new Set();
+/** Многословные марки: первое слово → полные нормализованные фразы. */
+let brandPhrases: ReadonlyMap<string, string[]> = new Map();
+
+export function setKnownBrands(brands: Iterable<string>): void {
+  const tokens = new Set<string>();
+  const phrases = new Map<string, string[]>();
+  for (const brand of brands) {
+    const words = contentTokens(brand).filter((w) => w.length >= 3);
+    if (words.length === 0) continue;
+    if (words.length > 1) {
+      // Марка из нескольких слов различима сама по себе («Красная цена», «Домик
+      // в деревне»), поэтому берётся ЦЕЛИКОМ и словарь еды ей не помеха: чтобы
+      // ошибиться, человек должен написать всю фразу подряд.
+      const head = stemRu(words[0] as string);
+      const phrase = words.join(' ');
+      const list = phrases.get(head);
+      if (list) list.push(phrase);
+      else phrases.set(head, [phrase]);
+      continue;
+    }
+    // Однословная марка принимается, только если это не обычное слово про еду:
+    // марка с названием «Молоко» иначе сделала бы брендовым каждый запрос о молоке.
+    const stem = stemRu(words[0] as string);
+    if (!RU_FOOD_STEMS.has(stem)) tokens.add(stem);
+  }
+  brandTokens = tokens;
+  brandPhrases = phrases;
+}
+
+/** Слова запроса, объяснимые как торговая марка (фраза целиком или одно слово). */
+function brandWordsIn(query: string): Set<string> {
+  const words = contentTokens(query);
+  const out = new Set<string>();
+  for (const [i, word] of words.entries()) {
+    const stem = stemRu(word);
+    if (brandTokens.has(stem)) out.add(word);
+    const tail = words.slice(i).join(' ');
+    for (const phrase of brandPhrases.get(stem) ?? []) {
+      // Фраза должна идти в запросе подряд, начиная с этого слова.
+      if (tail.startsWith(phrase)) for (const w of phrase.split(' ')) out.add(w);
+    }
+  }
+  return out;
+}
+
 /** Слово встречается в наших RU-таблицах — значит, это обычное слово про еду. */
 function isCommonFoodWord(token: string): boolean {
   const stem = stemRu(token);
@@ -140,8 +197,12 @@ function isCommonFoodWord(token: string): boolean {
 export function unexplainedSpecifics(query: string, candidateName: string): string[] {
   const explained = new Set(contentTokens(candidateName));
   const explainedStems = new Set([...explained].map(stemRu));
+  const brandWords = brandWordsIn(query);
   return contentTokens(query).filter((token) => {
     if (explained.has(token) || explainedStems.has(stemRu(token))) return false;
+    // Известная марка — уточнение по существу ВСЕГДА, даже если слово похоже на
+    // обычное («Красная цена»): марку строка обязана объяснить, а не подменить.
+    if (brandWords.has(token)) return true;
     if (isQualifier(token)) return false;
     return !isCommonFoodWord(token);
   });

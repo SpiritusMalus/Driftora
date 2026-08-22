@@ -12,6 +12,7 @@
     "test": "node --import tsx --test test/*.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.check.json",
     "import:nutrition": "tsx scripts/srLegacyImport.ts",
+    "import:off": "tsx scripts/offRuImport.ts",
     "eval": "tsx eval/run.ts",
     "slo": "tsx eval/checkSlo.ts"
   },
