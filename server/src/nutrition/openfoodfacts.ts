@@ -1,6 +1,6 @@
 import { TIMEOUT_MS } from '../httpTimeout.js';
 import type { Minerals, Per100, Region } from '../types.js';
-import type { NutritionProvider, ProviderResult } from './provider.js';
+import { ProviderUnavailable, type NutritionProvider, type ProviderResult } from './provider.js';
 import { rankByName, scoreToConfidence } from './scoring.js';
 
 const PRODUCT_URL = 'https://world.openfoodfacts.org/api/v2/product';
@@ -24,6 +24,12 @@ const MAX_SEARCH_CONFIDENCE = 0.85;
 // hostage forever — a timeout just yields an empty list and the chain moves on.
 const SEARCH_TIMEOUT_MS = 8000;
 const SEARCH_PAGE_SIZE = 10;
+/** Extra attempts after a transient upstream status. One is enough: the 503s
+ *  come in bursts of milliseconds, and a second retry would just add latency. */
+const SEARCH_RETRIES = 1;
+const SEARCH_RETRY_PAUSE_MS = 300;
+/** Upstream statuses worth one more try (server-side hiccup, not our request). */
+const RETRIABLE_STATUS = /^(429|50[0234])$/;
 
 /** OFF stores per-100g nutriments; minerals are in grams → convert to mg. */
 const MINERAL_FIELDS: Record<keyof Minerals, string> = {
@@ -134,6 +140,30 @@ export class OpenFoodFactsProvider implements NutritionProvider {
     return { per100, confidence: 0.9 };
   }
 
+  /**
+   * One search request, retried once on a transient upstream status (5xx/429)
+   * after a short pause. Transport failures (timeout, DNS, abort) are NOT
+   * retried — they already consumed the latency budget — and surface as
+   * [ProviderUnavailable] so an outage can never masquerade as «no such food».
+   */
+  private async fetchSearch(url: URL): Promise<Response> {
+    for (let attempt = 0; ; attempt++) {
+      let res: Response;
+      try {
+        res = await fetch(url, {
+          method: 'GET',
+          headers: { 'User-Agent': USER_AGENT },
+          // OFF can stall; never hold the parse hostage.
+          signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
+        });
+      } catch (err) {
+        throw new ProviderUnavailable(this.name, err);
+      }
+      if (res.ok || attempt >= SEARCH_RETRIES || !RETRIABLE_STATUS.test(String(res.status))) return res;
+      await new Promise((resolve) => setTimeout(resolve, SEARCH_RETRY_PAUSE_MS));
+    }
+  }
+
   /** Ranked free-text candidates from the OFF search API (best-first). */
   async searchMany(name: string, region: Region): Promise<ProviderResult[]> {
     const trimmed = name.trim();
@@ -151,18 +181,14 @@ export class OpenFoodFactsProvider implements NutritionProvider {
     url.searchParams.set('page_size', String(SEARCH_PAGE_SIZE));
     url.searchParams.set('fields', 'product_name,product_name_ru,nutriments');
 
-    let res: Response;
-    try {
-      res = await fetch(url, {
-        method: 'GET',
-        headers: { 'User-Agent': USER_AGENT },
-        // OFF is community infra and can stall; never hold the parse hostage.
-        signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
-      });
-    } catch {
-      return [];
-    }
-    if (!res.ok) return [];
+    // OFF is community infrastructure and answers 5xx a good part of the time
+    // (measured 2026-08-22: two 503s in three consecutive calls). That flake is
+    // what the owner's report actually looked like from inside the app — the
+    // brand row exists, we just never got it — so a transient status error buys
+    // ONE fast retry. Only for status errors: they come back in milliseconds,
+    // while a timeout already spent the budget and must not double it.
+    const res = await this.fetchSearch(url);
+    if (!res.ok) throw new ProviderUnavailable(this.name, res.status);
 
     const data = (await res.json().catch(() => null)) as { products?: OffSearchProduct[] } | null;
     const products = data?.products ?? [];

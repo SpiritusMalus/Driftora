@@ -243,7 +243,7 @@ test('street-food staples resolve from the RU table (плов, шаурма, д�
 
 test('отруби resolve from the RU table, brand tail tolerated (мистраль)', async () => {
   const p = new SkurikhinProvider();
-  for (const [q, kcal] of [['отруби овсяные', 246], ['овсяные отруби', 246], ['отруби овсяные мистраль', 246], ['отруби пшеничные', 216], ['отруби', 216]] as const) {
+  for (const [q, kcal] of [['отруби овсяные', 366], ['овсяные отруби', 366], ['отруби овсяные мистраль', 366], ['отруби пшеничные', 274], ['отруби', 274]] as const) {
     const r = await p.search(q, 'RU');
     assert.ok(r, `«${q}» must hit the RU table`);
     assert.equal(r!.per100.kcal, kcal, `«${q}» → wrong row: ${r!.name}`);

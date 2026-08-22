@@ -12,7 +12,7 @@ import type {
 } from './foodParser';
 
 import { setAiQuotaRemaining, setAiQuotaScope, type AiQuotaScope } from './aiQuota';
-import { setCommunityBaseAvailable } from './communityBase';
+import { setCommunityBaseAvailable, setSearchSourcesDown } from './communityBase';
 
 const SOURCES: readonly NutritionSource[] = ['usda', 'skurikhin', 'openfoodfacts', 'apininjas', 'fatsecret', 'label', 'ai_estimate', 'estimate', 'community'];
 /** Text/search: a typed query is answered in 3–6 s and the user is actively
@@ -270,7 +270,10 @@ export class HttpFoodParser implements FoodParser {
         body: JSON.stringify({ query, region, ai: true }),
         signal: controller.signal,
       });
-      if (!res.ok) return this.fallback.searchFoods(query, region);
+      if (!res.ok) {
+        setSearchSourcesDown(true);
+        return this.fallback.searchFoods(query, region);
+      }
       // Honesty marker: the server says whether the SHARED base is actually on
       // (older servers stay silent → null). The empty-state copy reads it — a
       // promise «появится для остальных» must not render over a dropped write.
@@ -282,8 +285,14 @@ export class HttpFoodParser implements FoodParser {
       const data: unknown = await res.json();
       const candidates = (data as { candidates?: unknown })?.candidates;
       if (!Array.isArray(candidates)) return this.fallback.searchFoods(query, region);
+      // Second honesty marker: an empty list because a source was unreachable
+      // must not read as «этой еды нет» (see communityBase.ts).
+      setSearchSourcesDown((data as { sources_down?: unknown })?.sources_down === true);
       return candidates.filter(isAlternative);
     } catch {
+      // We never reached the server at all — the empty result the offline stub
+      // returns says nothing about whether the food exists.
+      setSearchSourcesDown(true);
       return this.fallback.searchFoods(query, region);
     } finally {
       clearTimeout(timer);

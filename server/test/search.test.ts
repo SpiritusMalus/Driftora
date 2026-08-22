@@ -254,3 +254,25 @@ test('POST /food/search Cyrillic reaches FatSecret (RU localization) when OFF is
     await stop();
   }
 });
+
+test('POST /food/search: упавший источник → sources_down, а не молчаливое «ничего не найдено»', async () => {
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input.toString();
+    if (url.includes('127.0.0.1')) return realFetch(input as never, init);
+    throw new Error('сеть легла'); // все внешние источники недоступны
+  }) as typeof fetch;
+
+  const { base, stop } = await startApp();
+  try {
+    // Слова нет в локальной RU-таблице, значит ответить мог только внешний
+    // источник — а он лёг: список пуст ИМЕННО поэтому, а не из-за отсутствия еды.
+    const res = await post(base, '/food/search', { query: 'мивина', region: 'RU' });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { candidates: unknown[]; sources_down?: boolean };
+    assert.deepEqual(body.candidates, []);
+    // Пустой список сам по себе врал: «этой еды нет» про еду, которую не искали.
+    assert.equal(body.sources_down, true);
+  } finally {
+    await stop();
+  }
+});

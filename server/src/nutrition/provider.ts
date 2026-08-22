@@ -1,5 +1,21 @@
 import type { Per100, Region } from '../types.js';
 
+/**
+ * A source could not be REACHED (network down, timeout, 5xx, revoked key) —
+ * which is NOT the same as «this food isn't in the database», even though both
+ * used to arrive as an empty list. Conflating them makes the app state a
+ * falsehood: «нет в базе» about a food it never actually got to look up. Sources
+ * throw this so the resolver can tell the two apart and the client can say the
+ * true thing («база не ответила») instead.
+ */
+export class ProviderUnavailable extends Error {
+  constructor(readonly provider: string, cause?: unknown) {
+    super(`nutrition provider unavailable: ${provider}`);
+    this.name = 'ProviderUnavailable';
+    if (cause !== undefined) this.cause = cause;
+  }
+}
+
 /** A per-100g lookup result from one source, with a 0..1 match confidence. */
 export interface ProviderResult {
   per100: Per100;

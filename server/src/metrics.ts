@@ -130,6 +130,9 @@ class MetricsRegistry {
   /** Packaged product whose panel was served from cache — no second vision call. */
   private labelCacheHits = 0;
 
+  /** Per-source count of «could not be reached», see recordSourceUnavailable. */
+  private readonly sourceOutages: Record<string, number> = {};
+
   /** Duplicate vision calls fired because the first was still silent past the
    *  hedge trigger — the price of cutting the slow tail. Sustained growth here
    *  means the trigger sits below the healthy answer time and needs raising. */
@@ -141,6 +144,19 @@ class MetricsRegistry {
 
   recordLabelCacheHit(): void {
     this.labelCacheHits += 1;
+  }
+
+  /**
+   * A nutrition source refused or never answered (per source name). This used
+   * to be invisible: providers swallowed their own outages into an empty list,
+   * so a throttled Open Food Facts looked exactly like «этой еды нет» — both to
+   * the user and to us. Measured 2026-08-22: OFF answers 503 to ANONYMOUS
+   * traffic under load («registered users are not subject to request limits»),
+   * and one server IP serves every user, so this counter is the early warning
+   * that brand lookups are silently degrading to generic rows.
+   */
+  recordSourceUnavailable(source: string): void {
+    this.sourceOutages[source] = (this.sourceOutages[source] ?? 0) + 1;
   }
 
   snapshot() {
@@ -167,6 +183,7 @@ class MetricsRegistry {
       label_cache_hits: this.labelCacheHits,
       hedges: this.hedges,
       sources: { ...this.sources },
+      source_outages: { ...this.sourceOutages },
       latency_ms,
       stage_ms,
     };

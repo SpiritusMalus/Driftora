@@ -1,6 +1,6 @@
 import { TIMEOUT_MS } from '../httpTimeout.js';
 import type { Minerals, Per100, Region, Vitamins } from '../types.js';
-import type { NutritionProvider, ProviderResult } from './provider.js';
+import { ProviderUnavailable, type NutritionProvider, type ProviderResult } from './provider.js';
 import { rankByName, scoreToConfidence } from './scoring.js';
 
 const SEARCH_URL = 'https://api.nal.usda.gov/fdc/v1/foods/search';
@@ -183,10 +183,10 @@ export class UsdaProvider implements NutritionProvider {
         headers: { 'X-Api-Key': this.apiKey },
         signal: AbortSignal.timeout(TIMEOUT_MS.usda),
       });
-    } catch {
-      return [];
+    } catch (err) {
+      throw new ProviderUnavailable(this.name, err); // unreachable ≠ no such food
     }
-    if (!res.ok) return [];
+    if (!res.ok) throw new ProviderUnavailable(this.name, res.status);
 
     const data = (await res.json().catch(() => null)) as { foods?: UsdaFood[] } | null;
     const foods = (data?.foods ?? []).filter((f) => Array.isArray(f.foodNutrients));

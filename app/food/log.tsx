@@ -36,7 +36,7 @@ import {
   displayItemName,
   lookupNameForItem,
 } from '@/lib/core/services/foodChoice';
-import { communityBaseAvailable } from '@/lib/core/services/communityBase';
+import { communityBaseAvailable, searchSourcesDown } from '@/lib/core/services/communityBase';
 import { contributableFoods } from '@/lib/core/services/communityShare';
 import { getAiQuotaRemaining, getAiQuotaScope, type AiQuotaScope } from '@/lib/core/services/aiQuota';
 import {
@@ -1181,11 +1181,15 @@ export default function FoodLogScreen() {
                   {/* «появится для остальных» is a promise — with the shared
                       base OFF on the server the contribute is dropped, so the
                       copy switches to an honest one. Unknown (older server,
-                      offline stub) keeps the normal text. */}
+                      offline stub) keeps the normal text. And before either:
+                      «пока такого блюда нет» is only sayable when the sources
+                      actually answered — a dead one gets its own sentence. */}
                   {t(
-                    communityBaseAvailable() === false
-                      ? 'food.community.emptyOff'
-                      : 'food.community.empty',
+                    searchSourcesDown()
+                      ? 'food.community.unavailable'
+                      : communityBaseAvailable() === false
+                        ? 'food.community.emptyOff'
+                        : 'food.community.empty',
                   )}
                 </Text>
               ) : null}

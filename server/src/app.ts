@@ -401,6 +401,10 @@ export function createApp(
         metrics.recordStage('estimator', Date.now() - t0);
       }
     },
+    // An unreachable source is a metric, not a shrug: /metrics.source_outages is
+    // how a throttled Open Food Facts shows up as a number instead of quietly
+    // downgrading branded lookups to generic rows.
+    (source) => metrics.recordSourceUnavailable(source),
   ),
   opts: CreateAppOptions = {},
 ): express.Express {
@@ -960,19 +964,25 @@ export function createApp(
     // quota (free 30/day vs the 300/day per-IP text cap). Out of budget → the
     // DB candidates still return; only the card is withheld.
     const wantAi = body.ai === true && aiQuota.tryConsume(req, res);
-    const [candidates, aiCard] = await Promise.all([
-      resolver.search(query, region).catch(() => []),
+    const [found, aiCard] = await Promise.all([
+      resolver.search(query, region).catch(() => ({ candidates: [], sourcesDown: true })),
       wantAi ? aiSearchCard(query, region).catch(() => null) : Promise.resolve(null),
     ]);
     // Localize the English DB candidate labels to Russian (RU, behind the flag).
     // The AI card's name is already Russian (from the estimate), so it's appended
     // after localization untouched.
-    const localized = await localizeAlternatives(candidates, region);
+    const localized = await localizeAlternatives(found.candidates, region);
     // Honesty marker for the client: is the SHARED base actually on? With it
     // off, «впишите — появится для остальных» is a false promise (contribute
     // drops the row), so the client swaps that empty-state copy for an honest one.
     res.setHeader('X-Community-Base', COMMUNITY_FOODS_PATH ? '1' : '0');
-    res.json({ candidates: aiCard ? [...localized, aiCard] : localized });
+    // Same kind of marker for a DIFFERENT lie: an empty list because a source
+    // never answered is not «этой еды нет в базе». The client says so instead of
+    // inviting the user to type the food in as if it were genuinely missing.
+    res.json({
+      candidates: aiCard ? [...localized, aiCard] : localized,
+      ...(found.sourcesDown ? { sources_down: true } : {}),
+    });
   });
 
   /**

@@ -1038,6 +1038,9 @@ export const en = {
       action: 'Search',
       searching: 'Searching…',
       empty: 'Nothing found',
+      // A source never answered: «nothing found» would be a claim about a food
+      // we never actually got to look up.
+      unavailable: 'The database didn’t answer — couldn’t check. Try again.',
     },
     dbUnavailable: 'The database is only available in a device dev build.',
     // The shared base: the dishes no table carries, filled by the people eating them.
@@ -1053,6 +1056,9 @@ export const en = {
       // over a dropped write would be a lie — honest replacement.
       emptyOff:
         'Not in the base yet — and the shared base isn’t open in this build. Enter the numbers yourself; they stay in your own diet list.',
+      // Same principle as emptyOff: never say «not there» about a food a dead
+      // source was never asked about.
+      unavailable: 'The database didn’t answer — couldn’t check. Try again, or enter the numbers yourself.',
       votes: 'entries: {{n}}',
       hint: 'Search by name: the reference tables first, then the shared base — the home-made and local dishes people entered themselves. Every row says where its numbers came from; “from the shared base” is the middle of what others confirmed, not a measurement.',
       offline: 'The shared base works when food recognition is on.',

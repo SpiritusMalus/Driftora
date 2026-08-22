@@ -6,6 +6,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card } from '@/components/ui/Card';
 import { TextField } from '@/components/ui/TextField';
 import { ApproxBadge, NutrientDetail } from '@/components/food/nutrientViews';
+import { searchSourcesDown } from '@/lib/core/services/communityBase';
 import { normalizeChoiceName } from '@/lib/core/services/foodChoice';
 import type { NutritionAlternative, NutritionItem } from '@/lib/core/services/foodParser';
 import { pieceGramsFor } from '@/lib/core/services/pieceUnits';
@@ -298,7 +299,9 @@ export function ItemCard({
             </View>
             {searchResults != null && searchResults.length === 0 && !searching ? (
               <Text style={[styles.altMacros, { color: theme.subtle }, theme.font.body]}>
-                {t('food.manualSearch.empty')}
+                {/* Пусто потому, что не нашли, или потому, что база не ответила?
+                    Второе — не повод утверждать, что такой еды нет. */}
+                {t(searchSourcesDown() ? 'food.manualSearch.unavailable' : 'food.manualSearch.empty')}
               </Text>
             ) : null}
             {(searchResults ?? []).map((alt, j) => (

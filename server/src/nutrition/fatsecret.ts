@@ -1,6 +1,6 @@
 import { TIMEOUT_MS } from '../httpTimeout.js';
 import type { Minerals, Per100, Region } from '../types.js';
-import type { NutritionProvider, ProviderResult } from './provider.js';
+import { ProviderUnavailable, type NutritionProvider, type ProviderResult } from './provider.js';
 import { rankByName, scoreToConfidence } from './scoring.js';
 
 const TOKEN_URL = 'https://oauth.fatsecret.com/connect/token';
@@ -188,17 +188,17 @@ export class FatSecretProvider implements NutritionProvider {
         headers: { Authorization: `Bearer ${token}` },
         signal: AbortSignal.timeout(TIMEOUT_MS.fatsecret),
       });
-    } catch {
-      return [];
+    } catch (err) {
+      throw new ProviderUnavailable(this.name, err); // unreachable ≠ no such food
     }
     if (res.status === 401) {
       // The cached token was revoked or expired early — drop it so the NEXT
       // call mints a fresh one instead of the provider staying silently dead
       // for up to a day on the stale cache.
       this.token = null;
-      return [];
+      throw new ProviderUnavailable(this.name, 401);
     }
-    if (!res.ok) return [];
+    if (!res.ok) throw new ProviderUnavailable(this.name, res.status);
 
     const data = await res.json().catch(() => null);
     const ranked = rankByName(
