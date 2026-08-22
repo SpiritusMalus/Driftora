@@ -739,7 +739,7 @@ function MicroDay({
               return (
                 <View key={group} style={styles.microGroup}>
                   <Text style={[styles.microGroupHeading, { color: theme.subtle }, theme.font.bodySemiBold]}>
-                    {t(`weight.micros.groups.${group}`)}
+                    {t(`micros.groups.${group}`)}
                   </Text>
                   {rows.map(({ row, intake, donor }) => {
                     const pct = row.value > 0 ? Math.round((intake / row.value) * 100) : 0;
@@ -747,10 +747,10 @@ function MicroDay({
                       <View key={row.key} style={styles.microRow}>
                         <View style={styles.microRowHead}>
                           <Text style={[styles.microName, { color: theme.text }, theme.font.body]}>
-                            {t(`weight.micros.name.${row.key}`)}
+                            {t(`micros.name.${row.key}`)}
                           </Text>
                           <Text style={[styles.microVal, { color: theme.subtle }, theme.font.body]}>
-                            {fmtIntake(row, intake)} {t(`weight.micros.unit.${row.unit}`)} ·{' '}
+                            {fmtIntake(row, intake)} {t(`micros.unit.${row.unit}`)} ·{' '}
                             {t('food.micros.ofNorm', { pct })}
                           </Text>
                         </View>
@@ -793,6 +793,11 @@ function MicroDay({
               {t('food.micros.coverageNote')}
             </Text>
             <Text style={[styles.microNote, { color: theme.subtle }, theme.font.body]}>{t('food.micros.normsHint')}</Text>
+            {/* Where the norms come from and who they are for. This honesty pair
+                used to sit under the duplicate norms table on «Весе» (retired
+                2026-08-22) — it belongs with the numbers it qualifies. */}
+            <Text style={[styles.microNote, { color: theme.subtle }, theme.font.body]}>{t('micros.source')}</Text>
+            <Text style={[styles.microNote, { color: theme.subtle }, theme.font.body]}>{t('micros.disclaimer')}</Text>
           </View>
         )
       ) : null}

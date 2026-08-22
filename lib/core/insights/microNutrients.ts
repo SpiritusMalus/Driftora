@@ -18,7 +18,7 @@ export type MicroGroup = 'vitamin' | 'mineral';
 export type MicroUnit = 'mg' | 'mcg';
 
 export interface MicroNorm {
-  /// Stable i18n key (weight.micros.name.<key>) and React list key.
+  /// Stable i18n key (micros.name.<key>) and React list key.
   key: string;
   group: MicroGroup;
   unit: MicroUnit;

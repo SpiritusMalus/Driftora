@@ -96,7 +96,7 @@ export function MicroScales({
             return (
               <View key={group} style={styles.microGroup}>
                 <Text style={[styles.microGroupHeading, { color: theme.subtle }, theme.font.bodySemiBold]}>
-                  {t(`weight.micros.groups.${group}`)}
+                  {t(`micros.groups.${group}`)}
                 </Text>
                 {rows.map(({ row, intake }) => {
                   const pct = row.value > 0 ? Math.round((intake / row.value) * 100) : 0;
@@ -104,10 +104,10 @@ export function MicroScales({
                     <View key={row.key} style={styles.microRow}>
                       <View style={styles.microRowHead}>
                         <Text style={[styles.microName, { color: theme.text }, theme.font.body]}>
-                          {t(`weight.micros.name.${row.key}`)}
+                          {t(`micros.name.${row.key}`)}
                         </Text>
                         <Text style={[styles.microVal, { color: theme.subtle }, theme.font.body]}>
-                          {fmtMicro(row, intake)} {t(`weight.micros.unit.${row.unit}`)} ·{' '}
+                          {fmtMicro(row, intake)} {t(`micros.unit.${row.unit}`)} ·{' '}
                           {t('food.micros.ofNorm', { pct })}
                         </Text>
                       </View>

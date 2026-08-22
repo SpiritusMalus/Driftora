@@ -84,6 +84,9 @@ export default function RootLayout() {
           <Stack.Screen name="food/log" options={{ title: t('food.title') }} />
           <Stack.Screen name="food/[id]" options={{ title: t('food.entryTitle') }} />
           <Stack.Screen name="weight/index" options={{ title: t('weight.title') }} />
+          {/* Configuration half of the old weight screen: goal, tempo, КБЖУ,
+              body profile. Opened from «Вес», «Разделы» and the food day. */}
+          <Stack.Screen name="plan/index" options={{ title: t('planScreen.title') }} />
           <Stack.Screen name="body-setup" options={{ title: t('bodySetup.title') }} />
           <Stack.Screen name="activity/index" options={{ title: t('activity.title') }} />
           <Stack.Screen name="workout/index" options={{ title: t('workouts.screenTitle') }} />

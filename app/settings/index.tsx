@@ -285,8 +285,22 @@ export default function SettingsScreen() {
 
       <NumberField label={t('settings.stepsGoal')} value={stepsGoal} onChange={(v) => { setStepsGoal(v); dirty(); }} theme={theme} />
       <StepChips value={stepsGoal} onSelect={(v) => { setStepsGoal(v); dirty(); }} />
-      {/* КБЖУ targets live on the Weight screen now — next to BMI + the formula. */}
-      <Note theme={theme}>{t('settings.targetsMoved')}</Note>
+      {/* КБЖУ targets live on «План питания» (split out of the weight screen
+          2026-08-22). A ROW, not a note: settings is where people look for
+          «мои цели», and a dead sentence made them hunt. */}
+      <ListGroup
+        rows={[
+          {
+            key: 'plan',
+            icon: 'flag-outline',
+            tint: theme.primary,
+            iconBg: coralTile,
+            title: t('more.sections.plan'),
+            subtitle: t('more.subtitles.plan'),
+            onPress: () => router.push('/plan'),
+          },
+        ]}
+      />
 
       <Text style={[styles.groupLabel, { color: theme.subtle }, theme.font.body]}>{t('settings.reminders')}</Text>
       {reminders.map((time) => (
