@@ -276,3 +276,54 @@ test('POST /food/search: упавший источник → sources_down, а н
     await stop();
   }
 });
+
+test('POST /food/barcode: код с битой контрольной цифрой до базы не доходит', async () => {
+  const { base, stop } = await startApp();
+  try {
+    const res = await post(base, '/food/barcode', { code: '5449000000997', region: 'RU' });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { item: unknown; reason?: string };
+    assert.equal(body.item, null);
+    assert.equal(body.reason, 'invalid_code');
+  } finally {
+    await stop();
+  }
+});
+
+test('POST /food/barcode: валидный код ищется в базе и НЕ тратит вызов модели', async () => {
+  let llmCalls = 0;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input.toString();
+    if (url.includes('127.0.0.1')) return realFetch(input as never, init);
+    if (url.includes('openrouter.ai')) {
+      llmCalls += 1;
+      throw new Error('модель не должна вызываться на пути штрихкода');
+    }
+    if (url.includes('openfoodfacts.org')) {
+      return json({
+        status: 1,
+        product: {
+          nutriments: {
+            'energy-kcal_100g': 42,
+            proteins_100g: 0,
+            fat_100g: 0,
+            carbohydrates_100g: 10.6,
+          },
+        },
+      });
+    }
+    throw new Error(`unexpected fetch in test: ${url}`);
+  }) as typeof fetch;
+
+  const { base, stop } = await startApp();
+  try {
+    const res = await post(base, '/food/barcode', { code: '5449000000996', region: 'RU' });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { item: { per100: { kcal: number }; grams: number } | null };
+    assert.equal(body.item?.per100.kcal, 42);
+    assert.equal(body.item?.grams, 100, 'вес не выдумываем — отправная точка, её ставит человек');
+    assert.equal(llmCalls, 0, 'путь штрихкода обязан обходиться без модели');
+  } finally {
+    await stop();
+  }
+});

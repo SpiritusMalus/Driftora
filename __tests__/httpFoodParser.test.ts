@@ -51,6 +51,10 @@ class SpyFallback implements FoodParser {
     this.searchCalls += 1;
     return [];
   }
+
+  async lookupBarcode() {
+    return null;
+  }
   contributeCalls = 0;
   async contributeFood() {
     this.contributeCalls += 1;

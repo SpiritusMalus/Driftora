@@ -112,6 +112,12 @@ export class StubFoodParser implements FoodParser {
     return [];
   }
 
+  /// Базы продуктов на устройстве нет, поэтому по коду ответить нечем — и это
+  /// честный «не знаю», а не «такого продукта не существует».
+  async lookupBarcode(_code: string, _region: Region): Promise<NutritionItem | null> {
+    return null;
+  }
+
   /// Nothing leaves an offline device. This is also the parser the app holds
   /// whenever AI consent is absent, which makes the no-op a GUARANTEE and not
   /// just a fallback: without consent there is no path from here to the shared

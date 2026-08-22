@@ -11,6 +11,7 @@ import { ApproxBadge, MicroScales, NutrientDetail } from '@/components/food/nutr
 import { Card } from '@/components/ui/Card';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
+import { BarcodeScanner } from '@/components/food/BarcodeScanner';
 import { WaitOverlay } from '@/components/ui/wait/WaitOverlay';
 import { TextField } from '@/components/ui/TextField';
 import { Waveform } from '@/components/ui/Waveform';
@@ -256,7 +257,13 @@ export default function FoodLogScreen() {
   // Which capture method the segmented control shows. The text field stays
   // visible in every mode — it's the shared surface where voice/photo echo what
   // they understood — so this only swaps the secondary control row (mic/photo).
-  const [inputMode, setInputMode] = useState<'text' | 'voice' | 'photo'>('text');
+  const [inputMode, setInputMode] = useState<'text' | 'voice' | 'photo' | 'barcode'>('text');
+  /// Идёт поиск по считанному коду. Отдельно от `parsing`: модель не зовётся,
+  /// экран не затемняется — ожидание тут миллисекундное, а камера должна
+  /// оставаться видимой, чтобы человек не убирал телефон от упаковки.
+  const [barcodeBusy, setBarcodeBusy] = useState(false);
+  /// Честный итог последнего кода: пусто — подсказка, иначе объяснение промаха.
+  const [barcodeStatus, setBarcodeStatus] = useState<string | null>(null);
   // The `?voice=<token>` value we've already acted on. A fresh token (each Home
   // mic tap sends a unique one) re-triggers voice; probes resolving mid-flight
   // don't re-fire the same token. Replaces a plain boolean that couldn't tell a
@@ -897,6 +904,37 @@ export default function FoodLogScreen() {
     setBaseOpen(false);
   }
 
+  /**
+   * Считан штрихкод. Это единственный путь добавления еды, который НЕ зовёт
+   * модель: код опознаёт товар точно, поэтому сервер просто ищет его в базе и
+   * отвечает за миллисекунды, не списывая разбор из квоты.
+   *
+   * Промах объясняем ЧЕСТНО и по-разному: кода нет в базе — предлагаем снять
+   * состав с упаковки (фото этикетки уже умеет давать точные числа); база не
+   * ответила — это не «такого продукта нет», и повтор имеет смысл.
+   */
+  async function onBarcode(code: string) {
+    if (barcodeBusy) return;
+    setBarcodeBusy(true);
+    setBarcodeStatus(null);
+    try {
+      const item = await getFoodParser(consentCurrent()).lookupBarcode(code, region);
+      if (!item) {
+        setBarcodeStatus(t(searchSourcesDown() ? 'food.barcode.unavailable' : 'food.barcode.missing'));
+        return;
+      }
+      setSource('text');
+      setParseIssue(null);
+      setDraft((prev) => recomputeDraft(region, [...(prev?.items ?? []), item]));
+      // Найденное блюдо уходит вниз, в карточки — там его вес и правят.
+      setBarcodeStatus(t('food.barcode.added', { name: item.name_ru }));
+    } catch {
+      setBarcodeStatus(t('food.barcode.unavailable'));
+    } finally {
+      setBarcodeBusy(false);
+    }
+  }
+
   function onItemReplace(index: number, replacement: NutritionAlternative) {
     setDraft((prev) => (prev ? withItemReplacement(prev, index, replacement) : prev));
   }
@@ -954,8 +992,10 @@ export default function FoodLogScreen() {
     });
   }
 
-  const visibleModes = (['text', 'voice', 'photo'] as const).filter(
-    (m) => m === 'text' || (m === 'voice' ? voiceMode : photoAvailable),
+  // Сканер показываем там же, где и фото: он тоже про камеру и тоже бесполезен
+  // без онлайн-парсера (база продуктов живёт на сервере).
+  const visibleModes = (['text', 'voice', 'photo', 'barcode'] as const).filter((m) =>
+    m === 'text' ? true : m === 'voice' ? voiceMode : m === 'photo' ? photoAvailable : AI_CONFIGURED,
   );
 
   // One «Быстро» lane instead of three stacked headers («Как вчера»/«Избранное»/
@@ -1371,6 +1411,12 @@ export default function FoodLogScreen() {
       ) : null}
       {inputMode === 'photo' && photoError ? (
         <Text style={[styles.voiceError, { color: theme.subtle }, theme.font.body]}>{photoError}</Text>
+      ) : null}
+      {/* ШТРИХКОД: своя съёмка — камера смотрит на упаковку, рамка ждёт код
+          внутри, кадры не покидают телефон (наружу уходят только 13 цифр).
+          Ответ приходит за миллисекунды и не тратит разбор из квоты. */}
+      {inputMode === 'barcode' ? (
+        <BarcodeScanner onCode={(code) => void onBarcode(code)} busy={barcodeBusy} status={barcodeStatus ?? undefined} />
       ) : null}
       {/* A photo parse runs up to ~25 s — the WaitOverlay at the end of this
           render shows a random signal-room scene over the dimmed screen. */}

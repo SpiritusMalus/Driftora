@@ -200,6 +200,11 @@ export interface FoodParser {
   /// candidates the user can swap an item to. Online it queries the backend;
   /// offline it returns an empty list (no on-device nutrition DB).
   searchFoods(query: string, region: Region): Promise<NutritionAlternative[]>;
+  /// ШТРИХКОД → продукт. Единственный разбор, который НЕ зовёт модель: код
+  /// опознаёт товар точно, поэтому это поиск по числу, а не распознавание.
+  /// `null` — честное «такого кода в базе нет» (не ошибка): экран предложит
+  /// снять состав с упаковки. Офлайн тоже `null` — на устройстве базы нет.
+  lookupBarcode(code: string, region: Region): Promise<NutritionItem | null>;
   /// Add ONE confirmed food to the SHARED base (opt-in, see `communityShare`).
   /// Sends the name and the per-100g and nothing else — no meal text, no weight,
   /// no time, no install id. Fire-and-forget and total: a refusal, a timeout or

@@ -962,6 +962,18 @@ export const en = {
       text: 'Text',
       voice: 'Voice',
       photo: 'Photo',
+      barcode: 'Barcode',
+    },
+    // Barcode scanner: it films the package, not the plate. Frames never leave
+    // the phone — the device decodes locally and only the digits are sent.
+    barcode: {
+      hint: 'Point the frame at the barcode — it scans itself. No photo is sent anywhere.',
+      permission: 'Scanning a barcode needs camera access. No photos are sent anywhere — the phone decodes the code itself.',
+      allow: 'Allow camera',
+      torch: 'Torch',
+      added: '{{name}} — added below, set the weight',
+      missing: 'That code isn’t in the database. Photograph the nutrition panel — we’ll take the numbers from it.',
+      unavailable: 'The database didn’t answer — couldn’t check the code. Try again.',
     },
     // One quick-pick lane instead of three headers (yesterday/favorites/recent).
     quickPick: 'Quick',

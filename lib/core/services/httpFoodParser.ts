@@ -196,6 +196,11 @@ function deriveSearchEndpoint(endpoint: string): string {
   return /\/food\/parse$/.test(endpoint) ? endpoint.replace(/\/food\/parse$/, '/food/search') : `${endpoint}-search`;
 }
 
+/** `…/food/parse` → `…/food/barcode` (та же схема, что и у поиска). */
+function deriveBarcodeEndpoint(endpoint: string): string {
+  return /\/food\/parse$/.test(endpoint) ? endpoint.replace(/\/food\/parse$/, '/food/barcode') : `${endpoint}-barcode`;
+}
+
 /** Derive the shared-base endpoint from the text one (/food/parse → /food/contribute). */
 function deriveContributeEndpoint(endpoint: string): string {
   return /\/food\/parse$/.test(endpoint)
@@ -222,6 +227,7 @@ export class HttpFoodParser implements FoodParser {
   private readonly photoEndpoint: string;
   private readonly audioEndpoint: string;
   private readonly searchEndpoint: string;
+  private readonly barcodeEndpoint: string;
   private readonly contributeEndpoint: string;
   /** Extra headers on every request — `Authorization` when a token is set. */
   private readonly authHeaders: Record<string, string>;
@@ -239,6 +245,7 @@ export class HttpFoodParser implements FoodParser {
     this.photoEndpoint = opts.photoEndpoint ?? deriveEndpoint(endpoint, 'photo');
     this.audioEndpoint = opts.audioEndpoint ?? deriveEndpoint(endpoint, 'audio');
     this.searchEndpoint = opts.searchEndpoint ?? deriveSearchEndpoint(endpoint);
+    this.barcodeEndpoint = deriveBarcodeEndpoint(endpoint);
     this.contributeEndpoint = opts.contributeEndpoint ?? deriveContributeEndpoint(endpoint);
     this.authHeaders = opts.token ? { Authorization: `Bearer ${opts.token}` } : {};
     this.installId = opts.installId;
@@ -294,6 +301,42 @@ export class HttpFoodParser implements FoodParser {
       // returns says nothing about whether the food exists.
       setSearchSourcesDown(true);
       return this.fallback.searchFoods(query, region);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * ШТРИХКОД → продукт. Обычный разбор стоит вызова модели и секунд ожидания,
+   * а код — это точный ключ: сервер ищет его двоичным поиском по локальному
+   * индексу и отвечает за миллисекунды, НЕ списывая разбор из квоты.
+   *
+   * `null` возвращается в трёх честно разных случаях, которые экран объясняет
+   * по-своему: кода нет в базе, база не ответила, устройство офлайн. Ни один из
+   * них не значит «такого продукта не существует».
+   */
+  async lookupBarcode(code: string, region: Region): Promise<NutritionItem | null> {
+    const trimmed = code.trim();
+    if (trimmed.length === 0) return null;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const res = await fetch(this.barcodeEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...this.headers() },
+        body: JSON.stringify({ code: trimmed, region }),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        setSearchSourcesDown(true);
+        return null;
+      }
+      const data = (await res.json()) as { item?: unknown; sources_down?: unknown };
+      setSearchSourcesDown(data.sources_down === true);
+      return isItem(data.item) ? data.item : null;
+    } catch {
+      setSearchSourcesDown(true);
+      return null;
     } finally {
       clearTimeout(timer);
     }

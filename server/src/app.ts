@@ -15,6 +15,7 @@ import {
   VisionUnavailableError,
 } from './llm.js';
 import { metrics } from './metrics.js';
+import { validEan } from './nutrition/barcodeIndex.js';
 import { Resolver } from './nutrition/resolver.js';
 import {
   createCommunityFoods,
@@ -47,6 +48,7 @@ import { buildLimiters, type RateLimits, resolveLimits } from './rateLimit.js';
 import {
   coercePer100,
   emptyMealDraft,
+  scaleToGrams,
   type IdentifiedItem,
   type LabelReading,
   type MealDraft,
@@ -982,6 +984,63 @@ export function createApp(
     res.json({
       candidates: aiCard ? [...localized, aiCard] : localized,
       ...(found.sourcesDown ? { sources_down: true } : {}),
+    });
+  });
+
+  /**
+   * ШТРИХКОД → ПРОДУКТ. Единственный путь разбора, который НЕ ЗОВЁТ МОДЕЛЬ.
+   *
+   * Код опознаёт товар точно — ни языка, ни падежей, ни опечаток, и он сам себя
+   * проверяет контрольной цифрой. Поэтому здесь нет ни распознавания, ни
+   * ранжирования: двоичный поиск по локальному индексу (~20 мкс) и, если там
+   * пусто, живой Open Food Facts. Ответ приходит за миллисекунды вместо
+   * секунд — и, что важнее, НЕ ТРАТИТ разбор из пользовательской квоты: платить
+   * за то, что решается поиском по числу, было бы нечестно.
+   *
+   * Пустой ответ (`item: null`) — это честное «такого кода у нас нет», а не
+   * ошибка: клиент предлагает снять состав с упаковки.
+   */
+  app.post('/food/barcode', requireToken, limiters.textDaily, async (req: Request, res: Response) => {
+    const body = (req.body ?? {}) as { code?: unknown; region?: unknown };
+    const code = typeof body.code === 'string' ? body.code.trim() : '';
+    const region = regionOf(body);
+    if (code.length === 0) {
+      fail(res, 400, 'empty_input', 'Field "code" is required and cannot be empty.');
+      return;
+    }
+    // Контрольная цифра — первый фильтр: искажённое считывание не должно даже
+    // доходить до баз, иначе оно вернёт чужой товар с похожим кодом.
+    if (!validEan(code)) {
+      res.json({ item: null, reason: 'invalid_code' });
+      return;
+    }
+    const startedAt = Date.now();
+    // Резолвер уже умеет штрихкоды: и локальный индекс, и живой OFF ловят их по
+    // самому виду строки, поэтому отдельного пути к источникам не нужно.
+    const found = await resolver
+      .search(code, region)
+      .catch(() => ({ candidates: [], sourcesDown: true }));
+    metrics.recordStage('barcode', Date.now() - startedAt);
+    const top = found.candidates[0];
+    if (!top) {
+      res.json({ item: null, ...(found.sourcesDown ? { sources_down: true } : {}) });
+      return;
+    }
+    // Вес не угадываем: сколько съедено — знает только человек, и он поставит
+    // это на карточке. 100 г — отправная точка, честно помеченная как оценка.
+    const grams = 100;
+    res.json({
+      item: {
+        name_ru: top.name,
+        name_en: top.name,
+        grams,
+        grams_source: 'estimated',
+        confidence: 0.9,
+        per100: top.per100,
+        scaled: scaleToGrams(top.per100, grams),
+        approximate: true,
+        matched_name: top.name,
+      },
     });
   });
 
