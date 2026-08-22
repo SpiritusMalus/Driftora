@@ -525,13 +525,19 @@ export default function HomeScreen() {
           style={styles.pageDots}
         />
 
+        {/* The streak is the ONE number Home shows that lives on another
+            screen — «Итоги недели» is where it is explained and can be reset.
+            It was plain text until 2026-08-22, i.e. a dead end pointing at a
+            screen reachable only through «Разделы». */}
         {streakWeeks > 0 ? (
-          <Text style={[styles.northStar, { color: theme.accent }, theme.font.bodyMedium]}>
-            {t('home.northStar', {
-              weeks: streakWeeks,
-              weeksWord: t(pluralKey('week.unit', streakWeeks)),
-            })}
-          </Text>
+          <Pressable onPress={() => router.push('/review')} hitSlop={8} accessibilityRole="link">
+            <Text style={[styles.northStar, { color: theme.accent }, theme.font.bodyMedium]}>
+              {t('home.northStar', {
+                weeks: streakWeeks,
+                weeksWord: t(pluralKey('week.unit', streakWeeks)),
+              })}
+            </Text>
+          </Pressable>
         ) : null}
       </ScrollView>
 

@@ -1,16 +1,22 @@
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
+import { StyleSheet, Text } from 'react-native';
 
 import { ListGroup, type RowSpec } from '@/components/ui/ListGroup';
 import { Screen } from '@/components/ui/Screen';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { useTheme } from '@/lib/theme/theme';
 
-/// "More" — the app's ONLY full navigation surface (there is no tab bar; Home
-/// and Mood reach it through the header «Разделы ›» link). So it earns the same
-/// grouped structure as Settings rather than a flat wall of links: three
-/// labelled sections — everyday logging, look-back, and meta — mirroring the
-/// order the rows already lived in. No new logic, just navigation.
+/// "Разделы" — the app's ONLY full navigation surface (there is no tab bar; Home
+/// and Mood reach it through the header «Разделы ›» link).
+///
+/// ONE rule since 2026-08-22 («не нужно ли хранить только то, чего нет на
+/// главном экране»): this list carries what Home does NOT. Еда, шаги,
+/// тренировки, вес and настроение each own a Home widget with two tap targets,
+/// so a duplicate row here only pushed the truly hidden screens (СМЭР, дни,
+/// победы, итоги, план) below the fold. The closing note says out loud where
+/// the everyday things live, so the shorter list never reads as "features
+/// disappeared".
 export default function MoreScreen() {
   const { t } = useTranslation();
   const theme = useTheme();
@@ -20,57 +26,29 @@ export default function MoreScreen() {
   const amberTile = theme.accentSoft;
   const neutralTile = theme.scheme === 'light' ? '#EFE6E0' : '#2C2622';
 
-  // Section 1 — the things you log/track every day.
-  const daily: RowSpec[] = [
+  // Section 1 — the two things you WRITE that Home has no room for. СМЭР used
+  // to be reachable only from inside the mood screen (swipe + one more tap),
+  // which is deep for a record people open mid-anxiety.
+  const diaries: RowSpec[] = [
     {
-      key: 'food',
-      icon: 'restaurant-outline',
+      key: 'diary',
+      icon: 'create-outline',
       tint: theme.primary,
       iconBg: coralTile,
-      title: t('more.sections.food'),
-      subtitle: t('more.subtitles.food'),
-      onPress: () => router.push('/food'),
+      title: t('more.sections.diary'),
+      subtitle: t('more.subtitles.diary'),
+      onPress: () => router.push('/diary'),
     },
     {
-      key: 'steps',
-      icon: 'walk-outline',
+      // The day history — previously behind the «Сегодня ⌄» header title only,
+      // i.e. findable by accident. It is the archive of everything logged.
+      key: 'days',
+      icon: 'calendar-outline',
       tint: theme.accent,
       iconBg: amberTile,
-      title: t('more.sections.steps'),
-      subtitle: t('more.subtitles.steps'),
-      onPress: () => router.push('/activity'),
-    },
-    {
-      // Workouts on their OWN screen now («из шагов убрать раздел тренировки»,
-      // device feedback 2026-07-12) — no longer a deep-link into the steps screen.
-      key: 'workouts',
-      icon: 'barbell-outline',
-      tint: theme.accent,
-      iconBg: amberTile,
-      title: t('more.sections.workouts'),
-      subtitle: t('more.subtitles.workouts'),
-      onPress: () => router.push('/workout'),
-    },
-    {
-      key: 'weight',
-      icon: 'scale-outline',
-      tint: theme.accent,
-      iconBg: amberTile,
-      title: t('more.sections.weight'),
-      subtitle: t('more.subtitles.weight'),
-      onPress: () => router.push('/weight'),
-    },
-    {
-      // The mind side's PLAIN tappable path — on Home it's a left swipe
-      // (2026-07-12), and a gesture alone must never be the only door
-      // (screen readers, forgotten gestures).
-      key: 'mind',
-      icon: 'happy-outline',
-      tint: theme.primary,
-      iconBg: coralTile,
-      title: t('more.sections.mind'),
-      subtitle: t('more.subtitles.mind'),
-      onPress: () => router.push('/mood'),
+      title: t('more.sections.days'),
+      subtitle: t('more.subtitles.days'),
+      onPress: () => router.push('/history'),
     },
   ];
 
@@ -96,8 +74,19 @@ export default function MoreScreen() {
     },
   ];
 
-  // Section 3 — help + configuration.
+  // Section 3 — configuration + help: touched once a month, never daily.
   const app: RowSpec[] = [
+    {
+      // Split out of «Веса» (2026-08-22) — goal, tempo, КБЖУ and the body
+      // profile are configuration, not a weekly ritual.
+      key: 'plan',
+      icon: 'flag-outline',
+      tint: theme.primary,
+      iconBg: coralTile,
+      title: t('more.sections.plan'),
+      subtitle: t('more.subtitles.plan'),
+      onPress: () => router.push('/plan'),
+    },
     {
       key: 'how',
       icon: 'help-circle-outline',
@@ -132,12 +121,20 @@ export default function MoreScreen() {
 
   return (
     <Screen>
-      <SectionHeader>{t('more.groups.daily')}</SectionHeader>
-      <ListGroup rows={daily} />
+      <SectionHeader>{t('more.groups.diaries')}</SectionHeader>
+      <ListGroup rows={diaries} />
       <SectionHeader>{t('more.groups.progress')}</SectionHeader>
       <ListGroup rows={progress} />
       <SectionHeader>{t('more.groups.app')}</SectionHeader>
       <ListGroup rows={app} />
+      {/* Plain sentence, not a caps eyebrow: it explains the list's own rule
+          («ежедневное — на главной»), so shouting it would read as a heading
+          for a group that isn't there. */}
+      <Text style={[styles.dailyNote, { color: theme.subtle }, theme.font.body]}>{t('more.dailyNote')}</Text>
     </Screen>
   );
 }
+
+const styles = StyleSheet.create({
+  dailyNote: { fontSize: 13, lineHeight: 18, marginTop: 20, marginHorizontal: 4 },
+});

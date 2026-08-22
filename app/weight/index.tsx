@@ -1,61 +1,36 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { DeviceHealthCard } from '@/components/DeviceHealthCard';
 import { Card } from '@/components/ui/Card';
-import { Chip, ChipRow } from '@/components/ui/Chip';
 import { ListGroup, type RowSpec } from '@/components/ui/ListGroup';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
+import { SectionHeader } from '@/components/ui/SectionHeader';
 import { TextField } from '@/components/ui/TextField';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
-import { macroTotalsByDay } from '@/lib/core/db/food';
 import type { WeightRow } from '@/lib/core/db/schema';
-import { ensureSettings, updateSettings, type SettingsPatch } from '@/lib/core/db/settings';
-import { dayKey, listStepsDays } from '@/lib/core/db/steps';
-import { latestDeviceBodyFat, listWeights, syncWeighIns, upsertWeight } from '@/lib/core/db/weight';
-import { todayWorkoutKcal } from '@/lib/core/db/workouts';
+import { ensureSettings } from '@/lib/core/db/settings';
+import { listWeights, syncWeighIns, upsertWeight } from '@/lib/core/db/weight';
 import { getHealthService } from '@/lib/core/services/healthProvider';
-import {
-  ADAPTIVE_WINDOW_DAYS,
-  averageEarnedKcal,
-  bmrFactorFromMeasured,
-  looksUnderLogged,
-  measuredExpenditure,
-  type EarnedDay,
-  type MeasuredExpenditure,
-} from '@/lib/core/insights/adaptiveExpenditure';
-import {
-  DEFICIT_TEMPOS,
-  GOAL_MODES,
-  bmiCategory,
-  bmiValue,
-  suggestPlan,
-  validBmrFactor,
-  type DeficitTempo,
-  type GoalMode,
-  type Sex,
-} from '@/lib/core/insights/bodyMetrics';
+import { bmiCategory, bmiValue } from '@/lib/core/insights/bodyMetrics';
 import { weightValid } from '@/lib/core/insights/bodySetup';
-import { dailyMicroNorms, type MicroRow } from '@/lib/core/insights/microNutrients';
 import { summarizeWeightTrend, type WeightPoint } from '@/lib/core/insights/weightTrend';
 import { type Theme, useTheme } from '@/lib/theme/theme';
 
+/// «Вес» — ONE object in the app-wide section order (2026-08-22, «в весе прям
+/// нагромождено всё»): hero → input → what it means → history. Everything that
+/// was configuration (the КБЖУ plan, the measured burn, body parameters, manual
+/// targets) moved to «План питания» /plan, and the vitamins reference table is
+/// gone — «Еда» already shows those norms against what was actually eaten.
+///
 /// The weekly ritual this screen is built around: open → type one number →
 /// immediately SEE what it means. Logging stays low-pressure (optional, echoed
-/// where typed), the nutrition plan recomputes from the newest weight, and
-/// everything secondary — BMI, body parameters, history, manual targets — is
-/// folded into one-line sections so the ritual never scrolls through a form.
-///
-/// UX rule for this screen (user feedback 2026-07-03 «не понятно что нажимать»,
-/// then 2026-07-09 «бесит автосейв на каждый ввод»): the PLAN LEVERS (goal /
-/// tempo / goal weight / manual targets) still persist the moment they're
-/// edited with a visible «✓» — instant feedback is their point. The BODY FACTS
-/// (height / sex / birth year / body fat) are read-only here and edited in the
-/// body-setup wizard, which saves everything once at «Рассчитать».
+/// where typed); the plan row below carries the payoff — the day target the new
+/// weight feeds — without dragging its whole form onto this screen.
 export default function WeightScreen() {
   const { t } = useTranslation();
   const theme = useTheme();
@@ -68,54 +43,19 @@ export default function WeightScreen() {
   // «120.0 кг — записано ✓» under the save button; cleared when typing again.
   const [weightAck, setWeightAck] = useState<string | null>(null);
   // Extended device import: null = settings not loaded yet (card hidden), else
-  // the healthImportExtended flag. The latest scale-measured body-fat row backs
-  // the «Использовать в расчёте» line in the Body section.
+  // the healthImportExtended flag.
   const [extendedOn, setExtendedOn] = useState<boolean | null>(null);
-  const [deviceFat, setDeviceFat] = useState<WeightRow | null>(null);
-  // The device-free «real burn» measured from the weight trend + food log — the
-  // honest reality-check next to the formula's estimate. Null until there's
-  // enough consistent data (see measuredExpenditure's gates).
-  const [expenditure, setExpenditure] = useState<MeasuredExpenditure | null>(null);
-
-  // Body profile + КБЖУ targets (single app_settings row). Body facts are
-  // display-only here (edited in the wizard); plan levers persist on edit.
-  const [heightText, setHeightText] = useState('');
-  const [sex, setSex] = useState<'' | Sex>('');
-  const [birthYearText, setBirthYearText] = useState('');
-  const [goalMode, setGoalMode] = useState<GoalMode>('maintain');
-  const [deficitTempo, setDeficitTempo] = useState<DeficitTempo>('standard');
-  const [goalWeightText, setGoalWeightText] = useState('');
-  const [bodyFatText, setBodyFatText] = useState('');
-  // Waist is entered in the body-setup wizard, not here — the weight screen only
-  // needs the stored value so its plan card's BMR matches Home / the food day.
-  const [waistCm, setWaistCm] = useState(0);
-  // Adaptive BMR factor (0 = not applied). Set from the «real burn» card below.
-  const [bmrFactor, setBmrFactor] = useState(0);
-  const [kcal, setKcal] = useState('2000');
-  const [protein, setProtein] = useState('120');
-  const [fat, setFat] = useState('70');
-  const [carb, setCarb] = useState('200');
-  // Transient «Сохранено ✓» after any auto-save, shown WHERE the edit happened.
-  const [ack, setAck] = useState<{ where: 'plan' | 'manual'; text: string } | null>(null);
-  const ackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Collapsed-by-default sections. When the profile is incomplete the plan card
-  // itself carries the «Настроить тело» CTA, so nothing here needs to auto-open.
+  // Read-only echoes of the plan the /plan screen owns: the height BMI needs and
+  // the targets currently driving «Еду».
+  const [heightCm, setHeightCm] = useState(0);
+  const [targets, setTargets] = useState<{
+    kcal: number;
+    prot: number;
+    fat: number;
+    carb: number;
+    setAt: number | null;
+  } | null>(null);
   const [openBmi, setOpenBmi] = useState(false);
-  const [openBody, setOpenBody] = useState(false);
-  const [openHistory, setOpenHistory] = useState(false);
-  const [openManual, setOpenManual] = useState(false);
-  const [openMicros, setOpenMicros] = useState(false);
-  // The plan card's explanatory grey text folds away by default (user feedback
-  // 2026-07-07: «текста очень много серым»); numbers + one action stay visible.
-  const [openPlanWhy, setOpenPlanWhy] = useState(false);
-
-  useEffect(
-    () => () => {
-      if (ackTimer.current) clearTimeout(ackTimer.current);
-    },
-    [],
-  );
 
   useFocusEffect(
     useCallback(() => {
@@ -128,104 +68,26 @@ export default function WeightScreen() {
         const s = await ensureSettings(db);
         if (!active) return;
         setExtendedOn(s.healthImportExtended);
+        setHeightCm(s.heightCm);
+        setTargets({
+          kcal: s.targetKcal,
+          prot: s.targetProteinG,
+          fat: s.targetFatG,
+          carb: s.targetCarbG,
+          setAt: s.targetsSetAt,
+        });
         if (s.healthImportExtended) {
           await syncWeighIns(db, getHealthService(), 1).catch(() => {});
         }
         const list = await listWeights(db, 30);
         if (!active) return;
         setItems(list);
-        setDeviceFat(await latestDeviceBodyFat(db));
-        if (!active) return;
-        // Adaptive «real burn»: intake (last ADAPTIVE_WINDOW_DAYS) vs the weight
-        // trend. Reads the same weigh-ins the list already loaded, plus per-day
-        // food totals. Null-safe — measuredExpenditure hides itself until the
-        // data is dense enough to be honest.
-        const totalsByDay = await macroTotalsByDay(db, ADAPTIVE_WINDOW_DAYS);
-        if (!active) return;
-        const intake = [...totalsByDay].map(([date, m]) => ({ date, kcal: m.kcal }));
-        const weightPts = list.map((w) => ({ date: w.date, kg: w.weightKg }));
-        setExpenditure(measuredExpenditure(intake, weightPts));
-        // Settings re-read on EVERY focus: body facts are edited in the
-        // body-setup wizard now, so returning from it must show the fresh save.
-        // Inline levers persist on end-editing, so nothing unsaved is clobbered.
-        setHeightText(s.heightCm > 0 ? String(s.heightCm) : '');
-        setSex(s.sex);
-        setBirthYearText(s.birthYear > 0 ? String(s.birthYear) : '');
-        setGoalMode(s.goalMode);
-        setDeficitTempo(s.deficitTempo);
-        setGoalWeightText(s.goalWeightKg > 0 ? String(s.goalWeightKg) : '');
-        setBodyFatText(s.bodyFatPct > 0 ? String(s.bodyFatPct) : '');
-        setWaistCm(s.waistCm);
-        setBmrFactor(s.bmrFactor);
-        setKcal(String(s.targetKcal));
-        setProtein(String(s.targetProteinG));
-        setFat(String(s.targetFatG));
-        setCarb(String(s.targetCarbG));
       })();
       return () => {
         active = false;
       };
     }, [db]),
   );
-
-  /// Persist a settings patch immediately and flash the «✓» tick at `where`.
-  /// Only the plan levers and manual targets use this — body facts save in the
-  /// wizard, all at once.
-  async function persist(patch: SettingsPatch, ackText: string, where: 'plan' | 'manual') {
-    if (!db) return;
-    await updateSettings(db, patch);
-    setAck({ where, text: ackText });
-    if (ackTimer.current) clearTimeout(ackTimer.current);
-    ackTimer.current = setTimeout(() => setAck(null), 2500);
-  }
-
-  /// «Использовать мой обмен»: turn the measured expenditure into a stored BMR
-  /// factor so the budget rides the user's real energy balance, not a formula.
-  /// Only offered at 'good' confidence (dense enough data). Subtracts the window's
-  /// average earned movement so the resting base isn't double-counted with the
-  /// per-day «шаги +N». Passing 0 as bmrFactor to the profile probe gives the
-  /// UN-calibrated formula BMR to divide by.
-  async function applyMeasuredBurn() {
-    if (!db || expenditure == null || expenditure.confidence !== 'good') return;
-    const formula = suggestPlan({ ...profile, bmrFactor: 0 }, latestKg, 'maintain');
-    if (formula == null) return;
-    // Belt-and-braces: never calibrate onto a number that implies missed meals.
-    if (looksUnderLogged(expenditure.kcalPerDay, formula.bmrKcal)) return;
-    const stepsRows = await listStepsDays(db, ADAPTIVE_WINDOW_DAYS + 2);
-    const stepsByDate = new Map(stepsRows.map((r) => [r.date, r]));
-    // Walk EVERY window day, not only the ones with a steps row: a manual
-    // workout log never creates a steps row, and a user without step
-    // permission has none at all — their workouts would otherwise vanish from
-    // avgEarned and be double-counted after calibration (folded into the
-    // resting base AND still eaten back per workout day). Days with neither
-    // steps nor workouts are still skipped, so partial step history doesn't
-    // dilute the average with phantom zero days.
-    const dates: string[] = [];
-    for (let i = 0; i < ADAPTIVE_WINDOW_DAYS; i++) {
-      dates.push(dayKey(new Date(Date.now() - i * 86_400_000)));
-    }
-    const probed = await Promise.all(
-      dates.map(async (date) => {
-        const r = stepsByDate.get(date);
-        return {
-          hasSteps: r != null,
-          day: {
-            steps: Number(r?.steps ?? 0),
-            workoutSteps: Number(r?.workoutSteps ?? 0),
-            workoutKcal: await todayWorkoutKcal(db, date),
-          },
-        };
-      }),
-    );
-    const earned: EarnedDay[] = probed
-      .filter((e) => e.hasSteps || e.day.workoutKcal > 0)
-      .map((e) => e.day);
-    const avgEarned = averageEarnedKcal(earned, latestKg);
-    const factor = bmrFactorFromMeasured(expenditure.kcalPerDay, avgEarned, formula.bmrKcal);
-    if (factor == null) return;
-    await persist({ bmrFactor: factor }, t('weight.burn.appliedTick'), 'plan');
-    setBmrFactor(factor);
-  }
 
   async function onSaveWeight() {
     const kg = toNumber(text);
@@ -268,45 +130,7 @@ export default function WeightScreen() {
   const rangeIssue = text.trim().length > 0 && toNumber(text) > 0 && !valid;
 
   const latestKg = items != null && items.length > 0 ? items[0].weightKg : 0;
-  const heightCm = toNumber(heightText);
   const bmi = bmiValue(latestKg, heightCm);
-
-  // The plan is now a RESTING base (sedentary): the daily budget on «Еда» adds
-  // today's steps + workouts on top, so the manual activity multiplier no longer
-  // drives the budget (it double-counted steps). Force sedentary here so this card
-  // matches the food day's base; the activity chips are retired below.
-  const profile = {
-    sex,
-    birthYear: Math.round(toNumber(birthYearText)),
-    heightCm,
-    activityLevel: 'sedentary' as const,
-    bodyFatPct: toNumber(bodyFatText),
-    waistCm,
-    bmrFactor,
-  };
-  // Whether the adaptive measurement is currently driving the budget.
-  const burnApplied = validBmrFactor(bmrFactor);
-  // Probe with a plausible dummy weight: tells "profile incomplete" apart from
-  // "no weight logged yet", so the plan card can say exactly what's missing.
-  const profileComplete = suggestPlan(profile, 70, 'maintain') != null;
-  const goalWeightKg = toNumber(goalWeightText);
-  const plan = suggestPlan(profile, latestKg, goalMode, new Date(), goalWeightKg, deficitTempo);
-  // A measured burn UNDER the resting BMR means food went unlogged, not that the
-  // metabolism is slow — warn instead of offering to calibrate on a diary gap.
-  const burnUnderLogged =
-    expenditure != null && plan != null && looksUnderLogged(expenditure.kcalPerDay, plan.bmrKcal);
-  // ETA copy: short horizons read best in weeks, long ones in months.
-  const eta = (() => {
-    if (plan?.etaWeeks == null) return null;
-    if (plan.etaWeeks < 10) return { key: 'weight.plan.etaWeeks', n: Math.max(1, plan.etaWeeks) };
-    return { key: 'weight.plan.etaMonths', n: Math.max(1, Math.round(plan.etaWeeks / 4.345)) };
-  })();
-  const planApplied =
-    plan != null &&
-    toNumber(kcal) === plan.kcal &&
-    toNumber(protein) === plan.prot &&
-    toNumber(fat) === plan.fat &&
-    toNumber(carb) === plan.carb;
 
   const rows: RowSpec[] = (items ?? []).map((w) => ({
     key: w.date,
@@ -322,11 +146,28 @@ export default function WeightScreen() {
     ),
   }));
 
-  const bodySummary = profileComplete
-    ? [`${Math.round(heightCm)} ${t('weight.heightUnit')}`, sex ? t(`weight.formula.${sex}`) : '', birthYearText]
-        .filter(Boolean)
-        .join(' · ')
-    : t('weight.sections.body.empty');
+  // The payoff of a weigh-in, one line: what the day target IS right now. Only a
+  // DELIBERATE goal counts (targetsSetAt) — the untouched 2000/120/70/200
+  // defaults are not a plan, same rule as Home and the food day.
+  const planRow: RowSpec[] = [
+    {
+      key: 'plan',
+      icon: 'flag-outline',
+      tint: theme.primary,
+      iconBg: theme.primarySoft,
+      title: t('weight.planRow.title'),
+      subtitle:
+        targets != null && targets.setAt != null
+          ? t('weight.planRow.summary', {
+              kcal: Math.round(targets.kcal),
+              prot: Math.round(targets.prot),
+              fat: Math.round(targets.fat),
+              carb: Math.round(targets.carb),
+            })
+          : t('weight.planRow.empty'),
+      onPress: () => router.push('/plan'),
+    },
+  ];
 
   const bmiSummary =
     bmi != null
@@ -335,35 +176,11 @@ export default function WeightScreen() {
         ? t('weight.bmi.needWeightShort')
         : t('weight.bmi.needHeightShort');
 
-  const manualSummary = t('weight.sections.manual.summary', {
-    kcal: Math.round(toNumber(kcal)),
-    prot: Math.round(toNumber(protein)),
-    fat: Math.round(toNumber(fat)),
-    carb: Math.round(toNumber(carb)),
-  });
-
-  // Reference daily norms for the basic vitamins/minerals, personalized by the
-  // profile sex (both columns shown while sex is unset). A reference table, not
-  // a tracker — the food DB carries no vitamins (see microNutrients.ts).
-  const microRows = dailyMicroNorms(sex);
-  const microHasAdequate = microRows.some((r) => r.adequate);
-  const fmtNorm = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
-  const microValueText = (row: MicroRow): string => {
-    const u = t(`weight.micros.unit.${row.unit}`);
-    let s = row.sexSplit
-      ? `♂ ${fmtNorm(row.sexSplit.male)} · ♀ ${fmtNorm(row.sexSplit.female)} ${u}`
-      : `${fmtNorm(row.value)} ${u}`;
-    if (row.limit != null) s += ` · ${t('weight.micros.limit', { limit: row.limit })}`;
-    if (row.adequate) s += ' *';
-    return s;
-  };
-
   return (
     <Screen>
       {/* ── 1. HERO — the current weight is the point of the screen. The trend
              rides right under it (single weigh-ins are noise), unifying with the
-             «Шаги» hero. The typing ritual sits just below, still the primary
-             action here because there's no automatic weigh-in. ── */}
+             «Шаги» hero. ── */}
       <View style={styles.hero}>
         {latestKg > 0 ? (
           <>
@@ -385,7 +202,7 @@ export default function WeightScreen() {
         )}
       </View>
 
-      {/* The ritual: type today's weight, see it acknowledged. */}
+      {/* ── 2. The ritual: type today's weight, see it acknowledged. ── */}
       <View style={styles.inputRow}>
         <TextField
           value={text}
@@ -406,9 +223,7 @@ export default function WeightScreen() {
         style={styles.save}
       />
       {rangeIssue ? (
-        <Text style={[styles.weightAck, { color: theme.subtle }, theme.font.body]}>
-          {t('weight.rangeHint')}
-        </Text>
+        <Text style={[styles.weightAck, { color: theme.subtle }, theme.font.body]}>{t('weight.rangeHint')}</Text>
       ) : null}
       {/* Transient echo of the number just typed (with its delta), so it doesn't
           silently vanish into the history list. */}
@@ -425,7 +240,6 @@ export default function WeightScreen() {
           onConnected={async () => {
             await syncWeighIns(db, getHealthService(), 30).catch(() => {});
             setItems(await listWeights(db, 30));
-            setDeviceFat(await latestDeviceBodyFat(db));
             setExtendedOn(true);
           }}
         />
@@ -433,415 +247,13 @@ export default function WeightScreen() {
 
       {db == null ? (
         <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('weight.dbUnavailable')}</Text>
-      ) : null}
-
-      {/* ── 2. The centerpiece: a human-language КБЖУ plan that follows the
-             latest weight. One tap makes it the food-diary goal. ── */}
-      {db != null ? (
-        <Card style={styles.trendCard}>
-          <View style={styles.titleRow}>
-            <Text style={[styles.cardTitle, { color: theme.text }, theme.font.bodySemiBold]}>
-              {t('weight.plan.title')}
-            </Text>
-            {ack?.where === 'plan' ? (
-              <Text style={[styles.ackTick, { color: theme.accent }, theme.font.bodyMedium]}>{ack.text}</Text>
-            ) : null}
-          </View>
-          <ChipRow>
-            {GOAL_MODES.map((m) => (
-              <Chip
-                key={m}
-                label={t(`weight.plan.mode.${m}`)}
-                selected={goalMode === m}
-                onPress={() => {
-                  setGoalMode(m);
-                  void persist({ goalMode: m }, t('weight.targets.savedTick'), 'plan');
-                }}
-              />
-            ))}
-          </ChipRow>
-
-          {/* Pace tempo — the ONE speed lever. For lose it sizes the deficit
-              (soft −10% / standard −15…−20% / fast −25%), for gain the surplus
-              (+5% / +10% / +15%); «standard» keeps the pre-lever default. The
-              implied kg/week shows live in the intro line below, and the
-              clinical floor still caps a fast deficit. */}
-          {goalMode !== 'maintain' ? (
-            <>
-              <Text style={[styles.fieldLabel, { color: theme.subtle }, theme.font.body]}>
-                {t(goalMode === 'lose' ? 'weight.plan.tempo.label' : 'weight.plan.tempoGain.label')}
-              </Text>
-              <ChipRow>
-                {DEFICIT_TEMPOS.map((tp) => (
-                  <Chip
-                    key={tp}
-                    label={t(`weight.plan.${goalMode === 'lose' ? 'tempo' : 'tempoGain'}.${tp}`)}
-                    selected={deficitTempo === tp}
-                    onPress={() => {
-                      setDeficitTempo(tp);
-                      void persist({ deficitTempo: tp }, t('weight.targets.savedTick'), 'plan');
-                    }}
-                  />
-                ))}
-              </ChipRow>
-            </>
-          ) : null}
-
-          {/* Goal weight — the deficit's protein basis (жировой массе белок не
-              нужен) and the honest "до цели ≈ …" line. Only for lose/gain:
-              maintain has no destination. Autosaved on end-editing. */}
-          {goalMode !== 'maintain' ? (
-            <View style={styles.heightRow}>
-              <Text style={[styles.fieldLabel, { color: theme.subtle }, theme.font.body]}>
-                {t('weight.plan.goalWeight')}
-              </Text>
-              <TextField
-                value={goalWeightText}
-                onChangeText={setGoalWeightText}
-                onEndEditing={() =>
-                  void persist({ goalWeightKg: toNumber(goalWeightText) }, t('weight.targets.savedTick'), 'plan')
-                }
-                keyboardType="numeric"
-                style={styles.heightInput}
-              />
-              <Text style={[styles.unit, { color: theme.subtle }, theme.font.body]}>{t('weight.unit')}</Text>
-            </View>
-          ) : null}
-
-          {plan != null ? (
-            <>
-              <Text style={[styles.planIntro, { color: theme.text }, theme.font.body]}>
-                {t(`weight.plan.intro.${plan.mode}`, {
-                  kg: latestKg.toFixed(1),
-                  pace: plan.paceKgPerWeek.toFixed(1),
-                })}
-              </Text>
-              <Text style={[styles.planKcal, { color: theme.heroAccent }, theme.font.heading]}>
-                {t('weight.plan.kcalPerDay', { kcal: plan.kcal })}
-              </Text>
-              <View style={styles.macroRow}>
-                {(
-                  [
-                    [t('macros.protein'), plan.prot],
-                    [t('macros.fat'), plan.fat],
-                    [t('macros.carbs'), plan.carb],
-                  ] as const
-                ).map(([label, grams]) => (
-                  <View key={label} style={[styles.macroTile, { backgroundColor: theme.fill }]}>
-                    <Text style={[styles.macroLabel, { color: theme.subtle }, theme.font.body]}>{label}</Text>
-                    <Text style={[styles.macroValue, { color: theme.text }, theme.font.bodySemiBold]}>
-                      {grams} {t('units.g')}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-              {/* The plan is a RESTING base — steps + workouts add on «Еда». Say so
-                  right under the number so it never reads as the whole budget. */}
-              <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
-                {t('weight.plan.restNote')}
-              </Text>
-              {/* Birth year missing → the plan is shown as an estimate on a
-                  neutral adult age; say so plainly and point to the fix. Stays
-                  VISIBLE (not folded) so the number never looks more certain
-                  than it is. */}
-              {plan.assumedAge ? (
-                <Text style={[styles.assumedAge, { color: theme.accent }, theme.font.bodyMedium]}>
-                  {t('weight.plan.assumedAge')}
-                </Text>
-              ) : null}
-              {/* At high BMI Mifflin systematically OVERestimates (it treats
-                  metabolically-quiet fat as active). If no composition is known,
-                  point at the one-minute tape fix — visible, since the number is
-                  the least reliable exactly here. */}
-              {plan.bmrMethod === 'mifflin' && bmi != null && bmi >= 30 ? (
-                <Pressable onPress={() => router.push('/body-setup?step=waist')} hitSlop={6}>
-                  <Text style={[styles.assumedAge, { color: theme.accent }, theme.font.bodyMedium]}>
-                    {t('weight.plan.overestimateNudge')}
-                  </Text>
-                </Pressable>
-              ) : null}
-              {/* Kept visible: the motivating countdown and the safety floor. */}
-              {eta != null ? (
-                <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
-                  {t(eta.key, { goal: toNumber(goalWeightText), n: eta.n })}
-                </Text>
-              ) : null}
-              {plan.floored ? (
-                <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
-                  {t('weight.plan.floored', { kcal: plan.minDayKcal })}
-                </Text>
-              ) : null}
-              {planApplied ? (
-                <Text style={[styles.appliedLine, { color: theme.accent }, theme.font.bodyMedium]}>
-                  {t('weight.plan.applied')}
-                </Text>
-              ) : (
-                <Pressable
-                  onPress={() => {
-                    setKcal(String(plan.kcal));
-                    setProtein(String(plan.prot));
-                    setFat(String(plan.fat));
-                    setCarb(String(plan.carb));
-                    // One tap = the numbers land in the targets AND are saved.
-                    // `targetsSetAt` marks this as a DELIBERATE goal — the food
-                    // screen shows day progress only after that.
-                    void persist(
-                      {
-                        targetKcal: plan.kcal,
-                        targetProteinG: plan.prot,
-                        targetFatG: plan.fat,
-                        targetCarbG: plan.carb,
-                        targetsSetAt: Date.now(),
-                      },
-                      t('weight.plan.appliedTick'),
-                      'plan',
-                    );
-                  }}
-                  style={({ pressed }) => [styles.applyBtn, { borderColor: theme.primary, opacity: pressed ? 0.6 : 1 }]}
-                >
-                  <Text style={[styles.applyText, { color: theme.primary }, theme.font.bodySemiBold]}>
-                    {t('weight.plan.apply')}
-                  </Text>
-                </Pressable>
-              )}
-              {/* All the explanatory prose folds under one toggle — the card
-                  stays "numbers + one action" until the reader wants the why.
-                  protBasis lives here on purpose: it IS the answer to «почему
-                  белка меньше», which is exactly what this toggle promises. */}
-              <Pressable onPress={() => setOpenPlanWhy((v) => !v)} style={styles.whyToggle} hitSlop={6}>
-                <Text style={[styles.whyToggleText, { color: theme.primary }, theme.font.body]}>
-                  {openPlanWhy ? t('weight.plan.whyHide') : t('weight.plan.why')}
-                </Text>
-                <Ionicons name={openPlanWhy ? 'chevron-up' : 'chevron-down'} size={14} color={theme.primary} />
-              </Pressable>
-              {openPlanWhy ? (
-                <View style={styles.whyBody}>
-                  {/* BMR first — the number a doctor / external calculator
-                      would name. Users compared those against the budget's
-                      «база» (BMR × 1.2, goal-adjusted) and read the mismatch
-                      as a wrong formula; naming both kills the confusion. */}
-                  <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
-                    {t('weight.plan.bmrLine', {
-                      kcal: plan.bmrKcal,
-                      method: t(`weight.plan.bmrMethod.${plan.bmrMethod}`),
-                    })}
-                  </Text>
-                  {/* Energy breakdown — the answer to «2540 кажется мало»: the
-                      target is maintenance MINUS a deficit, not «сколько нужно». */}
-                  <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
-                    {t('weight.plan.maintenanceLine', { maintenance: plan.maintenanceKcal })}
-                  </Text>
-                  {plan.mode !== 'maintain' && plan.maintenanceKcal > 0 ? (
-                    <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
-                      {t(`weight.plan.deltaLine.${plan.mode}`, {
-                        kcal: plan.kcal,
-                        pct: Math.abs(Math.round((plan.kcal / plan.maintenanceKcal - 1) * 100)),
-                      })}
-                    </Text>
-                  ) : null}
-                  {plan.proteinBasis !== 'current' ? (
-                    <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
-                      {t(`weight.plan.protBasis.${plan.proteinBasis}`, { kg: plan.proteinBasisKg })}
-                    </Text>
-                  ) : null}
-                  <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
-                    {t('weight.plan.fiber', { g: plan.fiber })}
-                  </Text>
-                  <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
-                    {t('weight.plan.recalc')} {t('weight.targets.note')}
-                  </Text>
-                  <Text style={[styles.disclaimer, { color: theme.subtle }, theme.font.body]}>
-                    {t('weight.plan.note')}
-                  </Text>
-                  <Pressable onPress={() => router.push('/more/how-it-works')} hitSlop={6} style={styles.whyToggle}>
-                    <Text style={[styles.whyToggleText, { color: theme.primary }, theme.font.body]}>
-                      {t('howItWorks.linkTitle')}
-                    </Text>
-                    <Ionicons name="chevron-forward" size={14} color={theme.primary} />
-                  </Pressable>
-                </View>
-              ) : null}
-            </>
-          ) : (
-            <>
-              <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
-                {profileComplete ? t('weight.plan.needWeight') : t('weight.plan.needProfile')}
-              </Text>
-              {!profileComplete ? (
-                <Pressable
-                  onPress={() => router.push('/body-setup')}
-                  style={({ pressed }) => [styles.applyBtn, { borderColor: theme.primary, opacity: pressed ? 0.6 : 1 }]}
-                >
-                  <Text style={[styles.applyText, { color: theme.primary }, theme.font.bodySemiBold]}>
-                    {t('weight.plan.setupCta')}
-                  </Text>
-                </Pressable>
-              ) : null}
-            </>
-          )}
-        </Card>
-      ) : null}
-
-      {/* Adaptive «real burn» — the device-free measurement the user asked for:
-          computed from their own weight trend + food log, not a formula. Shown
-          only once the data is dense enough (measuredExpenditure gates it), and
-          framed as the reliable number to trust when it disagrees with the
-          estimate above. */}
-      {expenditure != null ? (
-        <Card style={styles.trendCard}>
-          <Text style={[styles.burnLabel, { color: theme.labelCaps }, theme.font.bodyBold]}>
-            {t('weight.burn.title', { days: ADAPTIVE_WINDOW_DAYS }).toUpperCase()}
-          </Text>
-          <Text style={[styles.planKcal, { color: theme.heroAccent }, theme.font.heading]}>
-            {t('weight.burn.value', { kcal: expenditure.kcalPerDay })}
-          </Text>
-          <Text style={[styles.burnSub, { color: theme.subtle }, theme.font.body]}>
-            {t('weight.burn.caption')}
-          </Text>
-          <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
-            {t(expenditure.weightSlopeKgPerWeek === 0 ? 'weight.burn.explainFlat' : 'weight.burn.explain', {
-              intake: expenditure.avgIntakeKcal,
-              trend: Math.abs(expenditure.weightSlopeKgPerWeek).toFixed(2),
-              dir: t(
-                expenditure.weightSlopeKgPerWeek < 0 ? 'weight.burn.dirDown' : 'weight.burn.dirUp',
-              ),
-            })}
-          </Text>
-          {expenditure.confidence === 'ok' ? (
-            <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
-              {t('weight.burn.early')}
-            </Text>
-          ) : null}
-          <Text style={[styles.disclaimer, { color: theme.subtle }, theme.font.body]}>
-            {t('weight.burn.note')}
-          </Text>
-          {/* Opt-in, never silent: the user decides to let the measurement drive
-              the budget (mirrors «Использовать измерение весов»). Offered only at
-              'good' confidence; once applied, it says so and can be reset. */}
-          {burnUnderLogged ? (
-            <Text style={[styles.appliedLine, { color: theme.accent }, theme.font.bodyMedium]}>
-              {t('weight.burn.underLogged')}
-            </Text>
-          ) : burnApplied ? (
-            <>
-              <Text style={[styles.appliedLine, { color: theme.accent }, theme.font.bodyMedium]}>
-                {t('weight.burn.applied')}
-              </Text>
-              {ack?.where === 'plan' ? (
-                <Text style={[styles.ackTick, { color: theme.accent }, theme.font.bodyMedium]}>{ack.text}</Text>
-              ) : null}
-              <Pressable onPress={() => void persist({ bmrFactor: 0 }, t('weight.burn.resetTick'), 'plan').then(() => setBmrFactor(0))} hitSlop={6} style={styles.whyToggle}>
-                <Text style={[styles.whyToggleText, { color: theme.primary }, theme.font.body]}>
-                  {t('weight.burn.reset')}
-                </Text>
-              </Pressable>
-            </>
-          ) : expenditure.confidence === 'good' ? (
-            <Pressable
-              onPress={() => void applyMeasuredBurn()}
-              style={({ pressed }) => [styles.applyBtn, { borderColor: theme.primary, opacity: pressed ? 0.6 : 1 }]}
-            >
-              <Text style={[styles.applyText, { color: theme.primary }, theme.font.bodySemiBold]}>
-                {t('weight.burn.apply')}
-              </Text>
-            </Pressable>
-          ) : null}
-        </Card>
-      ) : null}
-
-      {/* ── 3. Everything secondary, one quiet line each ── */}
-      {db != null ? (
+      ) : (
         <>
-          {/* Body parameters first among the secondary sections — it's what the
-              plan actually needs from the user. Read-only here; the body-setup
-              wizard is the single editor (all answered, then saved ONCE). */}
-          <Section
-            title={t('weight.sections.body.title')}
-            summary={bodySummary}
-            open={openBody}
-            onToggle={() => setOpenBody((v) => !v)}
-            theme={theme}
-          >
-            <ProfileLine
-              label={t('weight.height')}
-              value={heightCm > 0 ? `${Math.round(heightCm)} ${t('weight.heightUnit')}` : '—'}
-              theme={theme}
-              onPress={() => router.push('/body-setup?step=height')}
-            />
-            <ProfileLine
-              label={t('weight.formula.sex')}
-              value={sex ? t(`weight.formula.${sex}`) : '—'}
-              theme={theme}
-              onPress={() => router.push('/body-setup?step=sex')}
-            />
-            <ProfileLine
-              label={t('weight.formula.birthYear')}
-              value={birthYearText || '—'}
-              theme={theme}
-              onPress={() => router.push('/body-setup?step=birthYear')}
-            />
-            <ProfileLine
-              label={t('weight.formula.bodyFat')}
-              value={bodyFatText ? `${bodyFatText}%` : t('weight.sections.body.fatUnset')}
-              theme={theme}
-              onPress={() => router.push('/body-setup?step=bodyFat')}
-            />
-            {/* Waist — the device-free composition input; surfaced here so it's
-                visible and one tap from editing, not buried in the wizard. */}
-            <ProfileLine
-              label={t('weight.formula.waist')}
-              value={waistCm > 0 ? `${Math.round(waistCm)} ${t('weight.heightUnit')}` : t('weight.sections.body.waistUnset')}
-              theme={theme}
-              onPress={() => router.push('/body-setup?step=waist')}
-            />
-            {/* Scale-measured body fat NEVER feeds BMR silently — the plan uses
-                app_settings.bodyFatPct only, and this explicit tap is the single
-                bridge between the measurement and the calculation. */}
-            {deviceFat?.bodyFatPct != null ? (
-              (() => {
-                const measured = Math.round((deviceFat.bodyFatPct as number) * 10) / 10;
-                const applied = toNumber(bodyFatText) === measured;
-                return (
-                  <>
-                    <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
-                      {t('weight.deviceFat.line', {
-                        pct: measured.toFixed(1),
-                        date: formatDay(deviceFat.date),
-                      })}
-                    </Text>
-                    {applied ? (
-                      <Text style={[styles.appliedLine, { color: theme.accent }, theme.font.bodyMedium]}>
-                        {t('weight.deviceFat.applied')}
-                      </Text>
-                    ) : (
-                      <Pressable
-                        onPress={() => {
-                          setBodyFatText(String(measured));
-                          void persist({ bodyFatPct: measured }, t('weight.targets.savedTick'), 'plan');
-                        }}
-                        style={({ pressed }) => [
-                          styles.applyBtn,
-                          { borderColor: theme.primary, opacity: pressed ? 0.6 : 1 },
-                        ]}
-                      >
-                        <Text style={[styles.applyText, { color: theme.primary }, theme.font.bodySemiBold]}>
-                          {t('weight.deviceFat.apply')}
-                        </Text>
-                      </Pressable>
-                    )}
-                  </>
-                );
-              })()
-            ) : null}
-            <Pressable
-              onPress={() => router.push('/body-setup')}
-              style={({ pressed }) => [styles.applyBtn, { borderColor: theme.primary, opacity: pressed ? 0.6 : 1 }]}
-            >
-              <Text style={[styles.applyText, { color: theme.primary }, theme.font.bodySemiBold]}>
-                {t('weight.sections.body.edit')}
-              </Text>
-            </Pressable>
-          </Section>
+          {/* ── 3. What the number MEANS: the day target it feeds (one row into
+                 «План питания») and BMI as one quiet line. ── */}
+          <View style={styles.planGroup}>
+            <ListGroup rows={planRow} />
+          </View>
 
           <Section
             title={t('weight.bmi.title')}
@@ -858,15 +270,13 @@ export default function WeightScreen() {
                     category: t(`weight.bmi.category.${bmiCategory(bmi)}`),
                   })}
                 </Text>
-                <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
+                <Text style={[styles.note, { color: theme.subtle }, theme.font.body]}>
                   {t('weight.bmi.current', { kg: latestKg.toFixed(1), cm: Math.round(heightCm) })}
                 </Text>
-                <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
-                  {t('weight.bmi.ranges')}
-                </Text>
+                <Text style={[styles.note, { color: theme.subtle }, theme.font.body]}>{t('weight.bmi.ranges')}</Text>
               </>
             ) : (
-              <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
+              <Text style={[styles.note, { color: theme.subtle }, theme.font.body]}>
                 {latestKg <= 0 ? t('weight.bmi.needWeight') : t('weight.bmi.needHeight')}
               </Text>
             )}
@@ -875,136 +285,27 @@ export default function WeightScreen() {
             </Text>
           </Section>
 
-          <Section
-            title={t('weight.sections.history.title')}
-            summary={t('weight.sections.history.count', { count: items?.length ?? 0 })}
-            open={openHistory}
-            onToggle={() => setOpenHistory((v) => !v)}
-            theme={theme}
-          >
-            {items == null || items.length === 0 ? (
-              <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>{t('weight.empty')}</Text>
-            ) : (
-              <ListGroup rows={rows} />
-            )}
-          </Section>
-
-          {/* Reference table: daily norms for the basic vitamins & minerals.
-              Least personal of the sections, so it sits low. A norm ("how much
-              you need"), NOT a count of intake — vitamins aren't in the food DB,
-              so tracking here would be dishonest. */}
-          <Section
-            title={t('weight.micros.title')}
-            summary={t('weight.micros.summary')}
-            open={openMicros}
-            onToggle={() => setOpenMicros((v) => !v)}
-            theme={theme}
-          >
-            <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
-              {t('weight.micros.lead')}
-            </Text>
-            {sex !== 'male' && sex !== 'female' ? (
-              <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
-                {t('weight.micros.needSex')}
-              </Text>
-            ) : null}
-            {(['vitamin', 'mineral'] as const).map((group) => (
-              <View key={group} style={styles.microGroup}>
-                <Text style={[styles.microGroupHeading, { color: theme.subtle }, theme.font.bodySemiBold]}>
-                  {t(`weight.micros.groups.${group}`)}
-                </Text>
-                {microRows
-                  .filter((r) => r.group === group)
-                  .map((row) => (
-                    <View key={row.key} style={[styles.microRow, { borderBottomColor: theme.separator }]}>
-                      <Text style={[styles.microName, { color: theme.text }, theme.font.body]}>
-                        {t(`weight.micros.name.${row.key}`)}
-                      </Text>
-                      <Text style={[styles.microValue, { color: theme.text }, theme.font.bodySemiBold]}>
-                        {microValueText(row)}
-                      </Text>
-                    </View>
-                  ))}
-              </View>
-            ))}
-            {microHasAdequate ? (
-              <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
-                {t('weight.micros.adequateNote')}
-              </Text>
-            ) : null}
-            <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>
-              {t('weight.micros.source')}
-            </Text>
-            <Text style={[styles.disclaimer, { color: theme.subtle }, theme.font.body]}>
-              {t('weight.micros.disclaimer')}
-            </Text>
-          </Section>
-
-          <Section
-            title={t('weight.sections.manual.title')}
-            summary={manualSummary}
-            open={openManual}
-            onToggle={() => setOpenManual((v) => !v)}
-            ack={ack?.where === 'manual' ? ack.text : null}
-            theme={theme}
-          >
-            <Field
-              label={t('settings.targetKcal')}
-              value={kcal}
-              onChange={setKcal}
-              onDone={() =>
-                void persist({ targetKcal: toNumber(kcal), targetsSetAt: Date.now() }, t('weight.targets.savedTick'), 'manual')
-              }
-              theme={theme}
-            />
-            <Field
-              label={t('settings.targetProtein')}
-              value={protein}
-              onChange={setProtein}
-              onDone={() =>
-                void persist(
-                  { targetProteinG: toNumber(protein), targetsSetAt: Date.now() },
-                  t('weight.targets.savedTick'),
-                  'manual',
-                )
-              }
-              theme={theme}
-            />
-            <Field
-              label={t('settings.targetFat')}
-              value={fat}
-              onChange={setFat}
-              onDone={() =>
-                void persist({ targetFatG: toNumber(fat), targetsSetAt: Date.now() }, t('weight.targets.savedTick'), 'manual')
-              }
-              theme={theme}
-            />
-            <Field
-              label={t('settings.targetCarb')}
-              value={carb}
-              onChange={setCarb}
-              onDone={() =>
-                void persist({ targetCarbG: toNumber(carb), targetsSetAt: Date.now() }, t('weight.targets.savedTick'), 'manual')
-              }
-              theme={theme}
-            />
-            <Text style={[styles.trendNote, { color: theme.subtle }, theme.font.body]}>{t('weight.targets.note')}</Text>
-          </Section>
+          {/* ── 4. History, ALWAYS open — same as «Шаги». It is what the screen
+                 is for; folding it away was the old screen's inversion. ── */}
+          <SectionHeader>{t('weight.sections.history.title')}</SectionHeader>
+          {items == null || items.length === 0 ? (
+            <Text style={[styles.note, { color: theme.subtle }, theme.font.body]}>{t('weight.empty')}</Text>
+          ) : (
+            <ListGroup rows={rows} />
+          )}
         </>
-      ) : null}
+      )}
     </Screen>
   );
 }
 
 /// A card that folds to a single line: title + live one-line summary + chevron.
-/// The summary carries the useful number, so opening is usually unnecessary —
-/// «заполнил раз — больше не мозолит глаза».
+/// The summary carries the useful number, so opening is usually unnecessary.
 function Section({
   title,
   summary,
   open,
   onToggle,
-  ack,
   children,
   theme,
 }: {
@@ -1012,7 +313,6 @@ function Section({
   summary: string;
   open: boolean;
   onToggle: () => void;
-  ack?: string | null;
   children: ReactNode;
   theme: Theme;
 }) {
@@ -1020,73 +320,14 @@ function Section({
     <Card style={styles.sectionCard}>
       <Pressable onPress={onToggle} style={styles.sectionHeader} hitSlop={6}>
         <Text style={[styles.sectionTitle, { color: theme.text }, theme.font.bodySemiBold]}>{title}</Text>
-        <Text
-          numberOfLines={1}
-          style={[styles.sectionSummary, { color: ack ? theme.accent : theme.subtle }, theme.font.body]}
-        >
-          {ack ?? summary}
+        <Text numberOfLines={1} style={[styles.sectionSummary, { color: theme.subtle }, theme.font.body]}>
+          {summary}
         </Text>
         <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={16} color={theme.tertiary} />
       </Pressable>
       {open ? <View style={styles.sectionBody}>{children}</View> : null}
     </Card>
   );
-}
-
-function Field({
-  label,
-  value,
-  onChange,
-  onDone,
-  theme,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  onDone: () => void;
-  theme: Theme;
-}) {
-  return (
-    <View style={styles.field}>
-      <Text style={[styles.fieldLabel, { color: theme.subtle }, theme.font.body]}>{label}</Text>
-      <TextField value={value} onChangeText={onChange} onEndEditing={onDone} keyboardType="numeric" />
-    </View>
-  );
-}
-
-/// One read-only body fact: label left, value right (like the micro rows).
-/// One body fact. With `onPress` it becomes a shortcut straight to that question
-/// in the wizard (`/body-setup?step=…`), so changing one value is tap → type →
-/// save, not a walk through the whole flow.
-function ProfileLine({
-  label,
-  value,
-  theme,
-  onPress,
-}: {
-  label: string;
-  value: string;
-  theme: Theme;
-  onPress?: () => void;
-}) {
-  const inner = (
-    <>
-      <Text style={[styles.microName, { color: theme.subtle }, theme.font.body]}>{label}</Text>
-      <Text style={[styles.microValue, { color: theme.text }, theme.font.bodySemiBold]}>{value}</Text>
-      {onPress ? <Ionicons name="chevron-forward" size={14} color={theme.tertiary} /> : null}
-    </>
-  );
-  if (onPress) {
-    return (
-      <Pressable
-        onPress={onPress}
-        style={({ pressed }) => [styles.microRow, { borderBottomColor: theme.separator, opacity: pressed ? 0.6 : 1 }]}
-      >
-        {inner}
-      </Pressable>
-    );
-  }
-  return <View style={[styles.microRow, { borderBottomColor: theme.separator }]}>{inner}</View>;
 }
 
 function toNumber(v: string): number {
@@ -1126,40 +367,12 @@ const styles = StyleSheet.create({
   unit: { fontSize: 15 },
   save: { marginBottom: 6 },
   weightAck: { fontSize: 14, textAlign: 'center', marginBottom: 10 },
-  trendCard: { marginBottom: 16 },
-  trendNote: { fontSize: 12, marginTop: 6, lineHeight: 17 },
-  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  cardTitle: { fontSize: 16 },
-  ackTick: { fontSize: 13 },
-  planIntro: { fontSize: 14, lineHeight: 20, marginTop: 4 },
-  assumedAge: { fontSize: 12, lineHeight: 17, marginTop: 8 },
-  planKcal: { fontSize: 28, lineHeight: 32, marginTop: 8, marginBottom: 10 },
-  burnLabel: { fontSize: 12, letterSpacing: 1.44, marginBottom: 2 },
-  burnSub: { fontSize: 13, lineHeight: 18, marginTop: -4, marginBottom: 8 },
-  macroRow: { flexDirection: 'row', gap: 8 },
-  macroTile: { flex: 1, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 4, alignItems: 'center' },
-  macroLabel: { fontSize: 11 },
-  macroValue: { fontSize: 15, marginTop: 2 },
-  appliedLine: { fontSize: 14, marginTop: 12 },
-  heightRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8, marginTop: 2 },
-  heightInput: { flex: 1 },
+  planGroup: { marginTop: 4, marginBottom: 12 },
+  note: { fontSize: 12, marginTop: 6, lineHeight: 17 },
   bmiValue: { fontSize: 15, marginTop: 2 },
   disclaimer: { fontSize: 11, fontStyle: 'italic', marginTop: 8, lineHeight: 16 },
-  field: { marginBottom: 10 },
-  fieldLabel: { fontSize: 12, marginBottom: 5, marginTop: 4 },
-  chips: { flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginBottom: 8 },
-  applyBtn: { borderWidth: 1.5, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 10, alignSelf: 'flex-start', marginTop: 12 },
-  applyText: { fontSize: 14 },
   hint: { fontSize: 13, textAlign: 'center', marginTop: 8, marginBottom: 16 },
   rowKg: { fontSize: 16 },
-  whyToggle: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 12, alignSelf: 'flex-start' },
-  whyToggleText: { fontSize: 13 },
-  whyBody: { marginTop: 2 },
-  microGroup: { marginTop: 10 },
-  microGroupHeading: { fontSize: 12, marginBottom: 2 },
-  microRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth },
-  microName: { fontSize: 13, flexShrink: 1, paddingRight: 12 },
-  microValue: { fontSize: 13, textAlign: 'right' },
   sectionCard: { marginBottom: 12 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   sectionTitle: { fontSize: 15 },
