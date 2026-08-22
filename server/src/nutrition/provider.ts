@@ -37,6 +37,13 @@ export interface NutritionProvider {
    * the region-native name (RU → name_ru, US → name_en).
    */
   readonly queryLang?: 'en' | 'ru';
+  /**
+   * Optional: this source can ALSO answer a raw Cyrillic free-text query even
+   * though its preferred `queryLang` is 'en' (FatSecret localizes via its
+   * `region`/`language` params). The manual-search path uses it to decide who
+   * gets the user's Cyrillic text; the parse chain still queries by `queryLang`.
+   */
+  readonly acceptsCyrillic?: boolean;
   /** Best single match (or null). For list sources this is `searchMany()[0]`. */
   search(name: string, region: Region): Promise<ProviderResult | null>;
   /**

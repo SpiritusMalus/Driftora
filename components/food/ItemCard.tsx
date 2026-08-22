@@ -8,6 +8,7 @@ import { TextField } from '@/components/ui/TextField';
 import { ApproxBadge, NutrientDetail } from '@/components/food/nutrientViews';
 import { normalizeChoiceName } from '@/lib/core/services/foodChoice';
 import type { NutritionAlternative, NutritionItem } from '@/lib/core/services/foodParser';
+import { pieceGramsFor } from '@/lib/core/services/pieceUnits';
 import { type Theme } from '@/lib/theme/theme';
 
 export function ItemCard({
@@ -75,6 +76,9 @@ export function ItemCard({
   const [searchResults, setSearchResults] = useState<NutritionAlternative[] | null>(null);
   const grams = Math.round(item.grams);
   const PORTIONS = [100, 200, 250];
+  // Standard per-piece weight (яйцо ≈ 50 г) — null for non-piece foods. Matched
+  // on what the USER logged, not the DB row's name (which is under review).
+  const pieceUnitGrams = pieceGramsFor(item.name_ru, item.name_en);
 
   async function runSearch() {
     const q = searchText.trim();
@@ -196,6 +200,13 @@ export function ItemCard({
             {t('food.gramsGuessed', { grams })}
           </Text>
         </View>
+      ) : null}
+      {/* PIECES — for foods with a standard unit size (яйца, фрукты, пельмени)
+          counting «2 шт» beats weighing. The per-piece weight is shown right in
+          the row (honesty: it's a visible assumption, not magic), and it only
+          MULTIPLIES — grams below stay the source of truth and stay editable. */}
+      {pieceUnitGrams != null ? (
+        <PieceControl grams={grams} unitGrams={pieceUnitGrams} theme={theme} onGrams={onGrams} />
       ) : null}
       {/* Quick-set chips + a custom field. */}
       <View style={styles.portionRow}>
@@ -321,6 +332,59 @@ export function ItemCard({
   );
 }
 
+/// «− [2] + шт · ≈ 50 г/шт» — piece counter for foods with a standard unit.
+/// The count is DERIVED from grams (single source of truth): steppers move to
+/// the previous/next whole count, the field accepts fractions («1.5»), and any
+/// change flows through `onGrams` exactly like the grams field beside it.
+function PieceControl({
+  grams,
+  unitGrams,
+  theme,
+  onGrams,
+}: {
+  grams: number;
+  unitGrams: number;
+  theme: Theme;
+  onGrams: (grams: number) => void;
+}) {
+  const { t } = useTranslation();
+  const count = grams / unitGrams;
+  // 1 decimal keeps «1.5 шт» honest without float noise («2.0000000003»).
+  const display = Math.round(count * 10) / 10;
+  const setCount = (n: number) => onGrams(Math.round(Math.max(0, n) * unitGrams));
+  const stepBtn = (label: string, a11y: string, next: number, disabled: boolean) => (
+    <Pressable
+      onPress={() => setCount(next)}
+      disabled={disabled}
+      hitSlop={8}
+      accessibilityRole="button"
+      accessibilityLabel={a11y}
+      style={({ pressed }) => [
+        styles.pieceBtn,
+        { borderColor: theme.separator, backgroundColor: theme.card, opacity: disabled ? 0.35 : pressed ? 0.6 : 1 },
+      ]}
+    >
+      <Text style={[styles.pieceBtnText, { color: theme.primary }, theme.font.bodySemiBold]}>{label}</Text>
+    </Pressable>
+  );
+  return (
+    <View style={styles.pieceRow}>
+      {/* «−» from 2.4 goes to 2 (the nearest whole below), not 1.4. */}
+      {stepBtn('−', t('food.pieces.minus'), Math.ceil(count - 1), count <= 1)}
+      <TextField
+        value={String(display)}
+        onChangeText={(v) => setCount(toNumber(v))}
+        keyboardType="numeric"
+        style={styles.pieceInput}
+      />
+      {stepBtn('+', t('food.pieces.plus'), Math.floor(count + 1), false)}
+      <Text style={[styles.gramsUnit, { color: theme.subtle }, theme.font.body]}>
+        {t('food.pieces.unit')} · {t('food.pieces.per', { grams: unitGrams })}
+      </Text>
+    </View>
+  );
+}
+
 /// Per-100g macro entry for a DB miss (and editing it afterwards). Keeps its own
 /// input strings so partial typing isn't clobbered by re-renders; every change
 /// pushes the parsed macros up via `onManualMacros` (→ source becomes 'manual').
@@ -407,6 +471,11 @@ const styles = StyleSheet.create({
   // tiny footnote, because the assumed grams drive the whole number.
   gramsGuessNote: { marginTop: 10, borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },
   gramsGuessText: { fontSize: 12, lineHeight: 17 },
+  // Piece counter (eggs & friends): stepper + count + the visible unit weight.
+  pieceRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, flexWrap: 'wrap' },
+  pieceBtn: { borderWidth: 1, borderRadius: 10, width: 40, paddingVertical: 6, alignItems: 'center' },
+  pieceBtnText: { fontSize: 16, lineHeight: 18 },
+  pieceInput: { width: 56, paddingVertical: 8, fontSize: 14, textAlign: 'center' },
   // Quick-set weight chips.
   portionRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, flexWrap: 'wrap' },
   portionChip: { borderWidth: 1, borderRadius: 10, paddingVertical: 6, paddingHorizontal: 12 },

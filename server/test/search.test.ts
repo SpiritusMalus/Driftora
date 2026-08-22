@@ -212,3 +212,45 @@ test('POST /food/search miss → empty candidates, not an error', async () => {
     await stop();
   }
 });
+
+test('POST /food/search Cyrillic reaches FatSecret (RU localization) when OFF is down', async () => {
+  process.env.FATSECRET_CLIENT_ID = 'test-fs-id';
+  process.env.FATSECRET_CLIENT_SECRET = 'test-fs-secret';
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input.toString();
+    if (url.includes('127.0.0.1')) return realFetch(input as never, init);
+    if (url.includes('api.nal.usda.gov')) throw new Error('USDA must not be queried with Cyrillic text');
+    if (url.includes('oauth.fatsecret.com')) return json({ access_token: 'tok', expires_in: 86400 });
+    if (url.includes('platform.fatsecret.com')) {
+      // The RU-localized corpus answers the raw Cyrillic query.
+      assert.ok(decodeURIComponent(url).includes('отруби'), 'FatSecret must get the Cyrillic query');
+      return json({
+        foods: {
+          food: {
+            food_name: 'Овсяные Отруби',
+            food_type: 'Generic',
+            food_description: 'Per 100g - Calories: 246kcal | Fat: 7.03g | Carbs: 66.22g | Protein: 17.30g',
+          },
+        },
+      });
+    }
+    if (url.includes('openfoodfacts.org')) throw new Error('OFF is down today'); // the reported flake
+    throw new Error(`unexpected fetch in test: ${url}`);
+  }) as typeof fetch;
+
+  const { base, stop } = await startApp();
+  try {
+    const res = await post(base, '/food/search', { query: 'овсяные отруби', region: 'RU' });
+    assert.equal(res.status, 200);
+    const body = (await res.json()) as { candidates: { name: string; per100: { kcal: number; source: string } }[] };
+    // A flaky OFF must no longer read as «нет в базе»: FatSecret's RU row stands.
+    assert.ok(
+      body.candidates.some((c) => c.per100.source === 'fatsecret' && c.per100.kcal === 246),
+      `expected a fatsecret candidate, got: ${JSON.stringify(body.candidates)}`,
+    );
+  } finally {
+    delete process.env.FATSECRET_CLIENT_ID;
+    delete process.env.FATSECRET_CLIENT_SECRET;
+    await stop();
+  }
+});

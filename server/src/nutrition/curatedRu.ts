@@ -180,4 +180,16 @@ export const CURATED_RU: SkurikhinEntry[] = [
     per100: { kcal: 267, prot: 9, fat: 15, carb: 24, fiber: 1.3, minerals: {} } },
   { name: 'бутерброд с сыром', aliases: ['бутерброд с сыром', 'бутерброд с маслом и сыром'], source: 'skurikhin', prepared: true,
     per100: { kcal: 270, prot: 11, fat: 14, carb: 25, fiber: 1.2, minerals: {} } },
+
+  // — Отруби (2026-08-22: «отруби овсяные мистраль» упирался в один шаткий OFF —
+  //   ни в одной RU-таблице класса не было). Сухой ПРОДУКТ, не блюдо: prepared
+  //   не ставим. Цифры — USDA SR (oat bran raw #08029, wheat bran crude #20077):
+  //   carb — общий (с волокнами), kcal — измеренный USDA (специфические факторы
+  //   Этуотера для отрубей сильно ниже общих — 246 при «формульных» ~366, и это
+  //   правильно: волокна и белок отрубей усваиваются хуже; см.
+  //   docs/nutrition-science.md §1 — измеренный kcal не перезаписываем). —
+  { name: 'отруби овсяные', aliases: ['отруби овсяные', 'овсяные отруби'], source: 'skurikhin',
+    per100: { kcal: 246, prot: 17.3, fat: 7, carb: 66.2, fiber: 15.4, minerals: {} } },
+  { name: 'отруби пшеничные', aliases: ['отруби пшеничные', 'пшеничные отруби', 'отруби'], source: 'skurikhin',
+    per100: { kcal: 216, prot: 15.6, fat: 4.3, carb: 64.5, fiber: 42.8, minerals: {} } },
 ];

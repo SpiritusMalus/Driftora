@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useTranslation } from 'react-i18next';
 
@@ -11,7 +11,7 @@ import { ApproxBadge, MicroScales, NutrientDetail } from '@/components/food/nutr
 import { Card } from '@/components/ui/Card';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
-import { WaitScene } from '@/components/ui/wait/WaitScene';
+import { WaitOverlay } from '@/components/ui/wait/WaitOverlay';
 import { TextField } from '@/components/ui/TextField';
 import { Waveform } from '@/components/ui/Waveform';
 import { pushLevel } from '@/components/ui/waveformBuffer';
@@ -1227,6 +1227,9 @@ export default function FoodLogScreen() {
   ) : null;
 
   return (
+    // The wait overlay must cover the WHOLE viewport (scrim over the scroll
+    // content), so the scrolling Screen gets a plain flex wrapper around it.
+    <View style={styles.screenWrap}>
     <Screen>
       <TextField
         value={text}
@@ -1304,14 +1307,8 @@ export default function FoodLogScreen() {
                 {recording ? t('food.voiceRecording') : t('food.voiceNote')}
               </Text>
             </Pressable>
-            {parsing && source === 'voice' ? (
-              <View style={styles.processingRow}>
-                <ActivityIndicator size="small" color={theme.primary} />
-                <Text style={[styles.micText, { color: theme.subtle }, theme.font.body]}>
-                  {t('food.voiceProcessing')}
-                </Text>
-              </View>
-            ) : null}
+            {/* Разбор записи показывает WaitOverlay (в конце рендера) — тот же
+                прогресс, что у текста и фото, без третьего инлайн-спиннера. */}
           </>
         ) : (
           <Pressable
@@ -1371,11 +1368,8 @@ export default function FoodLogScreen() {
       {inputMode === 'photo' && photoError ? (
         <Text style={[styles.voiceError, { color: theme.subtle }, theme.font.body]}>{photoError}</Text>
       ) : null}
-      {/* A photo parse runs up to ~25 s — a random signal-room scene keeps the
-          wait alive (WaitScene: nine rotating vignettes, spinner+label below).
-          Outside the segment gate on purpose: switching tabs mid-parse must
-          not hide the progress. */}
-      {parsing && source === 'photo' ? <WaitScene label={t('food.photoProcessing')} /> : null}
+      {/* A photo parse runs up to ~25 s — the WaitOverlay at the end of this
+          render shows a random signal-room scene over the dimmed screen. */}
       <PrimaryButton
         label={parsing ? t('food.parsing') : t('food.parse')}
         onPress={onParse}
@@ -1630,6 +1624,25 @@ export default function FoodLogScreen() {
         onDecline={onConsentDecline}
       />
     </Screen>
+    {/* Any parse in flight (text / voice clip / photo) → the signal-room scene
+        in a centered card, everything else dimmed. One overlay instead of the
+        three inline spinners that drowned in the screen's text (owner,
+        2026-08-22). Deliberately outside the input-mode segment gate:
+        switching tabs mid-parse must not hide the progress. The multi-photo
+        LOOKAHEAD parse never sets `parsing`, so reviewing a shot while the
+        next one parses stays undimmed. */}
+    {parsing ? (
+      <WaitOverlay
+        label={
+          source === 'photo'
+            ? t('food.photoProcessing')
+            : source === 'voice'
+              ? t('food.voiceProcessing')
+              : t('food.parsing')
+        }
+      />
+    ) : null}
+    </View>
   );
 }
 
@@ -1691,7 +1704,8 @@ const styles = StyleSheet.create({
   altWrap: { marginTop: 8 },
   altToggle: { fontSize: 13 },
   detailBox: { marginTop: 6, gap: 3 },
-  processingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 8 },
+  // The WaitOverlay needs a non-scrolling ancestor covering the viewport.
+  screenWrap: { flex: 1 },
   clearBtn: { alignSelf: 'center', marginTop: 12, paddingVertical: 4 },
   clearText: { fontSize: 13, textDecorationLine: 'underline' },
   hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },

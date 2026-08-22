@@ -369,10 +369,15 @@ export class Resolver {
 
     // An English-only corpus (USDA) cannot match Cyrillic text — skip the
     // round-trip instead of paying its latency for guaranteed zero results.
+    // Sources that declare `acceptsCyrillic` (FatSecret with its RU
+    // localization) still get the query: for Cyrillic text OFF used to be the
+    // ONLY provider left, so one flaky OFF timeout read as «нет в базе».
     const cyrillic = hasCyrillic(trimmed);
     const lists = await Promise.all(
       chainFor(this.providers, region).map((p) =>
-        cyrillic && p.queryLang === 'en' ? Promise.resolve([]) : this.candidatesFrom(p, trimmed, region),
+        cyrillic && p.queryLang === 'en' && !p.acceptsCyrillic
+          ? Promise.resolve([])
+          : this.candidatesFrom(p, trimmed, region),
       ),
     );
     const merged = demoteContradictions(trimmed, lists.flat().filter((c) => c.confidence > 0));

@@ -1081,6 +1081,15 @@ export const en = {
     // invite a fix (the weight drives the whole number).
     gramsGuessed: 'No weight given — assumed {{grams}} g. Adjust if your portion differs.',
     forGrams: 'for {{grams}} g',
+    // Piece-based entry for foods with a standard unit size (eggs, fruit,
+    // dumplings): the counter multiplies the visible per-piece weight — grams
+    // stay the source of truth.
+    pieces: {
+      unit: 'pcs',
+      per: '≈ {{grams}} g each',
+      minus: 'one piece less',
+      plus: 'one piece more',
+    },
     otherOption: {
       open: 'Other option',
       openCount: 'Other option ({{count}})',
