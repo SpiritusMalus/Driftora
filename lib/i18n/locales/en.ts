@@ -971,9 +971,13 @@ export const en = {
       permission: 'Scanning a barcode needs camera access. No photos are sent anywhere — the phone decodes the code itself.',
       allow: 'Allow camera',
       torch: 'Torch',
-      added: '{{name}} — added below, set the weight',
-      missing: 'That code isn’t in the database. Photograph the nutrition panel — we’ll take the numbers from it.',
-      unavailable: 'The database didn’t answer — couldn’t check the code. Try again.',
+      // Card over the darkened preview: WHAT we found first, then what's next.
+      addedSub: '{{kcal}} kcal per 100 g — added below, set the weight',
+      scanMore: 'Scan another',
+      retry: 'Try again',
+      shootLabel: 'Photograph the label',
+      missing: 'That code isn’t in the database — but the panel is printed on the pack, and that we can read.',
+      unavailable: 'The database didn’t answer, so the code couldn’t be checked. That doesn’t mean the product is unknown.',
     },
     // One quick-pick lane instead of three headers (yesterday/favorites/recent).
     quickPick: 'Quick',

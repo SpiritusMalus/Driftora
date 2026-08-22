@@ -1,3 +1,4 @@
+import { useIsFocused } from '@react-navigation/native';
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { useCallback, useRef, useState } from 'react';
@@ -15,13 +16,19 @@ import { useTheme } from '@/lib/theme/theme';
  * пределами рамки игнорируется, иначе на полке магазина в кадр попадёт соседний
  * товар и мы молча запишем не то.
  *
- * ЧТО ЗДЕСЬ НЕ ПРОИСХОДИТ. Кадры никуда не уходят: распознавание делает сам
- * телефон (на Android — ML Kit, на iOS — AVFoundation), наружу летят только 13
- * цифр. Фотография не сохраняется и не отправляется — этот экран вообще не
- * умеет делать снимки. И модель здесь не участвует: код опознаёт товар точно,
- * поэтому разбор из квоты не тратится.
+ * АКЦЕНТ ВСЕГДА НА ТОМ, ЧТО СЕЙЧАС ДЕЛАЕТ ЧЕЛОВЕК. Пока он целится — ярко
+ * только окно рамки, всё вокруг притемнено. Как только код найден, целиться уже
+ * не нужно: превью гаснет целиком, а вперёд выходит карточка результата с
+ * ответом и следующим шагом. Экран в каждый момент показывает ОДНУ вещь, ради
+ * которой он открыт.
  *
- * ПОЧЕМУ КОД МОЖНО ДОВЕРЯТЬ. Последняя цифра EAN-13 — контрольная, декодер
+ * ЧТО ЗДЕСЬ НЕ ПРОИСХОДИТ. Кадры никуда не уходят: распознавание делает сам
+ * телефон (на Android — ML Kit, на iOS — AVFoundation), наружу летят только
+ * цифры кода. Фотография не сохраняется и не отправляется — этот экран вообще
+ * не умеет делать снимки. И модель здесь не участвует: код опознаёт товар
+ * точно, поэтому разбор из квоты не тратится.
+ *
+ * ПОЧЕМУ КОДУ МОЖНО ДОВЕРЯТЬ. Последняя цифра EAN-13 — контрольная, декодер
  * проверяет её сам, а сервер проверяет ещё раз. Искажённое считывание
  * отбрасывается вместо того, чтобы превратиться в чужой продукт: это то, чего
  * не даёт распознавание цифр глазами модели.
@@ -30,40 +37,68 @@ import { useTheme } from '@/lib/theme/theme';
 /** Символики, которые реально встречаются на еде. QR и прочее не нужны. */
 const FOOD_BARCODES = ['ean13', 'ean8', 'upc_a', 'upc_e'] as const;
 
-/** Пауза после успешного кода — иначе один и тот же код сработает десятки раз. */
+/** Пауза после принятого кода — иначе один и тот же код сработает десятки раз. */
 const RESCAN_PAUSE_MS = 2000;
+
+/**
+ * Рамка в долях кадра — ЕДИНСТВЕННЫЙ источник правды. И стили, и проверка
+ * попадания считаются отсюда: если развести их по разным местам, нарисованная
+ * рамка и та, по которой фильтруется код, однажды разъедутся молча.
+ */
+const RETICLE = { left: 0.08, right: 0.92, top: 0.3, bottom: 0.7 };
+/** Запас вокруг рамки: человек целится рукой, а не микрометром. */
+const RETICLE_SLACK = 0.06;
+
+const pct = (v: number): `${number}%` => `${Math.round(v * 100)}%`;
+
+/** Чем закончился поиск по коду — карточка поверх превью объясняет каждый исход. */
+export type BarcodeOutcome =
+  | { kind: 'found'; name: string; kcal: number }
+  /** Кода нет в базе. Не тупик: этикетку мы читать умеем. */
+  | { kind: 'missing' }
+  /** Источник не ответил — это НЕ «такого продукта не существует». */
+  | { kind: 'unavailable' };
 
 export function BarcodeScanner({
   onCode,
   busy,
-  status,
+  outcome,
+  onDismiss,
+  onShootLabel,
 }: {
   /** Найденный код (уже отфильтрованный по рамке). */
   onCode: (code: string) => void;
-  /** Идёт поиск по коду — камера продолжает работать, но новые коды не берём. */
+  /** Идёт поиск по коду. */
   busy: boolean;
-  /** Подпись под рамкой: подсказка, «ищу…», или honest-объяснение промаха. */
-  status?: string;
+  /** Итог последнего кода; пока он на экране, новые коды не принимаются. */
+  outcome: BarcodeOutcome | null;
+  /** Убрать карточку и снова целиться. */
+  onDismiss: () => void;
+  /** Перейти к съёмке этикетки — честное продолжение, когда кода нет в базе. */
+  onShootLabel: () => void;
 }) {
   const { t } = useTranslation();
   const theme = useTheme();
   const [permission, requestPermission] = useCameraPermissions();
   const [frame, setFrame] = useState({ width: 0, height: 0 });
   const [torch, setTorch] = useState(false);
+  /// Экран ушёл в фон или его закрыли — камеру надо гасить, а не держать
+  /// включённой за спиной: это и батарея, и горящий индикатор камеры.
+  const focused = useIsFocused();
   /// Момент последнего принятого кода — окно тишины после попадания.
   const acceptedAt = useRef(0);
 
   const onScanned = useCallback(
     (result: BarcodeScanningResult) => {
       const now = Date.now();
-      if (busy || now - acceptedAt.current < RESCAN_PAUSE_MS) return;
+      if (busy || outcome || now - acceptedAt.current < RESCAN_PAUSE_MS) return;
       if (!insideReticle(result, frame)) return;
       acceptedAt.current = now;
       // Короткий отклик в руку: глаза заняты упаковкой, а не экраном.
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
       onCode(result.data);
     },
-    [busy, frame, onCode],
+    [busy, outcome, frame, onCode],
   );
 
   if (!permission) {
@@ -76,10 +111,7 @@ export function BarcodeScanner({
         <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('food.barcode.permission')}</Text>
         <Pressable
           onPress={() => void requestPermission()}
-          style={({ pressed }) => [
-            styles.permissionBtn,
-            { borderColor: theme.primary, opacity: pressed ? 0.6 : 1 },
-          ]}
+          style={({ pressed }) => [styles.permissionBtn, { borderColor: theme.primary, opacity: pressed ? 0.6 : 1 }]}
         >
           <Text style={[styles.permissionText, { color: theme.primary }, theme.font.bodySemiBold]}>
             {t('food.barcode.allow')}
@@ -95,67 +127,132 @@ export function BarcodeScanner({
         style={[styles.viewport, { borderColor: theme.separator }]}
         onLayout={(e) => setFrame({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
       >
-        <CameraView
-          style={StyleSheet.absoluteFill}
-          facing="back"
-          enableTorch={torch}
-          barcodeScannerSettings={{ barcodeTypes: [...FOOD_BARCODES] }}
-          onBarcodeScanned={onScanned}
-        />
-        {/* Затемнение вокруг рамки: четыре полосы вместо одной маски —
-            прозрачную «дырку» в React Native иначе не сделать. */}
-        <View style={[styles.shade, styles.shadeTop]} pointerEvents="none" />
-        <View style={[styles.shade, styles.shadeBottom]} pointerEvents="none" />
-        <View style={[styles.shade, styles.shadeLeft]} pointerEvents="none" />
-        <View style={[styles.shade, styles.shadeRight]} pointerEvents="none" />
-        {/* Сама рамка — широкая и низкая, под пропорции штрихкода. */}
-        <View style={[styles.reticle, { borderColor: busy ? theme.primary : '#ffffff' }]} pointerEvents="none">
-          {busy ? <ActivityIndicator color={theme.primary} /> : null}
-        </View>
-        <Pressable
-          onPress={() => setTorch((v) => !v)}
-          hitSlop={10}
-          accessibilityRole="button"
-          accessibilityLabel={t('food.barcode.torch')}
-          style={({ pressed }) => [styles.torch, { opacity: pressed ? 0.6 : 1 }]}
-        >
-          <Text style={styles.torchIcon}>{torch ? '🔦' : '💡'}</Text>
-        </Pressable>
+        {focused ? (
+          <CameraView
+            style={StyleSheet.absoluteFill}
+            facing="back"
+            enableTorch={torch}
+            barcodeScannerSettings={{ barcodeTypes: [...FOOD_BARCODES] }}
+            onBarcodeScanned={onScanned}
+          />
+        ) : null}
+
+        {/* ПРИЦЕЛИВАНИЕ. Ярко только окно рамки; четыре полосы вокруг вместо
+            одной маски — прозрачную «дырку» в React Native иначе не вырезать. */}
+        {!outcome ? (
+          <>
+            <View style={[styles.shade, shadeTop]} pointerEvents="none" />
+            <View style={[styles.shade, shadeBottom]} pointerEvents="none" />
+            <View style={[styles.shade, shadeLeft]} pointerEvents="none" />
+            <View style={[styles.shade, shadeRight]} pointerEvents="none" />
+            <View style={[styles.reticle, reticleBox, { borderColor: busy ? theme.primary : '#ffffff' }]} pointerEvents="none">
+              {busy ? <ActivityIndicator color={theme.primary} /> : null}
+            </View>
+            <Pressable
+              onPress={() => setTorch((v) => !v)}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel={t('food.barcode.torch')}
+              style={({ pressed }) => [styles.torch, { opacity: pressed ? 0.6 : 1 }]}
+            >
+              <Text style={styles.torchIcon}>{torch ? '🔦' : '💡'}</Text>
+            </Pressable>
+          </>
+        ) : (
+          /* РЕЗУЛЬТАТ. Целиться больше не нужно — гасим превью целиком и
+             оставляем на виду только ответ и следующий шаг. */
+          <View style={styles.resultScrim}>
+            <View style={[styles.resultCard, { backgroundColor: theme.background, borderColor: theme.separator }]}>
+              <Text style={[styles.resultTitle, { color: theme.text }, theme.font.bodySemiBold]} numberOfLines={3}>
+                {outcome.kind === 'found' ? outcome.name : t(`food.barcode.${outcome.kind}`)}
+              </Text>
+              {outcome.kind === 'found' ? (
+                <Text style={[styles.resultSub, { color: theme.subtle }, theme.font.body]}>
+                  {t('food.barcode.addedSub', { kcal: outcome.kcal })}
+                </Text>
+              ) : null}
+              <View style={styles.resultActions}>
+                {outcome.kind === 'missing' ? (
+                  <Pressable
+                    onPress={onShootLabel}
+                    style={({ pressed }) => [
+                      styles.resultBtn,
+                      { backgroundColor: theme.primary, opacity: pressed ? 0.7 : 1 },
+                    ]}
+                  >
+                    <Text style={[styles.resultBtnText, { color: theme.onPrimary }, theme.font.bodySemiBold]}>
+                      {t('food.barcode.shootLabel')}
+                    </Text>
+                  </Pressable>
+                ) : null}
+                <Pressable
+                  onPress={onDismiss}
+                  style={({ pressed }) => [
+                    styles.resultBtn,
+                    { borderWidth: 1, borderColor: theme.separator, opacity: pressed ? 0.7 : 1 },
+                  ]}
+                >
+                  <Text style={[styles.resultBtnText, { color: theme.primary }, theme.font.bodySemiBold]}>
+                    {t(outcome.kind === 'found' ? 'food.barcode.scanMore' : 'food.barcode.retry')}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        )}
       </View>
-      <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>
-        {status ?? t('food.barcode.hint')}
-      </Text>
+      {!outcome ? (
+        <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('food.barcode.hint')}</Text>
+      ) : null}
     </View>
   );
 }
 
-/** Доли кадра, которые занимает рамка (см. стили — держим в одном месте). */
-const RETICLE = { left: 0.08, right: 0.92, top: 0.3, bottom: 0.7 };
-
 /**
- * Код попал В РАМКУ. Декодер возвращает углы найденного кода (`cornerPoints`) в
- * координатах кадра; берём его центр и требуем, чтобы он лежал внутри рамки с
- * небольшим запасом. Без этой проверки рамка была бы просто рисунком, а на полке
- * магазина в кадр попадает и соседний товар.
+ * Код попал В РАМКУ. Декодер возвращает углы найденного кода уже в координатах
+ * вью (документация expo-camera: «adjusted to the dimensions of the view»), а
+ * ПОРЯДОК углов на Android и iOS разный — поэтому берём центр, которому порядок
+ * безразличен, и требуем, чтобы он лежал внутри рамки с запасом.
  *
- * Если координат нет (некоторые платформы их не дают), код принимается: лучше
- * сработать, чем не сработать вовсе — человек и так целится рамкой.
+ * Без этой проверки рамка была бы просто рисунком, а на полке магазина в кадр
+ * попадает и соседний товар. Если координат нет вовсе, код принимается: лучше
+ * сработать, чем не сработать — человек и так целится рамкой.
  */
 function insideReticle(result: BarcodeScanningResult, frame: { width: number; height: number }): boolean {
   const points = result.cornerPoints;
   if (!points || points.length === 0 || frame.width === 0 || frame.height === 0) return true;
   const cx = points.reduce((sum, p) => sum + p.x, 0) / points.length;
   const cy = points.reduce((sum, p) => sum + p.y, 0) / points.length;
-  const slack = 0.06;
   return (
-    cx >= (RETICLE.left - slack) * frame.width &&
-    cx <= (RETICLE.right + slack) * frame.width &&
-    cy >= (RETICLE.top - slack) * frame.height &&
-    cy <= (RETICLE.bottom + slack) * frame.height
+    cx >= (RETICLE.left - RETICLE_SLACK) * frame.width &&
+    cx <= (RETICLE.right + RETICLE_SLACK) * frame.width &&
+    cy >= (RETICLE.top - RETICLE_SLACK) * frame.height &&
+    cy <= (RETICLE.bottom + RETICLE_SLACK) * frame.height
   );
 }
 
-const SHADE = 'rgba(0, 0, 0, 0.55)';
+// Геометрия рамки и затемнения — вычисляется из RETICLE, чтобы нарисованное и
+// проверяемое не могли разойтись.
+const reticleBox = {
+  left: pct(RETICLE.left),
+  right: pct(1 - RETICLE.right),
+  top: pct(RETICLE.top),
+  bottom: pct(1 - RETICLE.bottom),
+} as const;
+const shadeTop = { left: 0, right: 0, top: 0, height: pct(RETICLE.top) } as const;
+const shadeBottom = { left: 0, right: 0, bottom: 0, height: pct(1 - RETICLE.bottom) } as const;
+const shadeLeft = {
+  left: 0,
+  top: pct(RETICLE.top),
+  bottom: pct(1 - RETICLE.bottom),
+  width: pct(RETICLE.left),
+} as const;
+const shadeRight = {
+  right: 0,
+  top: pct(RETICLE.top),
+  bottom: pct(1 - RETICLE.bottom),
+  width: pct(1 - RETICLE.right),
+} as const;
 
 const styles = StyleSheet.create({
   wrap: { marginTop: 10, gap: 8 },
@@ -170,25 +267,24 @@ const styles = StyleSheet.create({
     gap: 10,
     paddingHorizontal: 16,
   },
-  // Затемнение вокруг рамки — в тех же долях, что и RETICLE выше.
-  shade: { position: 'absolute', backgroundColor: SHADE },
-  shadeTop: { left: 0, right: 0, top: 0, height: '30%' },
-  shadeBottom: { left: 0, right: 0, bottom: 0, height: '30%' },
-  shadeLeft: { left: 0, top: '30%', bottom: '30%', width: '8%' },
-  shadeRight: { right: 0, top: '30%', bottom: '30%', width: '8%' },
-  reticle: {
-    position: 'absolute',
-    left: '8%',
-    right: '8%',
-    top: '30%',
-    bottom: '30%',
-    borderWidth: 2,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  shade: { position: 'absolute', backgroundColor: 'rgba(0, 0, 0, 0.55)' },
+  reticle: { position: 'absolute', borderWidth: 2, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   torch: { position: 'absolute', right: 10, top: 10, padding: 6 },
   torchIcon: { fontSize: 20 },
+  // Результат гасит превью целиком: прицеливание закончилось, смотреть надо на ответ.
+  resultScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.78)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  resultCard: { width: '100%', borderRadius: 14, borderWidth: 1, padding: 14, gap: 6 },
+  resultTitle: { fontSize: 16, lineHeight: 22 },
+  resultSub: { fontSize: 13, lineHeight: 18 },
+  resultActions: { flexDirection: 'row', gap: 8, marginTop: 6 },
+  resultBtn: { flex: 1, borderRadius: 10, paddingVertical: 10, alignItems: 'center' },
+  resultBtnText: { fontSize: 14 },
   hint: { fontSize: 13, lineHeight: 18 },
   permissionBtn: { borderWidth: 1, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 14 },
   permissionText: { fontSize: 13 },
