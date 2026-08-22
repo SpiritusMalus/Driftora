@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 
 import type { Minerals, Per100, Region } from '../types.js';
+import type { BarcodeIndex } from './barcodeIndex.js';
 import type { NutritionProvider, ProviderResult } from './provider.js';
 import { phraseScore, stemRu } from './ruSearch.js';
 import { normalizeName } from './scoring.js';
@@ -59,6 +60,9 @@ interface Entry {
 
 /** Крауд-строка не должна выглядеть увереннее кураторской таблицы. */
 const MAX_CONFIDENCE = 0.85;
+/** Совпадение по штрихкоду: сам продукт опознан ТОЧНО (код самопроверяемый),
+ *  поэтому выше нечёткого имени — но это всё ещё крауд-состав, не измерение. */
+const BARCODE_CONFIDENCE = 0.9;
 /** Ниже этого фраза считается шумом (тот же порог, что у RU-таблицы). */
 const MIN_SCORE = 0.55;
 /** Сколько кандидатов отдаём в пикер. */
@@ -98,7 +102,15 @@ export class OffLocalProvider implements NutritionProvider {
   private readonly entries: Entry[] = [];
   private readonly index = new Map<string, number[]>();
 
-  constructor(rows: OffRow[]) {
+  /**
+   * Индекс по штрихкодам — отдельный срез той же выгрузки (весь мир, 2 054 787
+   * продуктов). Ищется точным совпадением кода, а не по названию, поэтому живёт
+   * рядом, а не внутри текстового индекса.
+   */
+  private barcodes?: BarcodeIndex;
+
+  constructor(rows: OffRow[], barcodes?: BarcodeIndex) {
+    this.barcodes = barcodes;
     for (const row of rows) {
       const brand = row.b?.trim();
       // Бренд дописывается к показываемому имени, только если его там ещё нет:
@@ -118,7 +130,7 @@ export class OffLocalProvider implements NutritionProvider {
 
   /** Читает файл, приготовленный `scripts/offRuImport.ts`. Битые строки
    *  пропускаются молча: подпорченный артефакт не должен ронять сервер. */
-  static fromFile(path: string): OffLocalProvider {
+  static fromFile(path: string, barcodes?: BarcodeIndex): OffLocalProvider {
     const rows: OffRow[] = [];
     for (const line of readFileSync(path, 'utf8').split('\n')) {
       if (line.trim().length === 0) continue;
@@ -129,7 +141,7 @@ export class OffLocalProvider implements NutritionProvider {
         // строка мусорная — следующая
       }
     }
-    return new OffLocalProvider(rows);
+    return new OffLocalProvider(rows, barcodes);
   }
 
   get size(): number {
@@ -170,6 +182,11 @@ export class OffLocalProvider implements NutritionProvider {
   }
 
   async searchMany(name: string, _region: Region): Promise<ProviderResult[]> {
+    // Штрихкод — не имя, а точный ключ: никакого ранжирования, либо тот самый
+    // продукт, либо ничего. Контрольная цифра проверяется внутри индекса, так
+    // что искажённый код сюда просто не доходит.
+    const byCode = this.barcodes?.lookup(name.trim());
+    if (byCode) return [{ per100: byCode.per100, name: byCode.name, confidence: BARCODE_CONFIDENCE }];
     return this.ranked(name).map(({ entry, score }) => ({
       per100: entry.per100,
       name: entry.name,

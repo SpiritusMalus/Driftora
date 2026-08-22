@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 
 import { ApiNinjasProvider } from './nutrition/apininjas.js';
 import { FatSecretProvider } from './nutrition/fatsecret.js';
+import { BarcodeIndex } from './nutrition/barcodeIndex.js';
 import { OffLocalProvider } from './nutrition/offLocal.js';
 import { OpenFoodFactsProvider } from './nutrition/openfoodfacts.js';
 import { setKnownBrands } from './nutrition/specificity.js';
@@ -43,9 +44,22 @@ import { assembleMealDraft, type IdentifiedItem, type MealDraft, type Region } f
 function loadOffLocal(): OffLocalProvider | undefined {
   const path = process.env.OFF_LOCAL_PATH || '';
   if (!path) return undefined;
+  // Индекс по штрихкодам — тот же снимок, другой срез (весь мир, поиск по коду).
+  // Отдельная переменная, потому что это ~100 МБ на диске: развёртывание без
+  // сканера кодов может его не класть, и всё остальное продолжит работать.
+  let barcodes: BarcodeIndex | undefined;
+  const barcodePrefix = process.env.OFF_BARCODES_PATH || '';
+  if (barcodePrefix) {
+    try {
+      barcodes = BarcodeIndex.open(`${barcodePrefix}.bin`, `${barcodePrefix}.names`);
+      console.log(`[off-local] индекс штрихкодов: ${barcodes.size} товаров`);
+    } catch (err) {
+      console.error(`[off-local] индекс штрихкодов не открылся: ${(err as Error).message}`);
+    }
+  }
   let provider: OffLocalProvider;
   try {
-    provider = OffLocalProvider.fromFile(path);
+    provider = OffLocalProvider.fromFile(path, barcodes);
   } catch (err) {
     console.error(`[off-local] не прочитался ${path}: ${(err as Error).message} — работаем без снимка`);
     return undefined;

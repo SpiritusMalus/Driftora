@@ -82,3 +82,5 @@ dist.stale.*
 # (данные ODbL, репозиторий публичный; готовится npm run import:off)
 server/data/off-ru.jsonl
 server/data/off-ru-brands.txt
+server/data/off-barcodes.bin
+server/data/off-barcodes.names
