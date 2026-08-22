@@ -61,7 +61,11 @@ const pct = (v: number): `${number}%` => `${Math.round(v * 100)}%`;
 /** Чем закончился поиск по коду — карточка поверх превью объясняет каждый исход. */
 export type BarcodeOutcome =
   | { kind: 'found'; name: string; kcal: number }
-  /** Кода нет в базе. Не тупик: этикетку мы читать умеем. */
+  /** Товар опознан, но состава не нашлось нигде (и оценку взять не вышло —
+   *  например, кончился дневной запас разборов). Говорить «код неизвестен»
+   *  здесь было бы неправдой: мы знаем, ЧТО это. */
+  | { kind: 'identified'; name: string }
+  /** Кода не знает вообще никто — единственный настоящий тупик. */
   | { kind: 'missing' }
   /** Источник не ответил — это НЕ «такого продукта не существует». */
   | { kind: 'unavailable' };
@@ -168,11 +172,17 @@ export function BarcodeScanner({
           <View style={styles.resultScrim}>
             <View style={[styles.resultCard, { backgroundColor: theme.background, borderColor: theme.separator }]}>
               <Text style={[styles.resultTitle, { color: theme.text }, theme.font.bodySemiBold]} numberOfLines={3}>
-                {outcome.kind === 'found' ? outcome.name : t(`food.barcode.${outcome.kind}`)}
+                {outcome.kind === 'found' || outcome.kind === 'identified'
+                  ? outcome.name
+                  : t(`food.barcode.${outcome.kind}`)}
               </Text>
               {outcome.kind === 'found' ? (
                 <Text style={[styles.resultSub, { color: theme.subtle }, theme.font.body]}>
                   {t('food.barcode.addedSub', { kcal: outcome.kcal })}
+                </Text>
+              ) : outcome.kind === 'identified' ? (
+                <Text style={[styles.resultSub, { color: theme.subtle }, theme.font.body]}>
+                  {t('food.barcode.identifiedSub')}
                 </Text>
               ) : null}
               <View style={styles.resultActions}>

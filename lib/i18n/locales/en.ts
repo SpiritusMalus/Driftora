@@ -975,6 +975,9 @@ export const en = {
       addedSub: '{{kcal}} kcal per 100 g — added below, set the weight',
       scanMore: 'Scan another',
       retry: 'Try again',
+      // The product is known but its composition isn't recorded anywhere —
+      // saying «unknown code» here would be false.
+      identifiedSub: 'We know the product, but nobody has recorded its composition. Enter the macros if you know them — or keep scanning.',
       // Nobody knows this code — the one real dead end. We never ask for extra
       // photos: that would be our job handed back to the user.
       missing: 'No database knows this code. Keep scanning — or type the product in words.',

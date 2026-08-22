@@ -44,7 +44,7 @@ describe('lookupBarcode', () => {
       });
     }) as unknown as typeof fetch;
 
-    const found = await parser().lookupBarcode('4600823143005', 'RU');
+    const { item: found } = await parser().lookupBarcode('4600823143005', 'RU');
     expect(seenUrl).toBe('https://food.test/food/barcode');
     expect(seenBody).toEqual({ code: '4600823143005', region: 'RU' });
     expect(found?.per100.kcal).toBe(540);
@@ -59,7 +59,7 @@ describe('lookupBarcode', () => {
         headers: { 'Content-Type': 'application/json' },
       })) as typeof fetch;
 
-    expect(await parser().lookupBarcode('4600823143005', 'RU')).toBeNull();
+    expect((await parser().lookupBarcode('4600823143005', 'RU')).item).toBeNull();
     expect(searchSourcesDown()).toBe(false);
   });
 
@@ -70,7 +70,7 @@ describe('lookupBarcode', () => {
         headers: { 'Content-Type': 'application/json' },
       })) as typeof fetch;
 
-    expect(await parser().lookupBarcode('4600823143005', 'RU')).toBeNull();
+    expect((await parser().lookupBarcode('4600823143005', 'RU')).item).toBeNull();
     expect(searchSourcesDown()).toBe(true);
   });
 
@@ -79,11 +79,28 @@ describe('lookupBarcode', () => {
       throw new Error('сеть легла');
     }) as typeof fetch;
 
-    expect(await parser().lookupBarcode('4600823143005', 'RU')).toBeNull();
+    expect((await parser().lookupBarcode('4600823143005', 'RU')).item).toBeNull();
     expect(searchSourcesDown()).toBe(true);
   });
 
   test('офлайн-заглушка честно не знает ни одного кода', async () => {
-    expect(await new StubFoodParser().lookupBarcode('4600823143005', 'RU')).toBeNull();
+    expect((await new StubFoodParser().lookupBarcode('4600823143005', 'RU')).item).toBeNull();
+  });
+});
+
+describe('три «нет» различимы на экране', () => {
+  test('товар опознан, но состава нигде нет → имя доходит до экрана', async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ item: null, identified_name: 'Биотворог Тёма c черникой' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })) as typeof fetch;
+
+    const found = await parser().lookupBarcode('4600823143005', 'RU');
+    expect(found.item).toBeNull();
+    // Без этого экран сказал бы «код не знает ни одна база» — а мы знаем, ЧТО
+    // это, просто состава никто не вносил (или кончился запас разборов).
+    expect(found.name).toBe('Биотворог Тёма c черникой');
+    expect(searchSourcesDown()).toBe(false);
   });
 });

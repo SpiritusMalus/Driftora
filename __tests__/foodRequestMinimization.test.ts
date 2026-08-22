@@ -22,7 +22,7 @@ const noopFallback = {
   parsePhoto: async () => VALID,
   parseAudio: async () => VALID,
   searchFoods: async () => [],
-  lookupBarcode: async () => null,
+  lookupBarcode: async () => ({ item: null }),
   contributeFood: async () => {},
 };
 

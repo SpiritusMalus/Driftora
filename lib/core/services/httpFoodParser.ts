@@ -1,5 +1,6 @@
 import type {
   AudioInput,
+  BarcodeLookup,
   FoodParser,
   MealDraft,
   NutrientValues,
@@ -315,9 +316,9 @@ export class HttpFoodParser implements FoodParser {
    * по-своему: кода нет в базе, база не ответила, устройство офлайн. Ни один из
    * них не значит «такого продукта не существует».
    */
-  async lookupBarcode(code: string, region: Region): Promise<NutritionItem | null> {
+  async lookupBarcode(code: string, region: Region): Promise<BarcodeLookup> {
     const trimmed = code.trim();
-    if (trimmed.length === 0) return null;
+    if (trimmed.length === 0) return { item: null };
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
@@ -329,14 +330,15 @@ export class HttpFoodParser implements FoodParser {
       });
       if (!res.ok) {
         setSearchSourcesDown(true);
-        return null;
+        return { item: null };
       }
-      const data = (await res.json()) as { item?: unknown; sources_down?: unknown };
+      const data = (await res.json()) as { item?: unknown; sources_down?: unknown; identified_name?: unknown };
       setSearchSourcesDown(data.sources_down === true);
-      return isItem(data.item) ? data.item : null;
+      const name = typeof data.identified_name === 'string' ? data.identified_name : undefined;
+      return { item: isItem(data.item) ? data.item : null, ...(name ? { name } : {}) };
     } catch {
       setSearchSourcesDown(true);
-      return null;
+      return { item: null };
     } finally {
       clearTimeout(timer);
     }

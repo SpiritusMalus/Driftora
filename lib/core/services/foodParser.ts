@@ -192,6 +192,18 @@ export interface AudioInput {
 /// Online (HttpFoodParser) it calls the food-parse backend — the app's ONLY
 /// external network call. Offline it falls back to a deterministic local stub
 /// (text), or an empty draft for photo/voice (no on-device vision or speech).
+/**
+ * Итог поиска по штрихкоду. `item` пуст в трёх РАЗНЫХ случаях, и экран обязан
+ * говорить о них по-разному: товар опознан, но состава нигде нет (`name` при
+ * этом заполнено); кода не знает никто; источник не ответил. Одинаковая фраза
+ * на все три была бы враньём как минимум в двух.
+ */
+export interface BarcodeLookup {
+  item: NutritionItem | null;
+  /** Имя товара с упаковки, когда код опознан, — даже если состава не нашлось. */
+  name?: string;
+}
+
 export interface FoodParser {
   parse(text: string, region: Region): Promise<MealDraft>;
   parsePhoto(photo: PhotoInput, region: Region): Promise<MealDraft>;
@@ -204,7 +216,7 @@ export interface FoodParser {
   /// опознаёт товар точно, поэтому это поиск по числу, а не распознавание.
   /// `null` — честное «такого кода в базе нет» (не ошибка): экран предложит
   /// снять состав с упаковки. Офлайн тоже `null` — на устройстве базы нет.
-  lookupBarcode(code: string, region: Region): Promise<NutritionItem | null>;
+  lookupBarcode(code: string, region: Region): Promise<BarcodeLookup>;
   /// Add ONE confirmed food to the SHARED base (opt-in, see `communityShare`).
   /// Sends the name and the per-100g and nothing else — no meal text, no weight,
   /// no time, no install id. Fire-and-forget and total: a refusal, a timeout or

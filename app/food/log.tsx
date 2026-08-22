@@ -919,9 +919,17 @@ export default function FoodLogScreen() {
     setBarcodeBusy(true);
     setBarcodeOutcome(null);
     try {
-      const item = await getFoodParser(consentCurrent()).lookupBarcode(code, region);
+      const { item, name } = await getFoodParser(consentCurrent()).lookupBarcode(code, region);
       if (!item) {
-        setBarcodeOutcome({ kind: searchSourcesDown() ? 'unavailable' : 'missing' });
+        // Три разных «нет» — три разных фразы: источник молчит, товар опознан но
+        // состава нигде нет, или кода не знает никто.
+        setBarcodeOutcome(
+          searchSourcesDown()
+            ? { kind: 'unavailable' }
+            : name
+              ? { kind: 'identified', name }
+              : { kind: 'missing' },
+        );
         return;
       }
       setSource('text');
