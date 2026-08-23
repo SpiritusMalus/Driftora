@@ -29,7 +29,14 @@ import { localizeAlternatives, localizeDraft } from './nutrition/translateNames.
 import { createInstallQuota, installIdOf } from './installQuota.js';
 import { createEntitlements, type PurchaseVerifier } from './entitlements.js';
 import { createGooglePlayVerifier } from './billing/googlePlay.js';
-import { createLicenses, DEFAULT_PLAN, normalizeKey, PLAN_DAYS, type Licenses } from './billing/licenses.js';
+import {
+  createLicenses,
+  DEFAULT_PLAN,
+  MANUAL_PAYMENT_PREFIX,
+  normalizeKey,
+  PLAN_DAYS,
+  type Licenses,
+} from './billing/licenses.js';
 import {
   createYooKassaClient,
   createYooKassaPaymentCreator,
@@ -193,6 +200,38 @@ function requireToken(req: Request, res: Response, next: NextFunction): void {
     return;
   }
   next();
+}
+
+/** A hand-issued licence needs a secret the app has never seen — see /billing/grant. */
+const MIN_ADMIN_TOKEN_LEN = 24;
+
+/**
+ * The admin secret for `/billing/grant`, or `''` when this deployment has no
+ * usable one.
+ *
+ * Both refusals are loud on purpose. A secret rejected in silence reads, three
+ * months later, as "the endpoint is broken" — and the owner's next move would be
+ * to go back to editing licences.jsonl by hand, which is the thing this route
+ * exists to stop.
+ */
+function resolveAdminToken(): string {
+  const token = process.env.BILLING_ADMIN_TOKEN || '';
+  if (!token) return '';
+  // A guessable secret is worse than none: this route mints subscriptions.
+  if (token.length < MIN_ADMIN_TOKEN_LEN) {
+    console.error(
+      `billing: BILLING_ADMIN_TOKEN is shorter than ${MIN_ADMIN_TOKEN_LEN} characters — /billing/grant stays off.`,
+    );
+    return '';
+  }
+  // The likeliest way to get this wrong: pasting APP_TOKEN. That token is inlined
+  // into the app bundle (EXPO_PUBLIC_FOOD_API_TOKEN), so reusing it here would
+  // publish "give me a year of Pro" to everyone holding an APK.
+  if (APP_TOKEN && token === APP_TOKEN) {
+    console.error('billing: BILLING_ADMIN_TOKEN equals APP_TOKEN, which ships inside the app — /billing/grant stays off.');
+    return '';
+  }
+  return token;
 }
 
 /** region from the request body, falling back to the server default. */
@@ -762,6 +801,86 @@ export function createApp(
       return;
     }
     res.json({ key: license.key, plan: license.plan, paid_until: license.paidUntil });
+  });
+
+  /**
+   * Issue or extend a licence by hand: comped access, a goodwill month after a
+   * support mess, a key for the owner's own phone.
+   *
+   * WHY IT HAS ITS OWN SECRET AND NOT `requireToken`: the app token is inlined
+   * into the JS bundle of every APK, so "authenticated as the app" means
+   * "anyone who ran `strings` on the download". That is fine for a parse route
+   * bounded by quota; it is not fine for a route that mints subscriptions.
+   *
+   * And unlike `requireToken` — which no-ops when APP_TOKEN is unset, because a
+   * tokenless deployment is a local one — this FAILS CLOSED. Free access handed
+   * out by a misconfigured server is the one outcome that cannot be walked back.
+   *
+   * What this replaces: stopping the service and appending a line to
+   * licences.jsonl. That worked, but the running server holds the index in
+   * memory and rewrites the file from it when compacting, so a hand-added line
+   * was invisible until a restart and could be silently erased before one.
+   */
+  const adminToken = resolveAdminToken();
+  if (adminToken) console.log('billing: /billing/grant is enabled (BILLING_ADMIN_TOKEN is set).');
+
+  app.post('/billing/grant', limiters.billingDaily, (req: Request, res: Response) => {
+    if (!adminToken) {
+      fail(res, 404, 'not_found', 'This deployment does not issue licences by hand.');
+      return;
+    }
+    const header = req.get('authorization') || '';
+    const presented = header.startsWith('Bearer ') ? header.slice(7) : '';
+    if (!tokensMatch(presented, adminToken)) {
+      fail(res, 401, 'unauthorized', 'Missing or invalid admin token.');
+      return;
+    }
+    // The licence verifier only joins the chain when ЮKassa is configured, so
+    // without it this would mint a key that /billing/register then refuses. A
+    // dead key in a customer's hands is worse than an honest refusal here.
+    if (!getYooKassaPayment) {
+      fail(res, 503, 'billing_unavailable', 'Licences cannot be verified on this deployment; a granted key would not activate.');
+      return;
+    }
+
+    const body = (req.body ?? {}) as { plan?: unknown; key?: unknown; reference?: unknown };
+    const plan = typeof body.plan === 'string' && body.plan ? body.plan : DEFAULT_PLAN;
+    // No silent fallback to the default plan: for a deliberate grant, `yearley`
+    // must be a refusal rather than eleven months the recipient never receives.
+    if (!Object.hasOwn(PLAN_DAYS, plan)) {
+      fail(res, 400, 'unknown_plan', `Unknown plan "${plan}". Known plans: ${Object.keys(PLAN_DAYS).join(', ')}.`);
+      return;
+    }
+
+    const key = typeof body.key === 'string' ? normalizeKey(body.key) : '';
+    // Extending an existing licence is explicit; a typo in the key must not mint
+    // a fresh licence under a string nobody holds.
+    if (key && !licenses.byKey(key)) {
+      fail(res, 404, 'unknown_license', 'No licence with this key. Omit "key" to issue a new one.');
+      return;
+    }
+
+    const reference = typeof body.reference === 'string' ? body.reference.trim() : '';
+    // Letters in any script: the note is the audit trail, and "Пете за баг"
+    // mangled into ASCII would be a record of nothing. Excluded are the quotes
+    // and control characters that would make the licence file harder to read
+    // than the grant is worth.
+    if (reference && !/^[\p{L}\p{N} ._:-]{1,64}$/u.test(reference)) {
+      fail(res, 400, 'invalid_reference', 'Field "reference" may be up to 64 letters, digits, spaces, or . : _ -');
+      return;
+    }
+    // The prefix is what makes a grant legible afterwards — in the licence file
+    // and in /metrics — and it cannot collide with a ЮKassa uuid.
+    const paymentId = `${MANUAL_PAYMENT_PREFIX}${reference || crypto.randomUUID()}`;
+    // Idempotent by payment id, so a retried curl (or a re-run script) returns
+    // the same licence untouched instead of donating a second month.
+    const granted = licenses.applyPayment(paymentId, plan, key || undefined);
+    res.json({
+      key: granted.key,
+      plan: granted.plan,
+      paid_until: granted.paidUntil,
+      reference: paymentId,
+    });
   });
 
   /**

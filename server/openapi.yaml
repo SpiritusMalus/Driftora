@@ -379,6 +379,71 @@ paths:
         '404': { description: No licence for this payment yet }
         '429': { $ref: '#/components/responses/RateLimited' }
 
+  /billing/grant:
+    post:
+      tags: [billing]
+      summary: Issue or extend a licence by hand (admin)
+      description: |
+        Comped access, a goodwill month after a support mess, a key for the
+        owner's own phone. Replaces the old procedure — stop the service, append
+        a line to `licenses.jsonl`, start it again — which was invisible to the
+        running process until a restart and could be erased by a compaction
+        before one.
+
+        **Authenticated by `BILLING_ADMIN_TOKEN`, never by the app token.**
+        `APP_TOKEN` is inlined into the app bundle, so every APK carries it;
+        gating a route that mints subscriptions with it would hand a free year to
+        anyone who read the bundle. The route stays OFF (404) unless the admin
+        secret is set, is at least 24 characters, and differs from `APP_TOKEN` —
+        each refusal is logged at startup.
+
+        Idempotent by `reference`, so a retried call returns the same licence
+        rather than a second month. Grants are recorded as `manual:<reference>`
+        in the licence's payment ids and counted as `granted` in /metrics.
+      security: [{ adminToken: [] }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                plan:
+                  type: string
+                  default: monthly
+                  description: One of the plans in /billing/plans. An unknown plan is refused, never shortened to the default.
+                  example: yearly
+                key:
+                  type: string
+                  description: |
+                    Extend THIS licence instead of issuing a new one; the remaining
+                    days are kept, not restarted. An unknown key is a 404 rather
+                    than a new licence, so a typo cannot mint one nobody holds.
+                  example: ABCD-EFGH-JKLM-NPQR
+                reference:
+                  type: string
+                  maxLength: 64
+                  description: Why it was issued — the idempotency key and the audit trail. Generated when omitted.
+                  example: support-2026-08-23
+      responses:
+        '200':
+          description: Issued or extended
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [key, plan, paid_until, reference]
+                properties:
+                  key: { type: string, example: ABCD-EFGH-JKLM-NPQR }
+                  plan: { type: string, example: yearly }
+                  paid_until: { type: integer, description: Epoch ms. }
+                  reference: { type: string, example: 'manual:support-2026-08-23' }
+        '400': { description: Unknown plan, or a malformed reference }
+        '401': { description: Wrong admin token }
+        '404': { description: The route is off on this deployment, or the key to extend does not exist }
+        '503': { description: ЮKassa is not configured, so a granted key could not be verified }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
   /food/parse:
     post:
       tags: [food]
@@ -708,6 +773,19 @@ components:
         check is a no-op and every route is public — acceptable only behind a
         network boundary.
 
+    adminToken:
+      type: http
+      scheme: bearer
+      description: |
+        `BILLING_ADMIN_TOKEN` — a DIFFERENT secret from `bearerAuth`, and the
+        distinction is the security of `/billing/grant`. `APP_TOKEN` ships inside
+        the app bundle, so it authenticates "someone holding an APK"; this one is
+        known only to the operator.
+
+        Unlike `bearerAuth`, an unset value fails closed: the route answers 404
+        rather than accepting everyone. Same for a secret under 24 characters, or
+        one equal to `APP_TOKEN`.
+
   responses:
     Unauthorized:
       description: Missing or invalid token
@@ -784,6 +862,8 @@ components:
                   identity_unreachable,
                   invalid_id_token,
                   license_not_claimable,
+                  not_found,
+                  invalid_reference,
                 ]
             message: { type: string }
 

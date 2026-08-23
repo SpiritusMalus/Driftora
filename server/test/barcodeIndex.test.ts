@@ -57,8 +57,11 @@ test('двоичный поиск находит каждую запись и н
     for (const r of rows) {
       const hit = idx.lookup(r.code);
       assert.equal(hit?.name, r.name, `код ${r.code}`);
-      assert.equal(hit?.per100.kcal, r.kcal);
-      assert.equal(hit?.per100.source, 'openfoodfacts', 'происхождение остаётся честным');
+      // `per100` в выгрузке бывает пустым — у этих строк он есть, и без явной
+      // проверки промах читался бы как падение по kcal, а не как «состава нет».
+      assert.ok(hit?.per100, `код ${r.code}: состав обязан доехать`);
+      assert.equal(hit.per100.kcal, r.kcal);
+      assert.equal(hit.per100.source, 'openfoodfacts', 'происхождение остаётся честным');
     }
     assert.equal(idx.lookup('4607036800014'), null, 'валидный, но отсутствующий код');
   } finally {
@@ -81,8 +84,13 @@ test('искажённый код до базы не доходит (контр�
 test('клетчатка: отсутствие поля отличается от нуля', () => {
   const idx = indexOf(rows);
   try {
-    assert.equal(idx.lookup('4600823143005')?.per100.fiber, 7.5);
-    assert.equal(idx.lookup('5449000000996')?.per100.fiber, undefined, 'поля нет — не выдумываем ноль');
+    const withFiber = idx.lookup('4600823143005');
+    assert.ok(withFiber?.per100);
+    assert.equal(withFiber.per100.fiber, 7.5);
+
+    const noFiber = idx.lookup('5449000000996');
+    assert.ok(noFiber?.per100);
+    assert.equal(noFiber.per100.fiber, undefined, 'поля нет — не выдумываем ноль');
   } finally {
     idx.close();
   }

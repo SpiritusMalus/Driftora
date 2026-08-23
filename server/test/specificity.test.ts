@@ -95,7 +95,7 @@ test('бренда нет нигде → generic остаётся, но чест
   const table = stub('table', [{ name: 'отруби овсяные', per100: per100(366, 17), confidence: 0.9 }]);
   const en = stub('en-source', [{ name: 'Oat Bran', per100: per100(246, 17), confidence: 0.95 }], { queryLang: 'en' });
 
-  const estimator = async () => ({ kcal: 380, prot: 17, fat: 7, carb: 66 });
+  const estimator = async (name: string) => ({ name, kcal: 380, prot: 17, fat: 7, carb: 66 });
   const resolved = await new Resolver([table, en], estimator).resolveItem(branded(), 'RU');
 
   assert.equal(resolved.per100.kcal, 366, 'реальная строка про тот же продукт остаётся основной');

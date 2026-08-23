@@ -90,7 +90,7 @@ test('ruler: the single formula reproduces curated RU kcal', () => {
 // ловит грубое расхождение, а не пару процентов округления.
 test('CURATED_RU: kcal каждой строки согласован с единой формулой', async () => {
   const { CURATED_RU } = await import('../src/nutrition/curatedRu.js');
-  const off = CURATED_RU.filter((row) => energyInconsistent({ kcal: row.per100.kcal, ...row.per100 })).map(
+  const off = CURATED_RU.filter((row) => energyInconsistent(row.per100)).map(
     (row) => `${row.name}: указано ${row.per100.kcal}, по формуле ${Math.round(energyFromMacros(row.per100))}`,
   );
   assert.deepEqual(off, [], `строки расходятся с формулой:\n${off.join('\n')}`);
