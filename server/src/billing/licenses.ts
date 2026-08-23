@@ -35,6 +35,16 @@ export const PLAN_DAYS: Record<string, number> = {
 
 export const DEFAULT_PLAN = 'monthly';
 
+/**
+ * Marks a licence handed out by `/billing/grant` rather than paid for.
+ *
+ * It sits in `paymentIds`, where ЮKassa's uuids live, and cannot collide with
+ * one. That keeps comped access visible in both places it matters: the licence
+ * file, and the `granted` counter in /metrics. Free access nobody can count is
+ * how a support gesture quietly becomes the business model.
+ */
+export const MANUAL_PAYMENT_PREFIX = 'manual:';
+
 export interface License {
   key: string;
   plan: string;
@@ -173,11 +183,13 @@ export function createLicenses(opts: LicensesOptions = {}): Licenses {
     const ms = now();
     let active = 0;
     let linked = 0;
+    let granted = 0;
     for (const lic of log.values()) {
       if (lic.paidUntil > ms) active += 1;
       if (lic.accountId) linked += 1;
+      if (lic.paymentIds.some((id) => id.startsWith(MANUAL_PAYMENT_PREFIX))) granted += 1;
     }
-    return { licenses: log.size(), active, linked };
+    return { licenses: log.size(), active, linked, granted };
   }
 
   return {
