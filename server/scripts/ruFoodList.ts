@@ -138,6 +138,12 @@ export const RU_FOODS: RuFood[] = [
   { name: 'тыква', aliases: ['тыква'], query: 'pumpkin raw' },
   { name: 'шпинат', aliases: ['шпинат'], query: 'spinach raw' },
   { name: 'салат листовой', aliases: ['салат', 'латук'], query: 'lettuce green leaf raw' },
+  // «Айсберг» — сорт салата, а не марка, но нашего словаря еды он не знал: гейт
+  // уточнений читал его как бренд, ронял «салат листовой» в запасной вариант, и
+  // запрос доставал из Open Food Facts брендовую строку со словом «салат» —
+  // вплоть до «Салат із морської капусти по-корейськи» (отчёт 2026-08-23).
+  // Своя строка чинит и числа, и словарь: RU_FOOD_STEMS строится из этих имён.
+  { name: 'салат айсберг', aliases: ['айсберг'], query: 'lettuce iceberg raw' },
   { name: 'грибы шампиньоны', aliases: ['грибы', 'шампиньоны'], query: 'mushrooms white raw' },
   { name: 'кукуруза варёная', aliases: ['кукуруза'], query: 'corn sweet yellow cooked boiled drained without salt' },
   { name: 'горошек зелёный', aliases: ['зелёный горошек', 'горошек'], query: 'peas green raw' },
