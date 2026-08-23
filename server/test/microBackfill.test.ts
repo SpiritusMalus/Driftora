@@ -144,3 +144,29 @@ test('dry_basis suppressed for a prepared (finished-dish) match', async () => {
   const r = await resolver.resolveItem(item({ name_ru: 'лапша готовая', name_en: 'instant noodles' }), 'RU');
   assert.equal(r.dry_basis, undefined);
 });
+
+
+test('back-fill: a row WITH vitamins but no fiber still gets fiber (and keeps its own vitamins)', async () => {
+  // Vitamins and fibre are separate gaps, and only the vitamin one used to open
+  // this door — so a crowd row that happened to carry vitamins could never
+  // acquire fibre, and a plate of vegetables honestly read as 0.
+  mockFetch(() => json(usdaBorscht)); // donor: fiber 3, vitamins c:10 a:50
+  const crowd: Per100 = {
+    source: 'openfoodfacts',
+    kcal: 15,
+    prot: 0.9,
+    fat: 0.2,
+    carb: 3.9,
+    minerals: {},
+    vitamins: { c: 13.7 },
+  };
+  const resolver = new Resolver([new StubOff(crowd, 'борщ'), new UsdaProvider('KEY')]);
+
+  const r = await resolver.resolveItem(item(), 'RU');
+
+  assert.equal(r.per100.fiber, 3, 'the gap that was actually missing gets filled');
+  assert.equal(r.per100.vitamins?.c, 13.7, 'its OWN vitamins stay — the donor was consulted for fibre only');
+  assert.equal(r.per100.vitamins?.a, undefined, 'and the proxy does not smuggle extra vitamins in');
+  assert.equal(r.per100.kcal, 15, 'macros untouched');
+});
+

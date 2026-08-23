@@ -25,7 +25,7 @@ const SR_DIR = process.env.SR_DIR;
 const OUT = join(HERE, '..', 'src', 'nutrition', 'skurikhinData.ts');
 
 // SR Legacy nutrient ids (== nutrient_id in food_nutrient.csv).
-const NUT = { kcal: 1008, prot: 1003, fat: 1004, carb: 1005, na: 1093, k: 1092, ca: 1087, mg: 1090, fe: 1089, zn: 1095 };
+const NUT = { kcal: 1008, prot: 1003, fat: 1004, carb: 1005, fiber: 1079, na: 1093, k: 1092, ca: 1087, mg: 1090, fe: 1089, zn: 1095 };
 const KCAL_FALLBACK = [2048, 2047]; // Atwater energy if 1008 is absent
 const MINERAL_KEYS = ['na', 'k', 'ca', 'mg', 'fe', 'zn'] as const;
 
@@ -44,6 +44,44 @@ const VIT = {
 } as const;
 const VITAMIN_KEYS = ['a', 'd', 'e', 'c', 'b1', 'b2', 'b6', 'b9', 'b12'] as const;
 const round2 = (n: number): number => Math.round(n * 100) / 100;
+
+/**
+ * Rows where the SR Legacy match is WRONG FOR A RUSSIAN PLATE, corrected by hand
+ * and kept here so regeneration cannot silently revert them.
+ *
+ * This file used to claim it was purely generated. It was not: PR #126 fixed
+ * творог directly in the output, and the next regeneration (2026-08-23, adding
+ * fibre) quietly restored US cottage cheese — 17 g protein back down to 10.5,
+ * sodium 41 → 308. The correction survived a month only because nobody
+ * regenerated. An override belongs in the generator, not in its output.
+ */
+interface Override {
+  source: string;
+  per100: string; // emitted verbatim, so the hand-checked numbers are the ones shipped
+  why: string[]; // comment lines above the row
+}
+
+const OVERRIDES: Record<string, Override> = {
+  'творог 2%': {
+    source: 'skurikhin',
+    // fiber: 0 — dairy has none, and an explicit 0 stops a proxy row grafting
+    // fibre onto творог later.
+    per100:
+      'kcal: 99, prot: 17, fat: 2, carb: 3.3, fiber: 0, minerals: { na: 41, k: 125, ca: 111, mg: 9, fe: 0.1, zn: 0.5 }, vitamins: { a: 68, e: 0.08, b1: 0.02, b2: 0.25, b6: 0.06, b9: 8, b12: 0.47 }',
+    why: [
+      'Russian творог, NOT US cottage cheese: the USDA row (81 kcal / 10.5 g prot)',
+      'undercounted protein by ~1.5× and over-salted it. Values from the Простоквашино',
+      'package + FatSecret + Скурихин (2% = 99/17/2/3.3, all internally consistent);',
+      "source now honestly 'skurikhin'. Device feedback 2026-07-13.",
+    ],
+  },
+  'творог обезжиренный': {
+    source: 'skurikhin',
+    per100:
+      'kcal: 88, prot: 18, fat: 0.6, carb: 1.8, fiber: 0, minerals: { na: 44, k: 137, ca: 120, mg: 11, fe: 0.2, zn: 0.5 }, vitamins: { a: 2, e: 0.01, b1: 0.02, b2: 0.23, b6: 0.02, b9: 9, b12: 0.46 }',
+    why: ['Same correction as «творог 2%» — the SR row is cottage cheese.'],
+  },
+};
 
 function fail(msg: string): never {
   console.error(`\n✗ ${msg}`);
@@ -165,6 +203,12 @@ for (const [fdc, food] of targets) {
     // 2 decimals so sub-mg vitamins (thiamin, B12 in µg) aren't lost to 0.
     if (typeof v === 'number' && round2(v) > 0) vitamins[k] = round2(v);
   }
+  // Fibre is emitted whenever SR Legacy MEASURED it — including an explicit 0.
+  // Absent and zero are different answers: 0 says "measured, none here" (meat,
+  // cheese) and blocks a proxy value being grafted on later, while an omitted
+  // field asks the resolver to find a donor. Collapsing the two would either
+  // fabricate fibre in beef or leave vegetables reading as zero.
+  const fiberAmount = a.get(NUT.fiber);
   entries.push({
     name: food.name,
     aliases: food.aliases,
@@ -173,6 +217,7 @@ for (const [fdc, food] of targets) {
       prot: round1(prot),
       fat: round1(a.get(NUT.fat) ?? 0),
       carb: round1(a.get(NUT.carb) ?? 0),
+      ...(typeof fiberAmount === 'number' ? { fiber: round1(fiberAmount) } : {}),
       minerals,
       ...(Object.keys(vitamins).length > 0 ? { vitamins } : {}),
     },
@@ -193,16 +238,29 @@ const body = entries
       prot: number;
       fat: number;
       carb: number;
+      fiber?: number;
       minerals: Record<string, unknown>;
       vitamins?: Record<string, unknown>;
     };
     const aliases = e.aliases.map((x) => `'${x.replace(/'/g, "\\'")}'`).join(', ');
     const vit = p.vitamins && Object.keys(p.vitamins).length > 0 ? `, vitamins: ${vitaminStr(p.vitamins)}` : '';
-    return `  { name: '${e.name.replace(/'/g, "\\'")}', aliases: [${aliases}], source: 'usda',\n    per100: { kcal: ${p.kcal}, prot: ${p.prot}, fat: ${p.fat}, carb: ${p.carb}, minerals: ${mineralStr(p.minerals)}${vit} } },`;
+    const name = e.name.replace(/'/g, "\\'");
+    const aliasList = `aliases: [${aliases}]`;
+    const override = OVERRIDES[e.name];
+    if (override) {
+      const why = override.why.map((line) => `  // ${line}`).join('\n');
+      return `${why}\n  { name: '${name}', ${aliasList}, source: '${override.source}',\n    per100: { ${override.per100} } },`;
+    }
+    const fib = typeof p.fiber === 'number' ? `, fiber: ${p.fiber}` : '';
+    return `  { name: '${name}', ${aliasList}, source: 'usda',\n    per100: { kcal: ${p.kcal}, prot: ${p.prot}, fat: ${p.fat}, carb: ${p.carb}${fib}, minerals: ${mineralStr(p.minerals)}${vit} } },`;
   })
   .join('\n');
 
+const overridden = entries.filter((e) => OVERRIDES[e.name]).map((e) => e.name);
 const out = `// AUTO-GENERATED by scripts/srLegacyImport.ts — DO NOT EDIT BY HAND.
+// A correction belongs in OVERRIDES inside that script: an edit made here is
+// reverted by the next regeneration, silently (that is exactly what happened to
+// творог between 2026-07-13 and 2026-08-23).
 // Regenerate: SR_DIR=/path/to/sr_legacy npm run import:nutrition
 //
 // Source: U.S. Department of Agriculture, Agricultural Research Service.
@@ -221,5 +279,6 @@ ${body}
 
 writeFileSync(OUT, out, 'utf8');
 console.error(`\nImported ${entries.length}/${RU_FOODS.length} foods → ${OUT}`);
+if (overridden.length) console.error(`Hand-corrected rows kept: ${overridden.join(', ')}`);
 console.error(log.join('\n'));
 if (misses.length) console.error(`\nOmitted (no SR match → estimate fallback): ${misses.join(', ')}`);

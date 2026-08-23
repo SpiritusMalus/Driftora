@@ -399,7 +399,13 @@ export class Resolver {
   private async backfillMicros(found: LookupResult, nameEn: string): Promise<LookupResult> {
     const per100 = found.per100;
     if (!this.usda || per100.source === 'usda' || per100.source === 'estimate') return found;
-    if (per100.vitamins) return found; // already carries the richer micro set
+    // Vitamins and fibre are separate gaps, and only one of them used to open
+    // this door. A row that carries vitamins but no `fiber` (most of the crowd
+    // OFF corpus, and the curated rows SR Legacy never measured) returned here
+    // and could NEVER acquire fibre — «клетчатка 0» for a plate of vegetables.
+    const needsMicros = !per100.vitamins;
+    const needsFiber = per100.fiber === undefined;
+    if (!needsMicros && !needsFiber) return found;
     if (nameEn.trim().length === 0) return found;
 
     const donor = await this.usdaMicros(nameEn);
@@ -407,7 +413,9 @@ export class Resolver {
 
     const minerals: Minerals = { ...donor.minerals, ...per100.minerals }; // primary wins on overlap
     const merged: Per100 = { ...per100, minerals };
-    if (donor.vitamins) merged.vitamins = donor.vitamins;
+    // Only fill what was missing: a row consulted purely for fibre keeps its own
+    // vitamins rather than having them replaced by the proxy's.
+    if (needsMicros && donor.vitamins) merged.vitamins = donor.vitamins;
     // Fiber from the proxy ONLY when the primary carries none — a curated «0»
     // (or any real value) stays untouched. This fills the gap for RU dishes and
     // crowd OFF rows that omit fiber, flagged microsEstimated like the rest, so
