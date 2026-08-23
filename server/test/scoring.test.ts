@@ -118,3 +118,18 @@ test('queryCoverage: unmatched query words count against the match', () => {
   assert.equal(queryCoverage('', 'anything'), 0);
   assert.equal(queryCoverage('anything', ''), 0);
 });
+
+test('queryCoverage: an inflected form is covered — the gate matches at the tolerance that found the row', () => {
+  // Раньше здесь было равенство строк, и таблица теряла ЛЮБУЮ словоформу,
+  // которую человек реально печатает: «помидоры» против строки «помидор» давали
+  // 0.00 при том, что RU-матчер только что оценил их в 0.85. Строка уходила в
+  // запасные, обход продолжался, и выигрывала брендовая строка, в НАЗВАНИИ
+  // которой словоформа совпала буквально: «огурцы» → «Тёща огурцы бочковые».
+  assert.equal(queryCoverage('помидоры', 'помидор'), 1);
+  assert.equal(queryCoverage('огурцы', 'огурец'), 1);
+  assert.ok(queryCoverage('салат айсберг', 'салат айсберг') >= MIN_CHAIN_COVERAGE);
+
+  // Терпимость не должна стать всеядностью: чужая еда по-прежнему не покрыта.
+  assert.equal(queryCoverage('огурцы', 'помидор'), 0);
+  assert.ok(queryCoverage('борщ', 'молоко') < MIN_CHAIN_COVERAGE);
+});

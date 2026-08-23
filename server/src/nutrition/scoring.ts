@@ -1,3 +1,5 @@
+import { tokenScore } from './ruSearch.js';
+
 /**
  * Candidate ranking for nutrition lookups (disambiguation layer 1). Providers
  * like FatSecret/USDA return a LIST for one query — blindly taking `[0]` often
@@ -56,15 +58,39 @@ export function scoreName(query: string, candidate: string): number {
  * Coverage stays honest there (0.33) because unmatched query tokens count
  * against it directly.
  */
+/**
+ * A query word counts as covered at the same tolerance that FOUND the row —
+ * exact, prefix, same stem, or one typo ([tokenScore] ≥ 0.6).
+ *
+ * It used to be raw string equality, and that quietly discarded the curated
+ * table for every inflected form a person actually types: «помидоры» against the
+ * row «помидор» scored 0.00 and «огурцы» against «огурец» scored 0.00 — no
+ * shared word, though the RU matcher had just ranked them 0.85 and 0.95. The row
+ * was demoted to a fallback, the walk continued, and a brand row whose NAME
+ * happened to contain the literal word form won instead: «огурцы» came back as
+ * «Тёща огурцы бочковые», 4 ккал of pickles (owner report 2026-08-23).
+ *
+ * Two gates measuring the same thing by different rules is how a match gets
+ * found and then thrown away.
+ */
+const TOKEN_COVERED = 0.6;
+
 export function queryCoverage(query: string, candidate: string): number {
   const q = normalizeName(query);
   const c = normalizeName(candidate);
   if (q.length === 0 || c.length === 0) return 0;
   const qt = [...new Set(q.split(' '))].filter((w) => w.length > 0);
   if (qt.length === 0) return 0;
-  const ct = new Set(c.split(' '));
+  const ct = c.split(' ').filter((w) => w.length > 0);
   let hit = 0;
-  for (const w of qt) if (ct.has(w)) hit++;
+  for (const w of qt) {
+    let best = 0;
+    for (const k of ct) {
+      const score = tokenScore(w, k);
+      if (score > best) best = score;
+    }
+    if (best >= TOKEN_COVERED) hit += 1;
+  }
   return hit / qt.length;
 }
 

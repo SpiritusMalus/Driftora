@@ -8,7 +8,7 @@
 // FoodData Central, Standard Reference Legacy (2018). https://fdc.nal.usda.gov
 // Public domain. Per-100g values; source attributed as 'usda' per entry.
 //
-// 203 foods imported. RU items absent from USDA (ряженка, сырок,
+// 204 foods imported. RU items absent from USDA (ряженка, сырок,
 // etc.) are intentionally omitted → the resolver's flagged 'estimate' fallback
 // covers them. Drop in a digitized Skurikhin dataset to extend RU coverage.
 import type { SkurikhinEntry } from './skurikhinTypes.js';
@@ -278,6 +278,8 @@ export const SKURIKHIN_TABLE: SkurikhinEntry[] = [
     per100: { kcal: 123, prot: 2.7, fat: 1, carb: 25.6, fiber: 1.6, minerals: { na: 4, k: 86, ca: 3, mg: 39, fe: 0.6, zn: 0.7 }, vitamins: { e: 0.17, b1: 0.18, b2: 0.07, b6: 0.12, b9: 9 } } },
   { name: 'рис круглозёрный варёный', aliases: ['круглый рис'], source: 'usda',
     per100: { kcal: 130, prot: 2.4, fat: 0.2, carb: 28.7, minerals: { k: 26, ca: 1, mg: 8, fe: 1.5, zn: 0.4 }, vitamins: { b1: 0.16, b2: 0.02, b6: 0.06, b9: 99 } } },
+  { name: 'салат айсберг', aliases: ['айсберг'], source: 'usda',
+    per100: { kcal: 14, prot: 0.9, fat: 0.1, carb: 3, fiber: 1.2, minerals: { na: 10, k: 141, ca: 18, mg: 7, fe: 0.4, zn: 0.2 }, vitamins: { a: 25, e: 0.18, c: 2.8, b1: 0.04, b2: 0.03, b6: 0.04, b9: 29 } } },
   { name: 'салат листовой', aliases: ['салат', 'латук'], source: 'usda',
     per100: { kcal: 15, prot: 1.4, fat: 0.2, carb: 2.9, fiber: 1.3, minerals: { na: 28, k: 194, ca: 36, mg: 13, fe: 0.9, zn: 0.2 }, vitamins: { a: 370, e: 0.22, c: 9.2, b1: 0.07, b2: 0.08, b6: 0.09, b9: 38 } } },
   { name: 'сало', aliases: ['сало', 'шпик'], source: 'usda',
