@@ -14,7 +14,7 @@ import {
   updateWorkout,
 } from '@/lib/core/db/workouts';
 import { workoutKcal } from '@/lib/core/insights/bodyMetrics';
-import { shiftDayKey } from '@/lib/i18n/formatDay';
+import { daysAgo, shiftDayKey, tsOnDay } from '@/lib/i18n/formatDay';
 
 /** Editing a logged workout — the delete-only log grew a correction path. */
 
@@ -178,5 +178,25 @@ describe('getWorkout / shiftDayKey', () => {
     expect(shiftDayKey('2026-08-01', -1)).toBe('2026-07-31');
     expect(shiftDayKey('2026-12-31', 1)).toBe('2027-01-01');
     expect(shiftDayKey('garbage', -1)).toBe('garbage');
+  });
+
+  it('daysAgo counts back to today and floors at 0', () => {
+    const now = new Date(2026, 7, 24, 15, 30); // 2026-08-24
+    expect(daysAgo('2026-08-24', now)).toBe(0);
+    expect(daysAgo('2026-08-23', now)).toBe(1);
+    expect(daysAgo('2026-07-10', now)).toBe(45);
+    expect(daysAgo('2026-08-25', now)).toBe(0); // future never widens a floor
+    expect(daysAgo('garbage', now)).toBe(0);
+  });
+
+  it('tsOnDay keeps the clock time and only moves the day', () => {
+    const original = new Date(2026, 7, 24, 19, 45, 12);
+    const moved = tsOnDay(original, '2026-08-23');
+    expect(moved.getFullYear()).toBe(2026);
+    expect(moved.getMonth()).toBe(7);
+    expect(moved.getDate()).toBe(23);
+    expect(moved.getHours()).toBe(19);
+    expect(moved.getMinutes()).toBe(45);
+    expect(tsOnDay(original, 'garbage')).toBe(original);
   });
 });

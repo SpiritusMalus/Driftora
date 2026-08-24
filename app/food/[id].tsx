@@ -7,6 +7,7 @@ import { ItemCard } from '@/components/food/ItemCard';
 import { MealChips } from '@/components/food/MealChips';
 import { ApproxBadge } from '@/components/food/nutrientViews';
 import { Card } from '@/components/ui/Card';
+import { DAY_NAV_BACK_DAYS, DayNav } from '@/components/ui/DayNav';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
 import { TextField } from '@/components/ui/TextField';
@@ -23,6 +24,7 @@ import {
 import type { FoodEntry } from '@/lib/core/db/schema';
 import { ensureSettings } from '@/lib/core/db/settings';
 import { mealTypeForEntry, type MealType } from '@/lib/core/insights/mealType';
+import { daysAgo, localDayKey, tsOnDay } from '@/lib/i18n/formatDay';
 import type { MealDraft, NutritionAlternative, Region } from '@/lib/core/services/foodParser';
 import { getFoodParser, resolveRegion } from '@/lib/core/services/foodParserProvider';
 import {
@@ -56,6 +58,11 @@ export default function FoodEntryScreen() {
   // the same keyword/clock guess the day list uses, so what's edited here
   // matches what the user saw there.
   const [meal, setMeal] = useState<MealType | null>(null);
+  // The day the entry files under. «Вчера забыл записать ужин» finally has an
+  // answer on the food side too: log now, then move the entry to its real day —
+  // the same half-of-the-complaint the workout edit screen closed (#214). The
+  // DB layer took an arbitrary `ts` all along; only the UI was missing.
+  const [day, setDay] = useState('');
   const [region, setRegion] = useState<Region>('RU');
   const [aiConsent, setAiConsent] = useState(false);
   const [aiConsentVersion, setAiConsentVersion] = useState('');
@@ -93,6 +100,7 @@ export default function FoodEntryScreen() {
       setEntry(detail.entry);
       setRawText(detail.entry.rawText);
       setMeal(detail.entry.meal ?? mealTypeForEntry(detail.entry.rawText, detail.entry.ts));
+      setDay(localDayKey(detail.entry.ts));
       setDraft(d);
       setRegion(r);
       setAiConsent(settings.aiFoodParseConsent);
@@ -151,7 +159,16 @@ export default function FoodEntryScreen() {
     setBusy(true);
     setSaveIssue(false);
     try {
-      await updateFoodEntry(db, entryId, { rawText: rawText.trim(), source: entry.source, draft, meal });
+      // A changed day re-files the entry at the SAME clock time on the new day
+      // (see [tsOnDay]) — an unchanged day never touches the stored ts.
+      const origDay = localDayKey(entry.ts);
+      await updateFoodEntry(db, entryId, {
+        rawText: rawText.trim(),
+        source: entry.source,
+        draft,
+        meal,
+        ...(day && day !== origDay ? { ts: tsOnDay(entry.ts, day) } : {}),
+      });
       router.back();
     } catch {
       setBusy(false);
@@ -261,6 +278,20 @@ export default function FoodEntryScreen() {
         </View>
       ) : null}
 
+      {/* …and under another DAY — the other half of re-filing («вчера забыл
+          записать ужин»: log now, move here). The floor widens for an old entry
+          so its own day stays reachable after a stray «›». */}
+      {day && entry != null ? (
+        <View style={styles.dayField}>
+          <Text style={[styles.label, { color: theme.subtle }, theme.font.body]}>{t('food.editDay')}</Text>
+          <DayNav
+            value={day}
+            onChange={setDay}
+            backDays={Math.max(DAY_NAV_BACK_DAYS, daysAgo(localDayKey(entry.ts)))}
+          />
+        </View>
+      ) : null}
+
       <PrimaryButton label={t('food.update')} onPress={onUpdate} disabled={busy} style={styles.update} />
       {saveIssue ? (
         <Text style={[styles.saveIssue, { color: theme.primary }, theme.font.bodyMedium]}>
@@ -302,6 +333,7 @@ const styles = StyleSheet.create({
   totalValue: { fontSize: 26 },
   totalUnit: { fontSize: 13, flexShrink: 1 },
   mealChips: { marginTop: 14 },
+  dayField: { marginTop: 14 },
   update: { marginTop: 16 },
   saveIssue: { fontSize: 13, marginTop: 8, textAlign: 'center' },
   repeatBtn: { borderWidth: 1.5, borderRadius: 999, paddingVertical: 12, alignItems: 'center', marginTop: 10 },

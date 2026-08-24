@@ -44,3 +44,24 @@ export function shiftDayKey(key: string, days: number): string {
   d.setDate(d.getDate() + days);
   return localDayKey(d);
 }
+
+/// Whole days from [key] back to today (0 = today or a future key). The edit
+/// screens use it to widen a DayNav's floor so a row OLDER than the default
+/// horizon can still be walked back to its own day after a stray «›» tap.
+export function daysAgo(key: string, now: Date = new Date()): number {
+  const d = parseDayKey(key);
+  if (!d) return 0;
+  const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  // Round, not floor: a DST shift makes the span 23 or 25 hours per day.
+  return Math.max(0, Math.round((midnight.getTime() - d.getTime()) / 86_400_000));
+}
+
+/// The same clock time moved to another day — how an edit RE-FILES a record:
+/// «записал не в тот день» changes the day, not the moment of day, so the
+/// row keeps its place in the destination day's order.
+export function tsOnDay(original: Date, dayKey: string): Date {
+  const d = parseDayKey(dayKey);
+  if (!d) return original;
+  d.setHours(original.getHours(), original.getMinutes(), original.getSeconds(), 0);
+  return d;
+}
