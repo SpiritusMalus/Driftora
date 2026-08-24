@@ -121,10 +121,18 @@ export default function HistoryDayScreen() {
       key: String(w.id),
       title: formatWorkoutLine(w, t),
       subtitle: formatTime(new Date(w.ts)),
-      right:
-        value == null ? null : (
-          <Text style={[styles.rowValue, { color: theme.text }, theme.font.bodyMedium]}>{value}</Text>
-        ),
+      // Tappable, exactly like the food rows above: a past session was a dead
+      // label here, so a wrong yesterday's workout could only be fixed by
+      // deleting it from the workout screen's own day view.
+      right: (
+        <View style={styles.rowRight}>
+          {value == null ? null : (
+            <Text style={[styles.rowValue, { color: theme.text }, theme.font.bodyMedium]}>{value}</Text>
+          )}
+          <Ionicons name="chevron-forward" size={theme.isIOS ? 16 : 18} color={theme.tertiary} />
+        </View>
+      ),
+      onPress: () => router.push(`/workout/${w.id}`),
     };
   });
 
@@ -202,6 +210,9 @@ export default function HistoryDayScreen() {
           {workoutListRows.length > 0 ? (
             <View style={styles.section}>
               <SectionHeader>{t('history.workoutSection')}</SectionHeader>
+              <Text style={[styles.editHint, { color: theme.subtle }, theme.font.body]}>
+                {t('history.workoutEditHint')}
+              </Text>
               <ListGroup rows={workoutListRows} />
             </View>
           ) : null}

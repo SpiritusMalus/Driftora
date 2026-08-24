@@ -34,3 +34,13 @@ export function formatDayTitle(
   const weekday = t(`history.w${date.getDay()}`);
   return `${date.getDate()} ${month}, ${weekday}`;
 }
+
+/// A day key shifted by whole days («вчера» = −1). Keys are compared as plain
+/// strings everywhere (ISO order = chronological order), so the day panes need
+/// exactly this one arithmetic helper and nothing else.
+export function shiftDayKey(key: string, days: number): string {
+  const d = parseDayKey(key);
+  if (!d) return key;
+  d.setDate(d.getDate() + days);
+  return localDayKey(d);
+}

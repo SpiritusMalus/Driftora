@@ -1,6 +1,13 @@
 import { describe, expect, it } from '@jest/globals';
 
-import { groupEntriesByMeal, mealTypeForEntry, mealTypeFromKeyword } from '@/lib/core/insights/mealType';
+import {
+  groupEntriesByMeal,
+  MEAL_ORDER,
+  mealTypeForEntry,
+  mealTypeFromKeyword,
+  promptKeyForMeal,
+} from '@/lib/core/insights/mealType';
+import { mealPromptKeyForHour } from '@/lib/core/insights/mealPrompt';
 
 /** A Date at a fixed local hour (minute 0), for the time-of-day fallback. */
 function at(hour: number): Date {
@@ -90,5 +97,27 @@ describe('groupEntriesByMeal', () => {
     expect(groups).toHaveLength(1);
     expect(groups[0].type).toBe('lunch');
     expect(groups[0].entries.map((e) => e.id)).toEqual([1, 2]);
+  });
+});
+
+describe('promptKeyForMeal (picker → placeholder)', () => {
+  it('asks about the CHOSEN meal, not the clock', () => {
+    expect(promptKeyForMeal('breakfast')).toBe('morning');
+    expect(promptKeyForMeal('lunch')).toBe('midday');
+    expect(promptKeyForMeal('dinner')).toBe('evening');
+    expect(promptKeyForMeal('snack')).toBe('lateNight');
+  });
+
+  it('round-trips with the clock preselect: untouched chips keep the old placeholder', () => {
+    // mealChoice defaults to the hour's meal — mapping it back must land on the
+    // same prompt the hour used to pick directly, for every hour of the day.
+    for (let hour = 0; hour < 24; hour++) {
+      const viaMeal = promptKeyForMeal(mealTypeForEntry('', at(hour)));
+      expect(viaMeal).toBe(mealPromptKeyForHour(hour));
+    }
+  });
+
+  it('covers every pickable chip', () => {
+    for (const m of MEAL_ORDER) expect(typeof promptKeyForMeal(m)).toBe('string');
   });
 });

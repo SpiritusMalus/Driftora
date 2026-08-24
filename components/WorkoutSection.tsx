@@ -1,15 +1,17 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ConsentModal } from '@/components/consent/ConsentModal';
 import { Card } from '@/components/ui/Card';
 import { Chip, ChipRow } from '@/components/ui/Chip';
+import { DayNav } from '@/components/ui/DayNav';
 import { TextField } from '@/components/ui/TextField';
 import { AI_CONSENT_VERSION, grantAiConsent, needsAiConsent } from '@/lib/core/consent/consent';
 import type { WorkoutRow } from '@/lib/core/db/schema';
-import { ensureSettings } from '@/lib/core/db/settings';
+import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
 import { latestWeight } from '@/lib/core/db/weight';
 import {
   addParsedWorkout,
@@ -49,6 +51,7 @@ import {
   isWorkoutParserConfigured,
   type ParsedWorkout,
 } from '@/lib/core/services/workoutParser';
+import { formatDayTitle, localDayKey, parseDayKey } from '@/lib/i18n/formatDay';
 import { budgetKcal, formatWorkoutLine, formatWorkoutValue } from '@/lib/i18n/formatWorkout';
 import { pluralKey } from '@/lib/i18n/plural';
 import { type Theme, useTheme } from '@/lib/theme/theme';
@@ -65,6 +68,19 @@ type WorkoutMode = (typeof WORKOUT_MODES)[number];
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Db = any;
 
+/// The timestamp a log written while [key] is the selected day should carry.
+/// Today → now, the honest «I just finished» case the steps window leans on
+/// (see [loggedWindow]). Another day → the same clock time on THAT day: nobody
+/// knows when an unlogged session actually happened, and this at least keeps the
+/// day's rows in the order they were entered.
+function whenForDay(key: string, now: Date = new Date()): Date {
+  if (key === localDayKey(now)) return now;
+  const d = parseDayKey(key);
+  if (!d) return now;
+  d.setHours(now.getHours(), now.getMinutes(), now.getSeconds(), 0);
+  return d;
+}
+
 
 /// «Тренировки сегодня» — log a workout (type + minutes → kcal via MET, computed
 /// from the latest weight) and see the day's burn. Reports the RAW burned kcal up
@@ -75,14 +91,28 @@ export function WorkoutSection({
   db,
   onChange,
   initiallyOpen = false,
+  day: dayProp,
+  onDayChange,
 }: {
   db: Db;
   onChange?: (rawKcal: number) => void;
   initiallyOpen?: boolean;
+  /// Selected day, controlled by the parent when given — the standalone screen
+  /// owns it so its sync-driven remounts don't snap the card back to today.
+  day?: string;
+  onDayChange?: (day: string) => void;
 }) {
   const { t } = useTranslation();
   const theme = useTheme();
+  const router = useRouter();
   const [rows, setRows] = useState<WorkoutRow[]>([]);
+  // Which day the card SHOWS and WRITES to. «Вчера забыл записать» had no answer
+  // before: every add path stamped `new Date()`, so a session could only ever
+  // land on today. Kept as a day key ('YYYY-MM-DD') — the same currency the log
+  // rows are stored and grouped by.
+  const [dayState, setDayState] = useState(() => localDayKey(new Date()));
+  const day = dayProp ?? dayState;
+  const setDay = onDayChange ?? setDayState;
   // «Повторить»: what the user has already logged, one tap away — the fast path
   // past the whole form (device feedback 2026-07-21: «чтобы заново не вписывать»).
   const [quick, setQuick] = useState<QuickWorkout[]>([]);
@@ -143,6 +173,29 @@ export function WorkoutSection({
   const [recording, setRecording] = useState<ActiveRecording | null>(null);
   const [photoReady, setPhotoReady] = useState(false);
   const micReady = isAudioRecordingAvailable();
+  // First-visit coach for the two media buttons: each GLOWS until its first
+  // tap, and that tap explains what the button does instead of firing it —
+  // the always-on «надиктуйте голосом» caption this replaces taught everyone
+  // forever, this teaches once (owner feedback 2026-08-23). Shown-once flags
+  // persist like the mood swipe coach's.
+  const [voiceCoach, setVoiceCoach] = useState(false);
+  const [shotCoach, setShotCoach] = useState(false);
+  const coaching = (voiceCoach && micReady) || (shotCoach && photoReady);
+  // A soft pulse (scale, native driver — Fabric-safe) reads as «горение»
+  // without a shadow-animation dependency.
+  const coachPulse = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (!coaching) return;
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(coachPulse, { toValue: 1, duration: 650, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(coachPulse, { toValue: 0, duration: 650, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [coaching, coachPulse]);
+  const coachScale = coachPulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.1] });
   // The teaching moment after any successful log: «+N ккал к бюджету сегодня» —
   // the user must SEE that a workout raises the day, not infer it.
   const [budgetAck, setBudgetAck] = useState<string | null>(null);
@@ -155,10 +208,22 @@ export function WorkoutSection({
     [],
   );
 
+  const todayKey = localDayKey(new Date());
+  const isToday = day === todayKey;
+
   function ackBudget(rawKcal: number) {
     const add = Math.round(Math.max(0, rawKcal) * EATBACK_FRACTION);
     if (add <= 0) return;
-    setBudgetAck(hideCalories ? t('workouts.budgetAckNoKcal') : t('workouts.budgetAck', { kcal: add }));
+    // A past day's entry raised THAT day's budget, not today's — saying
+    // «на сегодня» there would be a plain lie about where the calories went.
+    const key = hideCalories
+      ? isToday
+        ? 'workouts.budgetAckNoKcal'
+        : 'workouts.budgetAckOtherDayNoKcal'
+      : isToday
+        ? 'workouts.budgetAck'
+        : 'workouts.budgetAckOtherDay';
+    setBudgetAck(t(key, { kcal: add }));
     if (budgetAckTimer.current) clearTimeout(budgetAckTimer.current);
     budgetAckTimer.current = setTimeout(() => setBudgetAck(null), 6000);
   }
@@ -166,7 +231,7 @@ export function WorkoutSection({
   const reload = useCallback(async () => {
     if (!db) return;
     const [list, w, repeats, s] = await Promise.all([
-      listWorkoutsForDay(db),
+      listWorkoutsForDay(db, day),
       latestWeight(db),
       quickWorkouts(db),
       ensureSettings(db),
@@ -193,12 +258,18 @@ export function WorkoutSection({
         kg,
       ),
     );
-    onChange?.(list.reduce((s2, r) => s2 + Number(r.kcal), 0));
-  }, [db, onChange, weightKg]);
+    // The parent's number is TODAY's burn (it feeds today's budget) — a past
+    // day being browsed here must not overwrite it.
+    if (day === localDayKey(new Date())) onChange?.(list.reduce((s2, r) => s2 + Number(r.kcal), 0));
+  }, [db, onChange, weightKg, day]);
 
-  useEffect(() => {
-    void reload();
-  }, [reload]);
+  // On focus, not just on mount: the row-edit screen writes and pops straight
+  // back here, and a stale list would keep showing the pre-edit line.
+  useFocusEffect(
+    useCallback(() => {
+      void reload();
+    }, [reload]),
+  );
 
   // Settings this card reacts to: the calorie-visibility switch (always), and
   // the AI-consent state so the free-text button can gate correctly.
@@ -210,6 +281,8 @@ export function WorkoutSection({
       if (!AI_CONFIGURED) return;
       setAiConsent(s.aiFoodParseConsent);
       setAiConsentVersion(s.aiFoodParseConsentVersion);
+      setVoiceCoach(!s.workoutVoiceCoachSeen);
+      setShotCoach(!s.workoutShotCoachSeen);
     })();
   }, [db]);
 
@@ -240,7 +313,7 @@ export function WorkoutSection({
     if (!db || repeating) return;
     setRepeating(true);
     try {
-      ackBudget(await repeatWorkout(db, q, weightKg, new Date(), restingRate));
+      ackBudget(await repeatWorkout(db, q, weightKg, whenForDay(day), restingRate));
       await reload();
     } finally {
       setRepeating(false);
@@ -258,7 +331,7 @@ export function WorkoutSection({
         const min = setsToMinutes(n);
         if (!(min > 0)) return;
         ackBudget(
-          await addWorkout(db, type, min, weightKg, null, new Date(), Math.round(n), intensity, restingRate),
+          await addWorkout(db, type, min, weightKg, null, whenForDay(day), Math.round(n), intensity, restingRate),
         );
         setSets('');
       } else {
@@ -266,7 +339,7 @@ export function WorkoutSection({
         if (!Number.isFinite(min) || min <= 0) return;
         const kmh = supportsSpeed(type) ? Number(speed.replace(',', '.')) : NaN;
         const speedKmh = Number.isFinite(kmh) && kmh > 0 ? kmh : null;
-        ackBudget(await addWorkout(db, type, min, weightKg, speedKmh, new Date(), null, null, restingRate));
+        ackBudget(await addWorkout(db, type, min, weightKg, speedKmh, whenForDay(day), null, null, restingRate));
         setMinutes('');
         setSpeed('');
       }
@@ -287,7 +360,11 @@ export function WorkoutSection({
     setAdding(true);
     try {
       ackBudget(
-        await addTrackerWorkout(db, { kcal, minutes: 0, type: 'other', label: t('workouts.fromTracker') }),
+        await addTrackerWorkout(
+          db,
+          { kcal, minutes: 0, type: 'other', label: t('workouts.fromTracker') },
+          whenForDay(day),
+        ),
       );
       setTrackerKcal('');
       await reload();
@@ -318,7 +395,7 @@ export function WorkoutSection({
           intensity: p.intensity ?? null,
         },
         weightKg,
-        new Date(),
+        whenForDay(day),
         restingRate,
       );
     }
@@ -362,6 +439,14 @@ export function WorkoutSection({
   /// through the same parse→save path as text.
   async function onMic() {
     if (!db || parsing) return;
+    // First tap on the glowing button teaches instead of firing — recording
+    // starts from the next tap, as the hint itself says.
+    if (voiceCoach && !recording) {
+      setVoiceCoach(false);
+      setParseNote(t('workouts.voiceCoach'));
+      void updateSettings(db, { workoutVoiceCoachSeen: true }).catch(() => {});
+      return;
+    }
     if (recording) {
       const rec = recording;
       setRecording(null);
@@ -410,6 +495,13 @@ export function WorkoutSection({
   /// it, we don't out-guess it. Otherwise the activities go the usual MET path.
   async function onScreenshot() {
     if (!db || parsing) return;
+    // Same first-tap-teaches rule as the mic.
+    if (shotCoach) {
+      setShotCoach(false);
+      setParseNote(t('workouts.shotCoach'));
+      void updateSettings(db, { workoutShotCoachSeen: true }).catch(() => {});
+      return;
+    }
     const res = await capturePhoto('library');
     if (res.status === 'cancelled') return;
     if (res.status !== 'ok') {
@@ -434,13 +526,17 @@ export function WorkoutSection({
         // The toast and the budget ack must speak the STORED number: the db
         // clamps an OCR misread to a sane band, and «записываем ровно его
         // цифру» would otherwise show a kcal that was never saved.
-        const storedKcal = await addTrackerWorkout(db, {
-          kcal: parsed.device_kcal,
-          minutes,
-          type: single?.type ?? 'other',
-          label: names ? `${names} · ${t('workouts.fromTracker')}` : t('workouts.fromTracker'),
-          sets: single?.sets ?? null,
-        });
+        const storedKcal = await addTrackerWorkout(
+          db,
+          {
+            kcal: parsed.device_kcal,
+            minutes,
+            type: single?.type ?? 'other',
+            label: names ? `${names} · ${t('workouts.fromTracker')}` : t('workouts.fromTracker'),
+            sets: single?.sets ?? null,
+          },
+          whenForDay(day),
+        );
         setParseNote(t('workouts.trackerAdded'));
         ackBudget(storedKcal);
         await reload();
@@ -491,19 +587,35 @@ export function WorkoutSection({
   return (
     <Card style={styles.card}>
       <Pressable onPress={() => setOpen((v) => !v)} style={styles.head} hitSlop={6}>
-        <Text style={[styles.title, { color: theme.text }, theme.font.bodySemiBold]}>{t('workouts.title')}</Text>
+        {/* The title says WHICH day is on screen — «Тренировки сегодня» would
+            otherwise sit above yesterday's list once the arrows are used. */}
+        <Text
+          numberOfLines={1}
+          style={[styles.title, { color: theme.text }, theme.font.bodySemiBold]}
+        >
+          {isToday ? t('workouts.title') : t('workouts.titleForDay', { day: formatDayTitle(day, t) })}
+        </Text>
         <Text style={[styles.summary, { color: theme.subtle }, theme.font.body]}>
           {totalRaw <= 0
             ? t('workouts.summaryEmpty')
             : hideCalories
               ? t('workouts.summaryNoKcal', { count: rows.length })
-              : t('workouts.summary', { kcal: counted })}
+              : t(isToday ? 'workouts.summary' : 'workouts.summaryOtherDay', { kcal: counted })}
         </Text>
         <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={16} color={theme.tertiary} />
       </Pressable>
 
       {open ? (
         <View style={styles.body}>
+          {/* The day this card is about, first thing in the body: everything
+              below — the list, «Повторить», all three input paths — reads and
+              writes THIS day. */}
+          <DayNav value={day} onChange={setDay} style={styles.dayNav} />
+          {!isToday ? (
+            <Text style={[styles.dayHint, { color: theme.subtle }, theme.font.body]}>
+              {t('workouts.otherDayHint')}
+            </Text>
+          ) : null}
           {budgetAck ? (
             <Text style={[styles.budgetAck, { color: theme.accent }, theme.font.bodyMedium]}>{budgetAck}</Text>
           ) : null}
@@ -575,7 +687,14 @@ export function WorkoutSection({
                   style={({ pressed }) => [
                     styles.segment,
                     {
-                      backgroundColor: active ? theme.primary : 'transparent',
+                      // While the media coach is pending, «Описать» warms up so
+                      // the glowing buttons inside are findable from the
+                      // default «Точно» mode too.
+                      backgroundColor: active
+                        ? theme.primary
+                        : m === 'ai' && coaching
+                          ? theme.primarySoft
+                          : 'transparent',
                       opacity: pressed ? 0.7 : 1,
                     },
                   ]}
@@ -583,7 +702,7 @@ export function WorkoutSection({
                   <Text
                     style={[
                       styles.segmentText,
-                      { color: active ? theme.onPrimary : theme.subtle },
+                      { color: active ? theme.onPrimary : m === 'ai' && coaching ? theme.primary : theme.subtle },
                       active ? theme.font.bodySemiBold : theme.font.body,
                     ]}
                   >
@@ -775,50 +894,55 @@ export function WorkoutSection({
                   </Text>
                 </Pressable>
                 {micReady ? (
-                  <Pressable
-                    onPress={() => void onMic()}
-                    disabled={parsing}
-                    accessibilityRole="button"
-                    accessibilityLabel={t(recording ? 'workouts.voiceStop' : 'workouts.voiceStart')}
-                    style={({ pressed }) => [
-                      styles.iconBtn,
-                      {
-                        backgroundColor: recording ? theme.primary : theme.card,
-                        borderColor: recording ? theme.primary : theme.separator,
-                        opacity: parsing ? 0.5 : pressed ? 0.7 : 1,
-                      },
-                    ]}
-                  >
-                    <Ionicons
-                      name={recording ? 'stop' : 'mic-outline'}
-                      size={18}
-                      color={recording ? theme.onPrimary : theme.primary}
-                    />
-                  </Pressable>
+                  <Animated.View style={voiceCoach ? { transform: [{ scale: coachScale }] } : null}>
+                    <Pressable
+                      onPress={() => void onMic()}
+                      disabled={parsing}
+                      accessibilityRole="button"
+                      accessibilityLabel={t(recording ? 'workouts.voiceStop' : 'workouts.voiceStart')}
+                      style={({ pressed }) => [
+                        styles.iconBtn,
+                        {
+                          backgroundColor: recording ? theme.primary : voiceCoach ? theme.primarySoft : theme.card,
+                          borderColor: recording || voiceCoach ? theme.primary : theme.separator,
+                          opacity: parsing ? 0.5 : pressed ? 0.7 : 1,
+                        },
+                      ]}
+                    >
+                      <Ionicons
+                        name={recording ? 'stop' : 'mic-outline'}
+                        size={18}
+                        color={recording ? theme.onPrimary : theme.primary}
+                      />
+                    </Pressable>
+                  </Animated.View>
                 ) : null}
                 {photoReady ? (
-                  <Pressable
-                    onPress={() => void onScreenshot()}
-                    disabled={parsing || recording != null}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('workouts.screenshot')}
-                    style={({ pressed }) => [
-                      styles.iconBtn,
-                      {
-                        backgroundColor: theme.card,
-                        borderColor: theme.separator,
-                        opacity: parsing || recording != null ? 0.5 : pressed ? 0.7 : 1,
-                      },
-                    ]}
-                  >
-                    <Ionicons name="image-outline" size={18} color={theme.primary} />
-                  </Pressable>
+                  <Animated.View style={shotCoach ? { transform: [{ scale: coachScale }] } : null}>
+                    <Pressable
+                      onPress={() => void onScreenshot()}
+                      disabled={parsing || recording != null}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('workouts.screenshot')}
+                      style={({ pressed }) => [
+                        styles.iconBtn,
+                        {
+                          backgroundColor: shotCoach ? theme.primarySoft : theme.card,
+                          borderColor: shotCoach ? theme.primary : theme.separator,
+                          opacity: parsing || recording != null ? 0.5 : pressed ? 0.7 : 1,
+                        },
+                      ]}
+                    >
+                      <Ionicons name="image-outline" size={18} color={theme.primary} />
+                    </Pressable>
+                  </Animated.View>
                 ) : null}
               </View>
-              {micReady || photoReady ? (
-                /* The mic/photo buttons are icon-only — say out loud that voice
-                   and a tracker screenshot work here (device feedback
-                   2026-07-21: «не очевидно, что можно фото приложить»). */
+              {photoReady ? (
+                /* Screenshot only: the voice caption moved into the one-time
+                   coach above (owner feedback 2026-08-23 — «убери подсказку с
+                   голосом, про скриншот оставь»), but «можно фото приложить»
+                   stays said out loud (device feedback 2026-07-21). */
                 <Text style={[styles.setsHint, { color: theme.subtle }, theme.font.body]}>
                   {t('workouts.describeMedia')}
                 </Text>
@@ -838,7 +962,17 @@ export function WorkoutSection({
             <View style={styles.list}>
               {rows.map((r) => (
                 <View key={r.id}>
-                  <View style={styles.item}>
+                  {/* The whole row opens the edit screen, with an always-visible
+                      pencil saying so — a logged session could only be DELETED
+                      before, so «30 минут вместо 40» meant deleting and typing
+                      the whole thing again. Same icon idiom as the food day
+                      (✎ then the destructive ✕ in the last slot). */}
+                  <Pressable
+                    onPress={() => router.push(`/workout/${r.id}`)}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('workouts.edit')}
+                    style={({ pressed }) => [styles.item, { opacity: pressed ? 0.6 : 1 }]}
+                  >
                     <Text style={[styles.itemName, { color: theme.text }, theme.font.body]} numberOfLines={1}>
                       {describeWorkout(r)}
                     </Text>
@@ -847,6 +981,7 @@ export function WorkoutSection({
                         {formatWorkoutValue(r, t, false)}
                       </Text>
                     )}
+                    <Ionicons name="create-outline" size={16} color={theme.primary} />
                     <Pressable
                       onPress={() => confirmRemove(r.id)}
                       hitSlop={8}
@@ -855,7 +990,7 @@ export function WorkoutSection({
                     >
                       <Ionicons name="close" size={16} color={theme.tertiary} />
                     </Pressable>
-                  </View>
+                  </Pressable>
                   {/* The double-count fix, said out loud: these steps moved into
                       the workout's kcal and left the step earnings. */}
                   {r.source === 'device' && r.stepsInWindow != null && r.stepsInWindow > 0 ? (
@@ -909,9 +1044,11 @@ const styles = StyleSheet.create({
   noteHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12 },
   noteShort: { fontSize: 12, lineHeight: 17, flex: 1 },
   noteToggle: { fontSize: 12 },
-  title: { fontSize: 15 },
+  title: { fontSize: 15, flexShrink: 1 },
   summary: { fontSize: 13, flex: 1, textAlign: 'right' },
   body: { marginTop: 12 },
+  dayNav: { marginBottom: 10 },
+  dayHint: { fontSize: 12, lineHeight: 16, marginBottom: 10 },
   budgetAck: { fontSize: 13, lineHeight: 18, marginBottom: 10 },
   repeat: { marginBottom: 14 },
   repeatLabel: { fontSize: 12, letterSpacing: 1.44, marginBottom: 8 },

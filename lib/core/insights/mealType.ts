@@ -51,6 +51,21 @@ export function mealTypeForEntry(rawText: string, ts: Date): MealType {
   return mealTypeFromKeyword(rawText) ?? PROMPT_TO_MEAL[mealPromptKeyForHour(ts.getHours())];
 }
 
+/// Inverse of [PROMPT_TO_MEAL]: the input placeholder for a CHOSEN meal. The
+/// log screen asks «какой приём?» FIRST now, so a picked «Ужин» must ask about
+/// ужин even at 9:00 — the clock only proposes the preselect, it no longer
+/// owns the question.
+const MEAL_TO_PROMPT: Record<MealType, MealPromptKey> = {
+  breakfast: 'morning',
+  lunch: 'midday',
+  dinner: 'evening',
+  snack: 'lateNight',
+};
+
+export function promptKeyForMeal(meal: MealType): MealPromptKey {
+  return MEAL_TO_PROMPT[meal];
+}
+
 export interface MealGroup<E> {
   type: MealType;
   entries: E[];

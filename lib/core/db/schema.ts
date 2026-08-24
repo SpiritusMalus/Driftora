@@ -270,6 +270,12 @@ export const appSettings = sqliteTable('app_settings', {
   // gesture (the Home mood row was removed 2026-07-12). True once the user
   // performed the swipe in the coach — or explicitly postponed it.
   moodSwipeCoachSeen: integer('mood_swipe_coach_seen', { mode: 'boolean' }).notNull().default(false),
+  // First-tap coach for the workout «Описать» media buttons (mic / tracker
+  // screenshot): each button glows until its first tap, which EXPLAINS it
+  // instead of firing it. Same shown-once idea as the mood swipe coach; two
+  // flags because each button teaches its own thing.
+  workoutVoiceCoachSeen: integer('workout_voice_coach_seen', { mode: 'boolean' }).notNull().default(false),
+  workoutShotCoachSeen: integer('workout_shot_coach_seen', { mode: 'boolean' }).notNull().default(false),
   // DEPRECATED (2026-07-18): drove the retiring Home swipe hint, now replaced
   // by a persistent page-dots indicator. No longer read or written; kept as a
   // column to avoid a migration. Safe to drop in a future schema bump.
