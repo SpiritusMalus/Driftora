@@ -498,3 +498,122 @@ export async function deleteWorkout(db: AnyDb, id: number): Promise<void> {
     'deleteWorkout',
   );
 }
+
+/// One logged workout by id — what the edit screen opens on. Null when the row
+/// is gone (a stale deep link, or a delete from another screen).
+export async function getWorkout(db: AnyDb, id: number): Promise<WorkoutRow | null> {
+  const rows = (await db.select().from(workouts).where(eq(workouts.id, id))) as WorkoutRow[];
+  return rows[0] ?? null;
+}
+
+/// What an edit may change about a logged session. Everything the three add
+/// paths could set, plus `date` — «записал не в тот день» is the single most
+/// common thing to fix, and re-logging by hand is a worse answer than moving
+/// the row. `kcal` is honoured ONLY for a MEASURED row («по трекеру» / «с
+/// часов»): its number is the user's own reading, and our MET math must never
+/// silently overwrite it.
+export interface WorkoutEdit {
+  type: string;
+  label: string | null;
+  minutes: number;
+  sets: number | null;
+  speedKmh: number | null;
+  intensity: StrengthIntensity | null;
+  date?: string | null;
+  kcal?: number | null;
+}
+
+/// An unknown ('other', AI-parsed) activity's MET came from the model and was
+/// never stored, so there is nothing to recompute from — its cost PER MINUTE is
+/// all we have. Editing the duration therefore scales the stored estimate
+/// instead of inventing a MET. A zero-minute row (nothing to scale by) keeps its
+/// number as-is.
+function rescaleKcal(storedKcal: number, storedMinutes: number, minutes: number): number {
+  const from = Math.max(0, Math.round(storedMinutes));
+  const stored = Math.round(Math.max(0, storedKcal));
+  if (from <= 0 || minutes <= 0) return stored;
+  return Math.round(Math.min((stored * minutes) / from, 5000));
+}
+
+/// The same clock time, on another calendar day — how «перенести на другой день»
+/// re-dates a session: the day changes, the position within the day doesn't.
+function movedTs(ts: Date, dateKey: string): Date {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
+  if (!m) return ts;
+  const d = new Date(ts);
+  // All three at once — setting them one by one can overflow through a short
+  // month (31 → февраль) before the day lands.
+  d.setFullYear(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return d;
+}
+
+/// What an edited row would cost, by the same three rules the write below uses:
+/// a measured number stays verbatim, a known type is recomputed from the CURRENT
+/// weight, an unknown one scales with its duration. Pure, so the edit screen can
+/// show the live «≈ N ккал» preview from the exact math that will be stored —
+/// a preview that disagrees with the saved number is worse than none.
+export function editedWorkoutKcal(
+  row: { source: string; kcal: number; minutes: number },
+  edit: WorkoutEdit,
+  weightKg: number,
+  restingRate?: number,
+): number {
+  const minutes = Math.round(Math.min(Math.max(0, edit.minutes), 600));
+  const measured = row.source === 'tracker' || row.source === 'device';
+  if (measured) {
+    const raw = edit.kcal != null ? edit.kcal : Number(row.kcal);
+    return Math.round(Math.min(Math.max(0, raw), 5000));
+  }
+  const speedKmh = edit.speedKmh != null && edit.speedKmh > 0 ? edit.speedKmh : null;
+  const intensity = validIntensity(edit.type, edit.intensity);
+  if ((WORKOUT_TYPES as readonly string[]).includes(edit.type)) {
+    return workoutKcal(edit.type as WorkoutType, minutes, weightKg, speedKmh, intensity, restingRate);
+  }
+  return rescaleKcal(Number(row.kcal), row.minutes, minutes);
+}
+
+/// Save an edit to a logged workout. Returns the stored kcal (0 when the row is
+/// already gone).
+///
+/// The steps window is rebuilt from the new duration for user-logged rows —
+/// otherwise a session shortened from 60 to 20 minutes would keep subtracting an
+/// hour of steps from the day. A DEVICE row's window is REAL (the watch measured
+/// it) and is left alone; so is its kcal, unless one is passed explicitly.
+export async function updateWorkout(
+  db: AnyDb,
+  id: number,
+  edit: WorkoutEdit,
+  weightKg: number,
+  restingRate?: number,
+): Promise<number> {
+  // Read-then-write in one unit, like [deleteWorkout]: the row we recompute
+  // from must be the row we overwrite.
+  return withTx(
+    db,
+    async () => {
+      const rows = (await db.select().from(workouts).where(eq(workouts.id, id))) as WorkoutRow[];
+      const row = rows[0];
+      if (!row) return 0;
+      const minutes = Math.round(Math.min(Math.max(0, edit.minutes), 600));
+      const kcal = editedWorkoutKcal(row, edit, weightKg, restingRate);
+      const ts = edit.date ? movedTs(row.ts, edit.date) : row.ts;
+      await db
+        .update(workouts)
+        .set({
+          ts,
+          date: dayKey(ts),
+          type: edit.type,
+          minutes,
+          kcal,
+          speedKmh: edit.speedKmh != null && edit.speedKmh > 0 ? edit.speedKmh : null,
+          label: edit.label?.trim() || null,
+          sets: edit.sets != null && edit.sets > 0 ? Math.round(edit.sets) : null,
+          intensity: validIntensity(edit.type, edit.intensity),
+          ...(row.source === 'device' ? {} : (loggedWindow(ts, minutes) ?? { startTs: null, endTs: null })),
+        })
+        .where(eq(workouts.id, id));
+      return kcal;
+    },
+    'updateWorkout',
+  );
+}

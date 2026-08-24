@@ -402,6 +402,11 @@ export const en = {
     otherSection: 'Body',
     weightRow: 'Weight',
     stepsRow: 'Steps',
+    // Day-nav arrows on the workout card + the tap-to-edit caption.
+    prevDay: 'Previous day',
+    nextDay: 'Next day',
+    backToToday: 'Back to today',
+    workoutEditHint: 'Tap a workout to edit or remove it',
     emptyDay: 'Nothing was logged on this day.',
     dbUnavailable: 'History is available in a device dev build.',
     m1: 'January',
@@ -429,10 +434,15 @@ export const en = {
     // Header title for the standalone workouts screen.
     screenTitle: 'Workouts',
     title: 'Workouts today',
+    // Card header once the arrows point at another day — say WHOSE list it is.
+    titleForDay: 'Workouts · {{day}}',
     summaryEmpty: 'none — add one',
     // ONE number, not two — see the Russian note: two figures side by side
     // read as two independent facts rather than a number and its share.
     summary: '+{{kcal}} kcal to eat today',
+    summaryOtherDay: '+{{kcal}} kcal to that day’s budget',
+    // Once, under the day switcher: where entries land while not on today.
+    otherDayHint: 'You’re viewing another day: entries below will land on it, and its budget will be recalculated.',
     // «Hide calories»: the fact of the workout stays, only the figure goes.
     summaryNoKcal: 'workouts logged: {{count}}',
     // Segmented control: one input path at a time instead of three open blocks.
@@ -474,11 +484,32 @@ export const en = {
     removeConfirmTitle: 'Remove this workout?',
     removeConfirmBody: 'The entry will be deleted and the day budget recalculated.',
     removeCancel: 'Keep it',
+    // The single-entry edit screen (/workout/[id]): a session used to be
+    // delete-only, so «40 minutes, not 30» meant re-typing the whole thing.
+    edit: 'Edit workout',
+    editTitle: 'Workout',
+    editGone: 'Entry not found — it may have been deleted already.',
+    editDeviceNote: 'This workout came from your watch and updates on sync, so it can’t be edited here — only removed.',
+    editLabel: 'Name (optional)',
+    editType: 'Activity',
+    editKcal: 'Kcal from tracker',
+    editMinutes: 'Duration',
+    editSets: 'Sets',
+    editSpeed: 'Pace (optional)',
+    editDate: 'Workout day',
+    // Live preview through the exact formula the save uses — budget currency.
+    editResult: 'After saving: ≈ +{{kcal}} kcal to the day’s budget',
+    editSave: 'Save',
+    editSaveFailed: 'Couldn’t save. Please try again.',
+    removeAction: 'Remove workout',
     exactHead: 'Enter exactly',
     aiHead: 'Or describe it — AI will parse',
     weightFallback: 'Estimated from {{kg}} kg — log your weight on the Weight screen for accuracy.',
     describeHint: 'e.g. 100 push-ups, then a 20-min run',
-    describeMedia: 'The buttons nearby: dictate it, or attach a screenshot from your tracker app.',
+    describeMedia: 'The button nearby: attach a screenshot from your tracker app.',
+    // One-time coach for the glowing buttons: first tap explains, second acts.
+    voiceCoach: 'Voice input: say what you did and for how long — “ran 20 minutes, then 50 squats”. Tap the microphone again and recording starts.',
+    shotCoach: 'Tracker screenshot: your watch already counted the workout — attach a shot of the summary and we’ll carry it over as-is. Tap again and pick the image.',
     describeAction: 'Parse',
     parsing: 'Parsing…',
     parseAdded: 'Entries added: {{count}}. Check the time and burn.',
@@ -504,6 +535,9 @@ export const en = {
     trackerAdded: 'Logged from your tracker.',
     budgetAck: '✓ Workout logged: +{{kcal}} kcal added to today’s budget.',
     budgetAckNoKcal: '✓ Workout logged — today’s budget just grew.',
+    // The entry landed on the SELECTED day — «today» here would be a lie.
+    budgetAckOtherDay: '✓ Workout logged: +{{kcal}} kcal to that day’s budget.',
+    budgetAckOtherDayNoKcal: '✓ Workout logged on the selected day.',
     // The short line is always visible; the full math is a tap away («How we count»).
     noteShort: 'This is what you may eat — less than you burned: not all activity reaches your daily total.',
     noteToggle: 'How we count',

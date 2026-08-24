@@ -63,6 +63,10 @@ export interface SettingsPatch {
   // count (the Home hint hides once it reaches 3).
   moodSwipeCoachSeen?: boolean;
   moodSwipeOpens?: number;
+  // First-tap coach for the workout media buttons (mic / tracker screenshot):
+  // each glows until tapped once; the first tap explains instead of firing.
+  workoutVoiceCoachSeen?: boolean;
+  workoutShotCoachSeen?: boolean;
   paused?: boolean;
   contextualNudges?: boolean;
   showPopulationStats?: boolean;
@@ -130,6 +134,8 @@ export async function updateSettings(
   if (patch.onboardingSeen != null) set.onboardingSeen = patch.onboardingSeen;
   if (patch.moodSwipeCoachSeen != null) set.moodSwipeCoachSeen = patch.moodSwipeCoachSeen;
   if (patch.moodSwipeOpens != null) set.moodSwipeOpens = patch.moodSwipeOpens;
+  if (patch.workoutVoiceCoachSeen != null) set.workoutVoiceCoachSeen = patch.workoutVoiceCoachSeen;
+  if (patch.workoutShotCoachSeen != null) set.workoutShotCoachSeen = patch.workoutShotCoachSeen;
   if (patch.paused != null) set.paused = patch.paused;
   if (patch.contextualNudges != null) set.contextualNudges = patch.contextualNudges;
   if (patch.showPopulationStats != null) set.showPopulationStats = patch.showPopulationStats;

@@ -48,9 +48,9 @@ import {
 } from '@/lib/core/services/backgroundParses';
 import { deleteTempFile } from '@/lib/core/services/tempFiles';
 import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
-import { mealPromptKeyForHour } from '@/lib/core/insights/mealPrompt';
+
 import { mealTitle } from '@/lib/core/insights/mealTitle';
-import { mealTypeForEntry, type MealType } from '@/lib/core/insights/mealType';
+import { mealTypeForEntry, promptKeyForMeal, type MealType } from '@/lib/core/insights/mealType';
 import { proteinInsight } from '@/lib/core/insights/proteinInsight';
 import { pickVariant } from '@/lib/core/insights/variant';
 import { varietyInsight } from '@/lib/core/insights/varietyInsight';
@@ -1295,6 +1295,14 @@ export default function FoodLogScreen() {
     <View style={styles.screenWrap}>
     <Screen>
       {hideComposer ? null : (
+      <>
+      {/* Приём пищи — ПЕРВЫЙ вопрос экрана (фидбек владельца 2026-08-23):
+          сначала КУДА пишем, потом что ели. Часы/ключевое слово в тексте только
+          предлагают чип, тап решает. Выбор тут же ведёт плейсхолдер ниже и
+          порядок лент «Из моего рациона» (текущий приём — первым). */}
+      <View style={styles.mealPickTop}>
+        <MealChips value={mealChoice} onChange={setMeal} />
+      </View>
       <TextField
         value={text}
         onChangeText={(v) => {
@@ -1307,10 +1315,11 @@ export default function FoodLogScreen() {
           if (photoError) setPhotoError(null);
           if (!listening) setSource('text');
         }}
-        placeholder={t(`food.prompt.${mealPromptKeyForHour(new Date().getHours())}`)}
+        placeholder={t(`food.prompt.${promptKeyForMeal(mealChoice)}`)}
         multiline
         style={styles.input}
       />
+      </>
       )}
       {/* Capture method. The text field above stays in EVERY mode (it's also
           where voice/photo echo what they understood), so the segment only swaps
@@ -1642,10 +1651,6 @@ export default function FoodLogScreen() {
           </Card>
           )}
 
-          {/* Which meal this entry files under — stored with the save so the
-              day view groups by the user's word, not the clock's guess. */}
-          <MealChips value={mealChoice} onChange={setMeal} />
-
           {/* «Пауза» promises "цели выключены" — honour it here too, not only
               on Home (the banner alone doesn't stop this line from nagging). */}
           {proteinTarget > 0 && !paused ? (
@@ -1773,6 +1778,8 @@ function ApproxNotes({
 
 const styles = StyleSheet.create({
   input: { marginBottom: 12 },
+  // The meal picker above the composer: its own air before the text field.
+  mealPickTop: { marginBottom: 14 },
   // Capture-method segmented control (mirrors the workout screen). One method
   // visible at a time; inactive segments on `iconBg` so they read on dark.
   segments: { flexDirection: 'row', gap: 6, marginBottom: 12 },

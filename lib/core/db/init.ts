@@ -295,6 +295,10 @@ export const MIGRATIONS: string[] = [
   // Ships OFF for every existing install — nothing starts leaving a phone because
   // it updated.
   `ALTER TABLE app_settings ADD COLUMN community_food_share INTEGER NOT NULL DEFAULT 0`,
+  // 2026-08-23: first-tap coach for the workout mic / tracker-screenshot
+  // buttons — each glows until tapped once, the tap explains instead of firing.
+  `ALTER TABLE app_settings ADD COLUMN workout_voice_coach_seen INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE app_settings ADD COLUMN workout_shot_coach_seen INTEGER NOT NULL DEFAULT 0`,
 ];
 
 /// Runs each CREATE statement through [run], then the idempotent [MIGRATIONS].
