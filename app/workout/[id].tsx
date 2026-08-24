@@ -5,7 +5,7 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card } from '@/components/ui/Card';
 import { Chip, ChipRow } from '@/components/ui/Chip';
-import { DayNav } from '@/components/ui/DayNav';
+import { DAY_NAV_BACK_DAYS, DayNav } from '@/components/ui/DayNav';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
 import { TextField } from '@/components/ui/TextField';
@@ -32,6 +32,7 @@ import {
   type StrengthIntensity,
   type WorkoutType,
 } from '@/lib/core/insights/bodyMetrics';
+import { daysAgo } from '@/lib/i18n/formatDay';
 import { budgetKcal } from '@/lib/i18n/formatWorkout';
 import { useTheme } from '@/lib/theme/theme';
 
@@ -333,7 +334,10 @@ export default function WorkoutEntryScreen() {
       {!fromDevice ? (
         <View style={styles.field}>
           <Text style={[styles.label, { color: theme.subtle }, theme.font.body]}>{t('workouts.editDate')}</Text>
-          <DayNav value={day} onChange={setDay} />
+          {/* The floor widens for a row older than the default horizon, so its
+              own day stays reachable — a stray «›» on an old entry must be
+              undoable with «‹», not only by leaving without saving. */}
+          <DayNav value={day} onChange={setDay} backDays={Math.max(DAY_NAV_BACK_DAYS, daysAgo(row.date))} />
         </View>
       ) : null}
 

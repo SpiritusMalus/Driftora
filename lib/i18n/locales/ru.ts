@@ -948,6 +948,7 @@ export const ru = {
     add: 'Записать еду',
     entryTitle: 'Запись',
     entryLabel: 'Что это было',
+    editDay: 'День записи',
     update: 'Сохранить изменения',
     delete: 'Удалить запись',
     deleteTitle: 'Удалить эту запись?',

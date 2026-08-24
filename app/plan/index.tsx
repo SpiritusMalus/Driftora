@@ -82,7 +82,9 @@ export default function PlanScreen() {
   const [fat, setFat] = useState('70');
   const [carb, setCarb] = useState('200');
   // Transient «Сохранено ✓» after any auto-save, shown WHERE the edit happened.
-  const [ack, setAck] = useState<{ where: 'plan' | 'manual'; text: string } | null>(null);
+  // 'burn' is the measured-expenditure card's own address: routing its ticks
+  // through 'plan' lit the plan card's header too — two ✓ for one tap.
+  const [ack, setAck] = useState<{ where: 'plan' | 'manual' | 'burn'; text: string } | null>(null);
   const ackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [openBody, setOpenBody] = useState(false);
@@ -143,7 +145,7 @@ export default function PlanScreen() {
   );
 
   /// Persist a settings patch immediately and flash the «✓» tick at `where`.
-  async function persist(patch: SettingsPatch, ackText: string, where: 'plan' | 'manual') {
+  async function persist(patch: SettingsPatch, ackText: string, where: 'plan' | 'manual' | 'burn') {
     if (!db) return;
     await updateSettings(db, patch);
     setAck({ where, text: ackText });
@@ -195,7 +197,7 @@ export default function PlanScreen() {
     const avgEarned = averageEarnedKcal(earned, latestKg);
     const factor = bmrFactorFromMeasured(expenditure.kcalPerDay, avgEarned, formula.bmrKcal);
     if (factor == null) return;
-    await persist({ bmrFactor: factor }, t('weight.burn.appliedTick'), 'plan');
+    await persist({ bmrFactor: factor }, t('weight.burn.appliedTick'), 'burn');
     setBmrFactor(factor);
   }
 
@@ -517,9 +519,17 @@ export default function PlanScreen() {
                  (measuredExpenditure gates it). ── */}
           {expenditure != null ? (
             <Card style={styles.card}>
-              <Text style={[styles.burnLabel, { color: theme.labelCaps }, theme.font.bodyBold]}>
-                {t('weight.burn.title', { days: ADAPTIVE_WINDOW_DAYS }).toUpperCase()}
-              </Text>
+              <View style={styles.burnTitleRow}>
+                <Text style={[styles.burnLabel, { color: theme.labelCaps }, theme.font.bodyBold]}>
+                  {t('weight.burn.title', { days: ADAPTIVE_WINDOW_DAYS }).toUpperCase()}
+                </Text>
+                {/* The tick lives in THIS card's header for apply and reset both
+                    — the branch below changes with bmrFactor, so an in-branch
+                    tick would vanish with the state it acknowledges. */}
+                {ack?.where === 'burn' ? (
+                  <Text style={[styles.ackTick, { color: theme.accent }, theme.font.bodyMedium]}>{ack.text}</Text>
+                ) : null}
+              </View>
               <Text style={[styles.planKcal, { color: theme.heroAccent }, theme.font.heading]}>
                 {t('weight.burn.value', { kcal: expenditure.kcalPerDay })}
               </Text>
@@ -551,12 +561,9 @@ export default function PlanScreen() {
                   <Text style={[styles.appliedLine, { color: theme.accent }, theme.font.bodyMedium]}>
                     {t('weight.burn.applied')}
                   </Text>
-                  {ack?.where === 'plan' ? (
-                    <Text style={[styles.ackTick, { color: theme.accent }, theme.font.bodyMedium]}>{ack.text}</Text>
-                  ) : null}
                   <Pressable
                     onPress={() =>
-                      void persist({ bmrFactor: 0 }, t('weight.burn.resetTick'), 'plan').then(() => setBmrFactor(0))
+                      void persist({ bmrFactor: 0 }, t('weight.burn.resetTick'), 'burn').then(() => setBmrFactor(0))
                     }
                     hitSlop={6}
                     style={styles.whyToggle}
@@ -841,6 +848,9 @@ const styles = StyleSheet.create({
   assumedAge: { fontSize: 12, lineHeight: 17, marginTop: 8 },
   planKcal: { fontSize: 28, lineHeight: 32, marginTop: 8, marginBottom: 10 },
   burnLabel: { fontSize: 12, letterSpacing: 1.44, marginBottom: 2 },
+  // No extra bottom margin (unlike titleRow): the caps label keeps its own
+  // tight 2px gap to the hero number below.
+  burnTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   burnSub: { fontSize: 13, lineHeight: 18, marginTop: -4, marginBottom: 8 },
   macroRow: { flexDirection: 'row', gap: 8 },
   macroTile: { flex: 1, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 4, alignItems: 'center' },

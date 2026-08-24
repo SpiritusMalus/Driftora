@@ -180,7 +180,13 @@ export function WorkoutSection({
   // persist like the mood swipe coach's.
   const [voiceCoach, setVoiceCoach] = useState(false);
   const [shotCoach, setShotCoach] = useState(false);
-  const coaching = (voiceCoach && micReady) || (shotCoach && photoReady);
+  // One glowing button at a time: voice first, the screenshot takes over once
+  // the mic coach is done (or there is no mic). Two simultaneous pulses read
+  // as noise, not guidance. The teach-on-first-tap intercept follows the glow —
+  // a button that isn't glowing behaves normally (see [onScreenshot]).
+  const voiceGlow = voiceCoach && micReady;
+  const shotGlow = shotCoach && photoReady && !voiceGlow;
+  const coaching = voiceGlow || shotGlow;
   // A soft pulse (scale, native driver — Fabric-safe) reads as «горение»
   // without a shadow-animation dependency.
   const coachPulse = useRef(new Animated.Value(0)).current;
@@ -495,12 +501,16 @@ export function WorkoutSection({
   /// it, we don't out-guess it. Otherwise the activities go the usual MET path.
   async function onScreenshot() {
     if (!db || parsing) return;
-    // Same first-tap-teaches rule as the mic.
+    // Same first-tap-teaches rule as the mic — but only while THIS button is
+    // the glowing one. Found and tapped before its turn (voice coach still
+    // pending) → they discovered it themselves: fire normally and never teach.
     if (shotCoach) {
       setShotCoach(false);
-      setParseNote(t('workouts.shotCoach'));
       void updateSettings(db, { workoutShotCoachSeen: true }).catch(() => {});
-      return;
+      if (shotGlow) {
+        setParseNote(t('workouts.shotCoach'));
+        return;
+      }
     }
     const res = await capturePhoto('library');
     if (res.status === 'cancelled') return;
@@ -583,6 +593,13 @@ export function WorkoutSection({
 
   const totalRaw = rows.reduce((s, r) => s + Number(r.kcal), 0);
   const counted = Math.round(totalRaw * EATBACK_FRACTION);
+
+  // Manual entry has something to add. Gates the «Добавить» button the same way
+  // the tracker mode's does — an enabled-looking button whose tap silently does
+  // nothing (the old behaviour on an empty field) reads as a broken tap.
+  const exactValid = supportsSets(type)
+    ? Number(sets.replace(',', '.')) > 0
+    : Number(minutes.replace(',', '.')) > 0;
 
   return (
     <Card style={styles.card}>
@@ -803,12 +820,12 @@ export function WorkoutSection({
                   floating mid-card above the km/h field (device-visible fix). */}
               <Pressable
                 onPress={() => void add()}
-                disabled={adding}
+                disabled={adding || !exactValid}
                 accessibilityRole="button"
                 accessibilityLabel={t('workouts.add')}
                 style={({ pressed }) => [
                   styles.exactAddBtn,
-                  { backgroundColor: theme.primary, opacity: adding ? 0.5 : pressed ? 0.7 : 1 },
+                  { backgroundColor: theme.primary, opacity: adding || !exactValid ? 0.5 : pressed ? 0.7 : 1 },
                 ]}
               >
                 <Text style={[styles.addBtnText, { color: theme.onPrimary }, theme.font.bodySemiBold]}>
@@ -894,7 +911,7 @@ export function WorkoutSection({
                   </Text>
                 </Pressable>
                 {micReady ? (
-                  <Animated.View style={voiceCoach ? { transform: [{ scale: coachScale }] } : null}>
+                  <Animated.View style={voiceGlow ? { transform: [{ scale: coachScale }] } : null}>
                     <Pressable
                       onPress={() => void onMic()}
                       disabled={parsing}
@@ -903,8 +920,8 @@ export function WorkoutSection({
                       style={({ pressed }) => [
                         styles.iconBtn,
                         {
-                          backgroundColor: recording ? theme.primary : voiceCoach ? theme.primarySoft : theme.card,
-                          borderColor: recording || voiceCoach ? theme.primary : theme.separator,
+                          backgroundColor: recording ? theme.primary : voiceGlow ? theme.primarySoft : theme.card,
+                          borderColor: recording || voiceGlow ? theme.primary : theme.separator,
                           opacity: parsing ? 0.5 : pressed ? 0.7 : 1,
                         },
                       ]}
@@ -918,7 +935,7 @@ export function WorkoutSection({
                   </Animated.View>
                 ) : null}
                 {photoReady ? (
-                  <Animated.View style={shotCoach ? { transform: [{ scale: coachScale }] } : null}>
+                  <Animated.View style={shotGlow ? { transform: [{ scale: coachScale }] } : null}>
                     <Pressable
                       onPress={() => void onScreenshot()}
                       disabled={parsing || recording != null}
@@ -927,8 +944,8 @@ export function WorkoutSection({
                       style={({ pressed }) => [
                         styles.iconBtn,
                         {
-                          backgroundColor: shotCoach ? theme.primarySoft : theme.card,
-                          borderColor: shotCoach ? theme.primary : theme.separator,
+                          backgroundColor: shotGlow ? theme.primarySoft : theme.card,
+                          borderColor: shotGlow ? theme.primary : theme.separator,
                           opacity: parsing || recording != null ? 0.5 : pressed ? 0.7 : 1,
                         },
                       ]}

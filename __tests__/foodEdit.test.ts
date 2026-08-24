@@ -15,6 +15,7 @@ import {
 } from '@/lib/core/db/food';
 import * as schema from '@/lib/core/db/schema';
 import { withItemGrams } from '@/lib/core/services/mealDraft';
+import { localDayKey, shiftDayKey, tsOnDay } from '@/lib/i18n/formatDay';
 import type { MealDraft } from '@/lib/core/services/foodParser';
 
 function makeDb() {
@@ -117,6 +118,29 @@ describe('food entry edit/delete', () => {
     });
     const after = (await getFoodEntry(db, id))!.entry.ts.getTime();
     expect(after).toBe(before);
+    sqlite.close();
+  });
+
+  it('updateFoodEntry re-files the entry under the given day at the same clock time', async () => {
+    const { sqlite, db, id } = await setup();
+    const detail = await getFoodEntry(db, id);
+    const before = detail!.entry.ts;
+    // «Вчера забыл записать ужин»: the edit screen sends the same clock time on
+    // the chosen day (tsOnDay) — the entry keeps its place in that day's order.
+    const moved = tsOnDay(before, shiftDayKey(localDayKey(before), -1));
+    await updateFoodEntry(db, id, {
+      rawText: detail!.entry.rawText,
+      source: 'text',
+      draft: draftFromStoredEntry('RU', detail!.items),
+      ts: moved,
+    });
+    const after = (await getFoodEntry(db, id))!.entry.ts;
+    expect(localDayKey(after)).toBe(shiftDayKey(localDayKey(before), -1));
+    expect(after.getHours()).toBe(before.getHours());
+    expect(after.getMinutes()).toBe(before.getMinutes());
+    // The day lists agree: gone from the original day, present on the new one.
+    expect(await listEntriesForDay(db, before)).toHaveLength(0);
+    expect(await listEntriesForDay(db, moved)).toHaveLength(1);
     sqlite.close();
   });
 

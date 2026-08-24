@@ -920,6 +920,7 @@ export const en = {
     add: 'Log food',
     entryTitle: 'Entry',
     entryLabel: 'What it was',
+    editDay: 'Entry day',
     update: 'Save changes',
     delete: 'Delete entry',
     deleteTitle: 'Delete this entry?',
