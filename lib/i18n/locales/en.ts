@@ -1073,6 +1073,12 @@ export const en = {
     save: 'Save',
     saving: 'Saving…',
     clear: 'Start over',
+    // Day switcher on the log screen: "forgot to log yesterday's dinner" writes
+    // straight into that day. The hint shows only when a non-today day is picked.
+    otherDayHint: 'Another day is selected — the meal will be logged to it.',
+    // Past-day save ack: the warm lines below are about "today", while here the
+    // point is WHERE the entry landed (it won't show on the today list).
+    savedOtherDay: 'Logged — {{day}}',
     savedWarm1: 'Logged. Noticing what you eat is already self-care',
     savedWarm2: 'Noted. Thanks for keeping track',
     savedWarm3: 'Saved. A small step is care too',

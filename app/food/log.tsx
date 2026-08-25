@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { ConsentModal } from '@/components/consent/ConsentModal';
 import { ItemCard } from '@/components/food/ItemCard';
 import { MealChips } from '@/components/food/MealChips';
+import { DayNav } from '@/components/ui/DayNav';
 import { ApproxBadge, MicroScales, NutrientDetail } from '@/components/food/nutrientViews';
 import { Card } from '@/components/ui/Card';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
@@ -49,6 +50,7 @@ import {
 import { deleteTempFile } from '@/lib/core/services/tempFiles';
 import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
 
+import { formatDayTitle, localDayKey, tsOnDay } from '@/lib/i18n/formatDay';
 import { mealTitle } from '@/lib/core/insights/mealTitle';
 import { mealTypeForEntry, promptKeyForMeal, type MealType } from '@/lib/core/insights/mealType';
 import { proteinInsight } from '@/lib/core/insights/proteinInsight';
@@ -121,6 +123,11 @@ export default function FoodLogScreen() {
   // tap decides — their pick is stored with the entry so a late breakfast never
   // gets filed under «Обед» by the clock (device feedback 2026-07-10).
   const [meal, setMeal] = useState<MealType | null>(null);
+  // Which day the entry is being written to. «Вчера забыл записать ужин» had no
+  // direct answer here: every save stamped `new Date()`, so a meal could only
+  // land on today (the workaround was save-then-re-file in the edit screen).
+  // Same day-key currency and the same DayNav as the workout card.
+  const [day, setDay] = useState(() => localDayKey(new Date()));
   // Today's protein-so-far + personal target, for the honest "what it means"
   // line shown once a meal is parsed (the meaning-rules library).
   const [proteinTarget, setProteinTarget] = useState(0);
@@ -982,6 +989,11 @@ export default function FoodLogScreen() {
   // preselect is honest intent — a typed «завтрак…» keyword first, else the clock.
   const mealChoice: MealType = meal ?? mealTypeForEntry(text, new Date());
 
+  // Whether the entry is aimed at today — gates the DayNav hint and the
+  // today-phrased insight lines under the total (a save into yesterday must
+  // not claim it moved TODAY's protein).
+  const isTodaySelected = day === localDayKey(new Date());
+
   // Voice is offered when EITHER the AI voice-note recorder or on-device
   // dictation is available; the segment only lists methods the device actually
   // has, so it collapses to nothing when text is the only path.
@@ -1031,7 +1043,17 @@ export default function FoodLogScreen() {
     setSaving(true);
     setSaveIssue(false);
     try {
-      await saveParsedEntry(db, { rawText: text, source, draft, meal: mealChoice });
+      // A past day gets the same clock time on THAT day (the workout card's
+      // whenForDay idiom): nobody knows when the unlogged meal actually was,
+      // and this keeps the day's rows in the order they were entered. Today
+      // keeps the plain «now» default.
+      await saveParsedEntry(db, {
+        rawText: text,
+        source,
+        draft,
+        meal: mealChoice,
+        ...(day !== localDayKey(new Date()) ? { ts: tsOnDay(new Date(), day) } : {}),
+      });
       // Personal food journal (layer 2): remember this food → per-100g so the
       // same name resolves to it next time, on-device only. We remember:
       //   • anything the user explicitly chose/edited (userChosen), OR
@@ -1074,16 +1096,21 @@ export default function FoodLogScreen() {
       }
       // Warm, rotating acknowledgment of the *act* of logging (SDT relatedness)
       // — never a score or a limit. Briefly shown, then we return to Home.
+      // A past-day save says WHICH day instead: the entry is about to be
+      // invisible on the today list, so the ack is the proof it landed where
+      // it was aimed (the workout card's «занесено в другой день» idiom).
       setSavedAck(
-        pickVariant(
-          [
-            t('food.savedWarm1'),
-            t('food.savedWarm2'),
-            t('food.savedWarm3'),
-            t('food.savedWarm4'),
-          ],
-          saveSeedRef.current++,
-        ),
+        day !== localDayKey(new Date())
+          ? t('food.savedOtherDay', { day: formatDayTitle(day, t) })
+          : pickVariant(
+              [
+                t('food.savedWarm1'),
+                t('food.savedWarm2'),
+                t('food.savedWarm3'),
+                t('food.savedWarm4'),
+              ],
+              saveSeedRef.current++,
+            ),
       );
       // Mid-batch (multi-photo): don't leave the screen — advance to the next
       // shot's parse so every photo becomes its own entry in one sitting. Only
@@ -1303,6 +1330,15 @@ export default function FoodLogScreen() {
       <View style={styles.mealPickTop}>
         <MealChips value={mealChoice} onChange={setMeal} />
       </View>
+      {/* …и в какой ДЕНЬ — «вчера забыл записать ужин» теперь пишется сразу
+          туда, без пересохранения через экран правки. Тот же DayNav, что на
+          карточке тренировок: сегодня по умолчанию, стрелки — назад. */}
+      <DayNav value={day} onChange={setDay} style={styles.dayNav} />
+      {!isTodaySelected ? (
+        <Text style={[styles.dayHint, { color: theme.subtle }, theme.font.body]}>
+          {t('food.otherDayHint')}
+        </Text>
+      ) : null}
       <TextField
         value={text}
         onChangeText={(v) => {
@@ -1652,13 +1688,16 @@ export default function FoodLogScreen() {
           )}
 
           {/* «Пауза» promises "цели выключены" — honour it here too, not only
-              on Home (the banner alone doesn't stop this line from nagging). */}
-          {proteinTarget > 0 && !paused ? (
+              on Home (the banner alone doesn't stop this line from nagging).
+              Both insight lines speak about TODAY (today's protein, today's
+              variety) — writing into another day they'd be false, so they
+              stand down until the day comes back to today. */}
+          {proteinTarget > 0 && !paused && isTodaySelected ? (
             <Text style={[styles.proteinNote, { color: theme.subtle }, theme.font.body]}>
               {t(proteinInsight(todayProteinG + draft.totals.prot, proteinTarget, Math.round(todayProteinG)))}
             </Text>
           ) : null}
-          {varietyCount > 0 ? (
+          {varietyCount > 0 && isTodaySelected ? (
             <Text style={[styles.proteinNote, { color: theme.subtle }, theme.font.body]}>
               {t(varietyInsight(varietyCount))}
             </Text>
@@ -1780,6 +1819,9 @@ const styles = StyleSheet.create({
   input: { marginBottom: 12 },
   // The meal picker above the composer: its own air before the text field.
   mealPickTop: { marginBottom: 14 },
+  // The day track under the chips (the workout card's spacing idiom).
+  dayNav: { marginBottom: 10 },
+  dayHint: { fontSize: 12, lineHeight: 17, marginTop: -4, marginBottom: 10 },
   // Capture-method segmented control (mirrors the workout screen). One method
   // visible at a time; inactive segments on `iconBg` so they read on dark.
   segments: { flexDirection: 'row', gap: 6, marginBottom: 12 },
