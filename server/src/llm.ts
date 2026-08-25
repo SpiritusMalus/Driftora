@@ -133,8 +133,31 @@ const AUDIO_IGNORE_PROVIDERS: readonly string[] = (
 
 const CONFIDENCE_FLOOR = 0.5;
 
+/**
+ * The distinct ways the model path dies. These used to be indistinguishable
+ * from outside: every strain surfaced as one `llm_unavailable` counter, and
+ * telling a timeout from a decode loop meant reading latency signatures by
+ * hand (ровно 20.1с = таймаут, 2026-07-20). Tagged here at the throw site —
+ * the only place that actually knows — and counted per strain in /metrics.
+ */
+export type FailureStrain =
+  | 'timeout' // both attempts hit AbortSignal.timeout — headers or body
+  | 'truncated' // finish_reason 'length' after the retry, zero items
+  | 'provider_error' // finish_reason 'error' inside an HTTP 200
+  | 'http_error' // non-2xx from OpenRouter itself
+  | 'unreadable_body' // fetch resolved on headers, reading the body died
+  | 'network' // fetch rejected outright (DNS, TLS, connection reset)
+  | 'config'; // no API key — a deployment problem, not an outage
+
 /** Raised when the model is unreachable/failing — routes map it to 503. */
-export class VisionUnavailableError extends Error {}
+export class VisionUnavailableError extends Error {
+  readonly strain: FailureStrain;
+
+  constructor(message: string, strain: FailureStrain) {
+    super(message);
+    this.strain = strain;
+  }
+}
 
 /** One OpenAI chat message; user content may be multimodal (text + image + audio). */
 type TextPart = { type: 'text'; text: string };
@@ -256,7 +279,7 @@ async function complete(
 ): Promise<unknown> {
   const key = process.env.OPENROUTER_API_KEY || '';
   if (!key) {
-    throw new VisionUnavailableError('OPENROUTER_API_KEY is not configured');
+    throw new VisionUnavailableError('OPENROUTER_API_KEY is not configured', 'config');
   }
   let res: Response;
   try {
@@ -274,10 +297,10 @@ async function complete(
     });
   } catch (err) {
     if (isTimeout(err)) throw new UpstreamTimeoutError(`OpenRouter timed out after ${timeoutMs}ms`);
-    throw new VisionUnavailableError(err instanceof Error ? err.message : 'OpenRouter request failed');
+    throw new VisionUnavailableError(err instanceof Error ? err.message : 'OpenRouter request failed', 'network');
   }
   if (!res.ok) {
-    throw new VisionUnavailableError(`OpenRouter returned ${res.status}`);
+    throw new VisionUnavailableError(`OpenRouter returned ${res.status}`, 'http_error');
   }
   // The body is read AFTER fetch() resolved on headers, so the timeout can fire
   // HERE — and a swallowed abort (`.catch(() => null)`) used to look exactly
@@ -290,6 +313,7 @@ async function complete(
     if (isTimeout(err)) throw new UpstreamTimeoutError(`OpenRouter body timed out after ${timeoutMs}ms`);
     throw new VisionUnavailableError(
       err instanceof Error ? `OpenRouter body unreadable: ${err.message}` : 'OpenRouter body unreadable',
+      'unreadable_body',
     );
   }
 }
@@ -363,7 +387,7 @@ async function completeWithRetry(
     // A provider error rides in on HTTP 200 — fail now rather than retry into a
     // rate limit that is already refusing us.
     const failed = providerErrorOf(first);
-    if (failed) throw new VisionUnavailableError(failed);
+    if (failed) throw new VisionUnavailableError(failed, 'provider_error');
     if (finishReasonOf(first) !== 'length') return { data: first, truncated: false };
   } catch (err) {
     // A timeout is a loop signature, not a dead upstream — fall through to the
@@ -379,12 +403,12 @@ async function completeWithRetry(
     second = await complete(messages, model, schema, RETRY_TEMPERATURE, timeouts.retry, reasoningEffort, ignoreProviders);
   } catch (err) {
     if (err instanceof UpstreamTimeoutError) {
-      throw new VisionUnavailableError('OpenRouter timed out on both attempts');
+      throw new VisionUnavailableError('OpenRouter timed out on both attempts', 'timeout');
     }
     throw err;
   }
   const failedAgain = providerErrorOf(second);
-  if (failedAgain) throw new VisionUnavailableError(failedAgain);
+  if (failedAgain) throw new VisionUnavailableError(failedAgain, 'provider_error');
   return { data: second, truncated: finishReasonOf(second) === 'length' };
 }
 
@@ -447,7 +471,7 @@ async function completeHedged(
   const attempt = async (temperature: number, timeoutMs: number): Promise<Outcome> => {
     const data = await complete(messages, model, schema, temperature, timeoutMs, opts.reasoningEffort);
     const failed = providerErrorOf(data);
-    if (failed) throw new VisionUnavailableError(failed);
+    if (failed) throw new VisionUnavailableError(failed, 'provider_error');
     return { data, truncated: finishReasonOf(data) === 'length' };
   };
   const tag = (p: Promise<Outcome>): Promise<Tagged> =>
@@ -498,7 +522,7 @@ async function completeHedged(
     if (r1.t.ok) return r1.t.out;
     if (other.ok) return other.out;
     if (r1.t.err instanceof UpstreamTimeoutError && other.err instanceof UpstreamTimeoutError) {
-      throw new VisionUnavailableError('OpenRouter timed out on both attempts');
+      throw new VisionUnavailableError('OpenRouter timed out on both attempts', 'timeout');
     }
     throw r1.lane === 'first' ? r1.t.err : other.err;
   } finally {
@@ -545,7 +569,7 @@ async function callModel(
   // "no food here" — returning [] would render as «не распознал» and hide the
   // breakage (exactly how the 1024-token ceiling went unnoticed for weeks).
   if (items.length === 0 && truncated) {
-    throw new VisionUnavailableError('model response truncated (max_tokens) after retry');
+    throw new VisionUnavailableError('model response truncated (max_tokens) after retry', 'truncated');
   }
   // The raw completion rides along so a caller that asked for more than items
   // (audio, which also asks what was heard) can read it without a second call.

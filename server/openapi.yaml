@@ -444,6 +444,123 @@ paths:
         '503': { description: ЮKassa is not configured, so a granted key could not be verified }
         '429': { $ref: '#/components/responses/RateLimited' }
 
+  /billing/revoke:
+    post:
+      tags: [billing]
+      summary: End a licence's paid period now (admin)
+      description: |
+        The missing half of `/billing/grant`: a key issued by mistake, leaked
+        into a chat, or refunded outside ЮKassa could until now only be waited
+        out. Nothing is deleted — the paid period is clamped to this moment,
+        `revoked_at` is recorded, and the payment history stays auditable.
+
+        Takes effect on the client's next `/billing/register` (sent on every
+        launch), the same latency a store refund already has. Idempotent: a
+        second call returns the first revocation's timestamp. Same fail-closed
+        admin gate as `/billing/grant`.
+      security: [{ adminToken: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [key]
+              properties:
+                key: { type: string, example: ABCD-EFGH-JKLM-NPQR }
+      responses:
+        '200':
+          description: Revoked (or already was)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [key, plan, paid_until, revoked_at]
+                properties:
+                  key: { type: string }
+                  plan: { type: string }
+                  paid_until: { type: integer, description: Epoch ms — now clamped to the revocation moment. }
+                  revoked_at: { type: integer, description: Epoch ms of the FIRST revocation. }
+        '400': { description: Missing key }
+        '401': { description: Wrong admin token }
+        '404': { description: The route is off on this deployment, or no such licence }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /billing/licenses:
+    get:
+      tags: [billing]
+      summary: Every issued licence (admin)
+      description: |
+        Who holds what, until when, and which keys were comped or revoked —
+        until now answerable only by reading `licenses.jsonl` over ssh. Keys are
+        included (the admin needs them to extend or revoke), which is exactly
+        why this sits behind the admin secret and nothing weaker.
+      security: [{ adminToken: [] }]
+      responses:
+        '200':
+          description: The list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [licenses]
+                properties:
+                  licenses:
+                    type: array
+                    items:
+                      type: object
+                      required: [key, plan, paid_until, active, linked, granted, payments, updated_at]
+                      properties:
+                        key: { type: string }
+                        plan: { type: string }
+                        paid_until: { type: integer }
+                        active: { type: boolean }
+                        linked: { type: boolean, description: Bound to a Google account. }
+                        granted: { type: boolean, description: At least one manual grant fed it. }
+                        payments: { type: integer }
+                        updated_at: { type: integer }
+                        revoked_at: { type: integer, description: Present only on revoked licences. }
+        '401': { description: Wrong admin token }
+        '404': { description: The route is off on this deployment }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /funnel/paywall:
+    post:
+      tags: [billing]
+      summary: Funnel beacon — the subscription screen was shown
+      description: |
+        The one monetization-funnel step the server cannot observe on its own:
+        `quota_hits` (the wall) and `checkout_started` (the payment) are both
+        server-side, but whether the person between them ever SAW the offer only
+        the client knows. Fire-and-forget; the body carries only where the
+        screen was opened from. Aggregate-only — no ids, no content — surfaced
+        as `funnel.paywall_shown` / `funnel.paywall_sources` in /metrics.
+        Unknown sources collapse to `other` rather than 400: losing the data
+        point to version skew would be worse than a coarse bucket.
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                source:
+                  type: string
+                  enum: [limit, menu, other]
+                  description: '`limit` — arrived from the quota wall/hint; `menu` — found the screen themselves.'
+      responses:
+        '200':
+          description: Counted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
   /food/parse:
     post:
       tags: [food]

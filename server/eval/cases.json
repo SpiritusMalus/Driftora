@@ -166,5 +166,40 @@
     "region": "US",
     "note": "Composite dish where the dressing carries most of the fat — dropping it is a silent 200 kcal undercount.",
     "expect": { "minItems": 2, "kcalRange": [200, 1000] }
+  },
+  {
+    "id": "ru-shawarma",
+    "text": "шаурма с курицей",
+    "region": "RU",
+    "note": "RU street-food gap closed 2026-08-21 (#207, curatedRu): before it the query fell through every table. Must resolve to a real row (~198 kcal/100g, whole item several hundred), not an AI guess.",
+    "expect": { "minItems": 1, "kcalRange": [250, 900], "nameContains": ["шаурм"], "requireResolved": true }
+  },
+  {
+    "id": "ru-plov",
+    "text": "плов с курицей",
+    "region": "RU",
+    "note": "Second half of the same RU-base gap (UX-аудит 2026-08-20): плов was a documented miss alongside шаурма.",
+    "expect": { "minItems": 1, "kcalRange": [250, 900], "nameContains": ["плов"], "requireResolved": true }
+  },
+  {
+    "id": "ru-vegetable-plate-fiber",
+    "text": "тарелка овощей",
+    "region": "RU",
+    "note": "REGRESSION (#213, 2026-08-23): fiber was absent from all 203 local rows (importer skipped nutrient 1079) and word-form matching dropped correct rows — «тарелка овощей» totalled 0.4 g fiber instead of ~8. Fiber must be present and non-trivial.",
+    "expect": { "minItems": 1, "kcalRange": [30, 350], "fiberMin": 3 }
+  },
+  {
+    "id": "ru-cucumbers-wordform",
+    "text": "огурцы 200 грамм",
+    "region": "RU",
+    "note": "REGRESSION (#213): the matcher rejected the correct row on word forms («огурцы» ≠ «огурец»), so 3 of 4 items never reached the DB. Plural query must still land on the real vegetable row.",
+    "expect": { "minItems": 1, "kcalRange": [15, 80], "nameContains": ["огур"], "requireResolved": true }
+  },
+  {
+    "id": "ru-branded-buckwheat",
+    "text": "гречка мистраль",
+    "region": "RU",
+    "note": "REGRESSION (#209/#210, 2026-08-22): the coverage gate compared our own translation against the answer to that translation, so ANY branded query lost its brand; «мистраль» only resolves once the OFF snapshot + specificity fix hold. Brand may resolve to the branded row or an honest generic — but never to nothing.",
+    "expect": { "minItems": 1, "kcalRange": [100, 800], "nameContains": ["греч"], "requireResolved": true }
   }
 ]

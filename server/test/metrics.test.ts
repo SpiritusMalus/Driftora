@@ -41,3 +41,39 @@ test('recordEscalation increments the escalation counter', () => {
   metrics.recordEscalation();
   assert.equal(metrics.snapshot().escalations, before.escalations + 1);
 });
+
+test('recordFailure counts the strain when one is given', () => {
+  const before = metrics.snapshot();
+  metrics.recordFailure('photo', 'llm_unavailable', 'timeout');
+  metrics.recordFailure('photo', 'llm_unavailable', 'truncated');
+  metrics.recordFailure('text', 'llm_unavailable', 'timeout');
+  metrics.recordFailure('text', 'internal_error');
+  const after = metrics.snapshot();
+
+  assert.equal(after.failures_by_strain.timeout, (before.failures_by_strain.timeout ?? 0) + 2);
+  assert.equal(after.failures_by_strain.truncated, (before.failures_by_strain.truncated ?? 0) + 1);
+  assert.equal(after.failures_by_reason.llm_unavailable, before.failures_by_reason.llm_unavailable + 3);
+  // internal_error carries no strain — the strain table stays untouched by it.
+  assert.equal(
+    Object.values(after.failures_by_strain).reduce((a, b) => a + b, 0),
+    Object.values(before.failures_by_strain).reduce((a, b) => a + b, 0) + 3,
+  );
+});
+
+test('recordFunnel counts steps and paywall sources', () => {
+  const before = metrics.snapshot();
+  metrics.recordFunnel('paywall_shown', 'limit');
+  metrics.recordFunnel('paywall_shown', 'menu');
+  metrics.recordFunnel('paywall_shown', 'limit');
+  metrics.recordFunnel('checkout_started');
+  metrics.recordFunnel('payments_succeeded');
+  const after = metrics.snapshot();
+
+  assert.equal(after.funnel.paywall_shown, before.funnel.paywall_shown + 3);
+  assert.equal(after.funnel.checkout_started, before.funnel.checkout_started + 1);
+  assert.equal(after.funnel.payments_succeeded, before.funnel.payments_succeeded + 1);
+  const src = after.funnel.paywall_sources as Record<string, number>;
+  const srcBefore = before.funnel.paywall_sources as Record<string, number>;
+  assert.equal(src.limit, (srcBefore.limit ?? 0) + 2);
+  assert.equal(src.menu, (srcBefore.menu ?? 0) + 1);
+});

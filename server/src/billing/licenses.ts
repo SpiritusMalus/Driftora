@@ -62,6 +62,13 @@ export interface License {
   /** Every payment that fed this licence — the idempotency guard and the audit trail. */
   paymentIds: string[];
   updatedAt: number;
+  /**
+   * Epoch ms the licence was revoked by hand, when it was. Revocation ends the
+   * paid period early (`paidUntil` is clamped to this moment) but never deletes
+   * the record: the payment history stays auditable, and a later payment on the
+   * same key simply starts a fresh period from its own date.
+   */
+  revokedAt?: number;
 }
 
 export interface Licenses {
@@ -80,6 +87,14 @@ export interface Licenses {
    * last would let a shared key be stolen outright by its recipient.
    */
   attachAccount: (key: string, accountId: string) => License | null;
+  /**
+   * End a licence's paid period NOW. The missing half of `/billing/grant`: a
+   * key issued by mistake, or leaked, could until now only be waited out.
+   * Idempotent — revoking twice keeps the first revocation's timestamp.
+   */
+  revoke: (key: string) => License | null;
+  /** Every licence, for the admin list. Never exposed without the admin secret. */
+  list: () => License[];
   verifier: PurchaseVerifier;
   snapshot: () => Record<string, unknown>;
 }
@@ -164,7 +179,12 @@ export function createLicenses(opts: LicensesOptions = {}): Licenses {
     return {
       productId: license.plan,
       expiresAt: license.paidUntil,
-      state: license.paidUntil > now() ? 'active' : 'expired',
+      // 'revoked' over 'expired' where a revocation ended the period: the two
+      // read the same to the quota, but the honest word survives into the
+      // entitlement record and /metrics. A payment AFTER a revocation clears
+      // `revokedAt` (applyPayment builds a fresh record), so a re-bought key
+      // is simply active again.
+      state: license.paidUntil > now() ? 'active' : license.revokedAt ? 'revoked' : 'expired',
     };
   };
 
@@ -179,21 +199,48 @@ export function createLicenses(opts: LicensesOptions = {}): Licenses {
     return updated;
   }
 
+  /**
+   * End the paid period now. `paidUntil` is CLAMPED, never extended — revoking
+   * an already-expired licence records the fact without granting anything. The
+   * entitlement cache (entitlements.ts) learns of it the same way it learns of
+   * a store refund: on the client's next `/billing/register`, which it sends on
+   * every launch — so access dies within a day, not instantly. Documented
+   * latency, same as the store path.
+   */
+  function revoke(key: string): License | null {
+    const license = log.get(normalizeKey(key));
+    if (!license) return null;
+    if (license.revokedAt) return license; // idempotent — keep the first timestamp
+    const ms = now();
+    const updated: License = {
+      ...license,
+      paidUntil: Math.min(license.paidUntil, ms),
+      revokedAt: ms,
+      updatedAt: ms,
+    };
+    log.put(updated);
+    return updated;
+  }
+
   function snapshot(): Record<string, unknown> {
     const ms = now();
     let active = 0;
     let linked = 0;
     let granted = 0;
+    let revoked = 0;
     for (const lic of log.values()) {
       if (lic.paidUntil > ms) active += 1;
       if (lic.accountId) linked += 1;
       if (lic.paymentIds.some((id) => id.startsWith(MANUAL_PAYMENT_PREFIX))) granted += 1;
+      if (lic.revokedAt) revoked += 1;
     }
-    return { licenses: log.size(), active, linked, granted };
+    return { licenses: log.size(), active, linked, granted, revoked };
   }
 
   return {
     applyPayment,
+    revoke,
+    list: () => [...log.values()],
     byKey: (key) => log.get(normalizeKey(key)),
     byPaymentId: (paymentId) => {
       const key = byPayment.get(paymentId);

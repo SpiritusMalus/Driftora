@@ -3,6 +3,7 @@ import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
 import { logDaysInRange, startOfWeek, weeklyStreak } from '../insights/engagement';
 import { selfInitiatedLogDays } from './activity';
+import { fiberOfMicros } from './food';
 import { ensureSettings } from './settings';
 import { diaryEntries, foodEntries, stepsDays, wins, workouts } from './schema';
 import { dayKey } from './steps';
@@ -18,6 +19,11 @@ export interface WeekStats {
   stepsAvg: number;
   stepsDayCount: number;
   proteinAvg: number;
+  /// Fiber g/day over the days with food logs — the metric the science push
+  /// (#181/#213) says matters and the one this screen never showed. Entries
+  /// logged before fiber existed in the data count as 0, which biases both
+  /// compared weeks the same way — honest enough for self-vs-past-self.
+  fiberAvg: number;
   kcalAvg: number;
   foodLogDays: number;
   diaryCount: number;
@@ -70,23 +76,27 @@ async function statsForWindow(db: AnyDb, start: Date, end: Date): Promise<WeekSt
   // into the week: six real 2000-kcal days plus one failed-photo day reported
   // 1714 kcal/day. The average must be over days that actually hold food.
   const foods = (await db
-    .select({ ts: foodEntries.ts, proteinG: foodEntries.proteinG, kcal: foodEntries.kcal })
+    .select({ ts: foodEntries.ts, proteinG: foodEntries.proteinG, kcal: foodEntries.kcal, micros: foodEntries.micros })
     .from(foodEntries)
     .where(and(gte(foodEntries.ts, start), lt(foodEntries.ts, end), isNull(foodEntries.parseStatus)))) as {
     ts: Date;
     proteinG: number;
     kcal: number;
+    micros: string | null;
   }[];
   const foodDays = new Set<string>();
   let proteinSum = 0;
+  let fiberSum = 0;
   let kcalSum = 0;
   for (const f of foods) {
     foodDays.add(dayKey(f.ts));
     proteinSum += f.proteinG;
+    fiberSum += fiberOfMicros(f.micros) ?? 0;
     kcalSum += f.kcal;
   }
   const foodLogDays = foodDays.size;
   const proteinAvg = foodLogDays ? Math.round(proteinSum / foodLogDays) : 0;
+  const fiberAvg = foodLogDays ? Math.round(fiberSum / foodLogDays) : 0;
   const kcalAvg = foodLogDays ? Math.round(kcalSum / foodLogDays) : 0;
 
   // Ranged on the stored day key, not `ts`: that column is what every other
@@ -112,6 +122,7 @@ async function statsForWindow(db: AnyDb, start: Date, end: Date): Promise<WeekSt
     stepsAvg,
     stepsDayCount,
     proteinAvg,
+    fiberAvg,
     kcalAvg,
     foodLogDays,
     diaryCount: Number(diaryRows[0]?.c ?? 0),

@@ -13,6 +13,7 @@ import {
   fetchPlans,
   normalizeLicenseKey,
   refreshEntitlement,
+  reportPaywallShown,
   startCheckout,
   storedLicenseKey,
 } from '@/lib/core/services/billing';
@@ -144,6 +145,7 @@ describe('the AI-consent gate', () => {
     await fetchPlans(db);
     await startCheckout(db, { plan: 'monthly' });
     await refreshEntitlement(db);
+    await reportPaywallShown(db, 'limit');
 
     expect(fetchMock).not.toHaveBeenCalled();
     sqlite.close();
@@ -206,6 +208,26 @@ describe('starting a checkout', () => {
     ) as unknown as typeof fetch;
 
     expect(await startCheckout(db, { plan: 'monthly' })).toEqual({ ok: false, reason: 'email_required' });
+    sqlite.close();
+  });
+
+  it('sends the paywall beacon with its source, and survives a dead network', async () => {
+    const { sqlite, db } = await makeDb();
+    const fetchMock = jest.fn(async () => jsonResponse(200, { ok: true }));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    await reportPaywallShown(db, 'limit');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe(`${ORIGIN}/funnel/paywall`);
+    expect(JSON.parse(String(init.body))).toEqual({ source: 'limit' });
+
+    // Fire-and-forget: the beacon failing must never throw into the screen.
+    globalThis.fetch = jest.fn(async () => {
+      throw new Error('network down');
+    }) as unknown as typeof fetch;
+    await expect(reportPaywallShown(db, 'menu')).resolves.toBeUndefined();
     sqlite.close();
   });
 });

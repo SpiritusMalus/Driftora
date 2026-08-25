@@ -43,6 +43,14 @@ class MetricsRegistry {
     workout_audio: 0,
   };
   private readonly failuresByReason: Record<string, number> = { llm_unavailable: 0, internal_error: 0 };
+  /**
+   * `llm_unavailable` broken down by HOW the model path died (llm.ts strains:
+   * timeout / truncated / provider_error / …). The flat reason above says the
+   * LLM was down; only this says WHICH of the historical failure modes it was —
+   * without it, diagnosing an incident means reconstructing the strain from
+   * latency signatures by hand (the 2026-07-20 method).
+   */
+  private readonly failuresByStrain: Record<string, number> = {};
   private empty = 0;
   private lowConfidence = 0;
   private escalations = 0;
@@ -103,9 +111,14 @@ class MetricsRegistry {
    * that only counts successes reports «здоров» right up until nobody can use
    * the thing.
    */
-  recordFailure(route: FoodRoute | WorkoutRoute, reason: 'llm_unavailable' | 'internal_error'): void {
+  recordFailure(
+    route: FoodRoute | WorkoutRoute,
+    reason: 'llm_unavailable' | 'internal_error',
+    strain?: string,
+  ): void {
     this.failures[route] = (this.failures[route] ?? 0) + 1;
     this.failuresByReason[reason] = (this.failuresByReason[reason] ?? 0) + 1;
+    if (strain) this.failuresByStrain[strain] = (this.failuresByStrain[strain] ?? 0) + 1;
   }
 
   /** A sustained non-zero count means the token ceiling needs another look. */
@@ -159,6 +172,31 @@ class MetricsRegistry {
     this.sourceOutages[source] = (this.sourceOutages[source] ?? 0) + 1;
   }
 
+  /**
+   * The monetization funnel, one counter per step. `quota_hits` (the step
+   * before all of these) lives in the quota snapshot; these three close the
+   * missing half: did the person who hit the wall ever SEE the paywall, did
+   * they start a payment, did the payment settle. Until now the first and last
+   * numbers existed and everything between them was a guess.
+   *
+   * `paywall_shown` arrives from the client (POST /funnel/paywall) with a
+   * source tag — «пришёл с лимита» и «нашёл сам в Ещё» are different funnels.
+   * Aggregate-only like everything here: no ids, no content.
+   */
+  private readonly funnel: Record<string, number> = {
+    paywall_shown: 0,
+    checkout_started: 0,
+    payments_succeeded: 0,
+  };
+  private readonly paywallSources: Record<string, number> = {};
+
+  recordFunnel(step: 'paywall_shown' | 'checkout_started' | 'payments_succeeded', source?: string): void {
+    this.funnel[step] = (this.funnel[step] ?? 0) + 1;
+    if (step === 'paywall_shown' && source) {
+      this.paywallSources[source] = (this.paywallSources[source] ?? 0) + 1;
+    }
+  }
+
   snapshot() {
     const latency_ms: Record<string, { avg: number; count: number }> = {};
     for (const [route, { sum, count }] of Object.entries(this.latency)) {
@@ -175,6 +213,8 @@ class MetricsRegistry {
       // together. `requests` alone is a success count wearing a neutral name.
       failures: { ...this.failures },
       failures_by_reason: { ...this.failuresByReason },
+      failures_by_strain: { ...this.failuresByStrain },
+      funnel: { ...this.funnel, paywall_sources: { ...this.paywallSources } },
       by_region: { ...this.byRegion },
       empty: this.empty,
       low_confidence: this.lowConfidence,

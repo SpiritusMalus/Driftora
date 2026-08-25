@@ -1507,6 +1507,7 @@ export const en = {
       // “Time”, not “Minutes”: the value already carries its unit on the right.
       workoutTime: 'Workout time',
       protein: 'Protein',
+      fiber: 'Fiber',
       kcal: 'Calories',
       // A session count, never the burned kcal: no calorie pressure on this screen.
       workouts: 'Workouts',

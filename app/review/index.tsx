@@ -106,6 +106,9 @@ export default function ReviewScreen() {
       unit: t('workouts.min'),
     },
     { label: t('review.metrics.protein'), value: a.proteinAvg, delta: a.proteinAvg - b.proteinAvg, unit: t('units.g') },
+    // Fiber rides beside protein, not behind hideCalories: it is the science
+    // push's flagship number (#213) and carries no calorie pressure.
+    { label: t('review.metrics.fiber'), value: a.fiberAvg, delta: a.fiberAvg - b.fiberAvg, unit: t('units.g') },
     ...(hideCalories
       ? []
       : [{ label: t('review.metrics.kcal'), value: a.kcalAvg, delta: a.kcalAvg - b.kcalAvg, unit: t('units.kcal') }]),
