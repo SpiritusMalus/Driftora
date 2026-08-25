@@ -241,6 +241,24 @@ export async function forgetLicense(db: AnyDb): Promise<void> {
   await updateSettings(db, { licenseKey: null });
 }
 
+/** Where the subscription screen was opened from — the two funnels differ. */
+export type PaywallSource = 'limit' | 'menu';
+
+/**
+ * Funnel beacon: the subscription screen was SHOWN, and from where.
+ *
+ * The server already counts the wall (`quota_hits`) and the payment
+ * (`checkout_started`) — this is the step between them it cannot see. One tiny
+ * POST, aggregate-only on the other end (no ids, no content), same consent gate
+ * as every other network call here. Fire-and-forget by design: the beacon
+ * failing must never affect the screen, so the result is ignored and `request`
+ * already swallows network errors.
+ */
+export async function reportPaywallShown(db: AnyDb, source: PaywallSource): Promise<void> {
+  if (!(await hasAiConsent(db))) return;
+  await request('/funnel/paywall', { method: 'POST', body: JSON.stringify({ source }) });
+}
+
 /* ------------------------------------------------------------------------- *
  * Buying from inside the app.
  *

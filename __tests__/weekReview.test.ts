@@ -88,6 +88,8 @@ describe('weekReview', () => {
       stepsAvg: 7000,
       stepsDayCount: 2,
       proteinAvg: 40,
+      // Fixtures store no micros blob → no fiber data, honestly zero.
+      fiberAvg: 0,
       kcalAvg: 600,
       foodLogDays: 2,
       diaryCount: 1,
@@ -125,6 +127,7 @@ describe('weekReview', () => {
       stepsAvg: 0,
       stepsDayCount: 0,
       proteinAvg: 0,
+      fiberAvg: 0,
       kcalAvg: 0,
       foodLogDays: 0,
       diaryCount: 0,
@@ -177,6 +180,34 @@ describe('weekReview', () => {
     expect(r.thisWeek.foodLogDays).toBe(2);
     expect(r.thisWeek.kcalAvg).toBe(2000);
     expect(r.thisWeek.proteinAvg).toBe(100);
+    sqlite.close();
+  });
+
+  it('averages fiber from the stored micros blobs, per day with food', async () => {
+    const sqlite = new BetterSqlite3(':memory:');
+    const db = drizzle(sqlite, { schema });
+    await applySchema((s) => sqlite.exec(s));
+
+    const meal = (day: number, micros: string | null) =>
+      db.insert(schema.foodEntries).values({
+        ts: new Date(2026, 5, day, 12),
+        rawText: 'meal',
+        source: 'text',
+        kcal: 500,
+        proteinG: 20,
+        fatG: 0,
+        carbG: 0,
+        confirmed: true,
+        micros,
+      });
+    // Day 15: two meals, 8 + 4 g. Day 16: one meal from before fiber existed in
+    // the data (no blob) — counts as 0, the denominator stays the food days.
+    await meal(15, JSON.stringify({ fiber: 8 }));
+    await meal(15, JSON.stringify({ fiber: 4 }));
+    await meal(16, null);
+
+    const r = await weekReview(db, today);
+    expect(r.thisWeek.fiberAvg).toBe(6); // (12 + 0) / 2 days
     sqlite.close();
   });
 

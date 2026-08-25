@@ -1533,7 +1533,7 @@ export default function FoodLogScreen() {
               not wait — not a wall in front of the food they just ate. */}
           {parseIssue === 'quota' || parseIssue === 'quotaFree' ? (
             <Pressable
-              onPress={() => router.push('/settings/subscription')}
+              onPress={() => router.push('/settings/subscription?from=limit')}
               hitSlop={8}
               accessibilityRole="link"
             >
@@ -1556,7 +1556,7 @@ export default function FoodLogScreen() {
               : t('food.quotaLeft', { n: quotaLeft })}
           </Text>
           <Pressable
-            onPress={() => router.push('/settings/subscription')}
+            onPress={() => router.push('/settings/subscription?from=limit')}
             hitSlop={8}
             accessibilityRole="link"
           >

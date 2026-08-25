@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { WebView } from 'react-native-webview';
@@ -16,6 +17,7 @@ import {
   fetchPlans,
   finishCheckout,
   forgetLicense,
+  reportPaywallShown,
   RETURN_PATH,
   startCheckout,
   storedLicenseKey,
@@ -55,6 +57,9 @@ export default function SubscriptionScreen() {
   const { t } = useTranslation();
   const theme = useTheme();
   const db = useDatabase();
+  // `?from=limit` marks arrivals from the quota wall/low-budget hint; everything
+  // else counts as «нашёл сам». Feeds the monetization funnel in /metrics.
+  const { from } = useLocalSearchParams<{ from?: string }>();
 
   const [aiConsent, setAiConsent] = useState<boolean | null>(null);
   const [status, setStatus] = useState<BillingStatus | null>(null);
@@ -92,6 +97,15 @@ export default function SubscriptionScreen() {
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  // One beacon per screen visit, not per re-render or reload: the funnel
+  // counts «показов пейволла», and a re-render is not a second show.
+  const paywallReported = useRef(false);
+  useEffect(() => {
+    if (db == null || paywallReported.current) return;
+    paywallReported.current = true;
+    void reportPaywallShown(db, from === 'limit' ? 'limit' : 'menu');
+  }, [db, from]);
 
   /** Create the payment, then hand the hosted form to the WebView. */
   const onBuy = useCallback(async () => {

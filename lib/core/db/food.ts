@@ -109,6 +109,14 @@ function decodeMicros(
   return hasAny ? { minerals, vitamins, ...(fiber !== undefined ? { fiber } : {}) } : null;
 }
 
+/// Fiber grams stored in one entry's `micros` blob, or null when the entry
+/// carried none. Exported for the weekly review's fiber average — the blob's
+/// shape stays this module's private business.
+export function fiberOfMicros(raw: string | null | undefined): number | null {
+  const fiber = decodeMicros(raw)?.fiber;
+  return typeof fiber === 'number' ? fiber : null;
+}
+
 /// Local-day [start, end) bounds for a given date.
 export function dayBounds(date: Date): { start: Date; end: Date } {
   const start = new Date(date.getFullYear(), date.getMonth(), date.getDate());
