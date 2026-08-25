@@ -138,8 +138,16 @@ export default function FoodDayScreen() {
     [],
   );
 
+  // Monotonic reload ticket. The two reload paths finish at very different
+  // speeds (the today path syncs health — seconds; a past day is three local
+  // queries — instant), so switching the day mid-flight would let the SLOW
+  // earlier reload land last and repaint the screen with the wrong day's data
+  // under the DayNav's new label. Only the newest ticket may commit state.
+  const reloadSeq = useRef(0);
+
   const reload = useCallback(async () => {
     if (!db) return;
+    const seq = ++reloadSeq.current;
     // A past day skips the live-budget machinery entirely: no health sync (the
     // sync is today's), no goal card. Just the day's facts — entries, totals,
     // micros — loaded by the same queries with the day's date.
@@ -155,10 +163,12 @@ export default function FoodDayScreen() {
         todayMacroTotals(db, date),
         todayMicroTotals(db, date),
       ]);
+      const items = await listItemsForEntries(db, list.map((e) => e.id));
+      if (seq !== reloadSeq.current) return;
       setHideCalories(settings.hideCalories);
       setSex(settings.sex);
       setEntries(list);
-      setItemsByEntry(await listItemsForEntries(db, list.map((e) => e.id)));
+      setItemsByEntry(items);
       setTotals(tot);
       setMicros(mic);
       setGoal(null);
@@ -187,8 +197,12 @@ export default function FoodDayScreen() {
       latestWeight(db),
       todayWorkoutKcal(db),
     ]);
+    const items = await listItemsForEntries(db, list.map((e) => e.id));
+    // The day switched while this (slow — health sync) pass was in flight: the
+    // newer reload owns the screen, landing late would repaint it with today.
+    if (seq !== reloadSeq.current) return;
     setEntries(list);
-    setItemsByEntry(await listItemsForEntries(db, list.map((e) => e.id)));
+    setItemsByEntry(items);
     setTotals(tot);
     setMicros(mic);
     setSex(settings.sex);
