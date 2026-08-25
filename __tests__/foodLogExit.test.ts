@@ -66,8 +66,10 @@ describe('leaving the food log screen after a save', () => {
   it('is still opened by a push from the day list (the setup the bug needs)', () => {
     // If this ever stops being true the coupling above is worth re-reading
     // rather than trusting: `dismissTo` is chosen BECAUSE «Еда» can already be
-    // on the stack when the log screen opens.
-    expect(read('app/food/index.tsx')).toContain("router.push('/food/log')");
+    // on the stack when the log screen opens. The push may carry a ?day= param
+    // (the day list's DayNav aims the log screen at a past day) — any
+    // `router.push(...'/food/log'...)` call site keeps the coupling alive.
+    expect(read('app/food/index.tsx')).toMatch(/router\.push\([^)]*'\/food\/log/);
   });
 });
 
