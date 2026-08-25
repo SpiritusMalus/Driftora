@@ -626,6 +626,10 @@ export function createApp(
         licenseKey: licenseKey || undefined,
         returnUrl: askedReturn || `${publicBaseUrl(req)}/billing/done`,
       });
+      // Funnel step: a payment was actually STARTED (ЮKassa accepted it), from
+      // either door — the app's native screen or the web page. Read against
+      // `paywall_shown` and `payments_succeeded` in /metrics.
+      metrics.recordFunnel('checkout_started');
       res.json({
         payment_id: payment.id,
         confirmation_url: payment.confirmationUrl,
@@ -883,6 +887,73 @@ export function createApp(
     });
   });
 
+  /** Shared admin gate for the hand-operated licence routes — see /billing/grant
+   *  on why this is a separate secret and why it fails closed. */
+  function requireAdmin(req: Request, res: Response): boolean {
+    if (!adminToken) {
+      fail(res, 404, 'not_found', 'This deployment does not manage licences by hand.');
+      return false;
+    }
+    const header = req.get('authorization') || '';
+    const presented = header.startsWith('Bearer ') ? header.slice(7) : '';
+    if (!tokensMatch(presented, adminToken)) {
+      fail(res, 401, 'unauthorized', 'Missing or invalid admin token.');
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * The missing half of /billing/grant: end a licence NOW — issued by mistake,
+   * leaked into a chat, refunded outside ЮKassa. Nothing is deleted; the paid
+   * period is clamped to this moment and the record keeps its audit trail.
+   * Takes effect on the client's next /billing/register (it sends one on every
+   * launch) — the same latency a store refund already has.
+   */
+  app.post('/billing/revoke', limiters.billingDaily, (req: Request, res: Response) => {
+    if (!requireAdmin(req, res)) return;
+    const body = (req.body ?? {}) as { key?: unknown };
+    const key = typeof body.key === 'string' ? body.key.trim() : '';
+    if (!key) {
+      fail(res, 400, 'invalid_purchase_body', 'Field "key" is required.');
+      return;
+    }
+    const revoked = licenses.revoke(key);
+    if (!revoked) {
+      fail(res, 404, 'unknown_license', 'No licence with this key.');
+      return;
+    }
+    res.json({
+      key: revoked.key,
+      plan: revoked.plan,
+      paid_until: revoked.paidUntil,
+      revoked_at: revoked.revokedAt,
+    });
+  });
+
+  /**
+   * Every issued licence, for the admin's eyes only — who holds what, until
+   * when, and which keys were comped or revoked. Until now the only way to
+   * answer «а что мы вообще выдали?» was reading licences.jsonl over ssh.
+   */
+  app.get('/billing/licenses', limiters.billingDaily, (req: Request, res: Response) => {
+    if (!requireAdmin(req, res)) return;
+    const ms = Date.now();
+    res.json({
+      licenses: licenses.list().map((lic) => ({
+        key: lic.key,
+        plan: lic.plan,
+        paid_until: lic.paidUntil,
+        active: lic.paidUntil > ms,
+        linked: Boolean(lic.accountId),
+        granted: lic.paymentIds.some((id) => id.startsWith(MANUAL_PAYMENT_PREFIX)),
+        payments: lic.paymentIds.length,
+        updated_at: lic.updatedAt,
+        ...(lic.revokedAt ? { revoked_at: lic.revokedAt } : {}),
+      })),
+    });
+  });
+
   /**
    * Register a purchase made in the store, binding it to this install.
    *
@@ -1017,6 +1088,26 @@ export function createApp(
     });
   });
 
+  /**
+   * Funnel beacon: the paywall/subscription screen was SHOWN to someone.
+   *
+   * The one funnel step the server cannot observe on its own — `quota_hits`
+   * (the wall) and `checkout_started` (the payment) are both server-side, but
+   * whether the person between them ever saw the offer only the client knows.
+   * Fire-and-forget from the app; body carries only WHERE the screen was opened
+   * from («упёрся в лимит» vs «нашёл сам»), no ids, no content — the counter is
+   * aggregate like everything in /metrics. Unknown sources collapse to 'other'
+   * rather than 400: losing a data point over a version skew would be worse
+   * than a coarse bucket.
+   */
+  const PAYWALL_SOURCES = new Set(['limit', 'menu', 'other']);
+  app.post('/funnel/paywall', requireToken, limiters.billingDaily, (req: Request, res: Response) => {
+    const body = (req.body ?? {}) as { source?: unknown };
+    const raw = typeof body.source === 'string' ? body.source : 'other';
+    metrics.recordFunnel('paywall_shown', PAYWALL_SOURCES.has(raw) ? raw : 'other');
+    res.json({ ok: true });
+  });
+
   // Shared tail for both inputs: identified items → resolved MealDraft, with the
   // same error mapping + aggregate metrics. Never leaks the input or a stack trace.
   async function respondWithDraft(
@@ -1056,7 +1147,7 @@ export function createApp(
       if (err instanceof VisionUnavailableError) {
         // Counted, not just returned: a failure that reaches no counter is a
         // failure nobody will notice (see metrics.recordFailure).
-        metrics.recordFailure(route, 'llm_unavailable');
+        metrics.recordFailure(route, 'llm_unavailable', err.strain);
         fail(res, 503, 'llm_unavailable', 'The parsing service is temporarily unavailable.');
         return;
       }
@@ -1303,7 +1394,7 @@ export function createApp(
     route: 'workout_text' | 'workout_photo' | 'workout_audio',
   ): void {
     if (err instanceof VisionUnavailableError) {
-      metrics.recordFailure(route, 'llm_unavailable');
+      metrics.recordFailure(route, 'llm_unavailable', err.strain);
       fail(res, 503, 'llm_unavailable', 'The parsing service is temporarily unavailable.');
       return;
     }

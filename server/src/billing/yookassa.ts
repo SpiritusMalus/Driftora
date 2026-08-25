@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { Request, Response } from 'express';
+import { metrics } from '../metrics.js';
 import { DEFAULT_PLAN, PLAN_DAYS, type Licenses } from './licenses.js';
 
 /**
@@ -426,7 +427,13 @@ export function createYooKassaWebhook(opts: WebhookOptions) {
     // starting a new one; absent on a first purchase.
     const existingKey = typeof metadata.license_key === 'string' ? metadata.license_key : undefined;
 
+    // Funnel: count each SETTLED payment exactly once. ЮKassa redelivers the
+    // notification until it sees a 200, and applyPayment is idempotent by
+    // payment id — so the counter must key off "was this id new", not "did the
+    // handler run", or every redelivery would inflate the conversion number.
+    const alreadyApplied = Boolean(opts.licenses.byPaymentId(payment.id));
     const license = opts.licenses.applyPayment(payment.id, plan, existingKey);
+    if (!alreadyApplied) metrics.recordFunnel('payments_succeeded');
     // The key itself never goes in the response: ЮKassa ignores the body, and
     // the buyer collects it from /billing/license instead.
     res.status(200).json({ ok: true, paid_until: license.paidUntil });

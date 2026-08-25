@@ -41,6 +41,13 @@ export interface EvalCase {
      * true, every item must carry a per100.source other than 'estimate'.
      */
     requireResolved?: boolean;
+    /**
+     * Least grams of fiber the meal's totals must carry. Guards the 2026-08-23
+     * class of bug (#213): every macro present, fiber silently 0 because the
+     * importer never carried nutrient 1079 — «тарелка овощей» scored 0.4 г.
+     * A missing totals.fiber fails the same as a low one: absent IS the bug.
+     */
+    fiberMin?: number;
   };
 }
 
@@ -56,7 +63,7 @@ export interface EvalItem {
 
 export interface EvalDraft {
   items?: EvalItem[];
-  totals?: { kcal?: number };
+  totals?: { kcal?: number; fiber?: number };
   flags?: { low_confidence?: boolean; has_estimate?: boolean; has_ai_estimate?: boolean };
 }
 
@@ -123,6 +130,16 @@ export function scoreCase(
     const guessed = items.filter((i) => i.per100?.source === 'estimate');
     if (guessed.length > 0) {
       failures.push(`${guessed.length} item(s) unresolved (source 'estimate')`);
+    }
+  }
+
+  const fiberMin = testCase.expect.fiberMin;
+  if (fiberMin !== undefined) {
+    const fiber = draft?.totals?.fiber;
+    if (typeof fiber !== 'number' || !Number.isFinite(fiber)) {
+      failures.push('totals.fiber missing');
+    } else if (fiber < fiberMin) {
+      failures.push(`fiber ${fiber} g < ${fiberMin} g`);
     }
   }
 
