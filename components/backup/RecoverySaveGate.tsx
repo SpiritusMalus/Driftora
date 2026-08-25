@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Card } from '@/components/ui/Card';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
+import { useAndroidKeyboardSpace } from '@/components/ui/Screen';
 import { TextField } from '@/components/ui/TextField';
 import { type Theme, useTheme } from '@/lib/theme/theme';
 
@@ -52,6 +53,11 @@ export function RecoverySaveGate({
   );
   const canProceed = savedAck && answersMatch && !busy;
 
+  // Android + edge-to-edge: adjustResize is dead, so the keyboard space is
+  // handed back in JS — same treatment as `Screen` (see the hook's doc).
+  const scrollRef = useRef<ScrollView>(null);
+  const keyboardSpace = useAndroidKeyboardSpace(scrollRef);
+
   function tryProceed() {
     if (!answersMatch) {
       setShowError(true);
@@ -62,7 +68,11 @@ export function RecoverySaveGate({
 
   return (
     <ScrollView
-      contentContainerStyle={styles.container}
+      ref={scrollRef}
+      contentContainerStyle={[
+        styles.container,
+        keyboardSpace > 0 ? { paddingBottom: keyboardSpace + 32 } : null,
+      ]}
       keyboardShouldPersistTaps="handled"
       // The one input surface that does not go through `Screen` — it is a gate
       // rendered over the backup flow, and the field it asks to fill is the

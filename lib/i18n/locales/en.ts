@@ -1076,6 +1076,9 @@ export const en = {
     // Day switcher on the log screen: "forgot to log yesterday's dinner" writes
     // straight into that day. The hint shows only when a non-today day is picked.
     otherDayHint: 'Another day is selected — the meal will be logged to it.',
+    // The same switcher on the day list («Еда» section): the whole menu — the
+    // list, edits, repeat, «Add» — works for the selected day as for today.
+    dayListHint: 'Showing another day: entries and “Add” work for it.',
     // Past-day save ack: the warm lines below are about "today", while here the
     // point is WHERE the entry landed (it won't show on the today list).
     savedOtherDay: 'Logged — {{day}}',

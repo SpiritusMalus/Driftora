@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { ConsentModal } from '@/components/consent/ConsentModal';
 import { ItemCard } from '@/components/food/ItemCard';
 import { MealChips } from '@/components/food/MealChips';
-import { DayNav } from '@/components/ui/DayNav';
+import { DAY_NAV_BACK_DAYS, DayNav } from '@/components/ui/DayNav';
 import { ApproxBadge, MicroScales, NutrientDetail } from '@/components/food/nutrientViews';
 import { Card } from '@/components/ui/Card';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
@@ -50,7 +50,7 @@ import {
 import { deleteTempFile } from '@/lib/core/services/tempFiles';
 import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
 
-import { formatDayTitle, localDayKey, tsOnDay } from '@/lib/i18n/formatDay';
+import { daysAgo, formatDayTitle, localDayKey, parseDayKey, tsOnDay } from '@/lib/i18n/formatDay';
 import { mealTitle } from '@/lib/core/insights/mealTitle';
 import { mealTypeForEntry, promptKeyForMeal, type MealType } from '@/lib/core/insights/mealType';
 import { proteinInsight } from '@/lib/core/insights/proteinInsight';
@@ -94,8 +94,10 @@ export default function FoodLogScreen() {
   const theme = useTheme();
   const router = useRouter();
   const db = useDatabase();
-  // The Home mic FAB deep-links here with ?voice=1 to start dictation at once.
-  const { voice } = useLocalSearchParams<{ voice?: string }>();
+  // The Home mic FAB deep-links here with ?voice=1 to start dictation at once;
+  // the day list passes ?day=YYYY-MM-DD when its DayNav is on a past day, so
+  // «добавить в тот день» opens this screen already aimed at it.
+  const { voice, day: dayParam } = useLocalSearchParams<{ voice?: string; day?: string }>();
   // Region setting ('auto' until settings load); the active region honors it,
   // falling back to device locale (resolveRegion).
   const [regionSetting, setRegionSetting] = useState<'auto' | 'RU' | 'US'>('auto');
@@ -126,8 +128,18 @@ export default function FoodLogScreen() {
   // Which day the entry is being written to. «Вчера забыл записать ужин» had no
   // direct answer here: every save stamped `new Date()`, so a meal could only
   // land on today (the workaround was save-then-re-file in the edit screen).
-  // Same day-key currency and the same DayNav as the workout card.
-  const [day, setDay] = useState(() => localDayKey(new Date()));
+  // Same day-key currency and the same DayNav as the workout card. A valid
+  // past-day ?day= param becomes the starting selection (a future or malformed
+  // key falls back to today — a deep link must not aim a save at tomorrow).
+  const [day, setDay] = useState(() => {
+    const today = localDayKey(new Date());
+    return typeof dayParam === 'string' && parseDayKey(dayParam) != null && dayParam < today
+      ? dayParam
+      : today;
+  });
+  // The DayNav floor never clips the day this screen was opened on: a param
+  // older than the default horizon must stay reachable after a stray «›» tap.
+  const [dayFloorExtra] = useState(() => daysAgo(day));
   // Today's protein-so-far + personal target, for the honest "what it means"
   // line shown once a meal is parsed (the meaning-rules library).
   const [proteinTarget, setProteinTarget] = useState(0);
@@ -1333,7 +1345,12 @@ export default function FoodLogScreen() {
       {/* …и в какой ДЕНЬ — «вчера забыл записать ужин» теперь пишется сразу
           туда, без пересохранения через экран правки. Тот же DayNav, что на
           карточке тренировок: сегодня по умолчанию, стрелки — назад. */}
-      <DayNav value={day} onChange={setDay} style={styles.dayNav} />
+      <DayNav
+        value={day}
+        onChange={setDay}
+        backDays={Math.max(DAY_NAV_BACK_DAYS, dayFloorExtra)}
+        style={styles.dayNav}
+      />
       {!isTodaySelected ? (
         <Text style={[styles.dayHint, { color: theme.subtle }, theme.font.body]}>
           {t('food.otherDayHint')}

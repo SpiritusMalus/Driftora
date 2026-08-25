@@ -7,6 +7,7 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { AccordionChevron } from '@/components/ui/AccordionChevron';
 import { Card } from '@/components/ui/Card';
 import { Collapsible } from '@/components/ui/Collapsible';
+import { DayNav } from '@/components/ui/DayNav';
 import { FillBar } from '@/components/ui/FillBar';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { RiseIn } from '@/components/ui/RiseIn';
@@ -51,6 +52,7 @@ import { shortMealTitle } from '@/lib/core/insights/mealTitle';
 import { groupEntriesByMeal } from '@/lib/core/insights/mealType';
 import type { FoodEntry, FoodItem } from '@/lib/core/db/schema';
 import type { Sex } from '@/lib/core/insights/bodyMetrics';
+import { localDayKey, parseDayKey, tsOnDay } from '@/lib/i18n/formatDay';
 import { type Theme, useTheme } from '@/lib/theme/theme';
 
 /// The user's daily КБЖУ goal, shown only when it was DELIBERATELY set (the
@@ -78,6 +80,17 @@ export default function FoodDayScreen() {
   const theme = useTheme();
   const router = useRouter();
   const db = useDatabase();
+  // Which day the screen is showing — today by default, walked with the same
+  // DayNav as the log screen and the workout card («хочу переключиться на
+  // любую дату и чтобы меню было как в сегодняшней», device 2026-08-25). On a
+  // past day everything below the switcher keeps working — the list, edit ✎,
+  // repeat ↻ (lands on THAT day), delete ✕, and «Добавить» opens the log
+  // screen already aimed at the day. Only the live budget card steps aside:
+  // a past day's target can't be honestly reconstructed, so it shows the
+  // day's eaten facts instead.
+  const [day, setDay] = useState(() => localDayKey(new Date()));
+  const isToday = day === localDayKey(new Date());
+  const [hideCalories, setHideCalories] = useState(false);
   const [entries, setEntries] = useState<FoodEntry[] | null>(null);
   // Rows already seen on this screen — a row NOT in the set is a fresh insert
   // and enters with a RiseIn (the LayoutAnimation take was a silent no-op on
@@ -125,8 +138,42 @@ export default function FoodDayScreen() {
     [],
   );
 
+  // Monotonic reload ticket. The two reload paths finish at very different
+  // speeds (the today path syncs health — seconds; a past day is three local
+  // queries — instant), so switching the day mid-flight would let the SLOW
+  // earlier reload land last and repaint the screen with the wrong day's data
+  // under the DayNav's new label. Only the newest ticket may commit state.
+  const reloadSeq = useRef(0);
+
   const reload = useCallback(async () => {
     if (!db) return;
+    const seq = ++reloadSeq.current;
+    // A past day skips the live-budget machinery entirely: no health sync (the
+    // sync is today's), no goal card. Just the day's facts — entries, totals,
+    // micros — loaded by the same queries with the day's date.
+    if (day !== localDayKey(new Date())) {
+      const date = parseDayKey(day);
+      if (!date) return;
+      // A yesterday's «разбирается…» orphan (killed process) must still turn
+      // retry-visible here — the sweep is day-agnostic and cheap.
+      await sweepStalePendingEntries(db, undefined, runningParseEntryIds());
+      const settings = await ensureSettings(db);
+      const [list, tot, mic] = await Promise.all([
+        listEntriesForDay(db, date),
+        todayMacroTotals(db, date),
+        todayMicroTotals(db, date),
+      ]);
+      const items = await listItemsForEntries(db, list.map((e) => e.id));
+      if (seq !== reloadSeq.current) return;
+      setHideCalories(settings.hideCalories);
+      setSex(settings.sex);
+      setEntries(list);
+      setItemsByEntry(items);
+      setTotals(tot);
+      setMicros(mic);
+      setGoal(null);
+      return;
+    }
     // Health is SYNCED here, not just read: this screen is where the budget
     // lives, and the stored rows only refreshed on a Home focus — with the
     // automatic count (Health Connect) the number went stale for hours and the
@@ -150,11 +197,16 @@ export default function FoodDayScreen() {
       latestWeight(db),
       todayWorkoutKcal(db),
     ]);
+    const items = await listItemsForEntries(db, list.map((e) => e.id));
+    // The day switched while this (slow — health sync) pass was in flight: the
+    // newer reload owns the screen, landing late would repaint it with today.
+    if (seq !== reloadSeq.current) return;
     setEntries(list);
-    setItemsByEntry(await listItemsForEntries(db, list.map((e) => e.id)));
+    setItemsByEntry(items);
     setTotals(tot);
     setMicros(mic);
     setSex(settings.sex);
+    setHideCalories(settings.hideCalories);
     setWorkoutRawKcal(workoutKcal);
     // «Base + earned» budget: the goal card shows a RESTING base (maintenance at
     // the sedentary factor, goal-adjusted) and adds today's earned activity — steps
@@ -217,7 +269,7 @@ export default function FoodDayScreen() {
             }
           : null,
     );
-  }, [db]);
+  }, [db, day]);
 
   useFocusEffect(
     useCallback(() => {
@@ -248,7 +300,10 @@ export default function FoodDayScreen() {
     if (!db || repeatingRef.current) return;
     repeatingRef.current = true;
     try {
-      const newId = await repeatFoodEntry(db, id);
+      // On a past day ↻ re-logs the meal INTO that day (current clock time
+      // moved onto it — the log screen's idiom), because the whole screen is
+      // that day's menu; a copy quietly landing on today would look lost.
+      const newId = await repeatFoodEntry(db, id, isToday ? new Date() : tsOnDay(new Date(), day));
       if (newId == null) return;
       await reload();
       setRepeatAck(t('food.repeated'));
@@ -311,12 +366,50 @@ export default function FoodDayScreen() {
 
   return (
     <Screen>
-      <PrimaryButton label={t('food.add')} onPress={() => router.push('/food/log')} style={styles.add} />
+      {/* Which day this menu is about. Not today → the whole screen becomes
+          that day's: the list below, ✎/↻/✕ on its rows, and «Добавить» opens
+          the log screen already aimed at the day. */}
+      <DayNav value={day} onChange={setDay} style={styles.dayNav} />
+      {!isToday ? (
+        <Text style={[styles.dayHint, { color: theme.subtle }, theme.font.body]}>
+          {t('food.dayListHint')}
+        </Text>
+      ) : null}
+      <PrimaryButton
+        label={t('food.add')}
+        onPress={() => router.push(isToday ? '/food/log' : `/food/log?day=${day}`)}
+        style={styles.add}
+      />
       {repeatAck ? (
         <Text style={[styles.repeatAck, { color: theme.accent }, theme.font.bodyMedium]}>{repeatAck}</Text>
       ) : null}
 
-      {goal != null && totals != null ? (
+      {/* A past day's headline: the eaten facts, plain (the same hero as the
+          history day screen) — the live budget card below is today-only, its
+          target can't be honestly rebuilt for a day already gone. */}
+      {!isToday && totals != null && entries != null && entries.length > 0 ? (
+        <View style={styles.pastHero}>
+          <View style={styles.pastHeroRow}>
+            <Text style={[styles.pastHeroNum, { color: theme.heroAccent }, theme.font.heading]}>
+              {Math.round(hideCalories ? totals.proteinG : totals.kcal)}
+            </Text>
+            <Text style={[styles.pastHeroUnit, { color: theme.subtle }, theme.font.body]}>
+              {hideCalories ? t('units.g') : t('units.kcal')}
+            </Text>
+          </View>
+          <Text style={[styles.pastHeroSub, { color: theme.subtle }, theme.font.body]}>
+            {hideCalories
+              ? t('macros.protein')
+              : t('history.macrosLine', {
+                  prot: Math.round(totals.proteinG),
+                  fat: Math.round(totals.fatG),
+                  carb: Math.round(totals.carbG),
+                })}
+          </Text>
+        </View>
+      ) : null}
+
+      {isToday && goal != null && totals != null ? (
         <DayProgress
           goal={goal}
           totals={totals}
@@ -343,7 +436,9 @@ export default function FoodDayScreen() {
       {db == null ? (
         <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('food.dbUnavailable')}</Text>
       ) : entries == null ? null : entries.length === 0 ? (
-        <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('food.emptyDay')}</Text>
+        <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>
+          {t(isToday ? 'food.emptyDay' : 'history.emptyDay')}
+        </Text>
       ) : (
         <View style={styles.list}>
           {groupEntriesByMeal(entries).map((group) => {
@@ -373,8 +468,11 @@ export default function FoodDayScreen() {
                   {t('macros.carbShort')} {mealCarb} {t('units.g')}
                 </Text>
               </View>
+              {/* The rise is for a row freshly ADDED while looking at today;
+                  a past day shows existing facts — animating the whole list
+                  would read as new data appearing. */}
               {group.entries.map((e) => (
-                <RiseIn key={e.id} enabled={seenIds.current != null && !seenIds.current.has(e.id)}>
+                <RiseIn key={e.id} enabled={isToday && seenIds.current != null && !seenIds.current.has(e.id)}>
                 {e.parseStatus != null ? (
                   // Background-parse rows: a pending shot waits quietly; a
                   // failed one is tap-to-retry (or an honest «снимите заново»
@@ -845,7 +943,15 @@ function formatTime(d: Date): string {
 }
 
 const styles = StyleSheet.create({
-  add: { marginTop: 4, marginBottom: 12 },
+  dayNav: { marginTop: 4, marginBottom: 10 },
+  dayHint: { fontSize: 12, lineHeight: 17, marginTop: -4, marginBottom: 10, marginHorizontal: 4 },
+  // Past-day headline — mirrors the history day screen's hero.
+  pastHero: { marginTop: 2, marginBottom: 16 },
+  pastHeroRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
+  pastHeroNum: { fontSize: 40, lineHeight: 44 },
+  pastHeroUnit: { fontSize: 15 },
+  pastHeroSub: { fontSize: 13, lineHeight: 18, marginTop: 6, marginHorizontal: 4 },
+  add: { marginTop: 0, marginBottom: 12 },
   repeatAck: { fontSize: 13, textAlign: 'center', marginBottom: 10 },
   hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
   list: { gap: 22 },
