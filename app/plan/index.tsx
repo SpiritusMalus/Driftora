@@ -12,7 +12,7 @@ import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { macroTotalsByDay } from '@/lib/core/db/food';
 import type { WeightRow } from '@/lib/core/db/schema';
 import { ensureSettings, updateSettings, type SettingsPatch } from '@/lib/core/db/settings';
-import { dayKey, listStepsDays } from '@/lib/core/db/steps';
+import { dayKey, listStepsDays, typicalSteps } from '@/lib/core/db/steps';
 import { latestDeviceBodyFat, listWeights } from '@/lib/core/db/weight';
 import { todayWorkoutKcal } from '@/lib/core/db/workouts';
 import {
@@ -28,6 +28,8 @@ import {
   DEFICIT_TEMPOS,
   GOAL_MODES,
   bmiValue,
+  dayBudgetKcal,
+  stepsEarnedKcal,
   suggestPlan,
   validBmrFactor,
   type DeficitTempo,
@@ -62,6 +64,10 @@ export default function PlanScreen() {
   // honest reality-check next to the formula's estimate. Null until there's
   // enough consistent data (see measuredExpenditure's gates).
   const [expenditure, setExpenditure] = useState<MeasuredExpenditure | null>(null);
+  // «Как обычно у вас» — the median daily step count (≥3 recorded days), used to
+  // answer the PLANNING question right on this screen: the resting base is not
+  // the whole day, so say what the user's usual walking actually adds to it.
+  const [usualSteps, setUsualSteps] = useState<number | null>(null);
 
   // Body profile + КБЖУ targets (single app_settings row). Body facts are
   // display-only here (edited in the wizard); plan levers persist on edit.
@@ -122,6 +128,8 @@ export default function PlanScreen() {
         const intake = [...totalsByDay].map(([date, m]) => ({ date, kcal: m.kcal }));
         const weightPts = list.map((w) => ({ date: w.date, kg: w.weightKg }));
         setExpenditure(measuredExpenditure(intake, weightPts));
+        setUsualSteps(await typicalSteps(db));
+        if (!active) return;
         // Settings re-read on EVERY focus: body facts are edited in the
         // body-setup wizard, so returning from it must show the fresh save.
         setHeightText(s.heightCm > 0 ? String(s.heightCm) : '');
@@ -233,6 +241,15 @@ export default function PlanScreen() {
     if (plan.etaWeeks < 10) return { key: 'weight.plan.etaWeeks', n: Math.max(1, plan.etaWeeks) };
     return { key: 'weight.plan.etaMonths', n: Math.max(1, Math.round(plan.etaWeeks / 4.345)) };
   })();
+  // PLANNING, not a promise: what the user's OWN usual walking adds to the
+  // resting base — the same formula the day budget uses (stepsEarnedKcal), so
+  // this number and the food day's «шаги +N» can never disagree. Shown only
+  // when it actually moves the day (usual steps above the ~3000 resting
+  // baseline) and a weight exists to price them with.
+  const usualStepsKcal =
+    plan != null && usualSteps != null && latestKg > 0 ? stepsEarnedKcal(usualSteps, latestKg) : 0;
+  const usualDayKcal =
+    plan != null && usualStepsKcal > 0 ? dayBudgetKcal(plan.baseKcal, plan.minDayKcal, usualStepsKcal) : 0;
   const planApplied =
     plan != null &&
     toNumber(kcal) === plan.kcal &&
@@ -375,6 +392,18 @@ export default function PlanScreen() {
                 <Text style={[styles.note, { color: theme.subtle }, theme.font.body]}>
                   {t('weight.plan.restNote')}
                 </Text>
+                {/* The planning answer in numbers: «а сколько будет, если я
+                    пройду свои обычные шаги?» — usual median steps priced by
+                    the SAME formula as the day budget, so plan and day agree. */}
+                {usualStepsKcal > 0 ? (
+                  <Text style={[styles.note, { color: theme.subtle }, theme.font.body]}>
+                    {t('weight.plan.usualStepsLine', {
+                      steps: formatStepCount(usualSteps ?? 0),
+                      kcal: usualStepsKcal,
+                      total: usualDayKcal,
+                    })}
+                  </Text>
+                ) : null}
                 {/* Birth year missing → the plan is shown as an estimate on a
                     neutral adult age; say so plainly and point to the fix. Stays
                     VISIBLE (not folded) so the number never looks more certain
@@ -834,6 +863,11 @@ function toNumber(v: string): number {
 function formatDay(date: string): string {
   const [y, m, d] = date.split('-');
   return `${d}.${m}.${y}`;
+}
+
+/// Group thousands using the locale separator: 8400 → '8 400'.
+function formatStepCount(n: number): string {
+  return Math.round(n).toLocaleString('ru-RU');
 }
 
 const styles = StyleSheet.create({
