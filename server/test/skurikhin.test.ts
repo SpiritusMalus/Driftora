@@ -249,3 +249,28 @@ test('отруби resolve from the RU table, brand tail tolerated (мистра
     assert.equal(r!.per100.kcal, kcal, `«${q}» → wrong row: ${r!.name}`);
   }
 });
+
+test('гороховая каша resolves from the curated table (2026-08-25: went to USDA lentils before)', async () => {
+  const p = new SkurikhinProvider();
+  for (const q of ['гороховая каша', 'каша гороховая', 'гороховое пюре'] as const) {
+    const r = await p.search(q, 'RU');
+    assert.ok(r, `«${q}» must hit the RU table`);
+    assert.equal(r!.name, 'гороховая каша', `«${q}» → wrong row: ${r!.name}`);
+    assert.equal(r!.per100.kcal, 105);
+    assert.equal(r!.prepared, true);
+  }
+});
+
+test('matchedKey: the alias that FOUND the row rides along for the coverage gate', async () => {
+  const p = new SkurikhinProvider();
+  // «куриное филе отварное» is found via the alias «куриное филе» on the row
+  // «куриная грудка запечённая» — judged by the display name alone the resolver
+  // used to demote it to a weak fallback and USDA's breaded row won instead.
+  const r = await p.search('куриное филе отварное', 'RU');
+  assert.ok(r);
+  assert.equal(r!.name, 'куриная грудка запечённая');
+  assert.equal(r!.matchedKey, 'куриное филе');
+  // A row matched by its own display name carries no matchedKey.
+  const exact = await p.search('борщ', 'RU');
+  assert.equal(exact!.matchedKey, undefined);
+});

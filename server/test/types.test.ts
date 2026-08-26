@@ -384,6 +384,32 @@ test('parsePanelText: nothing to parse stays undefined, never zero-filled', () =
   assert.equal(parsePanelText(null), undefined);
 });
 
+test('parsePanelText: «пищевые волокна»/«клетчатка»/fiber map into fiber_100g', () => {
+  const ru = parsePanelText('белки — 16 г; жиры — 2 г; углеводы — 40 г; пищевые волокна — 8,3 г; 250 ккал');
+  assert.equal(ru?.fiber_100g, 8.3);
+  assert.equal(ru?.carb_100g, 40, 'the fiber line must not steal the carb number');
+  const short = parsePanelText('белки 10 г, жиры 5 г, углеводы 20 г, клетчатка 6 г, 170 ккал');
+  assert.equal(short?.fiber_100g, 6);
+  const en = parsePanelText('Protein 5g, Fat 1g, Carbohydrate 20g, Fiber 3g, Calories 110');
+  assert.equal(en?.fiber_100g, 3);
+});
+
+test('crossCheckLabel: fiber needs BOTH readings but never gates the macros', () => {
+  const base = { kcal_100g: 250, prot_100g: 16, fat_100g: 2, carb_100g: 40 };
+  // Both readings agree (within rounding slack) → fiber survives.
+  const both = crossCheckLabel({ ...base, fiber_100g: 8 }, { ...base, fiber_100g: 8.3 });
+  assert.equal(both?.fiber_100g, 8.3, 'words-derived reading preferred, like the macros');
+  // Only ONE reading produced fiber → an unchecked number, dropped alone.
+  const one = crossCheckLabel(base, { ...base, fiber_100g: 8.3 });
+  assert.ok(one);
+  assert.equal(one.fiber_100g, undefined);
+  assert.equal(one.kcal_100g, 250, 'the agreeing macros still earn the label');
+  // A panel with no fiber line at all is still a perfectly good label.
+  const none = crossCheckLabel(base, { ...base });
+  assert.equal(none?.kcal_100g, 250);
+  assert.equal(none?.fiber_100g, undefined);
+});
+
 test('crossCheckLabel: agreeing readings earn the label source', () => {
   const model = { kcal_100g: 100, prot_100g: 16, fat_100g: 2, carb_100g: 4, net_weight_g: 120 };
   const out = crossCheckLabel(model, parsePanelText(INDEYKA_PANEL));

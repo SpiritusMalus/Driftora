@@ -106,6 +106,75 @@ test('demoteContradictions: an unrelated clean row is NOT promoted over the head
   assert.equal(out[1]!.name, 'Конфеты без сахара с фундуком');
 });
 
+// ---- cooking-method contradiction (the «отварное» → «в панировке» bug) ------
+
+test('demoteContradictions: breaded row demoted on a boiled query, RU and EN', () => {
+  // Owner report 2026-08-25: photo identified «куриное филе отварное», the DB
+  // served «Куриное филе в панировке» — 252 kcal/100 g instead of ~150.
+  const breaded = { per100: { carb: 17.6 }, confidence: 0.9, name: 'Куриное филе в панировке' };
+  const boiled = { per100: { carb: 0 }, confidence: 0.75, name: 'Куриное филе отварное' };
+  const out = demoteContradictions('куриное филе отварное', [breaded, boiled]);
+  assert.equal(out[0]!.name, 'Куриное филе отварное'); // consistent method beats name score
+  assert.ok(out[1]!.confidence <= 0.4); // breaded row flagged low → picker opens
+
+  // Same on the English side (USDA is queried with name_en).
+  const en = demoteContradictions('boiled chicken fillet', [
+    { per100: { carb: 17.6 }, confidence: 0.9, name: 'Chicken breast fillet, breaded, cooked' },
+    { per100: { carb: 0 }, confidence: 0.75, name: 'Chicken, broilers or fryers, breast, meat only, cooked, stewed' },
+  ]);
+  assert.ok(en[0]!.name!.includes('stewed')); // stewed = same moist group as boiled
+  assert.ok(en[1]!.confidence <= 0.4);
+});
+
+test('demoteContradictions: method demotion works in the fried→boiled direction too', () => {
+  const out = demoteContradictions('картофель жареный', [
+    { per100: { carb: 17 }, confidence: 0.9, name: 'картофель отварной' },
+    { per100: { carb: 23 }, confidence: 0.7, name: 'картофель жареный' },
+  ]);
+  assert.equal(out[0]!.name, 'картофель жареный');
+  assert.ok(out[1]!.confidence <= 0.4);
+});
+
+test('demoteContradictions: no method in the query, or no added-fat gap → nothing moves', () => {
+  const breaded = { per100: { carb: 17.6 }, confidence: 0.9, name: 'Куриное филе в панировке' };
+  const plain = { per100: { carb: 0 }, confidence: 0.75, name: 'Куриное филе' };
+  // Query names no method — the user did not rule anything out.
+  const same = demoteContradictions('куриное филе', [breaded, plain]);
+  assert.equal(same[0]!.name, 'Куриное филе в панировке');
+  assert.equal(same[0]!.confidence, 0.9);
+  // Moist vs dry heat is a rounding error, not a contradiction: USDA's
+  // canonical plain rows say «cooked, roasted» and must survive «отварное».
+  const roasted = demoteContradictions('boiled chicken fillet', [
+    { per100: { carb: 0 }, confidence: 0.9, name: 'Chicken, broilers or fryers, breast, meat only, cooked, roasted' },
+  ]);
+  assert.equal(roasted[0]!.confidence, 0.9);
+  // A row with no method word at all is consistent with any query.
+  const bare = demoteContradictions('куриное филе отварное', [plain]);
+  assert.equal(bare[0]!.confidence, 0.75);
+});
+
+test('demoteContradictions: look-alike words are not methods (печень, варенье, fryers)', () => {
+  // «печень» is liver, not «печёный»; «варенье» is jam, not «варёный»;
+  // «вареники» ARE boiled — same moist group, consistent.
+  const liver = demoteContradictions('треска отварная', [
+    { per100: { carb: 1.2 }, confidence: 0.8, name: 'печень трески' },
+  ]);
+  assert.equal(liver[0]!.confidence, 0.8);
+  const jam = demoteContradictions('картофель отварной', [
+    { per100: { carb: 70 }, confidence: 0.8, name: 'варенье малиновое' },
+  ]);
+  assert.equal(jam[0]!.confidence, 0.8);
+  const vareniki = demoteContradictions('картофель отварной', [
+    { per100: { carb: 18 }, confidence: 0.8, name: 'вареники с картофелем' },
+  ]);
+  assert.equal(vareniki[0]!.confidence, 0.8);
+  // «broilers or fryers» is a breed phrase, not frying.
+  const breed = demoteContradictions('boiled chicken breast', [
+    { per100: { carb: 0 }, confidence: 0.8, name: 'Chicken, broilers or fryers, breast, meat only, cooked, stewed' },
+  ]);
+  assert.equal(breed[0]!.confidence, 0.8);
+});
+
 test('queryCoverage: unmatched query words count against the match', () => {
   // The lemonade bug: one shared token of three. Jaccard flatters it (0.25 →
   // floored to a respectable 0.4 confidence); coverage stays honest at 1/3.

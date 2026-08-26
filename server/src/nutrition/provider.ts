@@ -23,6 +23,16 @@ export interface ProviderResult {
   /** The matched candidate's display name (for the "не то?" alternatives UI). */
   name?: string;
   /**
+   * The KEY that actually matched the query, when it differs from the display
+   * name — an alias like «куриное филе» on the row «куриная грудка запечённая».
+   * The resolver's coverage gate must measure against what FOUND the row:
+   * measured against the display name alone, that row scored 0.33 on «куриное
+   * филе отварное», was demoted to a weak fallback, and USDA's «в панировке»
+   * won the walk at full confidence (owner report 2026-08-25) — the same
+   * two-gates-measure-differently trap as the «огурцы»≠«огурец» bug.
+   */
+  matchedKey?: string;
+  /**
    * The matched row describes a finished, ready-to-eat dish (curated-table
    * flag) — its per-100g is the dish as served, so cooking-method adjustments
    * on top would double-count. Only the curated RU table sets this.

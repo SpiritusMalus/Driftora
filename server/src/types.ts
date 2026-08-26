@@ -105,6 +105,9 @@ export interface LabelReading {
   prot_100g?: number;
   fat_100g?: number;
   carb_100g?: number;
+  /** «Пищевые волокна»/«клетчатка» when the panel prints them — most RU panels
+   *  do, and dropping the line silently undercut the day's fiber total. */
+  fiber_100g?: number;
   net_weight_g?: number;
 }
 
@@ -139,6 +142,9 @@ export function parsePanelText(text: unknown): LabelReading | undefined {
     prot_100g: macro('белк\\w*|protein'),
     fat_100g: macro('жир\\w*|fat'),
     carb_100g: macro('углевод\\w*|carb\\w*'),
+    // «пищевые волокна — 8 г» / «клетчатка 8 г» / «fiber 3g». Matching «волокн»
+    // alone is safe: no other panel line uses the word.
+    fiber_100g: macro('волокн\\w*|клетчатк\\w*|fib(?:er|re)'),
     // RU prints «100 ккал» (number first), EN prints «Calories 250» (word first).
     kcal_100g: grab(/(\d+(?:\.\d+)?)\s*(?:ккал|kcal)/) ?? macro('calorie\\w*'),
     net_weight_g: grab(/(?:масса\s+)?нетто[^\d]{0,15}(\d+(?:\.\d+)?)\s*г/),
@@ -188,7 +194,16 @@ export function crossCheckLabel(
     agrees(modelLabel.fat_100g, parsed.fat_100g, 1) &&
     agrees(modelLabel.carb_100g, parsed.carb_100g, 1) &&
     agrees(modelLabel.kcal_100g, parsed.kcal_100g, 5);
-  if (macrosAgree) return withWeight(parsed); // words decided the mapping — prefer them
+  if (macrosAgree) {
+    // Words decided the mapping — prefer the parsed reading. Fiber rides along
+    // under the SAME two-readings rule but never gates the macros: panels often
+    // omit the «пищевые волокна» line entirely, and a label without fiber is
+    // still a perfectly good label — while a fiber only ONE reading produced is
+    // an unchecked number and gets dropped like any other single reading.
+    const out = withWeight(parsed);
+    if (out && !agrees(modelLabel.fiber_100g, parsed.fiber_100g, 1)) delete out.fiber_100g;
+    return out;
+  }
 
   // The two readings conflict on at least one macro. Keep the weight, drop the
   // composition: a mislabelled macro block is worse than no label at all.
@@ -498,6 +513,8 @@ export function coerceLabel(raw: unknown): LabelReading | undefined {
   if (prot !== undefined) out.prot_100g = prot;
   if (fat !== undefined) out.fat_100g = fat;
   if (carb !== undefined) out.carb_100g = carb;
+  const fiber = macro(r.fiber_100g); // same ≤100 g/100 g clamp as the macros
+  if (fiber !== undefined) out.fiber_100g = fiber;
   // Net weight: a real package is at most a few kg — reject implausible reads.
   const weight = posNum(r.net_weight_g);
   if (weight !== undefined && weight <= 5000) out.net_weight_g = round1(weight);

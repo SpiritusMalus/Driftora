@@ -617,6 +617,8 @@ export interface FoodEstimate {
   prot: number;
   fat: number;
   carb: number;
+  /** Dietary fiber per 100 g — optional: a missing fiber never voids the card. */
+  fiber?: number;
 }
 
 /**
@@ -680,7 +682,12 @@ function parseEstimate(data: unknown, fallbackName: string): FoodEstimate | null
   // contradiction falls back to the single formula.
   const macros = { prot: round1(prot), fat: round1(fat), carb: round1(carb) };
   const safeKcal = energyInconsistent({ kcal, ...macros }) ? energyFromMacros(macros) : kcal;
-  return { name, kcal: Math.round(safeKcal), ...macros };
+  // Fiber is optional and additionally sanity-bounded by carbs: fiber is a
+  // carbohydrate fraction on a RU label, so fiber > carb + slack means the
+  // model mixed the lines up — drop just the fiber, keep the card.
+  const fiber = num(o.fiber_100g, 100);
+  const fiberOk = fiber !== undefined && fiber <= macros.carb + 1;
+  return { name, kcal: Math.round(safeKcal), ...macros, ...(fiberOk ? { fiber: round1(fiber) } : {}) };
 }
 
 /**
