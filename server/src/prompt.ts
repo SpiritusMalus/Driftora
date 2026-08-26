@@ -301,6 +301,7 @@ Return, for the package in the photo:
 Rules:
 - TRANSCRIBE ONLY. Copy the exact printed digits. Never guess a number, never round to a "typical" value for the product, never fill a field from what you think this food usually contains.
 - The Russian block prints белки / жиры / углеводы as a trio beside the ккал figure. Read the whole block, and take care that each number keeps its own word — жиры and углеводы are easy to swap and the app cannot tell which way is right.
+- Energy is usually printed twice: kilojoules AND kilocalories («423 кДж/101 ккал»). kcal_100g is ALWAYS the ккал/kcal figure, never the кДж/kJ one.
 - If a figure genuinely is not legible, omit that field. An honest gap is fine; an invented number is not.
 - If there is no printed panel at all, return an empty panel_text and no label.`;
 

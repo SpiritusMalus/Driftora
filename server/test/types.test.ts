@@ -428,6 +428,57 @@ test('crossCheckLabel: a transposed macro pair is DROPPED, not averaged', () => 
   assert.equal(out?.net_weight_g, 120, 'net weight is a separate, far easier read — keep it');
 });
 
+test('crossCheckLabel: a kJ figure misread as kcal is rescued by the agreed grams', () => {
+  // Зефир (device report 2026-08-26): the panel prints «423 кДж/101 ккал», the
+  // model mapped the kJ figure into kcal_100g while its grams matched the
+  // words-derived reading exactly. Dropping the whole label served the user a
+  // 260-kcal ИИ guess for a printed 101. The agreed grams (Atwater ≈ 98) vote
+  // 101 in and 423 out — the parsed reading wins with ITS kcal.
+  const zephyr = parsePanelText('Белки, г 2,0. Жиры, г 0,0. Углеводы, г 22,6. Энергетическая ценность на 100 г продукта 423 кДж/101 ккал. Масса нетто: 200 г');
+  assert.equal(zephyr?.kcal_100g, 101, 'the parser itself must take the ккал figure, not кДж');
+  const kj = { kcal_100g: 423, prot_100g: 2, fat_100g: 0, carb_100g: 22.6 };
+  const out = crossCheckLabel(kj, zephyr);
+  assert.equal(out?.kcal_100g, 101);
+  assert.equal(out?.carb_100g, 22.6);
+  assert.equal(out?.net_weight_g, 200);
+
+  // Mirror image: the PARSED side grabbed the kJ, the model read kcal.
+  const swapped = crossCheckLabel(
+    { kcal_100g: 101, prot_100g: 2, fat_100g: 0, carb_100g: 22.6 },
+    { kcal_100g: 423, prot_100g: 2, fat_100g: 0, carb_100g: 22.6 },
+  );
+  assert.equal(swapped?.kcal_100g, 101);
+});
+
+test('crossCheckLabel: kcal missing from ONE reading is rescued when Atwater-consistent', () => {
+  // agrees() can't compare against an absent field, and the old rule dropped
+  // the whole label for it — even though the grams agreed and the one present
+  // kcal matched them.
+  const out = crossCheckLabel(
+    { prot_100g: 16, fat_100g: 2, carb_100g: 4 },
+    { kcal_100g: 100, prot_100g: 16, fat_100g: 2, carb_100g: 4 },
+  );
+  assert.equal(out?.kcal_100g, 100);
+  // But no kcal ANYWHERE stays «no label»: nothing to rescue.
+  const none = crossCheckLabel(
+    { prot_100g: 16, fat_100g: 2, carb_100g: 4 },
+    { prot_100g: 16, fat_100g: 2, carb_100g: 4 },
+  );
+  assert.equal(none?.kcal_100g, undefined);
+  assert.equal(none?.prot_100g, undefined, 'an unverified energy line must not half-survive');
+});
+
+test('crossCheckLabel: two plausible-but-different kcal readings stay a conflict', () => {
+  // Both 100 and 110 sit inside the Atwater band for 16/2/4 — arithmetic can't
+  // say which digit was misread, so the composition is dropped as before.
+  const out = crossCheckLabel(
+    { kcal_100g: 110, prot_100g: 16, fat_100g: 2, carb_100g: 4, net_weight_g: 120 },
+    { kcal_100g: 100, prot_100g: 16, fat_100g: 2, carb_100g: 4 },
+  );
+  assert.equal(out?.kcal_100g, undefined);
+  assert.equal(out?.net_weight_g, 120, 'weight still rides through the conflict');
+});
+
 test('crossCheckLabel: one reading alone never earns the composition', () => {
   // «по упаковке» is a claim of fact and needs TWO agreeing readings — a
   // single unchecked one (panel text missing or unparsable) used to pass

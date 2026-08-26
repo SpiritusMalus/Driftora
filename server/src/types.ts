@@ -189,20 +189,42 @@ export function crossCheckLabel(
   // exactly what this cross-check exists to catch).
   if (!modelLabel || !parsed) return withWeight(undefined);
 
-  const macrosAgree =
+  const gramsAgree =
     agrees(modelLabel.prot_100g, parsed.prot_100g, 1) &&
     agrees(modelLabel.fat_100g, parsed.fat_100g, 1) &&
-    agrees(modelLabel.carb_100g, parsed.carb_100g, 1) &&
-    agrees(modelLabel.kcal_100g, parsed.kcal_100g, 5);
-  if (macrosAgree) {
-    // Words decided the mapping — prefer the parsed reading. Fiber rides along
-    // under the SAME two-readings rule but never gates the macros: panels often
-    // omit the «пищевые волокна» line entirely, and a label without fiber is
-    // still a perfectly good label — while a fiber only ONE reading produced is
-    // an unchecked number and gets dropped like any other single reading.
-    const out = withWeight(parsed);
-    if (out && !agrees(modelLabel.fiber_100g, parsed.fiber_100g, 1)) delete out.fiber_100g;
-    return out;
+    agrees(modelLabel.carb_100g, parsed.carb_100g, 1);
+  if (gramsAgree) {
+    let kcal: number | undefined;
+    if (agrees(modelLabel.kcal_100g, parsed.kcal_100g, 5)) {
+      kcal = parsed.kcal_100g ?? modelLabel.kcal_100g;
+    } else {
+      // The gram lines agree but the kcal figures don't — the classic split is
+      // «423 кДж/101 ккал», where one reading maps the kJ figure into
+      // kcal_100g (device report 2026-08-26: зефир, printed 101 ккал, served
+      // as «оценка ИИ» 260 because the whole label was dropped). The agreed
+      // grams give an independent third vote: Atwater kcal. The band is wide
+      // (±25% + 10 — printed panels drift from 4/9/4 via fiber, polyols and
+      // rounding) yet far narrower than the ×4.184 of a kJ misread. Rescue
+      // ONLY the unambiguous case — exactly one reading consistent with its
+      // own grams; two plausible-but-different figures stay a conflict, and
+      // no-kcal-anywhere stays «no label» as before.
+      const atwater = 4 * (parsed.prot_100g ?? 0) + 9 * (parsed.fat_100g ?? 0) + 4 * (parsed.carb_100g ?? 0);
+      const plausible = (k: number | undefined): k is number =>
+        k !== undefined && Math.abs(k - atwater) <= Math.max(10, atwater * 0.25);
+      const candidates = [parsed.kcal_100g, modelLabel.kcal_100g].filter(plausible);
+      if (candidates.length === 1) kcal = candidates[0];
+    }
+    if (kcal !== undefined) {
+      // Words decided the mapping — prefer the parsed reading. Fiber rides
+      // along under the SAME two-readings rule but never gates the macros:
+      // panels often omit the «пищевые волокна» line entirely, and a label
+      // without fiber is still a perfectly good label — while a fiber only ONE
+      // reading produced is an unchecked number and gets dropped like any
+      // other single reading.
+      const out = withWeight({ ...parsed, kcal_100g: kcal });
+      if (out && !agrees(modelLabel.fiber_100g, parsed.fiber_100g, 1)) delete out.fiber_100g;
+      return out;
+    }
   }
 
   // The two readings conflict on at least one macro. Keep the weight, drop the
@@ -491,20 +513,32 @@ function posNum(value: unknown): number | undefined {
 }
 
 /**
- * Coerce a raw label block off the photo model. Keeps only clearly-positive
- * numbers; returns undefined when nothing usable is present (so `label` stays
- * absent rather than an empty object). Per-100g macros are clamped to a sane
- * ceiling — no food exceeds 900 kcal or 100 g of any macro per 100 g, so an
- * OCR misread like "1050" is dropped rather than trusted.
+ * Coerce a raw label block off the photo model. Returns undefined when nothing
+ * usable is present (so `label` stays absent rather than an empty object).
+ * Per-100g macros are clamped to a sane ceiling — no food exceeds 900 kcal or
+ * 100 g of any macro per 100 g, so an OCR misread like "1050" is dropped
+ * rather than trusted.
+ *
+ * ZERO is a real printed figure, not noise: «Жиры — 0,0» on fat-free products
+ * is the norm (device report 2026-08-26: зефир prints 2/0/22,6 — dropping the
+ * 0 left both readings without a fat field, the cross-check could never agree,
+ * and the whole label silently lost to a 260-kcal ИИ guess for a printed 101).
+ * A model zero-padding a field the panel doesn't print stays harmless: the
+ * words-derived reading has no such field, the readings disagree, the label is
+ * dropped — exactly what the old positive-only rule produced.
  */
 export function coerceLabel(raw: unknown): LabelReading | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
   const r = raw as Record<string, unknown>;
+  const nonNeg = (value: unknown): number | undefined => {
+    const n = typeof value === 'number' ? value : Number(value);
+    return Number.isFinite(n) && n >= 0 ? n : undefined;
+  };
   const macro = (v: unknown): number | undefined => {
-    const n = posNum(v);
+    const n = nonNeg(v);
     return n !== undefined && n <= 100 ? round1(n) : undefined;
   };
-  const kcalRaw = posNum(r.kcal_100g);
+  const kcalRaw = nonNeg(r.kcal_100g);
   const out: LabelReading = {};
   if (kcalRaw !== undefined && kcalRaw <= 900) out.kcal_100g = Math.round(kcalRaw);
   const prot = macro(r.prot_100g);
