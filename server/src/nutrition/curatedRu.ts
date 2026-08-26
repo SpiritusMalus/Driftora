@@ -99,6 +99,12 @@ export const CURATED_RU: SkurikhinEntry[] = [
     per100: { kcal: 214, prot: 11.9, fat: 14.2, carb: 10.2, fiber: 1.7, minerals: {} } },
   { name: 'сырники', aliases: ['сырники', 'сырник', 'творожники'], source: 'skurikhin', prepared: true,
     per100: { kcal: 183, prot: 18.6, fat: 3.6, carb: 18.2, fiber: 0.8, minerals: {} } },
+  // Гороховая каша (2026-08-25: класса не было — фото-разбор уезжал в USDA и
+  // возвращал «чечевицу варёную»). Пюре из лущёного гороха НА ВОДЕ без масла =
+  // варёный горох (USDA split peas cooked #16086: Б 8.3, Ж 0.4, У 21.1 общий,
+  // клетчатка 8.3); ккал по единой формуле, не измеренные USDA 118.
+  { name: 'гороховая каша', aliases: ['гороховая каша', 'каша гороховая', 'гороховое пюре', 'пюре гороховое', 'гороховая каша на воде'], source: 'skurikhin', prepared: true,
+    per100: { kcal: 105, prot: 8.3, fat: 0.4, carb: 21.1, fiber: 8.3, minerals: {} } },
 
   // — Каши на молоке —
   { name: 'гречневая каша на молоке', aliases: ['гречневая каша на молоке', 'гречка с молоком'], source: 'skurikhin', prepared: true,

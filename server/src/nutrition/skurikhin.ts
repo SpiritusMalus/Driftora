@@ -88,10 +88,18 @@ export class SkurikhinProvider implements NutritionProvider {
     }
   }
 
-  private toResult(entry: SkurikhinEntry, confidence: number): ProviderResult {
+  private toResult(entry: SkurikhinEntry, confidence: number, matchedKey?: string): ProviderResult {
     // Honest provenance: USDA-sourced rows say 'usda', curated rows 'skurikhin'.
     const per100: Per100 = { source: entry.source ?? 'skurikhin', ...entry.per100 };
-    return { per100, confidence, name: entry.name, ...(entry.prepared ? { prepared: true } : {}) };
+    return {
+      per100,
+      confidence,
+      name: entry.name,
+      ...(entry.prepared ? { prepared: true } : {}),
+      // The alias that FOUND the row, when it isn't the display name — the
+      // resolver's coverage gate measures against it (see ProviderResult).
+      ...(matchedKey !== undefined && normalizeRu(matchedKey) !== normalizeRu(entry.name) ? { matchedKey } : {}),
+    };
   }
 
   /**
@@ -99,17 +107,17 @@ export class SkurikhinProvider implements NutritionProvider {
    * score across name + aliases; ties prefer the shorter (more generic) key so
    * plain «борщ» outranks «борщ с мясом» on a plain «борщ» query.
    */
-  private rank(name: string): { entry: SkurikhinEntry; score: number }[] {
+  private rank(name: string): { entry: SkurikhinEntry; score: number; key: string }[] {
     const q = normalizeRu(name);
     if (q.length === 0) return [];
 
-    const best = new Map<SkurikhinEntry, { entry: SkurikhinEntry; score: number; keyWords: number }>();
+    const best = new Map<SkurikhinEntry, { entry: SkurikhinEntry; score: number; keyWords: number; key: string }>();
     for (const { key, keyWords, entry } of this.index) {
       const score = phraseScore(q, key);
       if (score < MIN_SCORE) continue;
       const prev = best.get(entry);
       if (!prev || score > prev.score || (score === prev.score && keyWords < prev.keyWords)) {
-        best.set(entry, { entry, score, keyWords });
+        best.set(entry, { entry, score, keyWords, key });
       }
     }
     return [...best.values()].sort((a, b) => b.score - a.score || a.keyWords - b.keyWords);
@@ -126,10 +134,10 @@ export class SkurikhinProvider implements NutritionProvider {
    * outranks a contradicting graded one («молоко 3.2%» on an «1.8%» query)
    * that happened to score higher on shared words.
    */
-  private ranked(name: string): { entry: SkurikhinEntry; confidence: number }[] {
+  private ranked(name: string): { entry: SkurikhinEntry; confidence: number; key: string }[] {
     const qNums = numericTokens(normalizeRu(name));
     return this.rank(name)
-      .map(({ entry, score }) => {
+      .map(({ entry, score, key }) => {
         let confidence = this.confidenceOf(score);
         if (qNums.size > 0) {
           const rowNums = numericTokens(
@@ -139,20 +147,20 @@ export class SkurikhinProvider implements NutritionProvider {
             confidence = Math.min(confidence, GRADE_MISMATCH_CONFIDENCE);
           }
         }
-        return { entry, confidence };
+        return { entry, confidence, key };
       })
       .sort((a, b) => b.confidence - a.confidence);
   }
 
   async search(name: string, _region: Region): Promise<ProviderResult | null> {
     const top = this.ranked(name)[0];
-    return top ? this.toResult(top.entry, top.confidence) : null;
+    return top ? this.toResult(top.entry, top.confidence, top.key) : null;
   }
 
   /** Ranked candidates for the manual "find it yourself" picker. */
   async searchMany(name: string, _region: Region): Promise<ProviderResult[]> {
     return this.ranked(name)
       .slice(0, MAX_CANDIDATES)
-      .map((r) => this.toResult(r.entry, r.confidence));
+      .map((r) => this.toResult(r.entry, r.confidence, r.key));
   }
 }

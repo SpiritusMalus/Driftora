@@ -68,6 +68,27 @@ test('estimateFoodPer100: absurd model numbers are rejected, same bounds as coer
   assert.equal(await estimateFoodPer100('пудинг', 'RU'), null, 'negative numbers are impossible');
 });
 
+test('estimateFoodPer100: fiber rides along when sane, is dropped alone when implausible', async () => {
+  stubEstimateResponse({ name_ru: 'Отруби овсяные', kcal_100g: 246, prot_100g: 17.3, fat_100g: 7, carb_100g: 66.2, fiber_100g: 15.4 });
+  let est = await estimateFoodPer100('отруби овсяные', 'RU');
+  assert.ok(est);
+  assert.equal(est.fiber, 15.4, 'fiber feeds the day total instead of reading as absent');
+
+  // Fiber is a carbohydrate fraction — above carbs means the model mixed the
+  // lines up. Only the fiber is dropped; the four macros still carry the card.
+  stubEstimateResponse({ name_ru: 'Кефир', kcal_100g: 40, prot_100g: 3, fat_100g: 1, carb_100g: 4, fiber_100g: 30 });
+  est = await estimateFoodPer100('кефир', 'RU');
+  assert.ok(est);
+  assert.equal(est.fiber, undefined, 'implausible fiber must not survive');
+  assert.equal(est.kcal, 40);
+
+  // The schema keeps fiber optional — a fiberless answer is a full card, not a miss.
+  stubEstimateResponse({ name_ru: 'Творог', kcal_100g: 121, prot_100g: 17, fat_100g: 5, carb_100g: 1.8 });
+  est = await estimateFoodPer100('творог', 'RU');
+  assert.ok(est);
+  assert.equal(est.fiber, undefined);
+});
+
 test('estimateFoodPer100: an all-zero estimate is dropped, not shown as an authoritative 0 kcal', async () => {
   stubEstimateResponse({ name_ru: 'Вода', kcal_100g: 0, prot_100g: 0, fat_100g: 0, carb_100g: 0 });
   assert.equal(await estimateFoodPer100('вода', 'RU'), null);

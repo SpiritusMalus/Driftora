@@ -11,6 +11,15 @@ import { STRENGTH_INTENSITY_KEYS, WORKOUT_TYPE_KEYS, type Region } from './types
  * Audio deliberately KEEPS the legacy contract: it proved the most fragile path
  * in this session's experiments (a schema tweak that helped photos degraded
  * voice 3/3), so it changes only WITH its own measurements, not alongside.
+ *
+ * 2026-08-26 (prompt audit, owner-ordered): two deliberate exceptions to the
+ * freeze — the KEEP-brands rule (voice was silently stripping «творог 5%» /
+ * «отруби Мистраль» down to the generic word, blinding the whole specificity
+ * chain on the owner's PRIMARY input mode) and `heard` becoming required in
+ * IDENTIFY_AUDIO_SCHEMA (the 2026-08-12 tester feedback demanded a transcript
+ * even on a no-food parse, but the schema never enforced it). Both MUST be
+ * verified with real voice notes (3+ runs, one with a brand) after deploy,
+ * per this contract's history.
  */
 export const IDENTIFY_SYSTEM_PROMPT = `You identify the component foods in a meal description for a nutrition app. Your PRIMARY job is WHICH foods and HOW MANY GRAMS — identification, not nutrition scoring.
 
@@ -25,7 +34,7 @@ For each distinct food or drink in the input, output:
 Rules:
 - Split a dish into its meaningful components (e.g. "омлет из трёх яиц" → eggs ~165 g; "кофе с молоком" → milk ~30 g; ignore water/black coffee with ~0 nutrition unless asked).
 - Multiple foods in one phrase → multiple items.
-- Strip filler words; never invent foods that were not mentioned.
+- Strip filler words; never invent foods that were not mentioned. KEEP brand and grade words in name_ru («творог 5%», «лимонад Тархун Черноголовка») — they are what lets the database find the right row.
 - The estimate is a SANITY-CHECK and last-resort fallback only — the nutrition DB is authoritative and overrides your numbers whenever it has a good match. When you give an estimate, provide ALL FOUR fields together and roughly self-consistent (kcal ≈ 4×protein + 9×fat + 4×carbs) — a partial estimate (e.g. protein only) is useless, so it is all four or none. Base them on what the food actually is (плескавица ≈ grilled minced-meat patty ≈ 230 kcal, 17 g protein, 16 g fat, 3 g carbs per 100 g). A BRANDED, regional or unfamiliar product is NOT a reason to omit it — estimate from the product CLASS (лимонад «Тархун» Черноголовка ≈ a sweet carbonated soft drink ≈ 30 kcal, 0 g protein, 0 g fat, 8 g carbs per 100 g). The DB frequently lacks such products, and your estimate is the only thing standing between the user and a wrong row. Omit the whole estimate object only when you genuinely cannot tell what KIND of food it is — never a partial estimate, never generic padding.
 - If nothing food-like is present, return an empty items array.`;
 
@@ -130,6 +139,7 @@ export const ESTIMATE_SEARCH_SYSTEM_PROMPT = `You estimate the nutrition of ONE 
 - ALWAYS answer — this is an explicitly-labelled estimate («≈» in the UI), so you never refuse, never omit fields, never say "unknown". Give your best guess even for an obscure or branded item.
 - Interpret INTENT and BRANDS from ANY country or cuisine — «масло простоквашино», «Nutella», «Coca-Cola Zero», «President camembert», «Barilla penne» all name a specific product; use that product's typical values. When no brand is named, use the generic food. Fix obvious typos/half-words to the food the user meant.
 - Give ALL FOUR numbers per 100 g — kcal, protein, fat, carbs — roughly self-consistent (kcal ≈ 4×protein + 9×fat + 4×carbs). Whole or one-decimal numbers are fine.
+- Also give fiber_100g — dietary fiber per 100 g. A plain 0 for foods with none (meat, fish, eggs, plain dairy, drinks, oil); real values for plants, legumes, whole grains, bran. The app tracks the day's fiber total, and omitting it undercounts.
 - name_ru: a short, clean Russian name for what you estimated; KEEP the brand if the user named one.`;
 
 export const ESTIMATE_SEARCH_SCHEMA = {
@@ -140,6 +150,10 @@ export const ESTIMATE_SEARCH_SCHEMA = {
     prot_100g: { type: 'number' },
     fat_100g: { type: 'number' },
     carb_100g: { type: 'number' },
+    // Optional on purpose: a missing fiber must not void the whole card (the
+    // four macros carry the meal), so it is not in `required` and the parser
+    // tolerates its absence.
+    fiber_100g: { type: ['number', 'null'], description: 'Dietary fiber per 100 g; 0 for foods with none.' },
   },
   required: ['name_ru', 'kcal_100g', 'prot_100g', 'fat_100g', 'carb_100g'],
 } as const;
@@ -198,6 +212,14 @@ export function userTranslateLabelsInstruction(labels: string[]): string {
  * (`estimateFoodPer100`) — cheap, and it cannot take the vision call down with
  * it. Label transcription returns as its own dedicated call once a package is
  * detected; a plate of soup no longer pays for it.
+ *
+ * 2026-08-25: est_grams gets an anti-anchoring rule. Owner's plate (240 g of
+ * lentil mash + 200 g of chicken) came back as 150 + 120 — both exactly the
+ * "typical serving" numbers, i.e. the model regressed to canonical portions
+ * instead of reading the visible volume (−38%/−40%, and the bigger the portion
+ * the worse). Text-only rule, no schema change and no new numeric OUTPUT
+ * fields (the decode loop lived in output literals, not in prompt text) — but
+ * per this file's own history, verify on real photos before trusting it.
  */
 export const IDENTIFY_PHOTO_SYSTEM_PROMPT = `You identify the component foods in a meal PHOTO for a nutrition app. Your ONLY job is WHICH foods and HOW MANY GRAMS — identification, not nutrition scoring. The app looks up every nutrition number itself, from a database.
 
@@ -207,10 +229,13 @@ For each distinct food or drink visible, output:
 - est_grams: your best estimate of the eaten weight in grams, from the visible portion.
 - confidence: 0..1, how sure you are about the food identity and portion.
 - prepared: true when the item is an already-prepared dish eaten as-is (soup, stew, salad, casserole, ready meal); false for ingredients and simple products.
+- packaged: true only for a packaged product whose wrapper carries a printed nutrition panel — see the rule below.
 
 Rules:
 - Split a composite plate into its meaningful COMPONENTS — name every distinct food you can see, including the ones hidden under a sauce or a topping.
+- est_grams comes from the VISIBLE volume — how much of the plate the food covers and how high it is piled. Judge each portion from what you actually see: a modest portion stays modest, and a heaped plate must NOT be rounded down to a "typical serving" — snapping to the canonical portion number instead of the visible amount is the failure mode users report.
 - Never invent foods that are not visible.
+- Ignore plain water and unsweetened black coffee/tea (~0 nutrition) — a glass of water in the frame is not an item.
 - If the photo shows a packaged product, name the PRODUCT, brand included when it is legible («Ветчина из грудки индейки Индилайт») — the brand is what lets the database find the right row.
 - packaged: true ONLY when that item is a packaged product whose wrapper carries a PRINTED nutrition panel or net weight — a tub, pack, bottle or bar, whether or not you can read the small print from here. A plate, a bowl, a restaurant dish or loose fruit is false. The app runs a second, dedicated pass to read the panel on anything you mark, so flag it and let that pass do the reading; you do NOT transcribe any numbers here.
 - If nothing food-like is present, return an empty items array.`;
@@ -271,7 +296,7 @@ export const READ_LABEL_SYSTEM_PROMPT = `You read the printed NUTRITION PANEL of
 
 Return, for the package in the photo:
 - panel_text: the panel copied VERBATIM — the Russian words together with their numbers and units, in the order printed, net weight included. For example: "Пищевая и энергетическая ценность в 100 г продукта (средние значения): белки — 16 г; жиры — 2 г; углеводы — 4 г; 100 ккал/410 кДж. Масса нетто: 120 г". Copy; never reorder, convert, round or interpret. The panel is often small, low-contrast, and printed sideways along an edge — read it anyway, rotating your attention as needed.
-- label: the same numbers placed into fields, per 100 g — kcal_100g, prot_100g, fat_100g, carb_100g — plus net_weight_g from «масса нетто».
+- label: the same numbers placed into fields, per 100 g — kcal_100g, prot_100g, fat_100g, carb_100g — plus fiber_100g when the panel prints «пищевые волокна»/«клетчатка»/fiber, and net_weight_g from «масса нетто».
 
 Rules:
 - TRANSCRIBE ONLY. Copy the exact printed digits. Never guess a number, never round to a "typical" value for the product, never fill a field from what you think this food usually contains.
@@ -294,6 +319,7 @@ export const READ_LABEL_SCHEMA = {
         prot_100g: { type: ['number', 'null'] },
         fat_100g: { type: ['number', 'null'] },
         carb_100g: { type: ['number', 'null'] },
+        fiber_100g: { type: ['number', 'null'] },
         net_weight_g: { type: ['number', 'null'] },
       },
     },
@@ -341,7 +367,11 @@ export const IDENTIFY_AUDIO_SCHEMA = {
     },
     ...IDENTIFY_SCHEMA.properties,
   },
-  required: ['items'],
+  // `heard` is required (2026-08-26): the schema is what actually enforces the
+  // tester's «текст должен быть, даже если ничего не нашлось» — the prompt
+  // asked for it, structured output ignored the ask, and a no-food voice note
+  // could still come back nameless. Server stays tolerant of an empty string.
+  required: ['heard', 'items'],
 } as const;
 
 /**
@@ -369,6 +399,7 @@ For each activity output:
 - confidence: 0..1.
 
 Classification rules:
+- A bare STEP COUNT («прошёл 10 000 шагов», "10k steps today") is NOT an activity — the phone already counts steps, and logging them here would double-count. Return an empty workouts array for a steps-only report. Parse walking only when an actual walk is described — a duration, a distance, «гулял час», «прошёл 5 км» → "walk".
 - Bodyweight strength moves (отжимания, подтягивания, приседания, выпады, планка) → "strength".
 - Explicitly cardio-for-time bursts (бёрпи, джампинг-джек, табата, круговая) → "hiit".
 - Ball / team games (футбол, баскетбол, волейбол, теннис) → "sport".

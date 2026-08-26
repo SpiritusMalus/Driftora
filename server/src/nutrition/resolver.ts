@@ -17,7 +17,7 @@ import { energyFromMacros, energyInconsistent } from './energy.js';
 import { ProviderUnavailable, type NutritionProvider, type ProviderResult } from './provider.js';
 import { kcalBandViolated } from './plausibility.js';
 import { hasCyrillic } from './ruSearch.js';
-import { demoteContradictions, MIN_CHAIN_COVERAGE, queryCoverage } from './scoring.js';
+import { contradictsQuery, demoteContradictions, MIN_CHAIN_COVERAGE, queryCoverage } from './scoring.js';
 import { translationLost, unexplainedSpecifics } from './specificity.js';
 
 /**
@@ -84,11 +84,24 @@ function labelPer100(label: LabelReading): Per100 | null {
     prot: prot_100g,
     fat: fat_100g,
     carb: carb_100g,
+    // Cross-checked «пищевые волокна» when the panel printed them — rides into
+    // the day's fiber total instead of silently reading as absent.
+    ...(label.fiber_100g !== undefined ? { fiber: label.fiber_100g } : {}),
   });
 }
 
 /** USDA search score below which its micros are too weak a match to graft. */
 const MICRO_BACKFILL_MIN_CONFIDENCE = 0.4;
+
+/**
+ * «Масса нетто» counts as the EATEN grams only up to this size. Single-serve
+ * packs (bars 20–100 g, yogurt cups 120–350 g, a 330–500 ml drink) are
+ * genuinely finished in one sitting; a family pack or a litre bottle is not,
+ * and defaulting grams to ITS net weight silently logged the whole package.
+ * Above the cap the per-100g numbers still come from the label — only the
+ * eaten-amount default falls back to the visible-portion estimate.
+ */
+const NET_WEIGHT_AS_EATEN_MAX_G = 500;
 
 /**
  * Build a per-100g from the model's OWN estimate — only when it is complete
@@ -338,10 +351,29 @@ export class Resolver {
           ...(r.votes === undefined ? {} : { votes: r.votes }),
         })),
       };
-      if (queryCoverage(name, primary.name ?? name) < MIN_CHAIN_COVERAGE) {
+      // Coverage is measured against the BEST of what the source displays and
+      // what actually MATCHED: the row «куриная грудка запечённая» is found by
+      // its alias «куриное филе», and judged by the display name alone it
+      // covered «куриное филе отварное» at 0.33 — demoted to a weak fallback,
+      // while USDA's «в панировке» row went on to win the walk at full
+      // confidence (owner report 2026-08-25). The gate must measure by the same
+      // rule that found the row, or a match gets found and then thrown away.
+      const coverage = Math.max(
+        queryCoverage(name, primary.name ?? name),
+        primary.matchedKey === undefined ? 0 : queryCoverage(name, primary.matchedKey),
+      );
+      if (coverage < MIN_CHAIN_COVERAGE) {
         // Keep the FIRST thin hit: the chain is ordered by trustworthiness, so an
         // early source's weak row still beats a later source's weak row.
         if (!weakFallback) weakFallback = { ...hit, weak: true };
+        continue;
+      }
+      // A primary that CONTRADICTS the query (breaded on an «отварное» query,
+      // sugared on «без сахара» — its confidence already capped to 0.4 by
+      // demoteContradictions) must not stop the walk either: a later source may
+      // carry the food as actually asked. Kept as the honest fallback if none does.
+      if (contradictsQuery(name, primary)) {
+        if (!genericFallback) genericFallback = { ...hit, qualifierUnmatched: true };
         continue;
       }
       // Did this row explain the SPECIFIC product? Measured in the language the
@@ -493,8 +525,15 @@ export class Resolver {
 
   async resolveItem(item: IdentifiedItem, region: Region): Promise<NutritionItem> {
     // Net weight read off the package (масса нетто) beats a portion guess for
-    // the eaten grams — used whether or not the panel itself was complete.
-    const labelWeight = item.label?.net_weight_g;
+    // the eaten grams — used whether or not the panel itself was complete —
+    // but only while the pack is small enough to plausibly be eaten in one go.
+    // A bar, cup or bottle is finished whole; photographing a 950-g кефир used
+    // to log the ENTIRE package as eaten (grams = net weight) until the user
+    // noticed. Above the cap the visible-portion estimate wins and the label
+    // supplies only the per-100g composition.
+    const rawLabelWeight = item.label?.net_weight_g;
+    const labelWeight =
+      rawLabelWeight !== undefined && rawLabelWeight <= NET_WEIGHT_AS_EATEN_MAX_G ? rawLabelWeight : undefined;
     const estGrams = item.est_grams > 0 ? item.est_grams : 100;
 
     // A complete panel photographed off the package IS the exact composition —
@@ -537,6 +576,7 @@ export class Resolver {
               prot: est.prot,
               fat: est.fat,
               carb: est.carb,
+              ...(est.fiber !== undefined ? { fiber: est.fiber } : {}),
             });
           }
         } catch {

@@ -178,9 +178,56 @@ export function contradictsSugarFree(per100: { sugar?: number; carb: number }): 
 /** Contradicting rows are capped to this confidence — below the client's 0.5 floor. */
 const CONTRADICTION_CONFIDENCE = 0.4;
 
+// ---- cooking-method contradiction (name vs name) ---------------------------
+//
+// The coverage gate only asks "did the row explain the QUERY's words" — a
+// candidate's own EXTRA method word costs it nothing. So «куриное филе
+// отварное» happily matched USDA «chicken fillet, breaded»: chicken+fillet
+// covered, «отварное» forgiven as a qualifier, and the breading (+100 kcal and
+// +10 g fat per 100 g of flour and frying oil) rode in silently — the same
+// silent-substitution class as the творог 5%→2% swap (owner report 2026-08-25).
+//
+// Methods are grouped by CALORIC consequence, not linguistics, and only the
+// added-fat group is worth demoting over: boiled vs stewed vs steamed are the
+// same lean food, and boiled-vs-roasted differs by a rounding error — while
+// boiled-vs-breaded/fried is the whole error the user came to report. Demoting
+// dry-heat against moist would also throw away USDA's canonical plain rows
+// («…meat only, cooked, roasted») on every «отварное» query — a regress.
+const METHOD_MOIST = /отварн|варен(?!ь)|тушен|припущ|на пару|паров|boil|stew|poach|steam/;
+// NB: \b is Latin-only in JS, which is exactly right here — it keeps «fryers»
+// (the USDA breed word in «broilers or fryers») from reading as a method.
+const METHOD_FAT = /жарен|обжар|панир|фритюр|темпур|\bfried\b|\bfry\b|\bfries\b|breaded|batter|tempura|нагетс|nugget/;
+// «печен(?!ь)» keeps liver (печень) and cookies (печенье) out of the ovens.
+const METHOD_DRY = /запечен|печен(?!ь)|гриль|мангал|барбекю|baked|\broast|grill|barbecu|\bbbq\b/;
+
+const METHOD_GROUPS: readonly RegExp[] = [METHOD_MOIST, METHOD_FAT, METHOD_DRY];
+const FAT_BIT = 1 << METHOD_GROUPS.indexOf(METHOD_FAT);
+
+/** Bitmask of method groups named in the string (normalized internally). */
+function methodBits(name: string): number {
+  const n = normalizeName(name);
+  let bits = 0;
+  for (const [i, re] of METHOD_GROUPS.entries()) if (re.test(n)) bits |= 1 << i;
+  return bits;
+}
+
 /**
- * Adjust candidates when their composition contradicts what the query
- * explicitly asked for (currently: sugar-negation).
+ * The candidate names a preparation the query ruled out, and the gap is the
+ * added-fat one — «отварное» vs breaded/fried in either direction. Shared
+ * groups (query «жареная», row «в панировке» — both fat-added) and rows that
+ * name no method at all («куриная грудка») are consistent, not contradictions.
+ */
+export function contradictsMethod(queryBits: number, candidateName: string): boolean {
+  if (queryBits === 0) return false;
+  const c = methodBits(candidateName);
+  if (c === 0 || (queryBits & c) !== 0) return false;
+  return ((queryBits | c) & FAT_BIT) !== 0;
+}
+
+/**
+ * Adjust candidates when they contradict what the query explicitly asked for:
+ * composition against a sugar-negation («без сахара» → sugared row), or a named
+ * cooking method against the added-fat gap («отварное» → «в панировке» row).
  *
  * Contradicting rows keep their relative order with confidence capped below
  * the client's low-confidence floor (0.5): if nothing clean exists, the top
@@ -194,15 +241,28 @@ const CONTRADICTION_CONFIDENCE = 0.4;
  * the query tokens, scores above the floor, and wins. Comparing against the
  * head's confidence instead would be meaningless in the floored tail.
  */
-export function demoteContradictions<T extends { per100: { sugar?: number; carb: number }; confidence: number }>(
+/**
+ * One row contradicts the query — by composition (sugar-negation) or by a named
+ * cooking method. Shared by [demoteContradictions] and the resolver's chain
+ * walk: a contradicting primary must not STOP the walk, because a later source
+ * may carry the food as actually asked (FatSecret's RU rows often do).
+ */
+export function contradictsQuery(
   query: string,
-  results: T[],
-): T[] {
-  if (results.length === 0 || !isSugarFreeQuery(query)) return results;
+  row: { name?: string; per100: { sugar?: number; carb: number } },
+): boolean {
+  if (isSugarFreeQuery(query) && contradictsSugarFree(row.per100)) return true;
+  return typeof row.name === 'string' && contradictsMethod(methodBits(query), row.name);
+}
+
+export function demoteContradictions<
+  T extends { name?: string; per100: { sugar?: number; carb: number }; confidence: number },
+>(query: string, results: T[]): T[] {
+  if (results.length === 0 || (!isSugarFreeQuery(query) && methodBits(query) === 0)) return results;
   const promoted: T[] = [];
   const rest: T[] = [];
   for (const r of results) {
-    if (contradictsSugarFree(r.per100)) {
+    if (contradictsQuery(query, r)) {
       rest.push({ ...r, confidence: Math.min(r.confidence, CONTRADICTION_CONFIDENCE) });
     } else if (r.confidence > CONTRADICTION_CONFIDENCE) {
       promoted.push(r);

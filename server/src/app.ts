@@ -256,6 +256,7 @@ async function aiSearchCard(query: string, region: Region): Promise<NutritionAlt
     prot: est.prot,
     fat: est.fat,
     carb: est.carb,
+    ...(est.fiber !== undefined ? { fiber: est.fiber } : {}),
   });
   return { name: est.name, per100 };
 }

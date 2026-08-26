@@ -167,6 +167,50 @@ test('partial label (no full panel) → DB lookup, but net weight still sets gra
   assert.equal(r.scaled.prot, 62, '31 * 200 / 100');
 });
 
+test('big-pack net weight does NOT become the eaten grams — the portion estimate wins', async () => {
+  // Photographing a 950-g кефир used to log the whole package as eaten. The
+  // label still supplies the per-100g composition; only the grams default falls
+  // back to the visible-portion estimate (est_grams 250 here).
+  mockFetch(() => {
+    throw new Error('no provider should be queried when the label is complete');
+  });
+  const resolver = new Resolver([new UsdaProvider('KEY')]);
+
+  const r = await resolver.resolveItem(
+    item({
+      name_ru: 'кефир',
+      name_en: 'kefir',
+      est_grams: 250,
+      label: { kcal_100g: 40, prot_100g: 3, fat_100g: 1, carb_100g: 4, net_weight_g: 950 },
+    }),
+    'RU',
+  );
+
+  assert.equal(r.per100.source, 'label', 'the printed composition is still trusted');
+  assert.equal(r.grams, 250, 'a 950-g pack is not a portion — est_grams wins');
+  assert.equal(r.scaled.kcal, 100, '40 * 250 / 100');
+});
+
+test('cross-checked label fiber rides into per100 and the scaled totals', async () => {
+  mockFetch(() => {
+    throw new Error('no provider should be queried when the label is complete');
+  });
+  const resolver = new Resolver([new UsdaProvider('KEY')]);
+
+  const r = await resolver.resolveItem(
+    item({
+      name_ru: 'отруби',
+      name_en: 'bran',
+      label: { kcal_100g: 246, prot_100g: 17.3, fat_100g: 7, carb_100g: 66.2, fiber_100g: 15.4, net_weight_g: 100 },
+    }),
+    'RU',
+  );
+
+  assert.equal(r.per100.source, 'label');
+  assert.equal(r.per100.fiber, 15.4, 'the «пищевые волокна» line must not silently vanish');
+  assert.equal(r.scaled.fiber, 15.4);
+});
+
 test('DB miss + complete AI estimate → source ai_estimate, counted', async () => {
   mockFetch(() => json({ foods: [] })); // USDA miss
   const resolver = new Resolver([new UsdaProvider('KEY')]);
@@ -536,4 +580,78 @@ test('resolve: a CLEAN match costs no extra estimate call', async () => {
 
   assert.equal(asked, 0, 'a confident row is not second-guessed');
   assert.equal(r.per100.kcal, 18);
+});
+
+// ---- the «отварное → в панировке» bug (owner photo report 2026-08-25) -------
+
+test('RU table row found via alias beats USDA breaded: coverage measures the matched key', async () => {
+  const { SkurikhinProvider } = await import('../src/nutrition/skurikhin.js');
+  // USDA would answer with a breaded row at full name-score — the old walk got here.
+  mockFetch(() =>
+    json({
+      foods: [
+        {
+          description: 'Chicken breast fillet, breaded, cooked',
+          score: 100,
+          foodNutrients: [
+            { nutrientNumber: '1008', value: 252 },
+            { nutrientNumber: '1003', value: 16.4 },
+            { nutrientNumber: '1004', value: 12.9 },
+            { nutrientNumber: '1005', value: 17.6 },
+          ],
+        },
+      ],
+    }),
+  );
+  const resolver = new Resolver([new SkurikhinProvider(), new UsdaProvider('KEY')]);
+  const r = await resolver.resolveItem(
+    item({ name_ru: 'куриное филе отварное', name_en: 'boiled chicken fillet' }),
+    'RU',
+  );
+  // The RU row «куриная грудка запечённая» (165 kcal) is found via its alias
+  // «куриное филе»; judged by the display name alone it was a weak fallback and
+  // the breaded 252-kcal row won the walk. Now it wins outright.
+  assert.equal(r.matched_name, 'куриная грудка запечённая');
+  assert.equal(r.per100.kcal, 165);
+  assert.ok(r.confidence >= 0.5, `must read as a hit, got ${r.confidence}`);
+});
+
+test('a method-contradicting primary does not stop the walk: a later clean row wins', async () => {
+  const breadedOnly: NutritionProvider = {
+    name: 'first',
+    regions: ['RU'],
+    async search() {
+      return {
+        per100: coercePer100({ source: 'usda', kcal: 252, prot: 16.4, fat: 12.9, carb: 17.6, minerals: {} }),
+        confidence: 0.9,
+        name: 'куриное филе в панировке',
+      };
+    },
+  };
+  const boiledLater: NutritionProvider = {
+    name: 'second',
+    regions: ['RU'],
+    async search() {
+      return {
+        per100: coercePer100({ source: 'fatsecret', kcal: 153, prot: 30.4, fat: 3.2, carb: 0, minerals: {} }),
+        confidence: 0.8,
+        name: 'куриное филе отварное',
+      };
+    },
+  };
+  const r = await new Resolver([breadedOnly, boiledLater]).resolveItem(
+    item({ name_ru: 'куриное филе отварное', name_en: 'boiled chicken fillet' }),
+    'RU',
+  );
+  assert.equal(r.matched_name, 'куриное филе отварное');
+  assert.equal(r.per100.kcal, 153);
+
+  // When NO source carries the food as asked, the contradicting row comes back
+  // honestly demoted (< 0.5 → the client opens the picker), never as fact.
+  const only = await new Resolver([breadedOnly]).resolveItem(
+    item({ name_ru: 'куриное филе отварное', name_en: 'boiled chicken fillet' }),
+    'RU',
+  );
+  assert.equal(only.matched_name, 'куриное филе в панировке');
+  assert.ok(only.confidence < 0.5, `must be flagged, got ${only.confidence}`);
 });
