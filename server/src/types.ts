@@ -10,6 +10,8 @@
  * `lib/core/services/foodParser.ts`.
  */
 
+import { energyFromMacros } from './nutrition/energy.js';
+
 export type Region = 'RU' | 'US';
 
 export type ParseConfidence = 'high' | 'medium' | 'low';
@@ -194,35 +196,53 @@ export function crossCheckLabel(
     agrees(modelLabel.fat_100g, parsed.fat_100g, 1) &&
     agrees(modelLabel.carb_100g, parsed.carb_100g, 1);
   if (gramsAgree) {
+    // Fiber rides along under the SAME two-readings rule but never gates the
+    // macros: panels often omit the «пищевые волокна» line entirely, and a
+    // label without fiber is still a perfectly good label — while a fiber only
+    // ONE reading produced is an unchecked number and gets dropped like any
+    // other single reading. Settled up front because it also feeds the
+    // fiber-aware energy check below.
+    const fiber = agrees(modelLabel.fiber_100g, parsed.fiber_100g, 1) ? parsed.fiber_100g : undefined;
+    // The ONE energy formula (ТР ТС / FAO — the same one RU panels are printed
+    // by) applied to the agreed gram lines: an independent third vote on kcal.
+    const computed = energyFromMacros({
+      prot: parsed.prot_100g ?? 0,
+      fat: parsed.fat_100g ?? 0,
+      carb: parsed.carb_100g ?? 0,
+      fiber,
+    });
     let kcal: number | undefined;
     if (agrees(modelLabel.kcal_100g, parsed.kcal_100g, 5)) {
       kcal = parsed.kcal_100g ?? modelLabel.kcal_100g;
+    } else if (modelLabel.kcal_100g === undefined && parsed.kcal_100g === undefined) {
+      // The gram trio is double-confirmed but the energy line never made it
+      // through either reading (glare on that corner, a panel printing only
+      // кДж). The grams are verbatim print, and the label's own kcal is by
+      // regulation the formula above applied to them — deriving it is the
+      // app's standing doctrine (единая формула), not a guess.
+      kcal = Math.round(computed);
     } else {
       // The gram lines agree but the kcal figures don't — the classic split is
       // «423 кДж/101 ккал», where one reading maps the kJ figure into
       // kcal_100g (device report 2026-08-26: зефир, printed 101 ккал, served
-      // as «оценка ИИ» 260 because the whole label was dropped). The agreed
-      // grams give an independent third vote: Atwater kcal. The band is wide
-      // (±25% + 10 — printed panels drift from 4/9/4 via fiber, polyols and
-      // rounding) yet far narrower than the ×4.184 of a kJ misread. Rescue
-      // ONLY the unambiguous case — exactly one reading consistent with its
-      // own grams; two plausible-but-different figures stay a conflict, and
-      // no-kcal-anywhere stays «no label» as before.
-      const atwater = 4 * (parsed.prot_100g ?? 0) + 9 * (parsed.fat_100g ?? 0) + 4 * (parsed.carb_100g ?? 0);
+      // as «оценка ИИ» 260 because the whole label was dropped). The band is
+      // wide (±25% + 10 — printed panels drift from the general factors via
+      // polyols, specific-Atwater rounding) yet far narrower than the ×4.184
+      // of a kJ misread. Rescue ONLY the unambiguous case — exactly one
+      // reading consistent with the agreed grams; two plausible-but-different
+      // figures stay a conflict.
       const plausible = (k: number | undefined): k is number =>
-        k !== undefined && Math.abs(k - atwater) <= Math.max(10, atwater * 0.25);
+        k !== undefined && Math.abs(k - computed) <= Math.max(10, computed * 0.25);
       const candidates = [parsed.kcal_100g, modelLabel.kcal_100g].filter(plausible);
       if (candidates.length === 1) kcal = candidates[0];
     }
     if (kcal !== undefined) {
-      // Words decided the mapping — prefer the parsed reading. Fiber rides
-      // along under the SAME two-readings rule but never gates the macros:
-      // panels often omit the «пищевые волокна» line entirely, and a label
-      // without fiber is still a perfectly good label — while a fiber only ONE
-      // reading produced is an unchecked number and gets dropped like any
-      // other single reading.
+      // Words decided the mapping — prefer the parsed reading.
       const out = withWeight({ ...parsed, kcal_100g: kcal });
-      if (out && !agrees(modelLabel.fiber_100g, parsed.fiber_100g, 1)) delete out.fiber_100g;
+      if (out) {
+        if (fiber !== undefined) out.fiber_100g = fiber;
+        else delete out.fiber_100g;
+      }
       return out;
     }
   }

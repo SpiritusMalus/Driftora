@@ -450,7 +450,7 @@ test('crossCheckLabel: a kJ figure misread as kcal is rescued by the agreed gram
   assert.equal(swapped?.kcal_100g, 101);
 });
 
-test('crossCheckLabel: kcal missing from ONE reading is rescued when Atwater-consistent', () => {
+test('crossCheckLabel: kcal missing from ONE reading is rescued when consistent with the grams', () => {
   // agrees() can't compare against an absent field, and the old rule dropped
   // the whole label for it — even though the grams agreed and the one present
   // kcal matched them.
@@ -459,13 +459,26 @@ test('crossCheckLabel: kcal missing from ONE reading is rescued when Atwater-con
     { kcal_100g: 100, prot_100g: 16, fat_100g: 2, carb_100g: 4 },
   );
   assert.equal(out?.kcal_100g, 100);
-  // But no kcal ANYWHERE stays «no label»: nothing to rescue.
+});
+
+test('crossCheckLabel: no kcal ANYWHERE — double-confirmed grams derive it by the one formula', () => {
+  // Glare on the energy corner, or a panel printing only кДж: the gram trio is
+  // still verbatim print confirmed twice, and the label's own kcal is by
+  // regulation the ТР ТС formula applied to those grams (16·4 + 2·9 + 4·4 = 98).
   const none = crossCheckLabel(
     { prot_100g: 16, fat_100g: 2, carb_100g: 4 },
     { prot_100g: 16, fat_100g: 2, carb_100g: 4 },
   );
-  assert.equal(none?.kcal_100g, undefined);
-  assert.equal(none?.prot_100g, undefined, 'an unverified energy line must not half-survive');
+  assert.equal(none?.kcal_100g, 98);
+  assert.equal(none?.prot_100g, 16);
+  // Fiber-aware: an agreed «пищевые волокна» line bills at 2 kcal/g, carved out
+  // of total carb (40 г углеводов при 8 г волокон → 64+18+128+16 = 226).
+  const fibrous = crossCheckLabel(
+    { prot_100g: 16, fat_100g: 2, carb_100g: 40, fiber_100g: 8 },
+    { prot_100g: 16, fat_100g: 2, carb_100g: 40, fiber_100g: 8 },
+  );
+  assert.equal(fibrous?.kcal_100g, 226);
+  assert.equal(fibrous?.fiber_100g, 8);
 });
 
 test('crossCheckLabel: two plausible-but-different kcal readings stay a conflict', () => {
