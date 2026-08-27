@@ -62,6 +62,10 @@ export default function ActivityScreen() {
   // grant. Without this bit the screen re-asked to connect on every visit in
   // that gap (device feedback 2026-08-17: «всё равно просил подключить»).
   const [connectedFlag, setConnectedFlag] = useState(false);
+  // The step goal (settings, default 7000) — until now it only fed nudges and
+  // wins; pricing it here answers the planning question on the goal's own
+  // screen: «дойду до цели — что это даст бюджету?» (owner request 2026-08-26).
+  const [stepsGoal, setStepsGoal] = useState(0);
 
   // Pull today's device data BEFORE listing, so the hero and the history's top
   // row are the live number, not whatever some earlier screen happened to store
@@ -85,6 +89,7 @@ export default function ActivityScreen() {
       }
     }
     setConnectedFlag(connected);
+    setStepsGoal(s.stepsGoal);
     await syncDayHealth(db, svc, new Date(), s.healthImportExtended);
     return listStepsDays(db, 30);
   }, [db]);
@@ -207,6 +212,16 @@ export default function ActivityScreen() {
       ? t('activity.inWorkouts', { steps: Math.min(workoutStepsToday, today.steps) })
       : null;
 
+  // The goal, priced: «10 000 шагов ≈ +N ккал к бюджету» — same formula as the
+  // day budget, weight-personalized. Hidden once today's count reaches the goal
+  // (the payoff line above already tells the earned story) or without a weight
+  // to price with.
+  const goalKcal = weight != null && stepsGoal > 0 ? stepsEarnedKcal(stepsGoal, weight.weightKg) : 0;
+  const goalPriceLine =
+    goalKcal > 0 && (today == null || today.steps < stepsGoal)
+      ? t('activity.goalPrice', { steps: formatStepCount(stepsGoal), kcal: goalKcal })
+      : null;
+
   // Auto counting is "working" after connecting (this session OR any earlier
   // one — the persisted flag), or whenever today's number came from the device.
   // Data presence alone was the old signal, and it re-showed the connect card
@@ -265,6 +280,11 @@ export default function ActivityScreen() {
             {autoWorking ? t('activity.noneTodayConnected') : t('activity.noneToday')}
           </Text>
         )}
+        {goalPriceLine ? (
+          <Text style={[styles.heroPayoff, { color: theme.subtle }, theme.font.body]}>
+            {goalPriceLine}
+          </Text>
+        ) : null}
       </View>
 
       {/* AUTOMATIC COUNT — the primary path. Collapses to a quiet line once it

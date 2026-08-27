@@ -641,6 +641,9 @@ export const en = {
       },
       kcalPerDay: '≈ {{kcal}} kcal a day',
       restNote: 'This is the base — a day with no movement at all. Your steps and workouts add to it on the Food screen.',
+      // The planning answer right in the plan: the user's usual steps (median of
+      // recorded days), priced by the SAME formula as the day budget.
+      usualStepsLine: 'Your usual ≈{{steps}} steps add ≈{{kcal}} kcal — such a day comes to ≈{{total}} kcal.',
       goalWeight: 'Goal weight',
       // Transparency: which kilograms the protein was computed from. Adipose
       // tissue needs almost no protein — at high BMI total weight over-prescribes.
@@ -889,6 +892,8 @@ export const en = {
     // Steps inside imported workouts: the budget counts them as workout kcal,
     // so the step earnings exclude them.
     inWorkouts: '−{{steps}} inside workouts — counted there',
+    // The step goal priced into the budget: “what does reaching it give me?”
+    goalPrice: 'Goal {{steps}} steps ≈ +{{kcal}} kcal to the day’s budget',
     vo2max: 'VO₂max ≈ {{value}} — from your watch',
     autoConnected: 'Automatic counting is on — your daily steps are read for you',
     manualAdd: 'Enter by hand',
@@ -958,6 +963,10 @@ export const en = {
       forecastNote: 'Today’s steps aren’t logged yet — the budget stands on your usual count. Enter your steps and it firms up.',
       noMovement: 'These are calories without activity. Steps and workouts help compute the precise number.',
       stepsBelowBase: 'Steps today — {{steps}}: the first ~3,000 are already in the base; the budget grows above that.',
+      // Mid-day projection: the fact stays primary (the budget counts recorded
+      // steps); this line says what the user's usual day comes to, so a person
+      // who walks 10,000 every day doesn't read a low budget until evening.
+      usualProjection: 'You usually walk ≈{{steps}} steps a day — if today matches, the budget is ≈{{kcal}} kcal.',
       noMovementCta: 'add movement',
       how: 'how is the budget computed?',
     },
