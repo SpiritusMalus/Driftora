@@ -117,6 +117,14 @@ export default function FoodDayScreen() {
   const [stepsToday, setStepsToday] = useState(0);
   const [stepsEarned, setStepsEarned] = useState(0);
   const [stepsForecast, setStepsForecast] = useState(false);
+  // Mid-day planning: the user's USUAL day (median steps) and what it would
+  // earn. Until now this only fed the morning forecast — the moment the first
+  // real sync landed (2 100 шагов к 10 утра) the budget dropped to «пока
+  // заработано», and the person who walks 10 000 every day read a low number
+  // all day. The projection line keeps the honest fact primary and shows the
+  // usual-day budget beside it (owner request 2026-08-26).
+  const [usualStepsCount, setUsualStepsCount] = useState<number | null>(null);
+  const [usualStepsEarned, setUsualStepsEarned] = useState(0);
   // Steps removed from the pricing because they fell inside imported workout
   // windows — shown in the breakdown so the reduction is visible, not silent.
   const [workoutStepsCut, setWorkoutStepsCut] = useState(0);
@@ -244,6 +252,8 @@ export default function FoodDayScreen() {
     setWorkoutStepsCut(todaySteps != null ? Math.min(health.workoutSteps, todaySteps) : 0);
     setStepsForecast(todaySteps == null && usualSteps != null);
     setStepsEarned(stepsEarnedKcal(pricedSteps, weightRow?.weightKg ?? 0));
+    setUsualStepsCount(usualSteps);
+    setUsualStepsEarned(usualSteps != null ? stepsEarnedKcal(usualSteps, weightRow?.weightKg ?? 0) : 0);
     // The progress card needs a deliberate goal AND an unpaused app — otherwise
     // it would pressure with an arbitrary default, which this app never does.
     setGoal(
@@ -417,6 +427,8 @@ export default function FoodDayScreen() {
           steps={stepsToday}
           stepsEarned={stepsEarned}
           stepsForecast={stepsForecast}
+          usualSteps={usualStepsCount}
+          usualStepsEarned={usualStepsEarned}
           workoutStepsCut={workoutStepsCut}
           fiberG={micros?.fiberG}
           theme={theme}
@@ -593,6 +605,8 @@ function DayProgress({
   steps,
   stepsEarned,
   stepsForecast,
+  usualSteps,
+  usualStepsEarned,
   workoutStepsCut,
   fiberG,
   theme,
@@ -606,6 +620,10 @@ function DayProgress({
   steps: number;
   stepsEarned: number;
   stepsForecast: boolean;
+  /// Median of recent recorded days (null when < 3 days of history) and the
+  /// kcal it would earn — powers the mid-day «обычно у вас…» projection line.
+  usualSteps: number | null;
+  usualStepsEarned: number;
   workoutStepsCut: number;
   theme: Theme;
 }) {
@@ -663,6 +681,16 @@ function DayProgress({
   // (device feedback 2026-07-12). Real counts only: a forecast below the
   // baseline stays on the generic no-movement line.
   const stepsBelowBase = noMovementYet && steps > 0 && !stepsForecast;
+  // Mid-day PROJECTION, kept apart from the fact: once real steps replace the
+  // morning forecast, the budget honestly shows only what's earned so far —
+  // and a person who walks 10 000 every day reads a low number until evening.
+  // While today still trails their usual median, one quiet line says what the
+  // usual day comes to. Same formula as the budget itself, never mixed into
+  // the target: the fact stays primary, the projection stays labelled.
+  const usualProjection =
+    !stepsForecast && usualSteps != null && usualStepsEarned > stepsAdd
+      ? dayBudgetKcal(goal.baseKcal, goal.minDayKcal, usualStepsEarned + workoutAdd)
+      : null;
   // Macro targets follow the RAISED budget, not just the resting plan: earned
   // kcal land in fat/carbs by the plan's own 30% fat-energy rule, protein stays
   // per-kilogram (device feedback 2026-08-17: «когда увеличивается калораж —
@@ -711,6 +739,14 @@ function DayProgress({
             {t(approx ? 'food.day.kcalApprox' : 'food.day.kcal', { eaten: kcalEaten, target })}
           </Text>
           <Text style={[styles.dayWorkout, { color: theme.subtle }, theme.font.body]}>{parts.join(' · ')}</Text>
+          {usualProjection != null ? (
+            <Text style={[styles.dayWorkout, { color: theme.subtle }, theme.font.body]}>
+              {t('food.day.usualProjection', {
+                steps: Math.round(usualSteps ?? 0).toLocaleString('ru-RU'),
+                kcal: usualProjection,
+              })}
+            </Text>
+          ) : null}
           {noMovementYet ? (
             <Pressable onPress={() => router.push('/workout')} hitSlop={6}>
               <Text style={[styles.dayWorkout, { color: theme.subtle }, theme.font.body]}>

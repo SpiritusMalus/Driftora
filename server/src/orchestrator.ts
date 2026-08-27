@@ -15,12 +15,18 @@ import { assembleMealDraft, type IdentifiedItem, type MealDraft, type Region } f
 /**
  * Build the region-aware provider chains (BUILD SPEC §5.2):
  *   US → [Usda, Community, FatSecret, OpenFoodFacts(text+barcode), ApiNinjas]
- *   RU → [Skurikhin, Usda(by name_en), Community, FatSecret, OpenFoodFacts(text+barcode), ApiNinjas]
+ *   RU → [Skurikhin, FatSecret, Usda(by name_en), Community, OpenFoodFacts(text+barcode), ApiNinjas]
  *
  * Construction order IS the chain order; the resolver filters by region.
- * Skurikhin (curated RU dishes) always leads the RU chain; USDA then serves as
- * the broad free-text fallback for BOTH regions — for RU it is queried with
- * the item's English name (`queryLang: 'en'`), which the LLM always returns.
+ * Skurikhin (curated RU dishes) always leads the RU chain. In the RU chain
+ * FatSecret comes NEXT (owner decision 2026-08-26): it is the one external
+ * source with RU localization (`region=RU&language=ru`), so a food the curated
+ * table misses is answered by RU-labelled rows before USDA's English corpus —
+ * whose answers must survive our own translation, where brands die (#209).
+ * The measured table still beats it for everything it actually carries, and
+ * the US chain keeps USDA first. USDA then serves as the broad free-text
+ * fallback for BOTH regions — for RU it is queried with the item's English
+ * name (`queryLang: 'en'`), which the LLM always returns.
  * Open Food Facts free-text search covers branded products (RU names included);
  * FatSecret/ApiNinjas remain optional keyed fallbacks.
  *
@@ -75,11 +81,35 @@ function loadOffLocal(): OffLocalProvider | undefined {
   return provider;
 }
 
+/**
+ * The same provider, narrowed to [regions] — lets ONE FatSecret instance (one
+ * OAuth token cache, one 401-recovery path) occupy DIFFERENT positions in the
+ * RU and US chains. Plain delegation, not a spread: the instance's methods
+ * live on its prototype and must keep their `this`.
+ */
+function forRegions(p: NutritionProvider, regions: readonly Region[]): NutritionProvider {
+  return {
+    name: p.name,
+    regions,
+    ...(p.queryLang !== undefined ? { queryLang: p.queryLang } : {}),
+    ...(p.acceptsCyrillic !== undefined ? { acceptsCyrillic: p.acceptsCyrillic } : {}),
+    search: (name, region) => p.search(name, region),
+    ...(p.searchMany ? { searchMany: (name: string, region: Region) => p.searchMany!(name, region) } : {}),
+  };
+}
+
 export function buildProviders(community?: NutritionProvider): NutritionProvider[] {
   const providers: NutritionProvider[] = [];
+  const fatSecret =
+    process.env.FATSECRET_CLIENT_ID && process.env.FATSECRET_CLIENT_SECRET
+      ? new FatSecretProvider(process.env.FATSECRET_CLIENT_ID, process.env.FATSECRET_CLIENT_SECRET)
+      : null;
   // RU-first and US-first cores. The resolver filters by region, so order here
   // IS the per-region chain order.
   providers.push(new SkurikhinProvider());
+  // RU slot: right after the measured table (see the chain doc above). The US
+  // slot for the SAME instance sits further down, after community.
+  if (fatSecret) providers.push(forRegions(fatSecret, ['RU']));
   providers.push(new UsdaProvider(process.env.USDA_API_KEY || ''));
   if (community) providers.push(community);
   // LOCAL copy of the RU part of Open Food Facts (scripts/offRuImport.ts), when
@@ -90,10 +120,9 @@ export function buildProviders(community?: NutritionProvider): NutritionProvider
   // that started all of this. Absent file ⇒ the chain is exactly as before.
   const offLocal = loadOffLocal();
   if (offLocal) providers.push(offLocal);
-  // Broad free-text fallback (both regions) — only when credentials are set.
-  if (process.env.FATSECRET_CLIENT_ID && process.env.FATSECRET_CLIENT_SECRET) {
-    providers.push(new FatSecretProvider(process.env.FATSECRET_CLIENT_ID, process.env.FATSECRET_CLIENT_SECRET));
-  }
+  // US slot of the SAME FatSecret instance: broad keyed fallback after the
+  // measured tables and the community base, exactly where it always sat.
+  if (fatSecret) providers.push(forRegions(fatSecret, ['US']));
   // The live API stays LAST: it is the freshest (a product added to OFF today is
   // not in our snapshot) but also the only one that can be throttled.
   providers.push(new OpenFoodFactsProvider());
