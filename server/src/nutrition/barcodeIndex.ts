@@ -64,10 +64,72 @@ export interface BarcodeHit {
  */
 export function validEan(code: string): boolean {
   if (!/^\d{8}$|^\d{13}$/.test(code)) return false;
+  return gs1ChecksumValid(code);
+}
+
+/** Контрольная цифра GS1 — ЕДИНЫЙ алгоритм для любой длины GTIN (EAN-8,
+ *  UPC-A-12, EAN-13, GTIN-14): веса 3/1 от предпоследней цифры влево. */
+function gs1ChecksumValid(code: string): boolean {
   const digits = [...code].map(Number);
   const check = digits.pop() as number;
-  const sum = digits.reverse().reduce((acc, d, i) => acc + d * (i % 2 === 0 ? 3 : 1), 0);
-  return (10 - (sum % 10)) % 10 === check;
+  return gs1CheckDigit(digits.reverse()) === check;
+}
+
+/** Контрольная цифра для тела кода, ЦИФРЫ УЖЕ РАЗВЁРНУТЫ справа налево. */
+function gs1CheckDigit(reversedBody: number[]): number {
+  const sum = reversedBody.reduce((acc, d, i) => acc + d * (i % 2 === 0 ? 3 : 1), 0);
+  return (10 - (sum % 10)) % 10;
+}
+
+/** UPC-E (8 цифр) → UPC-A (12 цифр) по стандартной таблице разворота; сама
+ *  контрольная цифра UPC-E считается ОТ РАЗВЁРНУТОГО кода, поэтому проверить
+ *  его иначе нельзя. Возвращает null для не-UPC-E систем нумерации. */
+function expandUpcE(code: string): string | null {
+  const ns = code[0];
+  if (ns !== '0' && ns !== '1') return null;
+  const [x1, x2, x3, x4, x5, x6] = code.slice(1, 7);
+  const check = code[7];
+  const body =
+    x6 === '0' || x6 === '1' || x6 === '2'
+      ? `${x1}${x2}${x6}0000${x3}${x4}${x5}`
+      : x6 === '3'
+        ? `${x1}${x2}${x3}00000${x4}${x5}`
+        : x6 === '4'
+          ? `${x1}${x2}${x3}${x4}00000${x5}`
+          : `${x1}${x2}${x3}${x4}${x5}0000${x6}`;
+  return `${ns}${body}${check}`;
+}
+
+/**
+ * Любой съедобный GTIN → канонический код для баз (EAN-13, либо EAN-8 как
+ * есть), или null для мусора. Сканер теперь отдаёт не только EAN: UPC-A (12
+ * цифр) и ITF-14 с коробок/мультипаков (device report 2026-08-26 —
+ * «вертикальный, необычный» код) раньше молча браковались как invalid_code.
+ *
+ *  - EAN-8 / EAN-13 — как есть;
+ *  - UPC-A — нулевой префикс (контрольную цифру он не меняет);
+ *  - UPC-E — разворот в UPC-A, затем нулевой префикс;
+ *  - GTIN-14 с индикатором 0 — это тот же EAN-13;
+ *  - GTIN-14 мультипака — код вложенной единицы: индикатор отбрасывается,
+ *    контрольная цифра пересчитывается (так GTIN-14 и строится по GS1, это
+ *    точное правило, не догадка).
+ */
+export function normalizeGtin(code: string): string | null {
+  const c = code.trim();
+  if (!/^\d{8}$|^\d{12,14}$/.test(c)) return null;
+  if (c.length === 13) return gs1ChecksumValid(c) ? c : null;
+  if (c.length === 8) {
+    if (gs1ChecksumValid(c)) return c; // честный EAN-8
+    const upcA = expandUpcE(c);
+    return upcA && gs1ChecksumValid(upcA) ? `0${upcA}` : null;
+  }
+  if (c.length === 12) return gs1ChecksumValid(c) ? `0${c}` : null;
+  // 14 цифр.
+  if (!gs1ChecksumValid(c)) return null;
+  if (c[0] === '0') return c.slice(1);
+  const body = c.slice(1, 13);
+  const check = gs1CheckDigit([...body].map(Number).reverse());
+  return `${body}${check}`;
 }
 
 export class BarcodeIndex {

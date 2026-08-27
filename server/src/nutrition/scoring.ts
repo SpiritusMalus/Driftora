@@ -79,7 +79,15 @@ export function queryCoverage(query: string, candidate: string): number {
   const q = normalizeName(query);
   const c = normalizeName(candidate);
   if (q.length === 0 || c.length === 0) return 0;
-  const qt = [...new Set(q.split(' '))].filter((w) => w.length > 0);
+  const all = [...new Set(q.split(' '))].filter((w) => w.length > 0);
+  // Голые числа не участвуют в покрытии: [normalizeName] уже растворил «5%» и
+  // «3.2» в целые, а имя строки цифру не «объясняет» почти никогда — «хлеб 7
+  // злаков» против честной «хлеб зерновой» давал 1/3 и клеймил строку weak, и
+  // ИИ-оценка вставала поверх таблицы (аудит 2026-08-26). Сорта судит резолвер
+  // (gradesOf по сырому имени), не эти ворота. Запрос из ОДНИХ цифр (штрихкод
+  // руками в поиск) сравнивается как раньше — там цифры и есть содержание.
+  const meaningful = all.filter((w) => !/^\d+$/.test(w));
+  const qt = meaningful.length > 0 ? meaningful : all;
   if (qt.length === 0) return 0;
   const ct = c.split(' ').filter((w) => w.length > 0);
   let hit = 0;
@@ -169,9 +177,19 @@ const SUGAR_FREE_MAX_G = 2.5;
  * sugar field — carbs high enough that they cannot be sugar-free-drink water
  * (name ranking alone happily matches «энергетик БЕЗ САХАРА» to a sugared
  * energy drink: same tokens, opposite product).
+ *
+ * The carb heuristic is calibrated for DRINKS and lies about solids: «печенье
+ * без сахара» carries 40–60 g of carbs from flour and polyols legitimately. A
+ * row whose OWN NAME asserts the sugar-free property (FatSecret and the RU
+ * tables ship no sugar field at all) is therefore exempt from the heuristic —
+ * only an EXPLICIT sugar figure may still overrule such a name.
  */
-export function contradictsSugarFree(per100: { sugar?: number; carb: number }): boolean {
+export function contradictsSugarFree(
+  per100: { sugar?: number; carb: number },
+  candidateName?: string,
+): boolean {
   if (typeof per100.sugar === 'number') return per100.sugar > SUGAR_FREE_MAX_G;
+  if (typeof candidateName === 'string' && isSugarFreeQuery(candidateName)) return false;
   return per100.carb > 10;
 }
 
@@ -251,7 +269,7 @@ export function contradictsQuery(
   query: string,
   row: { name?: string; per100: { sugar?: number; carb: number } },
 ): boolean {
-  if (isSugarFreeQuery(query) && contradictsSugarFree(row.per100)) return true;
+  if (isSugarFreeQuery(query) && contradictsSugarFree(row.per100, row.name)) return true;
   return typeof row.name === 'string' && contradictsMethod(methodBits(query), row.name);
 }
 

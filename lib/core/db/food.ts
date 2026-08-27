@@ -697,13 +697,39 @@ function dominantMeal(tally: Map<MealType, number>, latest: MealType): MealType 
   return best;
 }
 
+/// Macro signature of one occurrence — identical totals mean the same physical
+/// portion (a re-log copies them verbatim), which is what lets [groupMeals]
+/// heal a poisoned grams claim below.
+function macroSig(e: { kcal: number; proteinG: number; fatG: number; carbG: number }): string {
+  return `${e.kcal}|${e.proteinG}|${e.fatG}|${e.carbG}`;
+}
+
 /// Groups entries by normalized name → one `QuickMeal` each (count = repeats,
 /// macros/label from the most recent occurrence, `meal` = dominant meal-of-day).
 /// Order-independent; shared by `deriveQuickMeals` and `deriveDayMeals`.
+///
+/// HEALING (device report 2026-08-26, кесадилья «575 ккал · за 100 г»): the
+/// pre-#208 quick-pick save wrote journal rows with qtyG=100 while copying the
+/// WHOLE portion's КБЖУ — so the latest occurrence claims «100 г» for a meal the
+/// user actually weighed at 300 г, and re-picking it shows meal totals as
+/// per-100g. Those rows are numerically indistinguishable from an honest 100-г
+/// portion on their own — but not next to their own original: a re-log carries
+/// the totals VERBATIM, so when another occurrence of the same dish has
+/// IDENTICAL macros and REAL grams (>0, ≠100), the same physical portion has
+/// two contradictory weights, and 100 is the known poison default. The group
+/// then takes the real grams; kcal=0 foods (вода) are exempt — their identical
+/// macros carry no portion identity.
 function groupMeals(entries: QuickSourceEntry[]): { meal: QuickMeal; latestTs: number }[] {
   const groups = new Map<
     string,
-    { meal: QuickMeal; latestTs: number; tally: Map<MealType, number>; latestMeal: MealType }
+    {
+      meal: QuickMeal;
+      latestTs: number;
+      tally: Map<MealType, number>;
+      latestMeal: MealType;
+      /// macro signature → most recent REAL portion grams seen under it.
+      realGrams: Map<string, { ts: number; g: number }>;
+    }
   >();
   for (const e of entries) {
     const key = e.rawText.trim().toLowerCase();
@@ -714,10 +740,15 @@ function groupMeals(entries: QuickSourceEntry[]): { meal: QuickMeal; latestTs: n
     const eff = e.meal ?? mealTypeForEntry(e.rawText, e.ts);
     const existing = groups.get(key);
     if (!existing) {
+      const realGrams = new Map<string, { ts: number; g: number }>();
+      if (e.totalG != null && e.totalG > 0 && e.totalG !== 100) {
+        realGrams.set(macroSig(e), { ts, g: e.totalG });
+      }
       groups.set(key, {
         latestTs: ts,
         latestMeal: eff,
         tally: new Map([[eff, 1]]),
+        realGrams,
         meal: {
           rawText: e.rawText.trim(),
           kcal: e.kcal,
@@ -733,6 +764,13 @@ function groupMeals(entries: QuickSourceEntry[]): { meal: QuickMeal; latestTs: n
     }
     existing.meal.count += 1;
     existing.tally.set(eff, (existing.tally.get(eff) ?? 0) + 1);
+    if (e.totalG != null && e.totalG > 0 && e.totalG !== 100) {
+      const sig = macroSig(e);
+      const known = existing.realGrams.get(sig);
+      // Most recent real weight wins the tie deterministically, whatever the
+      // row order (this function promises order-independence).
+      if (!known || ts > known.ts) existing.realGrams.set(sig, { ts, g: e.totalG });
+    }
     // Keep macros + label from the most recent occurrence (order-independent).
     if (ts > existing.latestTs) {
       existing.latestTs = ts;
@@ -748,7 +786,14 @@ function groupMeals(entries: QuickSourceEntry[]): { meal: QuickMeal; latestTs: n
       };
     }
   }
-  for (const g of groups.values()) g.meal.meal = dominantMeal(g.tally, g.latestMeal);
+  for (const g of groups.values()) {
+    g.meal.meal = dominantMeal(g.tally, g.latestMeal);
+    // Heal the poisoned/gramless weight claim — see the doc comment above.
+    if (g.meal.kcal > 0 && (g.meal.totalG == null || g.meal.totalG === 100)) {
+      const real = g.realGrams.get(macroSig(g.meal));
+      if (real) g.meal.totalG = real.g;
+    }
+  }
   return [...groups.values()].map((g) => ({ meal: g.meal, latestTs: g.latestTs }));
 }
 

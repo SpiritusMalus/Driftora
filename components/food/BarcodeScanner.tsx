@@ -1,7 +1,7 @@
 import { useIsFocused } from '@react-navigation/native';
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -41,11 +41,21 @@ import { useTheme } from '@/lib/theme/theme';
  * не даёт распознавание цифр глазами модели.
  */
 
-/** Символики, которые реально встречаются на еде. QR и прочее не нужны. */
-const FOOD_BARCODES = ['ean13', 'ean8', 'upc_a', 'upc_e'] as const;
+/** Символики, которые реально встречаются на еде. QR и прочее не нужны.
+ *  itf14 — «необычный» код мультипаков и коробок: толстые полосы в жирной
+ *  чёрной рамке (device report 2026-08-26); сервер разворачивает его в код
+ *  вложенной единицы. */
+const FOOD_BARCODES = ['ean13', 'ean8', 'upc_a', 'upc_e', 'itf14'] as const;
 
 /** Пауза после принятого кода — иначе один и тот же код сработает десятки раз. */
 const RESCAN_PAUSE_MS = 2000;
+
+/** Сколько горит «код виден, но вне рамки» после последнего такого срабатывания. */
+const AIM_OUTSIDE_MS = 1400;
+/** Сколько тишины декодера терпим, прежде чем подсказать «ближе/ровнее/свет». */
+const AIM_STUCK_MS = 6000;
+/** Янтарный «почти»: код найден, осталось довести его в окно. */
+const AMBER = '#ffd60a';
 
 /**
  * Рамка в долях кадра — ЕДИНСТВЕННЫЙ источник правды. И стили, и проверка
@@ -95,18 +105,64 @@ export function BarcodeScanner({
   const focused = useIsFocused();
   /// Момент последнего принятого кода — окно тишины после попадания.
   const acceptedAt = useRef(0);
+  /// Живой ответ на прицеливание (device report 2026-08-26: «наводил-наводил и
+  /// не понятно, попал ли в зону»). Раньше промах был неотличим от «камера
+  /// вообще ничего не видит»: код вне рамки отбрасывался МОЛЧА. Теперь:
+  /// 'outside' — декодер код видит, но он вне окна (рамка вспыхивает янтарным,
+  /// подсказка говорит довести его в окно); 'stuck' — декодер молчит дольше
+  /// AIM_STUCK_MS (подсказка про 10–15 см, ровный кадр и подсветку).
+  const [aim, setAim] = useState<'idle' | 'outside' | 'stuck'>('idle');
+  const outsideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stuckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const armStuckTimer = useCallback(() => {
+    if (stuckTimer.current) clearTimeout(stuckTimer.current);
+    stuckTimer.current = setTimeout(() => setAim('stuck'), AIM_STUCK_MS);
+  }, []);
+
+  // Таймер «не ловится» живёт только пока человек реально целится; карточка
+  // результата, поиск по коду и уход экрана в фон его гасят вместе с подсказкой.
+  useEffect(() => {
+    if (!focused || outcome || busy) {
+      if (stuckTimer.current) clearTimeout(stuckTimer.current);
+      setAim('idle');
+      return;
+    }
+    armStuckTimer();
+    return () => {
+      if (stuckTimer.current) clearTimeout(stuckTimer.current);
+    };
+  }, [focused, outcome, busy, armStuckTimer]);
+  useEffect(
+    () => () => {
+      if (outsideTimer.current) clearTimeout(outsideTimer.current);
+    },
+    [],
+  );
 
   const onScanned = useCallback(
     (result: BarcodeScanningResult) => {
       const now = Date.now();
       if (busy || outcome || now - acceptedAt.current < RESCAN_PAUSE_MS) return;
-      if (!insideReticle(result, frame)) return;
+      // Декодер что-то видит — коучинг «не ловится» неуместен, окно тишины
+      // отсчитывается заново.
+      armStuckTimer();
+      if (!insideReticle(result, frame)) {
+        setAim('outside');
+        if (outsideTimer.current) clearTimeout(outsideTimer.current);
+        outsideTimer.current = setTimeout(
+          () => setAim((a) => (a === 'outside' ? 'idle' : a)),
+          AIM_OUTSIDE_MS,
+        );
+        return;
+      }
       acceptedAt.current = now;
+      setAim('idle');
       // Короткий отклик в руку: глаза заняты упаковкой, а не экраном.
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
       onCode(result.data);
     },
-    [busy, outcome, frame, onCode],
+    [busy, outcome, frame, onCode, armStuckTimer],
   );
 
   if (!permission) {
@@ -153,7 +209,16 @@ export function BarcodeScanner({
             <View style={[styles.shade, shadeBottom]} pointerEvents="none" />
             <View style={[styles.shade, shadeLeft]} pointerEvents="none" />
             <View style={[styles.shade, shadeRight]} pointerEvents="none" />
-            <View style={[styles.reticle, reticleBox, { borderColor: busy ? theme.primary : '#ffffff' }]} pointerEvents="none">
+            <View
+              style={[
+                styles.reticle,
+                reticleBox,
+                // Янтарная вспышка = «код найден, доведите его в окно» — прямой
+                // ответ на «попал я в зону или нет».
+                { borderColor: busy ? theme.primary : aim === 'outside' ? AMBER : '#ffffff' },
+              ]}
+              pointerEvents="none"
+            >
               {busy ? <ActivityIndicator color={theme.primary} /> : null}
             </View>
             <Pressable
@@ -203,7 +268,23 @@ export function BarcodeScanner({
         )}
       </View>
       {!outcome ? (
-        <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('food.barcode.hint')}</Text>
+        // Подсказка отвечает на текущее состояние прицеливания, а не повторяет
+        // одно и то же; коучинговые строки — основным цветом, они и есть ответ.
+        <Text
+          style={[
+            styles.hint,
+            { color: aim === 'idle' ? theme.subtle : theme.text },
+            theme.font.body,
+          ]}
+        >
+          {t(
+            aim === 'outside'
+              ? 'food.barcode.hintOutside'
+              : aim === 'stuck'
+                ? 'food.barcode.hintStuck'
+                : 'food.barcode.hint',
+          )}
+        </Text>
       ) : null}
     </View>
   );

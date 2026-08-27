@@ -186,3 +186,27 @@ describe('listFoodChoices (the «рацион»: pick a known food + type grams)
     sqlite.close();
   });
 });
+
+describe('label items are never overridden by memory', () => {
+  it('keeps «по упаковке» numbers; a plain item beside it still gets the remembered swap', () => {
+    // Аудит 2026-08-26: память хранит прошлый выбор ПО ИМЕНИ еды, а этикетка —
+    // точные числа с пачки В РУКАХ. Замена этикетки памятью предпочитала старую
+    // догадку напечатанному факту (и чужой продукт под тем же словом).
+    const labelItem = item({ per100: per100(101, 'label'), scaled: { kcal: 202, prot: 4, fat: 0, carb: 45, minerals: {} } });
+    const plainItem = item({ name_ru: 'хлеб', name_en: 'bread', per100: per100(250) });
+    const remembered = new Map([
+      [choiceKey('RU', 'творог'), { name: 'творог 5%', per100: per100(121, 'skurikhin') }],
+      [choiceKey('RU', 'хлеб'), { name: 'хлеб зерновой', per100: per100(230, 'skurikhin') }],
+    ]);
+
+    const out = applyRememberedChoices(draft([labelItem, plainItem]), 'RU', remembered);
+
+    // Этикетка неприкосновенна — и числа, и источник.
+    expect(out.items[0].per100.source).toBe('label');
+    expect(out.items[0].per100.kcal).toBe(101);
+    expect(out.items[0].matched_name).toBeUndefined();
+    // Обычная строка рядом по-прежнему получает запомненный выбор.
+    expect(out.items[1].per100.kcal).toBe(230);
+    expect(out.items[1].matched_name).toBe('хлеб зерновой');
+  });
+});

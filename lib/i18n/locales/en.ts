@@ -1015,6 +1015,9 @@ export const en = {
     // the phone — the device decodes locally and only the digits are sent.
     barcode: {
       hint: 'Point the frame at the barcode — it scans itself. No photo is sent anywhere.',
+      // Live aiming feedback: a miss on the frame is no longer silent.
+      hintOutside: 'Code spotted, but outside the frame — bring it into the window.',
+      hintStuck: 'Not catching? Move closer — 10–15 cm, hold it steady; the torch helps in the dark.',
       permission: 'Scanning a barcode needs camera access. No photos are sent anywhere — the phone decodes the code itself.',
       allow: 'Allow camera',
       torch: 'Torch',

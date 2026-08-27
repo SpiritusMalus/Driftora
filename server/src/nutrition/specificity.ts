@@ -92,7 +92,12 @@ function closeStems(a: string, b: string): boolean {
 
 /** Токен ничего не уточняет (способ приготовления, размер, порция). */
 function isQualifier(token: string): boolean {
-  if (/^\d+([.,]\d+)?$/.test(token)) return false; // сорт/жирность — это уточнение по существу
+  // ЧИСЛА здесь не судьи: [normalizeName] растворяет «5%» и «3.2» в голые
+  // целые («3 2»), по которым сорт от счёта штук не отличить — а голая цифра
+  // («хлеб 7 злаков») демотировала верную строку как «уточнение по существу»
+  // (аудит 2026-08-26). Настоящие сорта ловит резолвер ([gradesOf]) по СЫРОМУ
+  // имени, где «%» и десятичная точка ещё живы.
+  if (/^\d+$/.test(token)) return true;
   const stem = stemRu(token);
   if (QUALIFIER_STEMS.has(stem)) return true;
   for (const q of QUALIFIER_STEMS) if (closeStems(stem, q)) return true;
@@ -209,10 +214,34 @@ export function unexplainedSpecifics(query: string, candidateName: string): stri
 }
 
 /**
+ * В запросе есть слово, которое ничем не объясняется как ОБЫЧНАЯ еда: не число,
+ * не бытовое уточнение и не слово из наших продуктовых таблиц — либо известная
+ * марка. Ровно такие слова перевод и теряет («мистраль», «черноголовка»,
+ * «том ям»). Обычная еда, у которой русские два слова сжимаются в одно
+ * английское, сюда не попадает — и это важно (см. [translationLost]).
+ */
+function hasUnknownSpecific(query: string): boolean {
+  const brandWords = brandWordsIn(query);
+  return contentTokens(query).some((token) => {
+    if (brandWords.has(token)) return true;
+    if (/^\d+([.,]\d+)?$/.test(token)) return false; // сорт/жирность переводится как есть
+    if (isQualifier(token)) return false;
+    return !isCommonFoodWord(token);
+  });
+}
+
+/**
  * Перевод потерял слово: содержательных слов в запросе к англоязычному источнику
  * МЕНЬШЕ, чем написал человек. Именно так выглядит выброшенный бренд («отруби
  * овсяные мистраль» → `oat bran`), тогда как обычное уточнение переводится
  * слово в слово («творог 5%» → `cottage cheese 5%`).
+ *
+ * ОДНОГО счёта слов мало: у обычной еды русские два слова законно сжимаются в
+ * одно английское («грецкий орех» → `walnuts», «морская капуста» → `seaweed`),
+ * и для всего, что не поймала RU-таблица, чистый хит USDA/FatSecret демотировался
+ * бы на чистой лингвистике. Поэтому счёт слов срабатывает ТОЛЬКО когда в запросе
+ * есть слово, которое вообще нечем объяснить как обычную еду ([hasUnknownSpecific])
+ * — бренд и есть такое слово, а «грецкий» и «морская» лежат в словаре таблиц.
  *
  * Только для кириллического запроса: где язык запроса и источника совпадает,
  * сравнивать нечего — там работает обычное покрытие.
@@ -220,5 +249,6 @@ export function unexplainedSpecifics(query: string, candidateName: string): stri
 export function translationLost(userQuery: string, providerQuery: string): boolean {
   if (!hasCyrillic(userQuery)) return false; // запрос не на русском — переводить нечего
   if (hasCyrillic(providerQuery)) return false; // спрашивали тем же языком, это не перевод
-  return contentTokens(providerQuery).length < contentTokens(userQuery).length;
+  if (contentTokens(providerQuery).length >= contentTokens(userQuery).length) return false;
+  return hasUnknownSpecific(userQuery);
 }

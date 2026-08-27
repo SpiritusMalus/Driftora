@@ -54,6 +54,12 @@ export function applyRememberedChoices(
   if (choices.size === 0) return draft;
   let changed = false;
   const items = draft.items.map((it) => {
+    // «По упаковке» — точные числа, только что прочитанные с ЭТОЙ пачки. Память
+    // хранит прошлый выбор ПО ИМЕНИ еды — заменять ей свежую этикетку значит
+    // предпочесть старую догадку напечатанному факту (и другой продукт под тем
+    // же словом: «творог» в памяти ≠ творог в руках). Штрихкод-путь память не
+    // применяет по той же причине.
+    if (it.per100.source === 'label') return it;
     const remembered = choices.get(choiceKey(region, lookupNameForItem(it, region)));
     if (!remembered) return it;
     changed = true;

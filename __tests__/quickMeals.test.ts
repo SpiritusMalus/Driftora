@@ -56,6 +56,67 @@ describe('deriveQuickMeals', () => {
   });
 });
 
+// ---- Кесадилья-баг, второй заход (2026-08-26): «575 ккал · за 100 г» --------
+//
+// Pre-#208 quick-pick saves left journal rows claiming qtyG=100 for a meal the
+// user weighed at 300 г, with the WHOLE portion's КБЖУ copied verbatim. The
+// latest occurrence then poisons the re-log card. The heal: identical macros =
+// the same physical portion, so real grams from any sibling occurrence replace
+// the 100/gramless claim.
+describe('deriveQuickMeals grams healing', () => {
+  const meal = (day: number, totalG: number | null, kcal = 575) => ({
+    rawText: 'Кесадилья',
+    ts: new Date(2026, 5, day, 12),
+    kcal,
+    proteinG: 24,
+    fatG: 30,
+    carbG: 51,
+    totalG,
+  });
+
+  it('heals a poisoned 100-г latest occurrence from an older identical-macro real weight', () => {
+    const { recents } = deriveQuickMeals([meal(10, 300), meal(12, 100)]);
+    expect(recents[0].totalG).toBe(300);
+    // …and the re-log card then derives an honest per-100g from it.
+    const item = itemFromQuickMeal(recents[0]);
+    expect(item.grams).toBe(300);
+    expect(item.per100.kcal).toBe(Math.round((575 * 100) / 300));
+  });
+
+  it('heals a gramless latest occurrence the same way', () => {
+    const { recents } = deriveQuickMeals([meal(10, 300), meal(12, null)]);
+    expect(recents[0].totalG).toBe(300);
+  });
+
+  it('is order-independent and takes the most recent real weight', () => {
+    const rows = [meal(8, 250), meal(10, 300), meal(12, 100)];
+    for (const perm of [rows, [...rows].reverse(), [rows[1], rows[2], rows[0]]]) {
+      expect(deriveQuickMeals(perm).recents[0].totalG).toBe(300);
+    }
+  });
+
+  it('leaves different-macro occurrences alone — a real 100-г portion stays 100 г', () => {
+    // A genuine later 100-г helping has ~a third of the kcal, not an identical
+    // copy; no signature match → no heal.
+    const { recents } = deriveQuickMeals([meal(10, 300), meal(12, 100, 192)]);
+    expect(recents[0].totalG).toBe(100);
+  });
+
+  it('never heals kcal=0 foods — identical zero macros carry no portion identity', () => {
+    const water = (day: number, totalG: number | null) => ({
+      rawText: 'Вода',
+      ts: new Date(2026, 5, day, 12),
+      kcal: 0,
+      proteinG: 0,
+      fatG: 0,
+      carbG: 0,
+      totalG,
+    });
+    const { recents } = deriveQuickMeals([water(10, 300), water(12, 100)]);
+    expect(recents[0].totalG).toBe(100);
+  });
+});
+
 describe('quick meal-of-day tagging', () => {
   const m = (rawText: string, day: number, meal?: MealType) => ({
     rawText,

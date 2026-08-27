@@ -90,3 +90,14 @@ test('resolve: an in-band row costs no estimator call at all', async () => {
   assert.equal(asked, 0, 'the zero-latency referee is genuinely zero-latency');
   assert.equal(r.per100.kcal, 18);
 });
+
+test('bands: «шоколадный» десерт — не плитка, полоса шоколада его не судит', () => {
+  // Прилагательная форма называет вкус, а не продукт: мусс ~250 и пудинг ~130
+  // законны, и полоса плитки (350–650) объявляла их верные строки невозможными
+  // (аудит 2026-08-26). Существительное — по-прежнему в полосе.
+  assert.equal(kcalBandViolated('шоколадный мусс', 'chocolate mousse', 250), false);
+  assert.equal(kcalBandViolated('шоколадный пудинг', 'chocolate pudding', 130), false);
+  assert.equal(kcalBandViolated('шоколад горький', 'dark chocolate', 329), true);
+  assert.equal(kcalBandViolated('шоколадка', 'chocolate bar', 500), false); // внутри полосы
+  assert.equal(kcalBandViolated('молочный шоколад', 'milk chocolate', 550), false); // внутри полосы
+});

@@ -655,3 +655,39 @@ test('a method-contradicting primary does not stop the walk: a later clean row w
   assert.equal(only.matched_name, 'куриное филе в панировке');
   assert.ok(only.confidence < 0.5, `must be flagged, got ${only.confidence}`);
 });
+
+test('голое целое в имени — не сорт: «хлеб 7 злаков» не отдаёт первенство ИИ-оценке', async () => {
+  // До фикса любая цифра считалась «сортом»: строка «хлеб зерновой» без
+  // семёрки трактовалась как «не тот сорт», и первичной становилась ИИ-оценка
+  // поверх верной строки (аудит 2026-08-26). Теперь сорт — это «5%» или
+  // десятичная жирность; целое в названии продукта сорт не объявляет.
+  const grainStub: import('../src/nutrition/provider.js').NutritionProvider = {
+    name: 'skurikhin',
+    regions: ['RU'],
+    async search() {
+      return {
+        per100: { source: 'skurikhin' as const, kcal: 250, prot: 8, fat: 3, carb: 45, minerals: {} },
+        confidence: 0.85,
+        name: 'хлеб зерновой',
+      };
+    },
+  };
+  const resolver = new Resolver([grainStub]);
+  const r = await resolver.resolveItem(
+    item({
+      name_ru: 'хлеб 7 злаков',
+      name_en: '7 grain bread',
+      est_grams: 60,
+      confidence: 0.8,
+      estimate: { kcal_100g: 260, prot_100g: 9, fat_100g: 4, carb_100g: 43 },
+    }),
+    'RU',
+  );
+  // Таблица остаётся первичной; «злаков» — вариант по существу, поэтому строка
+  // честно демотируется с открытым пикером (это осознанный дизайн specificity),
+  // но НЕ подменяется оценкой.
+  assert.equal(r.per100.source, 'skurikhin');
+  assert.equal(r.per100.kcal, 250);
+  // Настоящий сорт («5%», десятичная жирность) ведёт себя как раньше — этот
+  // случай закреплён тестом «молоко 1.8%» выше.
+});

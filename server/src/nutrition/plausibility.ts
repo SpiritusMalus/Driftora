@@ -43,8 +43,19 @@ const BANDS: readonly Band[] = [
   },
   // Chocolate in any form — bars, filled bars, candies. The observed failure:
   // a 329 kcal generic row for a ~490 kcal filled dark bar; real chocolate
-  // products live in 350–650.
-  { pattern: /шокол|chocolate|конфет|candy bar/, min: 350, max: 650 },
+  // products live in 350–650. «шокол(?!адн)» keeps the NOUN (шоколад,
+  // шоколадка) and releases the ADJECTIVE: «шоколадный мусс» (~250) и «пудинг»
+  // (~130) — не плитка, и полоса плитки объявляла их верные строки
+  // невозможными (аудит 2026-08-26). English `chocolate <dessert>` has no such
+  // marker — the ambiguous-word rule (see the design notes above) accepts that.
+  // English has no morphological marker, so the noun sense is matched by its
+  // common phrase forms; a bare `chocolate <dessert>` (pudding, mousse, cake)
+  // deliberately stays out of the band — same ambiguous-word rule as above.
+  {
+    pattern: /шокол(?!адн)|chocolate bar|dark chocolate|milk chocolate|bitter chocolate|конфет|candy bar/,
+    min: 350,
+    max: 650,
+  },
   // Butters and oils — nothing sold as «масло» is under ~500.
   { pattern: /масло|butter|\boil\b/, min: 500, max: 930 },
   // Drinking dairy (NOT сливки, творог, сыр — they legitimately range wider).
