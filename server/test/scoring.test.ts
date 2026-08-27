@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import {
+  contradictsQuery,
   contradictsSugarFree,
   demoteContradictions,
   genericBonus,
@@ -201,4 +202,33 @@ test('queryCoverage: an inflected form is covered — the gate matches at the to
   // Терпимость не должна стать всеядностью: чужая еда по-прежнему не покрыта.
   assert.equal(queryCoverage('огурцы', 'помидор'), 0);
   assert.ok(queryCoverage('борщ', 'молоко') < MIN_CHAIN_COVERAGE);
+});
+
+test('без сахара: строка, сама заявляющая «без сахара», не демотируется углеводной эвристикой', () => {
+  // Углеводный порог калиброван под напитки и врёт о твёрдой еде: «печенье без
+  // сахара» несёт 40–60 г углеводов из муки и полиолов ЗАКОННО. FatSecret и
+  // RU-таблицы не несут поля «сахар» вовсе — до фикса их sugar-free строки
+  // демотировались собственными углеводами (аудит 2026-08-26).
+  assert.equal(
+    contradictsQuery('печенье без сахара', {
+      name: 'Печенье Без Сахара',
+      per100: { carb: 58 },
+    }),
+    false,
+  );
+  // Явное поле сахара сильнее имени: подписанная «без сахара» строка с 8 г
+  // сахара — противоречие, как и раньше.
+  assert.equal(
+    contradictsQuery('печенье без сахара', {
+      name: 'Печенье без сахара',
+      per100: { sugar: 8, carb: 58 },
+    }),
+    true,
+  );
+  // Родовая строка без поля сахара и без заявления в имени — по-прежнему
+  // противоречие: обычное печенье и правда с сахаром.
+  assert.equal(
+    contradictsQuery('печенье без сахара', { name: 'Печенье овсяное', per100: { carb: 58 } }),
+    true,
+  );
 });

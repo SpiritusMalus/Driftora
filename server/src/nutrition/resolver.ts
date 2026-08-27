@@ -146,9 +146,18 @@ function estimateMismatch(db: Per100, est: AiEstimate): boolean {
   return false;
 }
 
-/** Numeric grade tokens in a food name (incl. decimals, «,»→«.») — «молоко 1.8%» → ['1.8']. */
+/**
+ * Numeric GRADE tokens in a food name — «молоко 1.8%» → ['1.8']. A grade is a
+ * number with «%» (жирность, сорт) or a decimal («молоко 3,2» — голос часто
+ * опускает знак процента). A bare integer is NOT a grade: «хлеб 7 злаков» и
+ * «3 сыра» называют продукт, и строка «хлеб зерновой» без семёрки — не «не тот
+ * сорт», а нормальный ответ; считая любую цифру сортом, мы ставили ИИ-оценку
+ * поверх верной строки (аудит 2026-08-26).
+ */
 function gradesOf(s: string): string[] {
-  return (s.match(/\d+(?:[.,]\d+)?/g) ?? []).map((x) => x.replace(',', '.'));
+  return (s.match(/\d+(?:[.,]\d+)?\s*%|\d+[.,]\d+/g) ?? []).map((x) =>
+    x.replace(',', '.').replace(/\s*%$/, ''),
+  );
 }
 
 /**
@@ -379,10 +388,15 @@ export class Resolver {
       // Did this row explain the SPECIFIC product? Measured in the language the
       // provider was actually asked in — comparing a Cyrillic query against an
       // English row name would flag every RU food outside our own table.
+      // Like the coverage gate above, judged by the BEST of the display name and
+      // the alias that actually MATCHED — the same «двое ворот меряют по-разному»
+      // class the #219 fix closed for coverage.
       const unexplained =
         provider.queryLang === 'en' && !hasCyrillic(name)
           ? translationLost(userQuery, name) // the brand died in the translation
-          : unexplainedSpecifics(userQuery, primary.name ?? name).length > 0;
+          : unexplainedSpecifics(userQuery, primary.name ?? name).length > 0 &&
+            (primary.matchedKey === undefined ||
+              unexplainedSpecifics(userQuery, primary.matchedKey).length > 0);
       if (unexplained) {
         // Keep the FIRST such hit for the same reason as above, and keep looking:
         // a later source may carry the branded product itself.
@@ -627,7 +641,10 @@ export class Resolver {
     // curated finished-dish row already describes the cooked state.
     const dryBasis = !prepared && looksDryBasis([item.name_ru, item.name_en, found.name], found.per100);
 
-    const graded = /\d/.test(item.name_ru);
+    // Только настоящие сорта (см. [gradesOf]): голое число в имени («хлеб 7
+    // злаков») не должно ни дёргать оценщик, ни демотировать крауд-строку
+    // через gradeSuspect.
+    const graded = gradesOf(item.name_ru).length > 0;
     // The model's own estimate is the REFEREE that catches a confidently wrong
     // DB row (see the weak-match and mismatch branches below). Photo items no
     // longer carry one — the numeric fields were where the vision model's decode
