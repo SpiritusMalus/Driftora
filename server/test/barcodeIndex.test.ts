@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 
-import { BARCODE_FIBER_ABSENT, BARCODE_RECORD_BYTES, BarcodeIndex, validEan } from '../src/nutrition/barcodeIndex.js';
+import { BARCODE_FIBER_ABSENT, BARCODE_RECORD_BYTES, BarcodeIndex, normalizeGtin, validEan } from '../src/nutrition/barcodeIndex.js';
 
 /// Штрихкод — точный ключ, а не имя: ни падежей, ни языка, ни опечаток. Плюс он
 /// сам себя проверяет контрольной цифрой, поэтому искажённое считывание должно
@@ -17,6 +17,36 @@ test('validEan: контрольная цифра ловит подмену ци
   assert.equal(validEan('5449000009960'), false); // переставлены цифры
   assert.equal(validEan('544900000099'), false); // не та длина
   assert.equal(validEan('abcdefghijklm'), false);
+});
+
+test('normalizeGtin: EAN-8/EAN-13 проходят как есть, мусор и битая контрольная — null', () => {
+  assert.equal(normalizeGtin('5449000000996'), '5449000000996'); // EAN-13 как есть
+  assert.equal(normalizeGtin('96385074'), '96385074'); // EAN-8 как есть
+  assert.equal(normalizeGtin('5449000000997'), null); // битая контрольная
+  assert.equal(normalizeGtin('544900000099'), null); // 12 цифр с чужой контрольной — не UPC-A
+  assert.equal(normalizeGtin('abcdefghijklm'), null);
+  assert.equal(normalizeGtin(''), null);
+});
+
+test('normalizeGtin: UPC-A и UPC-E разворачиваются в EAN-13 (device report 2026-08-26)', () => {
+  // Сканер отдаёт UPC-A 12 цифрами — раньше сервер молча браковал его как
+  // invalid_code. Нулевой префикс не меняет контрольную цифру GS1.
+  assert.equal(normalizeGtin('036000291452'), '0036000291452');
+  // UPC-E: контрольная цифра считается от РАЗВЁРНУТОГО UPC-A. 8 цифр,
+  // проходящие как EAN-8, остаются EAN-8 (для RU это правильный приоритет,
+  // и для случая сжатия x6≥5 контрольные суммы совпадают алгебраически);
+  // разворот пробуется, только когда EAN-8-контрольная не сходится.
+  assert.equal(normalizeGtin('01234505'), '0012000003455');
+  assert.equal(normalizeGtin('01234565'), '01234565'); // валидный EAN-8 — как есть
+});
+
+test('normalizeGtin: ITF-14 с коробки разворачивается в код вложенной единицы', () => {
+  // «Вертикальный, необычный» код мультипака (жирные полосы в рамке).
+  // Индикатор 0 = тот же EAN-13; индикатор ≥1 = код вложенной единицы:
+  // индикатор отбрасывается, контрольная пересчитывается (правило GS1).
+  assert.equal(normalizeGtin('05449000000996'), '5449000000996');
+  assert.equal(normalizeGtin('15901234123454'), '5901234123457');
+  assert.equal(normalizeGtin('15901234123455'), null); // битая контрольная GTIN-14
 });
 
 /** Собирает индекс из пар «код → продукт» тем же форматом, что и импортёр. */

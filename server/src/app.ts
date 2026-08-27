@@ -15,7 +15,7 @@ import {
   VisionUnavailableError,
 } from './llm.js';
 import { metrics } from './metrics.js';
-import { BarcodeIndex, validEan } from './nutrition/barcodeIndex.js';
+import { BarcodeIndex, normalizeGtin } from './nutrition/barcodeIndex.js';
 import { Resolver } from './nutrition/resolver.js';
 import {
   createCommunityFoods,
@@ -1247,8 +1247,12 @@ export function createApp(
       return;
     }
     // Контрольная цифра — первый фильтр: искажённое считывание не должно даже
-    // доходить до баз, иначе оно вернёт чужой товар с похожим кодом.
-    if (!validEan(code)) {
+    // доходить до баз, иначе оно вернёт чужой товар с похожим кодом. Заодно
+    // код приводится к каноническому виду: UPC-A/UPC-E получают нулевой
+    // префикс EAN-13, ITF-14 с коробки разворачивается в код вложенной
+    // единицы — раньше всё это молча браковалось как invalid_code.
+    const gtin = normalizeGtin(code);
+    if (!gtin) {
       res.json({ item: null, reason: 'invalid_code' });
       return;
     }
@@ -1256,7 +1260,7 @@ export function createApp(
     // Резолвер уже умеет штрихкоды: и локальный индекс, и живой OFF ловят их по
     // самому виду строки, поэтому отдельного пути к источникам не нужно.
     const found = await resolver
-      .search(code, region)
+      .search(gtin, region)
       .catch(() => ({ candidates: [], sourcesDown: true }));
     let top = found.candidates[0];
 
@@ -1268,7 +1272,7 @@ export function createApp(
     // придёт из таблицы со своим источником, а не из воздуха.
     let identifiedName: string | undefined;
     if (!top && barcodeNames) {
-      identifiedName = barcodeNames.lookup(code)?.name;
+      identifiedName = barcodeNames.lookup(gtin)?.name;
       if (identifiedName) {
         const byName = await resolver.search(identifiedName, region).catch(() => ({ candidates: [], sourcesDown: true }));
         top = byName.candidates[0];
