@@ -196,7 +196,7 @@ test('funnel: the paywall beacon lands in /metrics with its source', async () =>
     assert.equal((await post(base, '/funnel/paywall', APP_TOKEN, { source: 'from-mars' })).status, 200);
 
     const after = await readFunnel();
-    assert.equal(after.paywall_shown, before.paywall_shown + 3);
+    assert.equal(after.paywall_shown, (before.paywall_shown ?? 0) + 3);
     assert.equal(after.paywall_sources.limit, (before.paywall_sources.limit ?? 0) + 1);
     assert.equal(after.paywall_sources.menu, (before.paywall_sources.menu ?? 0) + 1);
     assert.equal(after.paywall_sources.other, (before.paywall_sources.other ?? 0) + 1);

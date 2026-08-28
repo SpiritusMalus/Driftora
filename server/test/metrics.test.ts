@@ -52,7 +52,7 @@ test('recordFailure counts the strain when one is given', () => {
 
   assert.equal(after.failures_by_strain.timeout, (before.failures_by_strain.timeout ?? 0) + 2);
   assert.equal(after.failures_by_strain.truncated, (before.failures_by_strain.truncated ?? 0) + 1);
-  assert.equal(after.failures_by_reason.llm_unavailable, before.failures_by_reason.llm_unavailable + 3);
+  assert.equal(after.failures_by_reason.llm_unavailable, (before.failures_by_reason.llm_unavailable ?? 0) + 3);
   // internal_error carries no strain — the strain table stays untouched by it.
   assert.equal(
     Object.values(after.failures_by_strain).reduce((a, b) => a + b, 0),

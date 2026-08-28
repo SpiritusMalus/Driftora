@@ -475,6 +475,11 @@ export function createApp(
   opts: CreateAppOptions = {},
 ): express.Express {
   const app = express();
+  // Express announces itself in `X-Powered-By` on every response. It buys nothing
+  // and tells a scanner which stack to look up advisories for — the header was
+  // live on food.family-pie.ru until 2026-08-28. Caddy strips it too; this is the
+  // half that survives a proxy misconfiguration.
+  app.disable('x-powered-by');
   // Индекс имён по штрихкодам: нужен там, где у кода НЕТ состава — тогда товар
   // всё равно опознан, и состав доискивается по его названию (см. /food/barcode).
   const barcodeNames = opts.barcodeNames ?? defaultBarcodeNames();
