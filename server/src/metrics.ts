@@ -10,6 +10,8 @@ import type { MealDraft, NutritionSource, Region } from './types.js';
 type FoodRoute = 'text' | 'photo' | 'audio';
 /** The workout-parse family — same LLM, no draft, only a workout list. */
 type WorkoutRoute = 'workout_text' | 'workout_photo' | 'workout_audio';
+/** The monetization funnel's steps, in the order a paying user walks them. */
+type FunnelStep = 'paywall_shown' | 'checkout_started' | 'payments_succeeded';
 
 class MetricsRegistry {
   private readonly startedAt = Date.now();
@@ -183,14 +185,19 @@ class MetricsRegistry {
    * source tag — «пришёл с лимита» и «нашёл сам в Ещё» are different funnels.
    * Aggregate-only like everything here: no ids, no content.
    */
-  private readonly funnel: Record<string, number> = {
+  // Typed by its three steps rather than `Record<string, number>`: through the
+  // wide type, spreading this into the snapshot erased every key, so
+  // `snapshot().funnel.paywall_shown` was a compile error and the funnel could
+  // only be read by string index. That is what had `tsconfig.check.json` (the
+  // config CI runs, and the only one that includes test/) failing on master.
+  private readonly funnel: Record<FunnelStep, number> = {
     paywall_shown: 0,
     checkout_started: 0,
     payments_succeeded: 0,
   };
   private readonly paywallSources: Record<string, number> = {};
 
-  recordFunnel(step: 'paywall_shown' | 'checkout_started' | 'payments_succeeded', source?: string): void {
+  recordFunnel(step: FunnelStep, source?: string): void {
     this.funnel[step] = (this.funnel[step] ?? 0) + 1;
     if (step === 'paywall_shown' && source) {
       this.paywallSources[source] = (this.paywallSources[source] ?? 0) + 1;
