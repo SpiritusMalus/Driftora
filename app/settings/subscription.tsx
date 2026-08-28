@@ -13,6 +13,7 @@ import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { ensureSettings } from '@/lib/core/db/settings';
 import {
   activateLicense,
+  billingOrigin,
   fetchBillingStatus,
   fetchPlans,
   finishCheckout,
@@ -43,6 +44,27 @@ import { type Theme, useTheme } from '@/lib/theme/theme';
 /// Everything here is gated on the cross-border AI consent, like every other
 /// network call in the app (lib/core/services/billing.ts) — a subscription that
 /// raises the AI ceiling is meaningless to someone who has not turned AI on.
+
+/**
+ * Is this the payment flow arriving back at OUR return page?
+ *
+ * The WebView closes and the licence is collected the moment this says yes, so it
+ * has to mean the real page and not merely a URL that mentions it: the previous
+ * `url.includes('/billing/done')` also matched `https://elsewhere.example/?next=/billing/done`.
+ * Origin and path are therefore compared exactly (query and fragment ignored —
+ * ЮKassa appends its own). Falls back to `false` on anything unparseable, and on a
+ * build with no server configured, where there is no origin to be returned to.
+ */
+function isReturnUrl(url: string): boolean {
+  const origin = billingOrigin();
+  if (!origin) return false;
+  try {
+    const parsed = new URL(url);
+    return `${parsed.protocol}//${parsed.host}` === origin && parsed.pathname === RETURN_PATH;
+  } catch {
+    return false;
+  }
+}
 
 type Phase =
   | { kind: 'loading' }
@@ -390,10 +412,34 @@ export default function SubscriptionScreen() {
             <WebView
               source={{ uri: phase.url }}
               startInLoadingState
+              // HTTPS ONLY, and no local files. The card form is a remote page we do
+              // not control, so the WebView must not be able to reach the device:
+              // `file://` origins are what turn a redirect into a read of the app's
+              // own storage. `mixedContentMode: never` keeps a bank's page from
+              // pulling any part of itself over plain http.
+              originWhitelist={['https://*']}
+              allowFileAccess={false}
+              allowFileAccessFromFileURLs={false}
+              allowUniversalAccessFromFileURLs={false}
+              mixedContentMode="never"
+              // No second window can be conjured over the form — a popup is how a
+              // payment page gets impersonated.
+              setSupportMultipleWindows={false}
+              javaScriptCanOpenWindowsAutomatically={false}
+              // Deliberately NOT an allowlist of hosts: 3-D Secure redirects to the
+              // ISSUING BANK, which is a different domain for every card, so pinning
+              // to ЮKassa would decline real payments. What is refused is every
+              // non-https scheme — `javascript:`, `intent:`, `file:`, custom app
+              // links — which is the part that is never a legitimate step of paying.
+              onShouldStartLoadWithRequest={(req) => req.url.startsWith('https://')}
               // The return page is our own and carries nothing the user needs to
               // read — seeing it would just be a flash of a second page.
+              //
+              // Matched by ORIGIN + PATH, not `includes`: as a substring test, any
+              // page anywhere could end the flow early by carrying «/billing/done»
+              // in its query string.
               onNavigationStateChange={(nav) => {
-                if (nav.url.includes(RETURN_PATH)) void settle(phase.paymentId);
+                if (isReturnUrl(nav.url)) void settle(phase.paymentId);
               }}
               renderLoading={() => <ActivityIndicator style={styles.spinner} color={theme.primary} />}
             />
