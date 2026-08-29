@@ -56,6 +56,16 @@ import { useTheme } from '@/lib/theme/theme';
 /// перейду»), and «Разделы» keeps a plain tappable path into the hub. Home
 /// still runs the passive steps/sleep sync so those
 /// signals keep flowing into the insight regardless of which screen shows them.
+/// Один раз ЗА ЗАПУСК приложения, а не за монтирование Главной: сразу после
+/// интро увести в «Настройку тела».
+///
+/// Флаг живёт в модуле намеренно. Внутри компонента (useRef) он сбрасывался
+/// каждый раз, когда Главная пересоздавалась при возврате из мастера, — и
+/// она тут же толкала туда снова. Наружу было не выйти: «Готово» и
+/// аппаратный «Назад» уводили на Главную, а та мгновенно возвращала обратно,
+/// поэтому экран выглядел застывшим. Проверено на эмуляторе.
+let setupNudged = false;
+
 export default function HomeScreen() {
   const { t } = useTranslation();
   const theme = useTheme();
@@ -225,13 +235,6 @@ export default function HomeScreen() {
         );
   }, [db, t]);
 
-  /// Один раз за запуск: сразу после интро увести в «Настройку тела».
-  /// Раньше этим занимался сам онбординг через `setTimeout(push, 0)` — и
-  /// толкал экран в ещё не смонтированный Stack, отчего мастер оказывался в
-  /// стеке без нормального низа и не выпускал наружу. Здесь Главная уже
-  /// смонтирована и честно становится экраном под мастером.
-  const setupNudged = useRef(false);
-
   useFocusEffect(
     useCallback(() => {
       swipeNavLock.current = false;
@@ -240,13 +243,13 @@ export default function HomeScreen() {
   );
 
   useEffect(() => {
-    if (setupNudged.current || settings == null) return;
+    if (setupNudged || settings == null) return;
     const complete =
       (settings.sex === 'male' || settings.sex === 'female') &&
       settings.heightCm >= 100 &&
       settings.heightCm <= 250;
     if (complete || !settings.onboardingSeen) return;
-    setupNudged.current = true;
+    setupNudged = true;
     router.push('/body-setup');
   }, [settings, router]);
 
