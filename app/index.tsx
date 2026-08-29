@@ -1,5 +1,5 @@
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -225,12 +225,30 @@ export default function HomeScreen() {
         );
   }, [db, t]);
 
+  /// Один раз за запуск: сразу после интро увести в «Настройку тела».
+  /// Раньше этим занимался сам онбординг через `setTimeout(push, 0)` — и
+  /// толкал экран в ещё не смонтированный Stack, отчего мастер оказывался в
+  /// стеке без нормального низа и не выпускал наружу. Здесь Главная уже
+  /// смонтирована и честно становится экраном под мастером.
+  const setupNudged = useRef(false);
+
   useFocusEffect(
     useCallback(() => {
       swipeNavLock.current = false;
       void reload();
     }, [reload]),
   );
+
+  useEffect(() => {
+    if (setupNudged.current || settings == null) return;
+    const complete =
+      (settings.sex === 'male' || settings.sex === 'female') &&
+      settings.heightCm >= 100 &&
+      settings.heightCm <= 250;
+    if (complete || !settings.onboardingSeen) return;
+    setupNudged.current = true;
+    router.push('/body-setup');
+  }, [settings, router]);
 
   // Unlocking the phone hours later must re-read the device steps: the budget
   // and the steps row otherwise stay at the morning count until some in-app

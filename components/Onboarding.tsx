@@ -1,5 +1,4 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -60,13 +59,15 @@ export function Onboarding({ children }: { children: ReactNode }) {
       // STRAIGHT into the body-setup wizard — the «а что дальше?» moment — while
       // a returning profile lands on Home untouched. The push is deferred a tick
       // so the Stack below has mounted by the time we navigate.
-      let needsSetup = false;
-      if (db) {
-        const s = await updateSettings(db, { onboardingSeen: true });
-        needsSetup = !((s.sex === 'male' || s.sex === 'female') && s.heightCm >= 100 && s.heightCm <= 250);
-      }
+      if (db) await updateSettings(db, { onboardingSeen: true });
+      // ПУШ ОТСЮДА УБРАН. Он уходил в `setTimeout(…, 0)` — то есть в тот момент,
+      // когда Stack под этим гейтом только монтируется, — и стек получался
+      // покорёженным: под мастером оказывалась случайная страница, «Готово»
+      // молчало (ни back, ни replace, ни dismissTo не срабатывали), а
+      // аппаратный «Назад» выбрасывал из приложения. Проверено на устройстве.
+      // Теперь в мастер уводит сама Главная, когда она уже смонтирована и
+      // может быть нормальным низом стека — см. app/index.tsx.
       setShow(false);
-      if (needsSetup) setTimeout(() => router.push('/body-setup'), 0);
     } finally {
       setFinishing(false);
     }
