@@ -122,13 +122,19 @@ export function Onboarding({ children }: { children: ReactNode }) {
           disabled={finishing}
           style={styles.cta}
         />
-        {!isLast ? (
-          <Pressable onPress={() => void finish()} hitSlop={8} accessibilityRole="button">
-            <Text style={[styles.skip, { color: theme.subtle }, theme.font.body]}>
-              {t('onboarding.skip')}
-            </Text>
-          </Pressable>
-        ) : null}
+        {/* The row keeps its height on the last slide, where «Пропустить» is gone.
+            Without it the primary button slides DOWN by exactly that height at the
+            moment the reader is tapping it, so a second tap — the natural rhythm of
+            «Дальше, дальше…» — lands on empty background instead of «Начать». */}
+        <View style={styles.skipRow}>
+          {!isLast ? (
+            <Pressable onPress={() => void finish()} hitSlop={8} accessibilityRole="button">
+              <Text style={[styles.skip, { color: theme.subtle }, theme.font.body]}>
+                {t('onboarding.skip')}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
       </View>
     </View>
   );
@@ -145,4 +151,6 @@ const styles = StyleSheet.create({
   dots: { flexDirection: 'row', gap: 8 },
   dot: { width: 8, height: 8, borderRadius: 4 },
   skip: { fontSize: 14, paddingVertical: 4 },
+  // Matches the rendered height of `skip` so the layout does not move.
+  skipRow: { minHeight: 26, alignItems: 'center', justifyContent: 'center' },
 });

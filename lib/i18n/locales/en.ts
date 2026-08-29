@@ -1435,6 +1435,7 @@ export const en = {
     storage: 'Storage',
     storageEncrypted: 'Encrypted',
     storageUnencrypted: 'Not encrypted',
+    storageEncryptedNote: 'Your entries live in an encrypted database on this phone.',
     storageUnencryptedNote: 'Encrypted storage didn’t start on this device, so data sits in a plain database for now. The installed app should read “Encrypted” here; this usually happens only in a test run.',
     save: 'Save',
     saving: 'Saving…',

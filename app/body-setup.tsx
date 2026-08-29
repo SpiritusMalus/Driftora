@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -19,6 +19,7 @@ import {
   GOAL_MODES,
   bmiValue,
   restingPlan,
+  validBodyFatPct,
   type DeficitTempo,
   type GoalMode,
   type MacroPlan,
@@ -135,6 +136,16 @@ export default function BodySetupScreen() {
   // result, instead of walking the remaining questions.
   const editMode = editStep != null && step !== 'result';
 
+  /// Leaving the wizard. On a FRESH INSTALL the intro pushes this screen while
+  /// Home is still mounting, so it can end up the only route in the stack — and
+  /// there `router.back()` is a no-op: the finished wizard just sits there, its
+  /// «Готово» apparently dead, and the hardware Back drops out of the app. Fall
+  /// back to Home so the last step of setup always leads somewhere.
+  const leaveSetup = useCallback(() => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/');
+  }, []);
+
   const yearNum = Math.round(toNumber(birthYearText));
   const heightNum = toNumber(heightText);
   const weightNum = toNumber(weightText);
@@ -215,7 +226,7 @@ export default function BodySetupScreen() {
             ...(waist > 0 ? { waistCm: waist } : null),
           });
           if (weightValid(weightNum)) await upsertWeight(db, new Date(), weightNum);
-          router.back();
+          leaveSetup();
         } finally {
           setSaving(false);
         }
@@ -371,7 +382,7 @@ export default function BodySetupScreen() {
           {waistText.trim() !== '' && !stepOk ? <Invalid text={t('bodySetup.waist.invalid')} theme={theme} /> : null}
           {/* Only meaningful when no measured % was given — a real % always wins,
               so say so instead of letting the user think both are used. */}
-          {bodyFatValid(fatNum) ? (
+          {validBodyFatPct(fatNum) ? (
             <Text style={[styles.skip, { color: theme.subtle }, theme.font.body]}>{t('bodySetup.waist.haveFat')}</Text>
           ) : null}
           <Pressable
@@ -569,7 +580,7 @@ export default function BodySetupScreen() {
             <Ionicons name="chevron-forward" size={14} color={theme.primary} />
           </Pressable>
           <Text style={[styles.editHint, { color: theme.subtle }, theme.font.body]}>{t('bodySetup.result.edit')}</Text>
-          <PrimaryButton label={t('bodySetup.result.done')} onPress={() => router.back()} style={styles.cta} />
+          <PrimaryButton label={t('bodySetup.result.done')} onPress={leaveSetup} style={styles.cta} />
         </>
       ) : null}
 
