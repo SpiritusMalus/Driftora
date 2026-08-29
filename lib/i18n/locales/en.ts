@@ -396,6 +396,9 @@ export const en = {
     foodSection: 'Food',
     foodEditHint: 'Tap an entry to edit or delete it',
     macrosLine: 'P {{prot}} · F {{fat}} · C {{carb}}',
+    balanceUnder: 'of {{target}} kcal — {{diff}} under',
+    balanceOver: 'of {{target}} kcal — {{diff}} over',
+    balanceExact: 'of {{target}} kcal — right on target',
     // That day's workouts — they moved its budget, yet history never showed them.
     workoutSection: 'Workouts',
     moodSection: 'Mood',
@@ -883,6 +886,8 @@ export const en = {
     todayFew: 'steps today',
     todayMany: 'steps today',
     // Screen is open but there's no automatic or manual number for today yet.
+    onDay: 'steps · {{day}}',
+    noneOnDay: 'No steps for this day — type them in.',
     noneToday: 'No steps logged for today yet — connect automatic counting or enter them by hand.',
     // Same, but auto counting IS already connected — the source writes lazily.
     noneTodayConnected: 'No steps recorded for today yet — the source delivers them with a delay, the number will appear on its own.',

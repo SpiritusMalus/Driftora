@@ -12,6 +12,12 @@ import { listEntriesForDay } from '@/lib/core/db/food';
 import { listMoodsForDay } from '@/lib/core/db/mood';
 import type { FoodEntry, MoodRow, WorkoutRow } from '@/lib/core/db/schema';
 import { ensureSettings } from '@/lib/core/db/settings';
+import {
+  dayBudgetKcal,
+  restingPlan,
+  stepsEarnedKcal,
+  stepsOutsideWorkouts,
+} from '@/lib/core/insights/bodyMetrics';
 import { getStepsRow } from '@/lib/core/db/steps';
 import { getWeightForDay } from '@/lib/core/db/weight';
 import { listWorkoutsForDay } from '@/lib/core/db/workouts';
@@ -45,6 +51,10 @@ export default function HistoryDayScreen() {
   const [weightKg, setWeightKg] = useState<number | null>(null);
   const [steps, setSteps] = useState<number | null>(null);
   const [hideCalories, setHideCalories] = useState(false);
+  /// Норма ЭТОГО дня, собранная той же формулой, что и живой бюджет на «Еде»:
+  /// resting-база + заработанное движением. null — когда цели нет, приложение
+  /// на паузе или профиля не хватает: выдумывать норму нельзя.
+  const [dayTarget, setDayTarget] = useState<number | null>(null);
   const [loaded, setLoaded] = useState(false);
 
   useFocusEffect(
@@ -75,6 +85,39 @@ export default function HistoryDayScreen() {
         setWorkoutRows(dayWorkouts);
         setWeightKg(weightRow ? weightRow.weightKg : null);
         setSteps(stepsRow != null ? Number(stepsRow.steps) : null);
+        // «Сколько я недоел или переел» — единственный вопрос, на который день
+        // не отвечал: съеденное показывалось без нормы, с которой его сравнить.
+        // Норму собираем ровно как «Еда»: resting-база плюс заработанное шагами
+        // и тренировками — иначе два экрана называли бы один день по-разному.
+        const goalActive = settings.targetsSetAt != null && !settings.paused;
+        const kg = weightRow?.weightKg ?? 0;
+        const base = goalActive
+          ? restingPlan(
+              {
+                sex: settings.sex,
+                birthYear: settings.birthYear,
+                heightCm: settings.heightCm,
+                activityLevel: settings.activityLevel,
+                bodyFatPct: settings.bodyFatPct,
+                waistCm: settings.waistCm,
+                bmrFactor: settings.bmrFactor,
+              },
+              kg,
+              settings.goalMode,
+              dayDate,
+              settings.goalWeightKg,
+              settings.deficitTempo,
+            )
+          : null;
+        if (base != null && kg > 0) {
+          const raw = stepsRow != null ? Number(stepsRow.steps) : 0;
+          const inWorkouts = stepsRow != null ? Number(stepsRow.workoutSteps ?? 0) : 0;
+          const stepsAdd = stepsEarnedKcal(stepsOutsideWorkouts(raw, inWorkouts), kg);
+          const workoutAdd = dayWorkouts.reduce((sum, w) => sum + (w.kcal ?? 0), 0);
+          setDayTarget(dayBudgetKcal(base.baseKcal, base.minDayKcal, stepsAdd + workoutAdd));
+        } else {
+          setDayTarget(null);
+        }
         setLoaded(true);
       })();
       return () => {
@@ -154,6 +197,22 @@ export default function HistoryDayScreen() {
   if (steps != null) bodyParts.push(`${t('history.stepsRow')} ${formatSteps(steps)}`);
   const bodyLine = bodyParts.length > 0 ? bodyParts.join(' · ') : null;
 
+  // Недобор/перебор за день. Округляем ОБА числа перед вычитанием, чтобы
+  // подпись сходилась с показанным съеденным: иначе 1849.6 против 2100 даёт
+  // «недобор 250» рядом с числом «1850».
+  const eatenRounded = Math.round(totals.kcal);
+  const balanceLine =
+    hideCalories || dayTarget == null
+      ? null
+      : (() => {
+          const target = Math.round(dayTarget);
+          const diff = eatenRounded - target;
+          if (diff === 0) return t('history.balanceExact', { target });
+          return diff < 0
+            ? t('history.balanceUnder', { target, diff: -diff })
+            : t('history.balanceOver', { target, diff });
+        })();
+
   const hasFood = entries.length > 0;
   const emptyDay =
     loaded &&
@@ -195,6 +254,12 @@ export default function HistoryDayScreen() {
                       fat: Math.round(totals.fat),
                       carb: Math.round(totals.carb),
                     })}
+              </Text>
+              {/* Норма этого дня и расхождение с ней. Прячется под «скрыть
+                  калории» — там весь экран живёт без цифр ккал — и когда нормы
+                  нет: сравнивать не с чем, а выдуманная норма хуже её отсутствия. */}
+              <Text style={[styles.heroSub, { color: theme.subtle }, theme.font.body]}>
+                {balanceLine ?? ''}
               </Text>
             </View>
           ) : null}
