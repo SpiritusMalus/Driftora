@@ -142,8 +142,17 @@ export default function BodySetupScreen() {
   /// «Готово» apparently dead, and the hardware Back drops out of the app. Fall
   /// back to Home so the last step of setup always leads somewhere.
   const leaveSetup = useCallback(() => {
-    if (router.canGoBack()) router.back();
-    else router.replace('/');
+    // `dismissTo`, НЕ `back`: на первом запуске интро толкает мастер в тот
+    // момент, когда Stack ещё монтируется, и стек получается такой, где
+    // canGoBack() отвечает «да», а back() не делает НИЧЕГО — кнопка «Готово»
+    // выглядит мёртвой (проверено на устройстве). dismissTo просит навигатор
+    // довести до Главной, чем бы ни был занят стек выше. Главная нигде не
+    // push-ится, поэтому replace как запасной путь дубликата не создаёт.
+    try {
+      router.dismissTo('/');
+    } catch {
+      router.replace('/');
+    }
   }, []);
 
   const yearNum = Math.round(toNumber(birthYearText));
