@@ -1472,7 +1472,17 @@ export function createApp(
     // no id, which then reads every package fresh (see `labelCache`).
     const installId = installIdOf(req);
     await respondWithDraft(res, 'photo', region, async () => {
-      const items = await identifyFromPhoto(base64, mimeType, region);
+      const { items, menuText } = await identifyFromPhoto(base64, mimeType, region);
+      // ФОТО МЕНЮ, А НЕ ТАРЕЛКИ. В кафе снимают строку меню, чтобы записать
+      // заказанное, — еды перед камерой ещё нет. Раньше это был честный, но
+      // бесполезный «не распознали»: промпт запрещает выдумывать невидимое.
+      // Печатное описание блюда разбираем ТЕМ ЖЕ текстовым путём, что и
+      // набранное руками, — состав в меню обычно перечислен подробнее, чем
+      // человек стал бы печатать сам.
+      if (items.length === 0 && menuText) {
+        metrics.recordStage('menu', 0);
+        return await identifyFromText(menuText, region);
+      }
       // SECOND PASS, only for wrappers the first pass flagged: read the printed
       // panel. Exact numbers beat any database average — the tester's turkey ham
       // prints 100 kcal / 16 / 2 / 4 while the DB rows guessed 126 and 82. Runs
