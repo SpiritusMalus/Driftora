@@ -242,16 +242,22 @@ export default function HomeScreen() {
     }, [reload]),
   );
 
-  useEffect(() => {
-    if (setupNudged || settings == null) return;
-    const complete =
-      (settings.sex === 'male' || settings.sex === 'female') &&
-      settings.heightCm >= 100 &&
-      settings.heightCm <= 250;
-    if (complete || !settings.onboardingSeen) return;
-    setupNudged = true;
-    router.push('/body-setup');
-  }, [settings, router]);
+  // Через useFocusEffect, а не useEffect: он срабатывает, когда Главная уже
+  // ПОЛУЧИЛА ФОКУС, то есть навигатор о ней точно знает. Обычный эффект успевал
+  // отработать в том же коммите, что и первый рендер, и push уходил в ещё не
+  // зарегистрированный маршрут — стек снова собирался без Главной внизу.
+  useFocusEffect(
+    useCallback(() => {
+      if (setupNudged || settings == null) return;
+      const complete =
+        (settings.sex === 'male' || settings.sex === 'female') &&
+        settings.heightCm >= 100 &&
+        settings.heightCm <= 250;
+      if (complete || !settings.onboardingSeen) return;
+      setupNudged = true;
+      router.push('/body-setup');
+    }, [settings, router]),
+  );
 
   // Unlocking the phone hours later must re-read the device steps: the budget
   // and the steps row otherwise stay at the morning count until some in-app
