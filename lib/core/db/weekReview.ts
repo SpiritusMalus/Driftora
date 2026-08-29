@@ -5,6 +5,13 @@ import { logDaysInRange, startOfWeek, weeklyStreak } from '../insights/engagemen
 import { selfInitiatedLogDays } from './activity';
 import { fiberOfMicros } from './food';
 import { ensureSettings } from './settings';
+import { latestWeight } from './weight';
+import {
+  dayBudgetKcal,
+  restingPlan,
+  stepsEarnedKcal,
+  stepsOutsideWorkouts,
+} from '../insights/bodyMetrics';
 import { diaryEntries, foodEntries, stepsDays, wins, workouts } from './schema';
 import { dayKey } from './steps';
 
@@ -25,6 +32,11 @@ export interface WeekStats {
   /// compared weeks the same way — honest enough for self-vs-past-self.
   fiberAvg: number;
   kcalAvg: number;
+  /// Средний недобор/перебор к норме дня, ккал: минус — недоел, плюс — переел.
+  /// null, когда цели нет, приложение на паузе или профиля не хватает: без
+  /// нормы сравнивать не с чем, а придуманная норма хуже её отсутствия.
+  /// Считается по тем же дням, что и `kcalAvg` — по дням с едой.
+  kcalBalanceAvg: number | null;
   foodLogDays: number;
   diaryCount: number;
   winsCount: number;
@@ -61,9 +73,13 @@ async function statsForWindow(db: AnyDb, start: Date, end: Date): Promise<WeekSt
 
   // 'YYYY-MM-DD' sorts lexically, so text range filters on the PK work.
   const steps = (await db
-    .select({ steps: stepsDays.steps })
+    .select({ date: stepsDays.date, steps: stepsDays.steps, workoutSteps: stepsDays.workoutSteps })
     .from(stepsDays)
-    .where(and(gte(stepsDays.date, startKey), lt(stepsDays.date, endKey)))) as { steps: number }[];
+    .where(and(gte(stepsDays.date, startKey), lt(stepsDays.date, endKey)))) as {
+    date: string;
+    steps: number;
+    workoutSteps: number | null;
+  }[];
   const stepsDayCount = steps.length;
   const stepsAvg = stepsDayCount
     ? Math.round(steps.reduce((a, r) => a + Number(r.steps), 0) / stepsDayCount)
@@ -85,11 +101,14 @@ async function statsForWindow(db: AnyDb, start: Date, end: Date): Promise<WeekSt
     micros: string | null;
   }[];
   const foodDays = new Set<string>();
+  const kcalByDay = new Map<string, number>();
   let proteinSum = 0;
   let fiberSum = 0;
   let kcalSum = 0;
   for (const f of foods) {
-    foodDays.add(dayKey(f.ts));
+    const key = dayKey(f.ts);
+    foodDays.add(key);
+    kcalByDay.set(key, (kcalByDay.get(key) ?? 0) + f.kcal);
     proteinSum += f.proteinG;
     fiberSum += fiberOfMicros(f.micros) ?? 0;
     kcalSum += f.kcal;
@@ -99,19 +118,69 @@ async function statsForWindow(db: AnyDb, start: Date, end: Date): Promise<WeekSt
   const fiberAvg = foodLogDays ? Math.round(fiberSum / foodLogDays) : 0;
   const kcalAvg = foodLogDays ? Math.round(kcalSum / foodLogDays) : 0;
 
+
   // Ranged on the stored day key, not `ts`: that column is what every other
   // workout surface groups by, and for a device import it holds the SESSION
   // START day — so a session that crosses midnight lands in exactly one week.
   const workoutRows = (await db
-    .select({ date: workouts.date, minutes: workouts.minutes })
+    .select({ date: workouts.date, minutes: workouts.minutes, kcal: workouts.kcal })
     .from(workouts)
     .where(and(gte(workouts.date, startKey), lt(workouts.date, endKey)))) as {
     date: string;
     minutes: number;
+    kcal: number | null;
   }[];
   const workoutDays = new Set(workoutRows.map((w) => w.date));
   const workoutMinutes = workoutRows.reduce((a, w) => a + Number(w.minutes), 0);
   const workoutMinutesAvg = workoutDays.size ? Math.round(workoutMinutes / workoutDays.size) : 0;
+  // СРЕДНИЙ НЕДОБОР/ПЕРЕБОР. Норму каждого дня собираем той же формулой, что
+  // «Еда» и экран дня: resting-база плюс заработанное шагами и тренировками
+  // ИМЕННО ТОГО дня — недельное среднее по шагам сгладило бы как раз то, ради
+  // чего это считается (день без движения и день с прогулкой имеют разные
+  // нормы). Сравниваем только по дням с едой: день без записей — это не
+  // «съел ноль», это отсутствие данных.
+  const settingsForPlan = await ensureSettings(db);
+  const planActive = settingsForPlan.targetsSetAt != null && !settingsForPlan.paused;
+  const weightRow = planActive ? await latestWeight(db) : null;
+  const kg = weightRow?.weightKg ?? 0;
+  const plan =
+    planActive && kg > 0
+      ? restingPlan(
+          {
+            sex: settingsForPlan.sex,
+            birthYear: settingsForPlan.birthYear,
+            heightCm: settingsForPlan.heightCm,
+            activityLevel: settingsForPlan.activityLevel,
+            bodyFatPct: settingsForPlan.bodyFatPct,
+            waistCm: settingsForPlan.waistCm,
+            bmrFactor: settingsForPlan.bmrFactor,
+          },
+          kg,
+          settingsForPlan.goalMode,
+          start,
+          settingsForPlan.goalWeightKg,
+          settingsForPlan.deficitTempo,
+        )
+      : null;
+  let kcalBalanceAvg: number | null = null;
+  if (plan != null && foodLogDays > 0) {
+    const stepsByDay = new Map(steps.map((r) => [r.date, r]));
+    const workoutKcalByDay = new Map<string, number>();
+    for (const w of workoutRows) {
+      workoutKcalByDay.set(w.date, (workoutKcalByDay.get(w.date) ?? 0) + (w.kcal ?? 0));
+    }
+    let diffSum = 0;
+    for (const day of foodDays) {
+      const row = stepsByDay.get(day);
+      const raw = row ? Number(row.steps) : 0;
+      const inWorkouts = row ? Number(row.workoutSteps ?? 0) : 0;
+      const earned =
+        stepsEarnedKcal(stepsOutsideWorkouts(raw, inWorkouts), kg) + (workoutKcalByDay.get(day) ?? 0);
+      const target = dayBudgetKcal(plan.baseKcal, plan.minDayKcal, earned);
+      diffSum += (kcalByDay.get(day) ?? 0) - target;
+    }
+    kcalBalanceAvg = Math.round(diffSum / foodLogDays);
+  }
 
   const [diaryRows, winsRows] = await Promise.all([
     db.select({ c: count() }).from(diaryEntries).where(and(gte(diaryEntries.ts, start), lt(diaryEntries.ts, end))),
@@ -124,6 +193,7 @@ async function statsForWindow(db: AnyDb, start: Date, end: Date): Promise<WeekSt
     proteinAvg,
     fiberAvg,
     kcalAvg,
+    kcalBalanceAvg,
     foodLogDays,
     diaryCount: Number(diaryRows[0]?.c ?? 0),
     winsCount: Number(winsRows[0]?.c ?? 0),

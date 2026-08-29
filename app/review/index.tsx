@@ -111,7 +111,23 @@ export default function ReviewScreen() {
     { label: t('review.metrics.fiber'), value: a.fiberAvg, delta: a.fiberAvg - b.fiberAvg, unit: t('units.g') },
     ...(hideCalories
       ? []
-      : [{ label: t('review.metrics.kcal'), value: a.kcalAvg, delta: a.kcalAvg - b.kcalAvg, unit: t('units.kcal') }]),
+      : [
+          { label: t('review.metrics.kcal'), value: a.kcalAvg, delta: a.kcalAvg - b.kcalAvg, unit: t('units.kcal') },
+          // «Недоел или переел» — то, чего в статистике не было совсем: средние
+          // ккал показывались без нормы, с которой их сравнить. Строка есть
+          // только когда норму МОЖНО посчитать (есть цель, профиль и вес).
+          ...(a.kcalBalanceAvg == null
+            ? []
+            : [
+                {
+                  label: t('review.metrics.balance'),
+                  value: a.kcalBalanceAvg,
+                  delta:
+                    b.kcalBalanceAvg == null ? 0 : a.kcalBalanceAvg - b.kcalBalanceAvg,
+                  unit: t('units.kcal'),
+                },
+              ]),
+        ]),
   ];
   const totalMetrics: Metric[] = [
     // Kept a plain count, never the burned kcal: the weekly review is the one

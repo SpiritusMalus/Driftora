@@ -5,7 +5,10 @@ import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { saveDiaryEntry, type DiaryDraft } from '@/lib/core/db/diary';
 import { applySchema } from '@/lib/core/db/init';
 import * as schema from '@/lib/core/db/schema';
+import { updateSettings } from '@/lib/core/db/settings';
 import { upsertSteps } from '@/lib/core/db/steps';
+import { upsertWeight } from '@/lib/core/db/weight';
+import { dayBudgetKcal, restingPlan, stepsEarnedKcal } from '@/lib/core/insights/bodyMetrics';
 import { weekReview } from '@/lib/core/db/weekReview';
 
 // 2026-06-17 is a Wednesday → this week is 06-15…06-21, last week 06-08…06-14.
@@ -91,6 +94,9 @@ describe('weekReview', () => {
       // Fixtures store no micros blob → no fiber data, honestly zero.
       fiberAvg: 0,
       kcalAvg: 600,
+      // Фикстуры не задают цель и профиль — норму считать не из чего,
+      // поэтому недобор/перебор честно отсутствует.
+      kcalBalanceAvg: null,
       foodLogDays: 2,
       diaryCount: 1,
       winsCount: 1,
@@ -129,6 +135,9 @@ describe('weekReview', () => {
       proteinAvg: 0,
       fiberAvg: 0,
       kcalAvg: 0,
+      // Фикстуры не задают цель и профиль — норму считать не из чего,
+      // поэтому недобор/перебор честно отсутствует.
+      kcalBalanceAvg: null,
       foodLogDays: 0,
       diaryCount: 0,
       winsCount: 0,
@@ -228,4 +237,79 @@ describe('weekReview', () => {
     expect(r.northStarThisWeek).toBe(1);
     sqlite.close();
   });
+
+  // «Сколько я недоел или переел» — то, чего в статистике не было: средние ккал
+  // стояли без нормы. Норма берётся ПОДНЕВНО (у дня с прогулкой она выше), и
+  // сравнение идёт только по дням с едой.
+  it('averages the under/over against each day\'s own budget', async () => {
+    const sqlite = new BetterSqlite3(':memory:');
+    const db = drizzle(sqlite, { schema });
+    await applySchema((s) => sqlite.exec(s));
+
+    await updateSettings(db, {
+      sex: 'male',
+      birthYear: 1990,
+      heightCm: 175,
+      goalMode: 'lose',
+      deficitTempo: 'standard',
+      // Колонка — обычный integer, а не timestamp: пишем epoch-мс, как приложение.
+      targetsSetAt: new Date(2026, 5, 1).getTime(),
+    });
+    await upsertWeight(db, new Date(2026, 5, 15), 80);
+
+    // Два дня с едой и РАЗНЫМ движением: если бы норма усреднялась по неделе,
+    // разница между этими днями пропала бы — а она и есть предмет замера.
+    await upsertSteps(db, '2026-06-15', 3000); // ровно базовый порог: ноль сверх покоя
+    await upsertSteps(db, '2026-06-16', 13000);
+    const food = (day: number, kcal: number) =>
+      db.insert(schema.foodEntries).values({
+        ts: new Date(2026, 5, day, 12),
+        rawText: 'meal',
+        source: 'text',
+        kcal,
+        proteinG: 0,
+        fatG: 0,
+        carbG: 0,
+        confirmed: true,
+      });
+    await food(15, 1500);
+    await food(16, 2600);
+
+    const r = await weekReview(db, today);
+
+    const plan = restingPlan(
+      { sex: 'male', birthYear: 1990, heightCm: 175, activityLevel: 'sedentary', bodyFatPct: 0, waistCm: 0, bmrFactor: 0 },
+      80,
+      'lose',
+      new Date(2026, 5, 15),
+      0,
+      'standard',
+    );
+    expect(plan).not.toBeNull();
+    const target15 = dayBudgetKcal(plan!.baseKcal, plan!.minDayKcal, stepsEarnedKcal(3000, 80));
+    const target16 = dayBudgetKcal(plan!.baseKcal, plan!.minDayKcal, stepsEarnedKcal(13000, 80));
+    expect(r.thisWeek.kcalBalanceAvg).toBe(
+      Math.round((1500 - target15 + (2600 - target16)) / 2),
+    );
+  });
+
+  // Без цели норму считать не из чего — молчим, а не показываем ноль.
+  it('leaves the under/over empty when no goal is set', async () => {
+    const sqlite = new BetterSqlite3(':memory:');
+    const db = drizzle(sqlite, { schema });
+    await applySchema((s) => sqlite.exec(s));
+    await db.insert(schema.foodEntries).values({
+      ts: new Date(2026, 5, 15, 12),
+      rawText: 'meal',
+      source: 'text',
+      kcal: 1500,
+      proteinG: 0,
+      fatG: 0,
+      carbG: 0,
+      confirmed: true,
+    });
+    const r = await weekReview(db, today);
+    expect(r.thisWeek.kcalBalanceAvg).toBeNull();
+  });
+
 });

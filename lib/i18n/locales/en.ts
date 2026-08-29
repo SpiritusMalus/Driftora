@@ -1527,6 +1527,7 @@ export const en = {
       protein: 'Protein',
       fiber: 'Fiber',
       kcal: 'Calories',
+      balance: 'Under / over',
       // A session count, never the burned kcal: no calorie pressure on this screen.
       workouts: 'Workouts',
       foodDays: 'Days with food',
