@@ -169,8 +169,10 @@ export default function DiaryNewScreen() {
   useEffect(() => {
     if (!savedOk || leaving.current) return;
     leaving.current = true;
+    // Home, not '/diary': that route is pushed elsewhere, and replacing onto a
+    // pushed route stacks a duplicate — the shape the back-stack test guards.
     if (router.canGoBack()) router.back();
-    else router.replace('/diary');
+    else router.replace('/');
   }, [savedOk, router]);
 
   async function onSave() {
