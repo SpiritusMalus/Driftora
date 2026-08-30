@@ -1035,6 +1035,7 @@ export const en = {
       identifiedSub: 'We know the product, but nobody has recorded its composition. Enter the macros if you know them — or keep scanning.',
       // Nobody knows this code — the one real dead end. We never ask for extra
       // photos: that would be our job handed back to the user.
+      shootLabel: 'Shoot the label',
       missing: 'No database knows this code. Keep scanning — or type the product in words.',
       unavailable: 'The database didn’t answer, so the code couldn’t be checked. That doesn’t mean the product is unknown.',
     },

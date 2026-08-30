@@ -1508,6 +1508,13 @@ export default function FoodLogScreen() {
           onCode={(code) => void onBarcode(code)}
           busy={barcodeBusy}
           outcome={barcodeOutcome}
+          onShootLabel={() => {
+            // Код никому не известен — уводим туда, где числа ещё можно взять
+            // точно: на съёмку напечатанной панели. Один тап, без объяснений
+            // «переключитесь во вкладку Фото».
+            setBarcodeOutcome(null);
+            setInputMode('photo');
+          }}
           onDismiss={() => setBarcodeOutcome(null)}
         />
       ) : null}

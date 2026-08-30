@@ -97,6 +97,8 @@ function stems(phrase: string): string[] {
 
 export class OffLocalProvider implements NutritionProvider {
   readonly name = 'openfoodfacts';
+  /** Штрихкод — это её родной ключ: товар ищется по коду напрямую. */
+  readonly acceptsBarcode = true as const;
   readonly regions = ['RU', 'US'] as const;
 
   private readonly entries: Entry[] = [];

@@ -85,6 +85,7 @@ export function BarcodeScanner({
   busy,
   outcome,
   onDismiss,
+  onShootLabel,
 }: {
   /** Найденный код (уже отфильтрованный по рамке). */
   onCode: (code: string) => void;
@@ -94,6 +95,8 @@ export function BarcodeScanner({
   outcome: BarcodeOutcome | null;
   /** Убрать карточку и снова целиться. */
   onDismiss: () => void;
+  /** Перейти к съёмке упаковки: код неизвестен, но состав на пачке напечатан. */
+  onShootLabel: () => void;
 }) {
   const { t } = useTranslation();
   const theme = useTheme();
@@ -251,6 +254,23 @@ export function BarcodeScanner({
                 </Text>
               ) : null}
               <View style={styles.resultActions}>
+                {/* Кода нет ни в одной базе — но состав почти всегда НАПЕЧАТАН
+                    на пачке, а панель приложение читает точнее любой таблицы.
+                    Это не «доделайте за нас»: ответить по коду не может никто,
+                    и снимок этикетки — единственный путь к точным числам. */}
+                {outcome.kind === 'missing' || outcome.kind === 'identified' ? (
+                  <Pressable
+                    onPress={onShootLabel}
+                    style={({ pressed }) => [
+                      styles.resultBtn,
+                      { backgroundColor: theme.primary, opacity: pressed ? 0.7 : 1 },
+                    ]}
+                  >
+                    <Text style={[styles.resultBtnText, { color: theme.onPrimary }, theme.font.bodySemiBold]}>
+                      {t('food.barcode.shootLabel')}
+                    </Text>
+                  </Pressable>
+                ) : null}
                 <Pressable
                   onPress={onDismiss}
                   style={({ pressed }) => [

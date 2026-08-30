@@ -103,6 +103,8 @@ interface OffSearchProduct {
  */
 export class OpenFoodFactsProvider implements NutritionProvider {
   readonly name = 'openfoodfacts';
+  /** Штрихкод — это её родной ключ: товар ищется по коду напрямую. */
+  readonly acceptsBarcode = true as const;
   readonly regions = ['RU', 'US'] as const;
 
   async search(name: string, region: Region): Promise<ProviderResult | null> {
