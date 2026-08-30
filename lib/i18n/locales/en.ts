@@ -396,6 +396,9 @@ export const en = {
     foodSection: 'Food',
     foodEditHint: 'Tap an entry to edit or delete it',
     macrosLine: 'P {{prot}} · F {{fat}} · C {{carb}}',
+    balanceUnder: 'of {{target}} kcal — {{diff}} under',
+    balanceOver: 'of {{target}} kcal — {{diff}} over',
+    balanceExact: 'of {{target}} kcal — right on target',
     // That day's workouts — they moved its budget, yet history never showed them.
     workoutSection: 'Workouts',
     moodSection: 'Mood',
@@ -883,6 +886,8 @@ export const en = {
     todayFew: 'steps today',
     todayMany: 'steps today',
     // Screen is open but there's no automatic or manual number for today yet.
+    onDay: 'steps · {{day}}',
+    noneOnDay: 'No steps for this day — type them in.',
     noneToday: 'No steps logged for today yet — connect automatic counting or enter them by hand.',
     // Same, but auto counting IS already connected — the source writes lazily.
     noneTodayConnected: 'No steps recorded for today yet — the source delivers them with a delay, the number will appear on its own.',
@@ -1030,6 +1035,7 @@ export const en = {
       identifiedSub: 'We know the product, but nobody has recorded its composition. Enter the macros if you know them — or keep scanning.',
       // Nobody knows this code — the one real dead end. We never ask for extra
       // photos: that would be our job handed back to the user.
+      shootLabel: 'Shoot the label',
       missing: 'No database knows this code. Keep scanning — or type the product in words.',
       unavailable: 'The database didn’t answer, so the code couldn’t be checked. That doesn’t mean the product is unknown.',
     },
@@ -1435,6 +1441,7 @@ export const en = {
     storage: 'Storage',
     storageEncrypted: 'Encrypted',
     storageUnencrypted: 'Not encrypted',
+    storageEncryptedNote: 'Your entries live in an encrypted database on this phone.',
     storageUnencryptedNote: 'Encrypted storage didn’t start on this device, so data sits in a plain database for now. The installed app should read “Encrypted” here; this usually happens only in a test run.',
     save: 'Save',
     saving: 'Saving…',
@@ -1521,6 +1528,7 @@ export const en = {
       protein: 'Protein',
       fiber: 'Fiber',
       kcal: 'Calories',
+      balance: 'Under / over',
       // A session count, never the burned kcal: no calorie pressure on this screen.
       workouts: 'Workouts',
       foodDays: 'Days with food',

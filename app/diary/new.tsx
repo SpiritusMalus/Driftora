@@ -1,6 +1,6 @@
 import { usePreventRemove } from '@react-navigation/native';
 import { useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -157,8 +157,22 @@ export default function DiaryNewScreen() {
       },
     ]);
   });
+  // ONE exit, ever. `useRouter()` may hand back a fresh object on a re-render,
+  // and `router` sits in this effect's deps — so the `finally { setSaving(false) }`
+  // right after `setSavedOk(true)` re-ran it and popped a SECOND screen. Four
+  // screens deep (Главная → Разделы → Дневник → Новая запись) that unwound the
+  // whole stack and dropped the writer out of the app onto the launcher, at the
+  // end of a CBT entry — the worst possible moment to lose the app. The latch
+  // makes the exit idempotent; canGoBack keeps it honest if this screen is ever
+  // opened as the root (see body-setup for the same trap).
+  const leaving = useRef(false);
   useEffect(() => {
-    if (savedOk) router.back();
+    if (!savedOk || leaving.current) return;
+    leaving.current = true;
+    // Home, not '/diary': that route is pushed elsewhere, and replacing onto a
+    // pushed route stacks a duplicate — the shape the back-stack test guards.
+    if (router.canGoBack()) router.back();
+    else router.replace('/');
   }, [savedOk, router]);
 
   async function onSave() {

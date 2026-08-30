@@ -9,6 +9,7 @@ import {
   waistValid,
   weightValid,
 } from '@/lib/core/insights/bodySetup';
+import { validBodyFatPct } from '@/lib/core/insights/bodyMetrics';
 
 const NOW = new Date('2026-07-09T12:00:00Z');
 
@@ -73,6 +74,18 @@ describe('field validation (mirrors suggestPlan gates)', () => {
     expect(bodyFatValid(25)).toBe(true);
     expect(bodyFatValid(1)).toBe(false);
     expect(bodyFatValid(80)).toBe(false);
+  });
+
+  // The wizard's waist step used to ask `bodyFatValid(fatNum)` to decide whether a
+  // real body-fat measurement exists, and told everyone who SKIPPED the fat step
+  // that their «процент жира уже указан» and the tape was therefore unnecessary —
+  // steering them away from the one input the RFM estimate still had. The two
+  // questions are different and only one of them is about having a number.
+  it('«is the form acceptable» is not «did the user measure»: only 0 tells them apart', () => {
+    expect(bodyFatValid(0)).toBe(true); // skipping is allowed…
+    expect(validBodyFatPct(0)).toBe(false); // …but nothing was measured.
+    expect(bodyFatValid(25)).toBe(true);
+    expect(validBodyFatPct(25)).toBe(true);
   });
 
   it('waist is optional: 0 = skipped is fine, a provided value needs the adult band', () => {

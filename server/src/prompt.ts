@@ -238,7 +238,8 @@ Rules:
 - Ignore plain water and unsweetened black coffee/tea (~0 nutrition) — a glass of water in the frame is not an item.
 - If the photo shows a packaged product, name the PRODUCT, brand included when it is legible («Ветчина из грудки индейки Индилайт») — the brand is what lets the database find the right row.
 - packaged: true ONLY when that item is a packaged product whose wrapper carries a PRINTED nutrition panel or net weight — a tub, pack, bottle or bar, whether or not you can read the small print from here. A plate, a bowl, a restaurant dish or loose fruit is false. The app runs a second, dedicated pass to read the panel on anything you mark, so flag it and let that pass do the reading; you do NOT transcribe any numbers here.
-- If nothing food-like is present, return an empty items array.`;
+- MENU / PRINTED DESCRIPTION. Sometimes the photo is not a plate at all: it is a menu page, a delivery listing, a recipe card — printed TEXT describing a dish that is not in front of the camera. People photograph these in a café to log what they ordered. Do NOT invent visible food for them and do NOT return the paper as an item. Leave items EMPTY and put the dish into menu_text: its name and, when printed, its composition, copied as written. Ignore the price and any decoration. When BOTH real food and a menu are in frame, the food wins — describe the food and leave menu_text empty.
+- If nothing food-like is present and no dish is described in print, return an empty items array.`;
 
 export function userPhotoInstruction(region: Region): string {
   return `Region: ${region}. Identify the foods and estimate grams.`;
@@ -274,6 +275,11 @@ export const IDENTIFY_PHOTO_SCHEMA = {
         },
         required: ['name_ru', 'name_en', 'est_grams', 'confidence', 'prepared'],
       },
+    },
+    menu_text: {
+      type: 'string',
+      description:
+        'Set ONLY when the photo shows printed text describing a dish (menu, delivery listing, recipe card) instead of actual food: the dish name plus its printed composition, verbatim, without the price. Empty otherwise. When set, items must be empty.',
     },
   },
   required: ['items'],

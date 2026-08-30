@@ -70,6 +70,16 @@ export interface NutritionProvider {
    * gets the user's Cyrillic text; the parse chain still queries by `queryLang`.
    */
   readonly acceptsCyrillic?: boolean;
+  /**
+   * Optional: this source can resolve a raw BARCODE (8–14 digits) as a query.
+   * Only Open Food Facts and the local snapshot built from it can — a table of
+   * food NAMES (USDA, Skurikhin, FatSecret) has nothing to match digits
+   * against. It matters beyond wasted latency: such a provider failing on a
+   * barcode used to raise `sourcesDown`, and the phone then said «источник не
+   * ответил» about a code that simply is not in any database — inviting a retry
+   * that could never succeed.
+   */
+  readonly acceptsBarcode?: boolean;
   /** Best single match (or null). For list sources this is `searchMany()[0]`. */
   search(name: string, region: Region): Promise<ProviderResult | null>;
   /**

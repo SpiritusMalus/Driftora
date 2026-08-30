@@ -14,6 +14,7 @@ import {
 import type { FoodEstimate } from '../llm.js';
 import { cookedFromDry, dryStarchYield, looksDryBasis } from './dryBasis.js';
 import { energyFromMacros, energyInconsistent } from './energy.js';
+import { isBarcode } from './openfoodfacts.js';
 import { ProviderUnavailable, type NutritionProvider, type ProviderResult } from './provider.js';
 import { kcalBandViolated } from './plausibility.js';
 import { hasCyrillic } from './ruSearch.js';
@@ -509,9 +510,16 @@ export class Resolver {
     // localization) still get the query: for Cyrillic text OFF used to be the
     // ONLY provider left, so one flaky OFF timeout read as «нет в базе».
     const cyrillic = hasCyrillic(trimmed);
+    // ШТРИХКОД спрашиваем только у тех, для кого код — ключ (Open Food Facts и
+    // её локальный снимок). Таблица ИМЁН сопоставить цифрам нечего, и дело не
+    // в потраченной латентности: падение такого провайдера поднимало
+    // `sourcesDown`, телефон говорил «источник не ответил» про код, которого
+    // просто нет ни в одной базе, и человек жал «повторить» до бесконечности.
+    // Проверено на боевом сервере: живой OFF на такой код отвечает честным 404.
+    const barcode = isBarcode(trimmed);
     const lists = await Promise.all(
       chainFor(this.providers, region).map((p) =>
-        cyrillic && p.queryLang === 'en' && !p.acceptsCyrillic
+        (cyrillic && p.queryLang === 'en' && !p.acceptsCyrillic) || (barcode && !p.acceptsBarcode)
           ? Promise.resolve({ results: [], unavailable: false })
           : this.candidatesFrom(p, trimmed, region),
       ),

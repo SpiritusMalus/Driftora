@@ -248,7 +248,10 @@ export default function SettingsScreen() {
       tint: encrypted ? theme.primary : theme.accent,
       iconBg: encrypted ? coralTile : amberTile,
       title: encrypted ? t('settings.storageEncrypted') : t('settings.storageUnencrypted'),
-      subtitle: encrypted ? undefined : t('settings.storageUnencryptedNote'),
+      // A subtitle in both states: without one this row is shaped exactly like the
+      // navigable rows above it (icon + title in the same card) but goes nowhere,
+      // so it reads as a broken link. The sentence makes it a statement of fact.
+      subtitle: encrypted ? t('settings.storageEncryptedNote') : t('settings.storageUnencryptedNote'),
     });
   }
   dataRows.push({

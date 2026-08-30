@@ -37,7 +37,7 @@ test('hedge: a healthy fast answer never spawns a duplicate call', async () => {
     return respond(GOOD, 5);
   }) as typeof fetch;
 
-  const items = await identifyFromPhoto('AAAA', 'image/jpeg', 'RU');
+  const { items } = await identifyFromPhoto('AAAA', 'image/jpeg', 'RU');
 
   assert.equal(items.length, 1);
   // Give a stray hedge timer a chance to (wrongly) fire before asserting.
@@ -57,7 +57,7 @@ test('hedge: when the first call stalls, the duplicate answers and wins', async 
   }) as typeof fetch;
 
   const t0 = Date.now();
-  const items = await identifyFromPhoto('AAAA', 'image/jpeg', 'RU');
+  const { items } = await identifyFromPhoto('AAAA', 'image/jpeg', 'RU');
   const elapsed = Date.now() - t0;
 
   assert.equal(items.length, 1);
@@ -73,7 +73,7 @@ test('hedge: VISION_HEDGE_MS=0 falls back to the sequential retry path', async (
     return respond(GOOD, 5);
   }) as typeof fetch;
 
-  const items = await identifyFromPhoto('AAAA', 'image/jpeg', 'RU');
+  const { items } = await identifyFromPhoto('AAAA', 'image/jpeg', 'RU');
 
   assert.equal(items.length, 1);
   assert.equal(calls, 1);

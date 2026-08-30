@@ -255,6 +255,10 @@ export function parseHeard(data: unknown): string {
 /** Generous for a spoken meal, far short of a runaway decode. */
 const MAX_HEARD_CHARS = 500;
 
+/// Строка меню с составом бывает длинной, но не бесконечной: выше этого —
+/// не описание блюда, а сорвавшийся декодер.
+const MAX_MENU_CHARS = 600;
+
 /**
  * The upstream ran out of time. Distinct from VisionUnavailableError because it
  * is RETRYABLE: on this model an overrun is the signature of a degenerate decode
@@ -756,12 +760,19 @@ export async function identifyFromText(text: string, region: Region): Promise<Id
 }
 
 /** Layer 1: photo (base64) → identified foods + estimated grams (Phase 3). */
+/**
+ * Photo identification. Returns the foods seen AND, when the photo turns out to
+ * be a MENU rather than a plate, the dish description printed on it: people
+ * photograph a menu in a café to log what they ordered, and «на фото нет еды»
+ * is a useless answer to that. The caller runs such text through the ordinary
+ * text pipeline — see /food/parse-photo.
+ */
 export async function identifyFromPhoto(
   base64: string,
   mimeType: string,
   region: Region,
-): Promise<IdentifiedItem[]> {
-  return (await identifyWithEscalation(
+): Promise<{ items: IdentifiedItem[]; menuText: string }> {
+  const out = (await identifyWithEscalation(
     [
       { role: 'system', content: IDENTIFY_PHOTO_SYSTEM_PROMPT },
       {
@@ -776,7 +787,16 @@ export async function identifyFromPhoto(
     // The slow path gets the hedge: a duplicate re-roll fired at ~12 s cuts the
     // looping tail from 43 s to ~25 s (see completeHedged).
     { hedge: true, effort: REASONING_EFFORT_MEDIA },
-  )).items;
+  ));
+  // Полезная нагрузка достаётся из сырого ответа тем же `responsePayload`, что
+  // и расшифровка в голосовом пути: на верхнем уровне ModelAnswer лежат items.
+  const payload = responsePayload(out.data) as { menu_text?: unknown } | null;
+  const rawMenu = typeof payload?.menu_text === 'string' ? payload.menu_text.trim() : '';
+  // Стена текста — это уже не строка меню, а сорвавшийся декодер.
+  const menuText = rawMenu.length > MAX_MENU_CHARS ? '' : rawMenu;
+  // The prompt says «food wins», but a model that returns both must not make the
+  // app parse the menu instead of the plate in front of it.
+  return { items: out.items, menuText: out.items.length > 0 ? '' : menuText };
 }
 
 /**

@@ -16,6 +16,8 @@ import { syncDayHealth } from '@/lib/core/db/healthSync';
 import type { StepsRow, WeightRow } from '@/lib/core/db/schema';
 import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
 import { dayKey, listStepsDays, setManualSteps } from '@/lib/core/db/steps';
+import { DayNav } from '@/components/ui/DayNav';
+import { formatDayTitle } from '@/lib/i18n/formatDay';
 import { latestWeight } from '@/lib/core/db/weight';
 import { stepsEarnedKcal, stepsOutsideWorkouts } from '@/lib/core/insights/bodyMetrics';
 import { useAppActiveEffect } from '@/lib/core/services/appActive';
@@ -118,12 +120,19 @@ export default function ActivityScreen() {
     });
   });
 
+  // ВЫБРАННЫЙ ДЕНЬ. Шаги писались только в «сегодня» (`new Date()` прямо в
+  // сохранении), хотя еда и тренировки давно умеют прошлые дни — а забыть
+  // ввести шаги вечером и вспомнить утром это ровно тот случай, ради которого
+  // DayNav и появился. Хранилище всегда умело любой день: setManualSteps
+  // принимает дату, её просто никто не передавал.
+  const [day, setDay] = useState(dayKey());
+
   async function onSave() {
     const steps = toSteps(text);
     if (!db || steps < 0) return;
     setSaving(true);
     try {
-      await setManualSteps(db, new Date(), steps);
+      await setManualSteps(db, day, steps);
       setText('');
       setManualOpen(false);
       setItems(await listStepsDays(db, 30));
@@ -186,8 +195,12 @@ export default function ActivityScreen() {
   // Today's row (if any) drives the hero; the history below shows the PAST days
   // only, so the day's number isn't printed twice.
   const todayKey = dayKey();
-  const today = (items ?? []).find((s) => s.date === todayKey) ?? null;
-  const history = (items ?? []).filter((s) => s.date !== todayKey);
+  // `today` здесь — ВЫБРАННЫЙ день: он правит геройское число, выплату и запись.
+  // Настоящее сегодня нужно отдельно: по нему решается, работает ли авто-счёт.
+  const today = (items ?? []).find((s) => s.date === day) ?? null;
+  const realToday = (items ?? []).find((s) => s.date === todayKey) ?? null;
+  const isToday = day === todayKey;
+  const history = (items ?? []).filter((s) => s.date !== day);
 
   // Honest «шаги → бюджет» payoff, only once a weight is known: real earned kcal
   // above the resting baseline, or a note that the first ~3000 are already in the
@@ -226,7 +239,7 @@ export default function ActivityScreen() {
   // one — the persisted flag), or whenever today's number came from the device.
   // Data presence alone was the old signal, and it re-showed the connect card
   // during the connected-but-no-data-yet gap right after the grant.
-  const autoWorking = health === 'connected' || connectedFlag || today?.source === 'device';
+  const autoWorking = health === 'connected' || connectedFlag || realToday?.source === 'device';
 
   const rows: RowSpec[] = history.map((s) => ({
     key: s.date,
@@ -241,7 +254,10 @@ export default function ActivityScreen() {
 
   return (
     <Screen>
-      {/* HERO — today's steps, big; the number is the point of the screen. */}
+      {/* Какой день показываем И в какой пишем — та же дорожка, что у еды и
+          тренировок, чтобы «вчера» везде переключалось одинаково. */}
+      <DayNav value={day} onChange={setDay} style={styles.dayNav} />
+      {/* HERO — the selected day's steps, big; the number is the point. */}
       <View style={styles.hero}>
         {today != null ? (
           <>
@@ -250,7 +266,9 @@ export default function ActivityScreen() {
                 {formatStepCount(today.steps)}
               </Text>
               <Text style={[styles.heroLabel, { color: theme.subtle }, theme.font.body]}>
-                {t(pluralKey('activity.today', today.steps))}
+                {isToday
+                  ? t(pluralKey('activity.today', today.steps))
+                  : t('activity.onDay', { day: formatDayTitle(day, t) })}
               </Text>
             </View>
             {payoffLine ? (
@@ -277,7 +295,11 @@ export default function ActivityScreen() {
             {/* Connected but the store hasn't served a number yet: say THAT —
                 the generic «подключите авто-счёт» copy here read as "connecting
                 did nothing" during the provider's lazy first write. */}
-            {autoWorking ? t('activity.noneTodayConnected') : t('activity.noneToday')}
+            {!isToday
+              ? t('activity.noneOnDay')
+              : autoWorking
+                ? t('activity.noneTodayConnected')
+                : t('activity.noneToday')}
           </Text>
         )}
         {goalPriceLine ? (
@@ -403,6 +425,7 @@ function formatStepCount(n: number): string {
 
 
 const styles = StyleSheet.create({
+  dayNav: { marginBottom: 12 },
   hero: { marginTop: 8, marginBottom: 20 },
   heroRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
   heroNum: { fontSize: 40, lineHeight: 44 },
