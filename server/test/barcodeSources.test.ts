@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { Resolver } from '../src/nutrition/resolver.js';
-import { ProviderUnavailable, type NutritionProvider } from '../src/nutrition/provider.js';
+import { ProviderUnavailable, type NutritionProvider, type ProviderResult } from '../src/nutrition/provider.js';
 
 /// Таблица ИМЁН: цифрам сопоставить нечего, и на штрихкоде она падает.
 /// Именно так ведёт себя USDA, когда ей приносят код с упаковки.
@@ -10,7 +10,9 @@ class NameOnlySource implements NutritionProvider {
   readonly name = 'usda';
   readonly regions = ['RU', 'US'] as const;
   asked: string[] = [];
-  async search(name: string) {
+  // Аннотация обязательна: тело только бросает, и TS выводит Promise<void>,
+  // который контракту провайдера не соответствует.
+  async search(name: string): Promise<ProviderResult | null> {
     this.asked.push(name);
     throw new ProviderUnavailable(this.name, 429);
   }
@@ -23,7 +25,7 @@ class BarcodeSource implements NutritionProvider {
   readonly regions = ['RU', 'US'] as const;
   readonly acceptsBarcode = true as const;
   asked: string[] = [];
-  async search(name: string) {
+  async search(name: string): Promise<ProviderResult | null> {
     this.asked.push(name);
     return null;
   }
@@ -48,7 +50,7 @@ test('неизвестный штрихкод — это «нет такого �
 
 test('настоящий сбой базы штрихкодов по-прежнему виден', async () => {
   class DownSource extends BarcodeSource {
-    override async search(name: string) {
+    override async search(name: string): Promise<ProviderResult | null> {
       this.asked.push(name);
       throw new ProviderUnavailable(this.name, 503);
     }

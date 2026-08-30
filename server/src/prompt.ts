@@ -128,6 +128,22 @@ export const IDENTIFY_TEXT_SCHEMA = {
           est_grams: { type: 'number' },
           confidence: { type: 'number' },
           prepared: { type: 'boolean' },
+          // ОБЪЯВЛЕНО — А НЕ ТОЛЬКО ЗАТРЕБОВАНО. Поле стояло в `required`, но
+          // в `properties` его не было вовсе: единственная из восьми схем
+          // этого файла, где список обязательных полей называл то, чего схема
+          // не описывает (фото и аудио объявляют его полностью). У пропуска
+          // две цены. Первая — модели не из чего построить ответ: имени поля
+          // без типа и без enum в контракте нет. Вторая — в строгом режиме
+          // ключ из `required`, отсутствующий в `properties`, делает схему
+          // невалидной, то есть эта строка стояла ровно поперёк проверки
+          // главной гипотезы аудита. Формулировка дословно как в фото-схеме:
+          // расходиться описаниям одного и того же поля не за что.
+          weight_basis: {
+            type: 'string',
+            enum: ['dry', 'as_eaten'],
+            description:
+              'Which state est_grams refers to: "dry" for the weight of the uncooked product (a pack\'s net weight, groats/pasta/noodles measured before cooking), "as_eaten" for the weight of the food as eaten. When in doubt, "as_eaten".',
+          },
         },
         required: ['name_ru', 'name_en', 'est_grams', 'confidence', 'prepared', 'weight_basis'],
       },

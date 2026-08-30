@@ -180,7 +180,7 @@ test('back-fill: a row WITH vitamins but no fiber still gets fiber (and keeps it
  * RU-цепочке ответила на тот же запрос строкой с клетчаткой.
  */
 test('клетчатку отдаёт строка, уже полученная цепочкой, а не перевод в USDA', async () => {
-  const ruTable: NutritionProvider = {
+  const ruTable = {
     name: 'skurikhin',
     regions: ['RU'],
     queryLang: 'ru',
@@ -195,8 +195,8 @@ test('клетчатку отдаёт строка, уже полученная 
         },
       ];
     },
-  };
-  const winner: NutritionProvider = {
+  } as unknown as NutritionProvider;
+  const winner = {
     name: 'fatsecret',
     regions: ['RU'],
     queryLang: 'ru',
@@ -209,7 +209,7 @@ test('клетчатку отдаёт строка, уже полученная 
         },
       ];
     },
-  };
+  } as unknown as NutritionProvider;
 
   // USDA в цепочке НЕТ вовсе: если клетчатка появилась, её дал донор из обхода.
   const resolver = new Resolver([ruTable, winner]);
@@ -229,7 +229,7 @@ test('клетчатку отдаёт строка, уже полученная 
 });
 
 test('донор не подменяет то, что у строки уже есть', async () => {
-  const donorRow: NutritionProvider = {
+  const donorRow = {
     name: 'skurikhin',
     regions: ['RU'],
     queryLang: 'ru',
@@ -242,8 +242,8 @@ test('донор не подменяет то, что у строки уже е�
         },
       ];
     },
-  };
-  const winner: NutritionProvider = {
+  } as unknown as NutritionProvider;
+  const winner = {
     name: 'fatsecret',
     regions: ['RU'],
     queryLang: 'ru',
@@ -256,7 +256,7 @@ test('донор не подменяет то, что у строки уже е�
         },
       ];
     },
-  };
+  } as unknown as NutritionProvider;
 
   const resolver = new Resolver([donorRow, winner]);
   const r = await resolver.resolveItem(

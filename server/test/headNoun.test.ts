@@ -66,7 +66,7 @@ function stub(name: string, rowName: string, kcal: number, queryLang?: 'en' | 'r
     async search() {
       return { name: rowName, per100: per100(kcal), confidence: 0.9 };
     },
-  } as NutritionProvider;
+  } as unknown as NutritionProvider;
 }
 
 test('цепочка: строка, потерявшая главное слово, не останавливает обход', async () => {
@@ -111,7 +111,7 @@ test('цепочка: матч, оправданный алиасом-опред
     async search() {
       return { name: 'гречка варёная', matchedKey: 'гречневая', per100: per100(92), confidence: 0.9 };
     },
-  } as NutritionProvider;
+  } as unknown as NutritionProvider;
   // Русскоязычный источник: получает «гречневая лапша» и отвечает лапшой.
   const noodles = stub('usda', 'лапша гречневая', 348);
 
