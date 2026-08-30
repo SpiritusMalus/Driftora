@@ -1085,9 +1085,21 @@ components:
         alternatives:
           type: array
           items: { $ref: '#/components/schemas/NutritionAlternative' }
-        dry_basis_suspected:
+        dry_basis:
           type: boolean
-          description: The row looks like a dry-product label while the weight is probably the cooked dish (~3× overcount).
+          description: |
+            The matched row looks like a DRY-product label while the weight is
+            probably the cooked dish — `grams × per100` then overcounts ~3×
+            (absorbed water). The numbers are never rewritten: the client shows
+            a note, and the converted row rides along as the top alternative.
+        dry_weight:
+          type: boolean
+          description: |
+            The MIRROR of `dry_basis`: the weight is the uncooked product (a
+            pack's net weight, reported by the model as `weight_basis: "dry"`)
+            while the matched row describes the cooked dish, so the same water
+            makes the total UNDERCOUNT ~3×. Same treatment — a note and a
+            converted alternative, never a rewritten number.
 
     MealDraft:
       type: object

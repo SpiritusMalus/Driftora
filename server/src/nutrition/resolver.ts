@@ -12,7 +12,7 @@ import {
   type Vitamins,
 } from '../types.js';
 import type { FoodEstimate } from '../llm.js';
-import { cookedFromDry, dryFromCooked, dryStarchYield, rowBasis, type Basis } from './dryBasis.js';
+import { cookedFromDry, dryFromCooked, dryStarchYield, rowBasis, weighedDry, type Basis } from './dryBasis.js';
 import { energyFromMacros, energyInconsistent } from './energy.js';
 import { isBarcode } from './openfoodfacts.js';
 import { ProviderUnavailable, type NutritionProvider, type ProviderResult } from './provider.js';
@@ -455,7 +455,7 @@ export class Resolver {
     // own answers against — the translation is ours, not the user's question.
     const found = await this.runChain(region, (p) => this.nameFor(p, item, region), this.nativeName(item, region));
     if (found) {
-      const enriched = await this.backfillMicros(found, item.name_en);
+      const enriched = await this.backfillMicros(found, item);
       // A источник lay down during this walk, so this answer may be worse than
       // the food deserves («отруби овсяные мистраль» settling for the generic
       // row because Open Food Facts was throttled). Caching it would freeze one
@@ -486,7 +486,7 @@ export class Resolver {
    * itself from USDA — and cached inside the LookupResult, so a hit pays no
    * extra call.
    */
-  private async backfillMicros(found: LookupResult, nameEn: string): Promise<LookupResult> {
+  private async backfillMicros(found: LookupResult, item: IdentifiedItem): Promise<LookupResult> {
     const per100 = found.per100;
     if (per100.source === 'estimate') return found;
     // Vitamins and fibre are separate gaps, and only one of them used to open
@@ -497,10 +497,13 @@ export class Resolver {
     const needsFiber = per100.fiber === undefined;
     if (!needsMicros && !needsFiber) return found;
 
-    // Сначала — то, за что уже заплачено на этом же обходе.
+    // Сначала — то, за что уже заплачено на этом же обходе. Дальше по цепочке
+    // ради донора НЕ ходим: источник, ответивший первым, останавливает обход по
+    // построению, и лишний запрос на каждую дыру — не та цена. Остаётся прежний
+    // USDA-фолбэк по переводу.
     const donor =
       pickDonor(found.donors ?? [], per100, needsMicros, needsFiber) ??
-      (per100.source === 'usda' || nameEn.trim().length === 0 ? null : await this.usdaMicros(nameEn));
+      (per100.source === 'usda' || item.name_en.trim().length === 0 ? null : await this.usdaMicros(item.name_en));
     if (!donor) return found;
 
     const minerals: Minerals = { ...donor.minerals, ...per100.minerals }; // primary wins on overlap
@@ -704,16 +707,34 @@ export class Resolver {
     // самой водой. Теперь спрашиваем обе стороны и сверяем их симметрично;
     // числа по-прежнему не переписываются — расхождение поднимает флаг и
     // кладёт пересчитанную строку первой альтернативой.
-    const weightBasis: Basis = prepared
-      ? 'cooked' // готовое блюдо взвешивают готовым по определению
-      : item.weight_basis === 'dry'
+    // `prepared` — факт о СТРОКЕ (curated-таблица описывает готовое блюдо), и
+    // подменять им заявленный базис ВЕСА нельзя: у «доширака» именно так и
+    // выходило — наблюдатель говорил «взвешена сухая пачка», а флаг строки
+    // молча объявлял вес готовым, и расхождение не замечалось вовсе.
+    // ДВА `prepared` ЗНАЧАТ РАЗНОЕ, и складывать их в один нельзя. Флаг
+    // curated-таблицы (`found.prepared`) — про СТРОКУ: она уже описывает
+    // готовое блюдо. Флаг модели (`item.prepared`) — про ЕДУ, которую человек
+    // ест, то есть про ВЕС. Смешанные в одно, они глушили предупреждение не с
+    // той стороны: «bowl of oatmeal» (модель: готовое) садился на сухую
+    // брендовую строку 340 ккал/100 г, и 240 г миски давали 816 ккал молча.
+    const weightBasis: Basis =
+      item.weight_basis === 'dry'
         ? 'dry'
         : item.weight_basis === 'as_eaten'
           ? 'cooked'
-          : 'unknown';
-    const matchedBasis: Basis = prepared
-      ? 'unknown' // curated finished-dish row already describes the cooked state
-      : rowBasis([item.name_ru, item.name_en, found.name], found.per100);
+          : // Поле модель молча пропускает (проверено на боевой: не выводит даже
+            // как обязательное), поэтому у сервера есть свои два вывода: вес,
+            // слишком малый для готовой порции этого крахмала, — сухой; а
+            // блюдо, которое едят как есть, взвешивают готовым.
+            weighedDry([item.name_ru, item.name_en, found.name], grams)
+            ? 'dry'
+            : prepared
+              ? 'cooked'
+              : 'unknown';
+    const matchedBasis: Basis =
+      found.prepared === true
+        ? 'cooked' // curated finished-dish row already describes the cooked state
+        : rowBasis([item.name_ru, item.name_en, found.name], found.per100);
     // Сухая строка против веса, который сухим не назвали, — прежнее правило
     // слово в слово: молчание о базисе веса тут по-прежнему читается как
     // «скорее всего готовое», потому что взвешивают обычно то, что едят.
@@ -866,14 +887,31 @@ export class Resolver {
       ...(suspect && aiFull ? [{ name: item.name_ru, per100: aiFull }, ...found.alternatives] : found.alternatives),
     ];
 
+    // РАСХОЖДЕНИЕ БАЗИСОВ — АРИФМЕТИЧЕСКАЯ ОШИБКА, А НЕ РАЗНИЦА МНЕНИЙ. Когда
+    // вес заведомо сухой, а строка описывает готовое, «граммы × per100» —
+    // просто неверное умножение, и оставить его главным числом значит соврать
+    // втрое («доширак» 121 ккал вместо ~400). Поэтому строку приводим к
+    // состоянию веса ТОЙ ЖЕ таблицей выходов, что уже работает в обратную
+    // сторону (USDA Cooking Yields, docs/nutrition-science.md §6), исходную
+    // строку оставляем первой альтернативой, а плашка говорит, что произошло.
+    // Обратное направление (сухая строка × готовый вес) так НЕ лечится: там
+    // сигнал слабее — молчание о базисе значит «скорее всего готовое».
+    // Расхождение лечится в ОБЕ стороны и по одному правилу: когда базис веса
+    // ИЗВЕСТЕН (наблюдатель назвал его или он выводится однозначно), строка
+    // приводится к нему. Когда базис веса молчит — только предупреждение:
+    // догадка о том, чего никто не говорил, и есть тот способ сломать честную
+    // половину корпуса.
+    const rebased = dryWeight || (dryBasis && weightBasis === 'cooked') ? (cookedAlt[0]?.per100 ?? null) : null;
+    const per100 = rebased ?? found.per100;
+
     return {
       name_ru: item.name_ru,
       name_en: item.name_en,
       grams,
       grams_source: 'estimated',
       confidence,
-      per100: found.per100,
-      scaled: scaleToGrams(found.per100, grams),
+      per100,
+      scaled: scaleToGrams(per100, grams),
       approximate: true, // estimated grams → approximate until the user confirms
       // Transparency: tell the client WHICH row was matched, not just its
       // numbers — the row's own name usually carries the preparation state.
@@ -882,7 +920,16 @@ export class Resolver {
       ...(dryBasis ? { dry_basis: true } : {}),
       ...(dryWeight ? { dry_weight: true } : {}),
       ...(found.microsEstimated ? { micros_estimated: true } : {}),
-      ...(alternatives.length > 0 ? { alternatives: alternatives.slice(0, MAX_ALTERNATIVES) } : {}),
+      ...(rebased
+        ? {
+            alternatives: [
+              { name: found.name ?? item.name_ru, per100: found.per100 },
+              ...alternatives.slice(1),
+            ].slice(0, MAX_ALTERNATIVES),
+          }
+        : alternatives.length > 0
+          ? { alternatives: alternatives.slice(0, MAX_ALTERNATIVES) }
+          : {}),
     };
   }
 }

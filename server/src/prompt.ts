@@ -37,6 +37,7 @@ Rules:
 - Multiple foods in one phrase → multiple items.
 - Strip filler words; never invent foods that were not mentioned. KEEP brand and grade words in name_ru («творог 5%», «лимонад Тархун Черноголовка») — they are what lets the database find the right row.
 - The estimate is a SANITY-CHECK and last-resort fallback only — the nutrition DB is authoritative and overrides your numbers whenever it has a good match. When you give an estimate, provide ALL FOUR fields together and roughly self-consistent (kcal ≈ 4×protein + 9×fat + 4×carbs) — a partial estimate (e.g. protein only) is useless, so it is all four or none. Base them on what the food actually is (плескавица ≈ grilled minced-meat patty ≈ 230 kcal, 17 g protein, 16 g fat, 3 g carbs per 100 g). A BRANDED, regional or unfamiliar product is NOT a reason to omit it — estimate from the product CLASS (лимонад «Тархун» Черноголовка ≈ a sweet carbonated soft drink ≈ 30 kcal, 0 g protein, 0 g fat, 8 g carbs per 100 g). The DB frequently lacks such products, and your estimate is the only thing standing between the user and a wrong row. Omit the whole estimate object only when you genuinely cannot tell what KIND of food it is — never a partial estimate, never generic padding.
+- ALWAYS output weight_basis, for every item: it is the one thing only you can know. A weight and a nutrition row each describe a state, and the app multiplies them — a dry weight against a cooked composition (or the reverse) is a threefold error either way.
 - If nothing food-like is present, return an empty items array.`;
 
 /**
@@ -73,7 +74,7 @@ export const IDENTIFY_SCHEMA = {
             },
           },
         },
-        required: ['name_ru', 'name_en', 'est_grams', 'confidence', 'prepared'],
+        required: ['name_ru', 'name_en', 'est_grams', 'confidence', 'prepared', 'weight_basis'],
       },
     },
   },
@@ -104,11 +105,13 @@ For each distinct food or drink in the input, output:
 - est_grams: your best estimate of the eaten weight in grams, from explicit quantities or typical portions.
 - confidence: 0..1, how sure you are about the food identity and portion.
 - prepared: true when the named item is an already-prepared dish eaten as-is — soups, stews, salads, casseroles, ready composite meals (суп харчо, жаркое, плов, оливье). false for ingredients and simple products that may still be cooked or re-cooked at home (raw meat or fish, vegetables, eggs, pasta, rice, dumplings, bread).
+- weight_basis: WHICH STATE the grams you just gave refer to. "dry" when the number is the weight of the UNCOOKED product — a pack's net weight, a scooped portion of groats, pasta, noodles or powder measured before cooking (a brand named with no portion of its own is its pack: «доширак», «спагетти Barilla»). "as_eaten" when the number is the weight of the food as it is actually eaten — a plate, a bowl, a ready dish, bread, fruit. When in doubt, "as_eaten".
 
 Rules:
 - Split a dish into its meaningful components (e.g. "омлет из трёх яиц" → eggs ~165 g; "кофе с молоком" → milk ~30 g; ignore water/black coffee with ~0 nutrition unless asked).
 - Multiple foods in one phrase → multiple items.
 - Strip filler words; never invent foods that were not mentioned. KEEP brand and grade words in name_ru («творог 5%», «лимонад Тархун Черноголовка») — they are what lets the database find the right row.
+- ALWAYS output weight_basis, for every item: it is the one thing only you can know. A weight and a nutrition row each describe a state, and the app multiplies them — a dry weight against a cooked composition (or the reverse) is a threefold error either way.
 - If nothing food-like is present, return an empty items array.`;
 
 /** Slim text schema: identification only, no numeric blocks for a loop to live in. */
@@ -126,7 +129,7 @@ export const IDENTIFY_TEXT_SCHEMA = {
           confidence: { type: 'number' },
           prepared: { type: 'boolean' },
         },
-        required: ['name_ru', 'name_en', 'est_grams', 'confidence', 'prepared'],
+        required: ['name_ru', 'name_en', 'est_grams', 'confidence', 'prepared', 'weight_basis'],
       },
     },
   },
@@ -247,6 +250,7 @@ Rules:
 - If the photo shows a packaged product, name the PRODUCT, brand included when it is legible («Ветчина из грудки индейки Индилайт») — the brand is what lets the database find the right row.
 - packaged: true ONLY when that item is a packaged product whose wrapper carries a PRINTED nutrition panel or net weight — a tub, pack, bottle or bar, whether or not you can read the small print from here. A plate, a bowl, a restaurant dish or loose fruit is false. The app runs a second, dedicated pass to read the panel on anything you mark, so flag it and let that pass do the reading; you do NOT transcribe any numbers here.
 - MENU / PRINTED DESCRIPTION. Sometimes the photo is not a plate at all: it is a menu page, a delivery listing, a recipe card — printed TEXT describing a dish that is not in front of the camera. People photograph these in a café to log what they ordered. Do NOT invent visible food for them and do NOT return the paper as an item. Leave items EMPTY and put the dish into menu_text: its name and, when printed, its composition, copied as written. Ignore the price and any decoration. When BOTH real food and a menu are in frame, the food wins — describe the food and leave menu_text empty.
+- ALWAYS output weight_basis, for every item: it is the one thing only you can know. A weight and a nutrition row each describe a state, and the app multiplies them — a dry weight against a cooked composition (or the reverse) is a threefold error either way. Food on a plate or in a bowl is "as_eaten"; an unopened pack of noodles, groats or pasta is "dry".
 - If nothing food-like is present and no dish is described in print, return an empty items array.`;
 
 export function userPhotoInstruction(region: Region): string {
@@ -287,7 +291,7 @@ export const IDENTIFY_PHOTO_SCHEMA = {
               'Which state est_grams refers to: "dry" for the weight of the uncooked product (a pack of noodles/groats/pasta not cooked yet), "as_eaten" for the weight of the food as eaten. When in doubt, "as_eaten".',
           },
         },
-        required: ['name_ru', 'name_en', 'est_grams', 'confidence', 'prepared'],
+        required: ['name_ru', 'name_en', 'est_grams', 'confidence', 'prepared', 'weight_basis'],
       },
     },
     menu_text: {

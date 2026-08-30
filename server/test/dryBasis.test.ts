@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { cookedFromDry, dryFromCooked, dryStarchYield, looksDryBasis, rowBasis } from '../src/nutrition/dryBasis.js';
+import {
+  cookedFromDry,
+  dryFromCooked,
+  dryStarchYield,
+  looksDryBasis,
+  rowBasis,
+  weighedDry,
+} from '../src/nutrition/dryBasis.js';
 import type { Per100 } from '../src/types.js';
 
 function per100(over: Partial<Per100> = {}): Per100 {
@@ -85,4 +92,18 @@ test('dryFromCooked mirrors cookedFromDry — the same water, read the other way
   assert.equal(cooked.kcal, 134); // input untouched
   // Round-trip: dry → cooked → dry lands back where it started.
   assert.equal(cookedFromDry(dry, 2.5).kcal, 134);
+});
+
+test('weighedDry: вес, который не может быть готовой порцией этого крахмала', () => {
+  // Пачка лапши 90 г → ~225 г готовой: вес сухой.
+  assert.equal(weighedDry(['лапша быстрого приготовления'], 90), true);
+  assert.equal(weighedDry(['гречка', 'buckwheat'], 60), true); // 60 × 3.6 = 216 г
+  // Готовые порции — не трогаем: и большую, и скромную.
+  assert.equal(weighedDry(['гречневая лапша'], 200), false);
+  assert.equal(weighedDry(['рис', 'rice'], 150), false);
+  // Слишком мало, чтобы дать порцию даже сухим (щепотка в супе) — молчим.
+  assert.equal(weighedDry(['рис', 'rice'], 20), false);
+  // Не крахмал или неизвестный выход — сказать нечего.
+  assert.equal(weighedDry(['куриная грудка', 'chicken breast'], 90), false);
+  assert.equal(weighedDry(['пюре картофельное', 'instant mash'], 90), false);
 });
