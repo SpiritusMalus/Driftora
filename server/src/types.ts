@@ -344,6 +344,11 @@ export interface NutritionItem {
   // Numbers are never rewritten — the client shows the note and the converted
   // row rides along as the top one-tap alternative. Only `true` is sent.
   dry_weight?: boolean;
+  // The per-100g SHOWN here was re-stated onto the state the weight is in (a
+  // cooked row read as the dry pack, or the reverse) — the client must say so
+  // plainly instead of leaving the person to wonder why the number moved. The
+  // ORIGINAL row is always the first alternative. Only `true` is sent.
+  basis_adjusted?: boolean;
   // TRANSPARENCY: some of the vitamins/minerals here were BACK-FILLED from a
   // generic USDA record (by name_en) because the primary source (curated RU / a
   // crowd OFF product) carries no micronutrients. They're an approximate proxy,

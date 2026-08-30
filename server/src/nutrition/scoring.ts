@@ -166,6 +166,37 @@ export function headNounLost(query: string, candidate: string): boolean {
   return rest.some(covered);
 }
 
+/**
+ * ФОРМЫ, КОТОРЫЕ МЕНЯЮТ ЕДУ. «Овсянка» и «овсяное печенье» делят главное
+ * слово, но это разные продукты: 70 ккал против 450. Список нарочно короткий и
+ * состоит из форм, которые НИКОГДА не бывают синонимом исходного продукта, —
+ * поэтому здесь нет ни супа, ни соуса: борщ и правда суп, и демотировать
+ * «суп борщ» на запрос «борщ» было бы ошибкой.
+ */
+/// `\b` в JS считает границу слова по ASCII, поэтому кириллические края
+/// размечаются руками: без этого «сок» не находился в «яблочный сок», зато
+/// нашёлся бы в «сахарный песок».
+const FOREIGN_FORM_RE =
+  /(печень[ея]|cookie|cookies|biscuit|торт|пирожн|cake|пирог|\bpie\b|кекс|muffin|батончик|\bbar\b|чипс|chips|крекер|cracker|конфет|candy|мороженое|ice\s*cream|сироп|syrup|(?<![а-яё])сок(?![а-яё])|juice|(?<![а-яё])блин|pancake|вафл|waffle)/i;
+
+/**
+ * True when the CANDIDATE introduces a food form the query never asked for —
+ * «oatmeal cooked» landing on «Lecour's, Oatmeal Raisin Soft Cooked Cookies».
+ *
+ * The mirror of [headNounLost]: that one guards the query's own head word, this
+ * one guards against the row quietly turning the food into something else. Both
+ * failures look identical in a name score — every word of the query is present,
+ * the row just happens to be a different product built out of it.
+ */
+export function introducesForeignForm(query: string, candidate: string): boolean {
+  const q = normalizeName(query);
+  const c = normalizeName(candidate);
+  if (q.length === 0 || c.length === 0) return false;
+  const form = FOREIGN_FORM_RE.exec(c);
+  if (!form) return false;
+  return !FOREIGN_FORM_RE.test(q); // запрос сам про эту форму — всё в порядке
+}
+
 /** Prefer generic/whole foods; lightly penalize branded products. */
 export function genericBonus(foodType?: string): number {
   if (!foodType) return 0;

@@ -67,6 +67,16 @@ export function ItemCard({
   // DB match grossly contradicted the model's expectation for this food (a
   // likely wrong-product match, e.g. «мясное рагу» → pure «Beef, stew meat»).
   // We warn and open the picker so the inflated numbers aren't taken at face value.
+  // Какой из трёх ответов показать: пересчитали на сухое, пересчитали на
+  // готовое, или пересчитывать не за что — проверьте вес.
+  const basisNote = item.dry_weight
+    ? { title: 'food.basis.dryTitle', body: 'food.basis.dryBody' }
+    : item.dry_basis && item.basis_adjusted
+      ? { title: 'food.basis.cookedTitle', body: 'food.basis.cookedBody' }
+      : item.dry_basis
+        ? { title: 'food.basis.checkTitle', body: 'food.basis.checkBody' }
+        : null;
+
   const refereeFlagged = alternatives.some((a) => a.per100.source === 'ai_estimate');
   // ONE «Другой вариант» disclosure unifies the DB alternatives AND manual search
   // (they both answer «take a different product»). Opens itself when the auto-pick
@@ -169,14 +179,17 @@ export function ItemCard({
           <NutrientDetail values={item.scaled} caption={t('food.detail.basis', { grams })} theme={theme} />
 
           {/* HONESTY notes — only when they apply. */}
-          {item.dry_basis ? (
+          {/* СУХОЕ ИЛИ ГОТОВОЕ — одна еда с разницей втрое на 100 г, и человек
+              должен видеть ДВЕ вещи сразу: как мы её прочли (заголовок) и что
+              делать, если прочли не так (строка под ним). Пересчёт называется
+              пересчётом; там, где пересчитывать не за что, это просто просьба
+              проверить вес. */}
+          {basisNote ? (
             <View style={[styles.dryBasisNote, { borderColor: theme.primary, backgroundColor: theme.card }]}>
-              <Text style={[styles.dryBasisText, { color: theme.text }, theme.font.body]}>{t('food.dryBasis')}</Text>
-            </View>
-          ) : null}
-          {item.dry_weight ? (
-            <View style={[styles.dryBasisNote, { borderColor: theme.primary, backgroundColor: theme.card }]}>
-              <Text style={[styles.dryBasisText, { color: theme.text }, theme.font.body]}>{t('food.dryWeight')}</Text>
+              <Text style={[styles.basisTitle, { color: theme.text }, theme.font.bodySemiBold]}>
+                {t(basisNote.title)}
+              </Text>
+              <Text style={[styles.dryBasisText, { color: theme.subtle }, theme.font.body]}>{t(basisNote.body)}</Text>
             </View>
           ) : null}
           {refereeFlagged ? (
@@ -489,6 +502,7 @@ const styles = StyleSheet.create({
   portionChip: { borderWidth: 1, borderRadius: 10, paddingVertical: 6, paddingHorizontal: 12 },
   portionChipText: { fontSize: 13 },
   dryBasisNote: { marginTop: 8, borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },
+  basisTitle: { fontSize: 13, lineHeight: 18, marginBottom: 2 },
   dryBasisText: { fontSize: 12, lineHeight: 17 },
   cookChipText: { fontSize: 12 },
   notInDb: { fontSize: 13, marginBottom: 6, lineHeight: 18 },

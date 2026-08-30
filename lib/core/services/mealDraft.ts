@@ -166,6 +166,7 @@ export function withItemManualMacros(
       matched_name: undefined,
       dry_basis: undefined,
       dry_weight: undefined,
+      basis_adjusted: undefined,
       micros_estimated: undefined,
       scaled: scaleToGrams(per100, it.grams),
     };
@@ -240,6 +241,7 @@ export function withItemReplacement(
       // control of the match, so drop them rather than mislabel the swap.
       dry_basis: undefined,
       dry_weight: undefined,
+      basis_adjusted: undefined,
       micros_estimated: undefined,
       alternatives: [previous, ...keepAlternatives],
       scaled: scaleToGrams(replacement.per100, it.grams),

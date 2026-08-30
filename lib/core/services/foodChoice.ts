@@ -74,6 +74,7 @@ export function applyRememberedChoices(
       // that are already the cooked ones the user chose.
       dry_basis: undefined,
       dry_weight: undefined,
+      basis_adjusted: undefined,
       micros_estimated: undefined,
       scaled: scaleToGrams(remembered.per100, it.grams),
     };

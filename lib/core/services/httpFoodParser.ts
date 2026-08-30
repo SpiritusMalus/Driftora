@@ -63,6 +63,7 @@ function isItem(v: unknown): v is NutritionItem {
     (i.prepared === undefined || typeof i.prepared === 'boolean') &&
     (i.dry_basis === undefined || typeof i.dry_basis === 'boolean') &&
     (i.dry_weight === undefined || typeof i.dry_weight === 'boolean') &&
+    (i.basis_adjusted === undefined || typeof i.basis_adjusted === 'boolean') &&
     (i.micros_estimated === undefined || typeof i.micros_estimated === 'boolean') &&
     (i.alternatives === undefined || (Array.isArray(i.alternatives) && i.alternatives.every(isAlternative)))
   );

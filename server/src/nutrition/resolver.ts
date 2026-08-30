@@ -18,7 +18,14 @@ import { isBarcode } from './openfoodfacts.js';
 import { ProviderUnavailable, type NutritionProvider, type ProviderResult } from './provider.js';
 import { kcalBandViolated } from './plausibility.js';
 import { hasCyrillic } from './ruSearch.js';
-import { contradictsQuery, demoteContradictions, headNounLost, MIN_CHAIN_COVERAGE, queryCoverage } from './scoring.js';
+import {
+  contradictsQuery,
+  demoteContradictions,
+  headNounLost,
+  introducesForeignForm,
+  MIN_CHAIN_COVERAGE,
+  queryCoverage,
+} from './scoring.js';
 import { translationLost, unexplainedSpecifics } from './specificity.js';
 
 /**
@@ -406,7 +413,12 @@ export class Resolver {
       // молчание как «всё в порядке» — а матч тем временем держался на алиасе
       // «гречневая», то есть на голом определении. Лапша так и оставалась кашей.
       const headLost = headNounLost(name, justifiedBy);
-      if (coverage < MIN_CHAIN_COVERAGE || headLost) {
+      // ЧУЖАЯ ФОРМА. Зеркало предыдущей проверки: там строка теряла главное
+      // слово запроса, здесь — добавляет своё, превращая еду в другой продукт.
+      // «oatmeal cooked» садилось на «Oatmeal Raisin Soft Cooked Cookies»: все
+      // слова запроса на месте, покрытие полное, еда — печенье.
+      const foreignForm = introducesForeignForm(userQuery, shownName) && introducesForeignForm(name, shownName);
+      if (coverage < MIN_CHAIN_COVERAGE || headLost || foreignForm) {
         // Keep the FIRST thin hit: the chain is ordered by trustworthiness, so an
         // early source's weak row still beats a later source's weak row.
         if (!weakFallback) weakFallback = { ...hit, weak: true };
@@ -919,6 +931,7 @@ export class Resolver {
       ...(prepared ? { prepared: true } : {}),
       ...(dryBasis ? { dry_basis: true } : {}),
       ...(dryWeight ? { dry_weight: true } : {}),
+      ...(rebased ? { basis_adjusted: true } : {}),
       ...(found.microsEstimated ? { micros_estimated: true } : {}),
       ...(rebased
         ? {
