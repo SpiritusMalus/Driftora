@@ -31,7 +31,11 @@ import { updateSettings } from '../db/settings';
 /// what is bought, for how long and how a refund works, and the Privacy Policy
 /// names ЮKassa as a recipient of payment facts. Re-prompting on a change that
 /// introduces money is the whole reason this constant exists.
-export const LEGAL_VERSION = '2026-08-13';
+/// `2026-08-30`: §6 оферты переписан 20.08 (#206) — «что вы покупаете» стало
+/// суточным лимитом вместо повышенного, а бесплатный тариф — конечным числом
+/// разборов на устройство вместо бессрочного дневного. Версию тогда не подняли,
+/// и принявшие 13.08 новой редакции не видели. Поднято здесь.
+export const LEGAL_VERSION = '2026-08-30';
 
 /// Bump when the AI cross-border disclosure materially changes — re-prompts the
 /// just-in-time consent the next time the user triggers an AI parse.
