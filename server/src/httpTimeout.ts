@@ -46,3 +46,53 @@ export const TIMEOUT_MS = {
   /** Open Food Facts barcode product lookup (the free-text search already had its own). */
   openfoodfacts: 8_000,
 } as const;
+
+/**
+ * У ЗАПРОСА ОДИН БЮДЖЕТ, А НЕ СУММА НЕЗАВИСИМЫХ ТАЙМАУТОВ.
+ *
+ * Каждая стадия честно ограничена своим таймаутом, но складываются они
+ * молча: поиск = провайдеры + карточка ИИ (10+12 с) + перевод ярлыков
+ * (ещё 10+12 с) ≈ 44 с против 25 с, которые ждёт телефон. Клиент кладёт трубку,
+ * человек видит заглушку «нет сети» — а сервер в это время доводит до конца
+ * успешный ответ, за который уже заплачено. Ограничение стадий этого не ловит:
+ * не превышена ни одна из них, превышена их сумма.
+ *
+ * Ниже — потолок ОТВЕТА целиком, заведомо меньше клиентского ожидания. Он не
+ * прерывает главную работу, а решает судьбу УКРАШЕНИЙ (перевод ярлыков,
+ * карточка ИИ): не влезли в остаток — ответ уходит без них.
+ */
+export const RESPONSE_BUDGET_MS = {
+  /** Typed text: the client hangs up at 25 s (httpFoodParser DEFAULT_TIMEOUT_MS). */
+  text: 22_000,
+  /** Photo/audio uploads: the client waits 50 s (UPLOAD_TIMEOUT_MS). */
+  upload: 45_000,
+} as const;
+
+/**
+ * Runs `work` only if the request still has time for it, and gives up on it when
+ * the budget runs out — returning `fallback` instead. The work is NOT cancelled
+ * (an in-flight LLM call is already paid for and may still warm a cache); what
+ * is bounded is how long the RESPONSE waits for it.
+ */
+export async function withinBudget<T>(
+  startedAt: number,
+  budgetMs: number,
+  work: () => Promise<T>,
+  fallback: T,
+): Promise<T> {
+  const left = budgetMs - (Date.now() - startedAt);
+  if (left <= 0) return fallback;
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      work(),
+      new Promise<T>((resolve) => {
+        timer = setTimeout(() => resolve(fallback), left);
+      }),
+    ]);
+  } catch {
+    return fallback;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}

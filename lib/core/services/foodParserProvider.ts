@@ -2,7 +2,7 @@ import * as Localization from 'expo-localization';
 
 import type { FoodParser, Region } from './foodParser';
 import { HttpFoodParser } from './httpFoodParser';
-import { getCachedInstallId } from './installId';
+import { whenInstallId } from './installId';
 import { pickRegion } from './region';
 import { StubFoodParser } from './stubFoodParser';
 
@@ -34,9 +34,11 @@ export function getFoodParser(aiConsent: boolean): FoodParser {
   if (!base || !aiConsent) return stub();
   return (_online ??= new HttpFoodParser(base, stub(), undefined, {
     token: process.env.EXPO_PUBLIC_FOOD_API_TOKEN,
-    // Lazy: the per-install id (AI-quota meter) is minted async at DB init and
-    // may appear after this singleton is built.
-    installId: getCachedInstallId,
+    // Lazy AND awaited: the per-install id is minted async at DB init, and a
+    // request that fires before the mint lands used to go out unlabelled — into
+    // the server's shared per-address bucket, which is exactly what the id
+    // exists to avoid. `whenInstallId` caps its own wait.
+    installId: whenInstallId,
   }));
 }
 

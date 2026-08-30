@@ -1195,6 +1195,9 @@ export const en = {
     // Honest note: label numbers are for the DRY product vs. a cooked-dish weight.
     dryBasis:
       'These numbers are for the dry product. If the weight is for the cooked dish, calories are overstated roughly 3×. Enter the dry weight, or search manually for a “cooked” match. We never rewrite the numbers.',
+    // Mirror of dryBasis: a dry pack's weight against a cooked-dish composition.
+    dryWeight:
+      'The weight looks like the dry product’s (a pack’s net weight) while the matched row is for the cooked dish — calories are then understated roughly 3×. The same food in its dry form is offered below, or enter the cooked weight. We never rewrite the numbers.',
     refereeMismatch:
       'This looks like the wrong product: the figures are far from what’s expected for this dish. Pick an option below — an AI estimate is included.',
     // Vitamins & minerals for the whole dish, as a share of the daily norm (bars).

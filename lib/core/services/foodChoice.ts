@@ -73,6 +73,7 @@ export function applyRememberedChoices(
       // would push the «впишите вес сухой части» fix against per-100g numbers
       // that are already the cooked ones the user chose.
       dry_basis: undefined,
+      dry_weight: undefined,
       micros_estimated: undefined,
       scaled: scaleToGrams(remembered.per100, it.grams),
     };

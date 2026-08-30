@@ -147,6 +147,8 @@ class MetricsRegistry {
 
   /** Per-source count of «could not be reached», see recordSourceUnavailable. */
   private readonly sourceOutages: Record<string, number> = {};
+  /** Outages split by WHY, keyed `<source>.<reason>` — see recordSourceUnavailable. */
+  private readonly sourceOutageReasons: Record<string, number> = {};
 
   /** Duplicate vision calls fired because the first was still silent past the
    *  hedge trigger — the price of cutting the slow tail. Sustained growth here
@@ -170,8 +172,13 @@ class MetricsRegistry {
    * and one server IP serves every user, so this counter is the early warning
    * that brand lookups are silently degrading to generic rows.
    */
-  recordSourceUnavailable(source: string): void {
+  recordSourceUnavailable(source: string, reason = 'unknown'): void {
     this.sourceOutages[source] = (this.sourceOutages[source] ?? 0) + 1;
+    // The number alone never said WHICH failure it was, so every investigation
+    // restarted from curl on the box: throttled, refused, slow and unreachable
+    // all landed in one counter and need four different fixes.
+    const key = `${source}.${reason}`;
+    this.sourceOutageReasons[key] = (this.sourceOutageReasons[key] ?? 0) + 1;
   }
 
   /**
@@ -231,6 +238,7 @@ class MetricsRegistry {
       hedges: this.hedges,
       sources: { ...this.sources },
       source_outages: { ...this.sourceOutages },
+      source_outage_reasons: { ...this.sourceOutageReasons },
       latency_ms,
       stage_ms,
     };

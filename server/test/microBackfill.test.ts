@@ -170,3 +170,99 @@ test('back-fill: a row WITH vitamins but no fiber still gets fiber (and keeps it
   assert.equal(r.per100.kcal, 15, 'macros untouched');
 });
 
+
+// ---- донор ищется там, где еду назвали --------------------------------------
+
+/**
+ * КОРЕНЬ QA-018: донора искали ровно в одном месте — в USDA по name_en, то есть
+ * по НАШЕМУ переводу. «Тарелка овощей» приезжала без клетчатки, потому что
+ * «fresh vegetables» не набирало порога у USDA, — хотя первая же база в
+ * RU-цепочке ответила на тот же запрос строкой с клетчаткой.
+ */
+test('клетчатку отдаёт строка, уже полученная цепочкой, а не перевод в USDA', async () => {
+  const ruTable: NutritionProvider = {
+    name: 'skurikhin',
+    regions: ['RU'],
+    queryLang: 'ru',
+    async searchMany() {
+      // Годная строка того же класса, но запрос она объясняет наполовину —
+      // победителем не станет, а донором обязана.
+      return [
+        {
+          per100: { source: 'skurikhin', kcal: 30, prot: 2, fat: 0.2, carb: 5, fiber: 2.6, minerals: { k: 300 } },
+          name: 'овощи',
+          confidence: 0.5,
+        },
+      ];
+    },
+  };
+  const winner: NutritionProvider = {
+    name: 'fatsecret',
+    regions: ['RU'],
+    queryLang: 'ru',
+    async searchMany() {
+      return [
+        {
+          per100: { source: 'fatsecret', kcal: 64, prot: 3, fat: 3, carb: 7, minerals: {} },
+          name: 'Овощная смесь',
+          confidence: 0.9,
+        },
+      ];
+    },
+  };
+
+  // USDA в цепочке НЕТ вовсе: если клетчатка появилась, её дал донор из обхода.
+  const resolver = new Resolver([ruTable, winner]);
+  const item: IdentifiedItem = {
+    name_ru: 'овощная смесь',
+    name_en: 'vegetable mix',
+    est_grams: 200,
+    confidence: 0.9,
+  };
+
+  const r = await resolver.resolveItem(item, 'RU');
+  assert.equal(r.per100.source, 'fatsecret'); // победитель не подменён
+  assert.equal(r.per100.kcal, 64); // и его числа не тронуты
+  assert.equal(r.per100.fiber, 2.6); // а дыра закрыта донором
+  assert.equal(r.micros_estimated, true); // и об этом сказано честно
+  assert.equal(r.scaled.fiber, 5.2); // 2.6 × 200 г / 100
+});
+
+test('донор не подменяет то, что у строки уже есть', async () => {
+  const donorRow: NutritionProvider = {
+    name: 'skurikhin',
+    regions: ['RU'],
+    queryLang: 'ru',
+    async searchMany() {
+      return [
+        {
+          per100: { source: 'skurikhin', kcal: 30, prot: 2, fat: 0.2, carb: 5, fiber: 9, minerals: { k: 999 } },
+          name: 'овощи',
+          confidence: 0.5,
+        },
+      ];
+    },
+  };
+  const winner: NutritionProvider = {
+    name: 'fatsecret',
+    regions: ['RU'],
+    queryLang: 'ru',
+    async searchMany() {
+      return [
+        {
+          per100: { source: 'fatsecret', kcal: 64, prot: 3, fat: 3, carb: 7, fiber: 1.1, minerals: { k: 100 } },
+          name: 'Овощная смесь',
+          confidence: 0.9,
+        },
+      ];
+    },
+  };
+
+  const resolver = new Resolver([donorRow, winner]);
+  const r = await resolver.resolveItem(
+    { name_ru: 'овощная смесь', name_en: 'vegetable mix', est_grams: 100, confidence: 0.9 },
+    'RU',
+  );
+  assert.equal(r.per100.fiber, 1.1); // своя клетчатка сильнее донорской
+  assert.equal(r.per100.minerals.k, 100); // и свои минералы тоже
+});

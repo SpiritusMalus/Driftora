@@ -14,6 +14,31 @@ export class ProviderUnavailable extends Error {
     this.name = 'ProviderUnavailable';
     if (cause !== undefined) this.cause = cause;
   }
+
+  /**
+   * WHY it was unreachable, in one word fit for a counter.
+   *
+   * A bare outage number tells you a source is failing and nothing else — every
+   * diagnosis then starts from scratch with curl on the production host (USDA
+   * failing 20× while Open Food Facts failed once: throttled? key revoked? slow?
+   * — three different fixes, and the metric picked none). The reason is known
+   * exactly where the error is thrown, so it is carried instead of re-derived.
+   */
+  reason(): string {
+    const cause = this.cause;
+    if (typeof cause === 'number') {
+      if (cause === 429) return 'throttled';
+      if (cause === 401 || cause === 403) return 'rejected'; // key revoked / not accepted
+      if (cause >= 500) return 'server_error';
+      return `http_${cause}`;
+    }
+    // `AbortSignal.timeout` rejects with a TimeoutError DOMException; an aborted
+    // fetch with AbortError. Both mean "we gave up waiting", not "it refused".
+    const name = (cause as { name?: unknown } | null | undefined)?.name;
+    if (name === 'TimeoutError' || name === 'AbortError') return 'timeout';
+    if (cause === undefined) return 'unknown';
+    return 'network';
+  }
 }
 
 /** A per-100g lookup result from one source, with a 0..1 match confidence. */

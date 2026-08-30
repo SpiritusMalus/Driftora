@@ -12,7 +12,7 @@ import {
   type Vitamins,
 } from '../types.js';
 import type { FoodEstimate } from '../llm.js';
-import { cookedFromDry, dryStarchYield, looksDryBasis } from './dryBasis.js';
+import { cookedFromDry, dryFromCooked, dryStarchYield, rowBasis, type Basis } from './dryBasis.js';
 import { energyFromMacros, energyInconsistent } from './energy.js';
 import { isBarcode } from './openfoodfacts.js';
 import { ProviderUnavailable, type NutritionProvider, type ProviderResult } from './provider.js';
@@ -57,6 +57,12 @@ interface LookupResult {
   // WORSE than what the same query deserves. Transient bookkeeping, never sent
   // to the client: its only job is to keep the outage out of the cache.
   degraded?: boolean;
+  // Rows OTHER sources returned for the SAME query during this walk, good
+  // enough to stand as a micronutrient donor. Transient bookkeeping: the walk
+  // has already paid for them, so a gap can be filled without a sixth request —
+  // and, unlike the USDA fallback, they were found in the language the food was
+  // actually named in. See [backfillMicros].
+  donors?: Per100[];
   alternatives: NutritionAlternative[];
 }
 
@@ -251,12 +257,12 @@ export class Resolver {
 
   /** Told about every unreachable source, so an outage is a number rather than
    *  a silently worse answer. Optional — tests and offline runs pass nothing. */
-  private readonly onSourceUnavailable?: (source: string) => void;
+  private readonly onSourceUnavailable?: (source: string, reason: string) => void;
 
   constructor(
     private readonly providers: NutritionProvider[],
     estimator?: (name: string, region: Region) => Promise<FoodEstimate | null>,
-    onSourceUnavailable?: (source: string) => void,
+    onSourceUnavailable?: (source: string, reason: string) => void,
   ) {
     this.usda = providers.find((p) => p.name === 'usda');
     this.estimator = estimator;
@@ -297,7 +303,7 @@ export class Resolver {
       return { results: one ? [one] : [], unavailable: false };
     } catch (err) {
       const unavailable = err instanceof ProviderUnavailable;
-      if (unavailable) this.onSourceUnavailable?.(provider.name);
+      if (unavailable) this.onSourceUnavailable?.(provider.name, (err as ProviderUnavailable).reason());
       return { results: [], unavailable };
     }
   }
@@ -334,6 +340,14 @@ export class Resolver {
     let weakFallback: LookupResult | null = null;
     let genericFallback: LookupResult | null = null;
     let degraded = false;
+    // ДОНОРЫ СОБИРАЮТСЯ ПО ДОРОГЕ. Каждый опрошенный источник уже ответил на
+    // ЭТОТ ЖЕ запрос и на ТОМ ЖЕ языке — если он несёт клетчатку или витамины,
+    // которых нет у победителя, это лучший донор, какой у нас может быть, и он
+    // уже оплачен. Раньше донора искали ровно в одном месте — в USDA по
+    // name_en, — и «тарелка овощей» уходила без клетчатки: наш собственный
+    // перевод «fresh vegetables» не набирал порога, хотя RU-таблица, спрошенная
+    // на первом же шаге, клетчатку несла.
+    const donors: Per100[] = [];
     for (const provider of chainFor(this.providers, region)) {
       const name = nameFor(provider);
       if (name.length === 0) continue;
@@ -361,6 +375,9 @@ export class Resolver {
           ...(r.votes === undefined ? {} : { votes: r.votes }),
         })),
       };
+      // Донор — это тот же объект, что и per100 хита: победитель исключается
+      // по тождеству, а не по эвристике «похоже, это он».
+      if (clamp01(primary.confidence) >= MICRO_BACKFILL_MIN_CONFIDENCE) donors.push(hit.per100);
       // Coverage is measured against the BEST of what the source displays and
       // what actually MATCHED: the row «куриная грудка запечённая» is found by
       // its alias «куриное филе», and judged by the display name alone it
@@ -421,11 +438,11 @@ export class Resolver {
         if (!genericFallback) genericFallback = { ...hit, qualifierUnmatched: true };
         continue;
       }
-      return degraded ? { ...hit, degraded } : hit;
+      return { ...hit, donors, ...(degraded ? { degraded } : {}) };
     }
     // A row for the right food beats a thin one that barely matched anything.
     const best = genericFallback ?? weakFallback;
-    return best && degraded ? { ...best, degraded } : best;
+    return best ? { ...best, donors, ...(degraded ? { degraded } : {}) } : null;
   }
 
   /** Item lookup: providers may be queried by name_ru or name_en (queryLang). */
@@ -450,19 +467,28 @@ export class Resolver {
   }
 
   /**
-   * Graft vitamins (and any missing minerals) from a generic USDA record onto a
-   * match whose source carries none — curated RU dishes (борщ, каша: `skurikhin`
-   * wins the chain before USDA is ever queried) and crowd OFF products (vitamins
-   * absent by construction). The primary's OWN minerals stay authoritative; USDA
-   * only fills the gaps. Result is flagged `microsEstimated` so the client can
-   * say the micros are an approximate proxy, not the exact product's values.
+   * Graft vitamins, fibre and any missing minerals onto a match whose source
+   * carries none — curated RU dishes (борщ, каша: `skurikhin` wins the chain
+   * before USDA is ever queried) and crowd OFF products (vitamins absent by
+   * construction). The primary's OWN values stay authoritative; a donor only
+   * fills gaps. Result is flagged `microsEstimated` so the client can say the
+   * micros are an approximate proxy, not the exact product's lab values.
    *
-   * No-op when the match already has vitamins, is a bare estimate, or is itself
-   * from USDA — and cached inside the LookupResult, so a hit pays no extra call.
+   * THE DONOR IS LOOKED FOR WHERE THE FOOD WAS NAMED. Rows the chain already
+   * collected for this same query come first — they were answered in the user's
+   * own language and cost nothing more. Only when none of them carries the
+   * missing nutrient do we pay for the USDA lookup by name_en, which is a
+   * translation of ours and quietly misses whole classes of food («тарелка
+   * овощей» → «fresh vegetables», under the match threshold, no fibre for the
+   * one food group that is mostly fibre).
+   *
+   * No-op when the match already has everything, is a bare estimate, or is
+   * itself from USDA — and cached inside the LookupResult, so a hit pays no
+   * extra call.
    */
   private async backfillMicros(found: LookupResult, nameEn: string): Promise<LookupResult> {
     const per100 = found.per100;
-    if (!this.usda || per100.source === 'usda' || per100.source === 'estimate') return found;
+    if (per100.source === 'estimate') return found;
     // Vitamins and fibre are separate gaps, and only one of them used to open
     // this door. A row that carries vitamins but no `fiber` (most of the crowd
     // OFF corpus, and the curated rows SR Legacy never measured) returned here
@@ -470,9 +496,11 @@ export class Resolver {
     const needsMicros = !per100.vitamins;
     const needsFiber = per100.fiber === undefined;
     if (!needsMicros && !needsFiber) return found;
-    if (nameEn.trim().length === 0) return found;
 
-    const donor = await this.usdaMicros(nameEn);
+    // Сначала — то, за что уже заплачено на этом же обходе.
+    const donor =
+      pickDonor(found.donors ?? [], per100, needsMicros, needsFiber) ??
+      (per100.source === 'usda' || nameEn.trim().length === 0 ? null : await this.usdaMicros(nameEn));
     if (!donor) return found;
 
     const minerals: Minerals = { ...donor.minerals, ...per100.minerals }; // primary wins on overlap
@@ -555,10 +583,16 @@ export class Resolver {
     // Misses stay uncached — a later DB import may resolve them. So does a list
     // assembled while a source was down: it is a partial answer, and freezing it
     // in would keep serving one bad minute after the source recovers.
-    const sourcesDown = lists.some((l) => l.unavailable);
-    if (out.length > 0 && !sourcesDown) this.searchCache.set(key, out);
-    // An empty list after a source went down is not «этой еды нет» — the client
-    // needs to know which sentence it is allowed to say.
+    const degraded = lists.some((l) => l.unavailable);
+    if (out.length > 0 && !degraded) this.searchCache.set(key, out);
+    // ЧАСТИЧНЫЙ ОТКАЗ — НЕ ОТКАЗ. Флаг существует ради ОДНОГО предложения на
+    // экране: «база не ответила» вместо «такой еды нет». Пока хоть один
+    // источник вернул строки, второе предложение и не понадобится — списку
+    // есть что показать, — а первое становится ложью про живые базы: USDA
+    // отваливается заметно чаще прочих (её отказы красили КАЖДЫЙ ответ, включая
+    // те, что целиком собрала другая база). Поэтому флаг поднимается ровно
+    // тогда, когда пустота может оказаться ложной: список пуст И кто-то молчал.
+    const sourcesDown = degraded && out.length === 0;
     return { candidates: out, sourcesDown };
   }
 
@@ -661,10 +695,32 @@ export class Resolver {
       };
     }
 
-    // A dry-product label matched against a likely-cooked weight overcounts ~3× —
-    // flag it (never silently "correct" it). Suppressed for prepared dishes: the
-    // curated finished-dish row already describes the cooked state.
-    const dryBasis = !prepared && looksDryBasis([item.name_ru, item.name_en, found.name], found.per100);
+    // БАЗИС — СВОЙСТВО ПАРЫ, А НЕ ОДНОЙ СТОРОНЫ. Вес и строка каждый стоят в
+    // своём состоянии продукта (сухое / готовое), и `граммы × per100` верно
+    // ТОЛЬКО когда состояния совпали. Раньше здесь сторожилось одно
+    // направление — готовый вес против сухой строки, — а обратное («доширак»:
+    // модель даёт вес СУХОЙ пачки, строка «лапша быстрого приготовления»
+    // несёт плотность ГОТОВОГО блюда) проходило молча и занижало ВТРОЕ той же
+    // самой водой. Теперь спрашиваем обе стороны и сверяем их симметрично;
+    // числа по-прежнему не переписываются — расхождение поднимает флаг и
+    // кладёт пересчитанную строку первой альтернативой.
+    const weightBasis: Basis = prepared
+      ? 'cooked' // готовое блюдо взвешивают готовым по определению
+      : item.weight_basis === 'dry'
+        ? 'dry'
+        : item.weight_basis === 'as_eaten'
+          ? 'cooked'
+          : 'unknown';
+    const matchedBasis: Basis = prepared
+      ? 'unknown' // curated finished-dish row already describes the cooked state
+      : rowBasis([item.name_ru, item.name_en, found.name], found.per100);
+    // Сухая строка против веса, который сухим не назвали, — прежнее правило
+    // слово в слово: молчание о базисе веса тут по-прежнему читается как
+    // «скорее всего готовое», потому что взвешивают обычно то, что едят.
+    const dryBasis = matchedBasis === 'dry' && weightBasis !== 'dry';
+    // Зеркало: вес назван сухим, а строка описывает готовое. Здесь молчания
+    // быть не может — ветка живёт только на ЯВНОМ сигнале наблюдателя.
+    const dryWeight = matchedBasis === 'cooked' && weightBasis === 'dry';
 
     // Только настоящие сорта (см. [gradesOf]): голое число в имени («хлеб 7
     // злаков») не должно ни дёргать оценщик, ни демотировать крауд-строку
@@ -786,11 +842,23 @@ export class Resolver {
     // shows and the user still decides — they may genuinely have weighed it dry.
     // Unknown starches keep the warning only (no reliable factor to offer).
     const cookedAlt: NutritionAlternative[] = [];
-    if (dryBasis) {
+    if (dryBasis || dryWeight) {
       const yieldFactor = dryStarchYield([item.name_ru, item.name_en, found.name]);
       if (yieldFactor) {
-        const label = region === 'US' ? `${item.name_en}, cooked` : `${item.name_ru}, готовое`;
-        cookedAlt.push({ name: label, per100: cookedFromDry(found.per100, yieldFactor) });
+        // Одна и та же вода, прочитанная в две стороны: строку приводим к
+        // состоянию, в котором стоит ВЕС, потому что вес — то, что человек
+        // действительно наблюдал.
+        const label = dryBasis
+          ? region === 'US'
+            ? `${item.name_en}, cooked`
+            : `${item.name_ru}, готовое`
+          : region === 'US'
+            ? `${item.name_en}, dry`
+            : `${item.name_ru}, сухое`;
+        const per100 = dryBasis
+          ? cookedFromDry(found.per100, yieldFactor)
+          : dryFromCooked(found.per100, yieldFactor);
+        cookedAlt.push({ name: label, per100 });
       }
     }
     const alternatives: NutritionAlternative[] = [
@@ -812,10 +880,37 @@ export class Resolver {
       ...(found.name ? { matched_name: found.name } : {}),
       ...(prepared ? { prepared: true } : {}),
       ...(dryBasis ? { dry_basis: true } : {}),
+      ...(dryWeight ? { dry_weight: true } : {}),
       ...(found.microsEstimated ? { micros_estimated: true } : {}),
       ...(alternatives.length > 0 ? { alternatives: alternatives.slice(0, MAX_ALTERNATIVES) } : {}),
     };
   }
+}
+
+/**
+ * The first row among `donors` that actually carries what the primary lacks —
+ * skipping the primary itself (same object) and anything with nothing to give.
+ * Rows are already ordered by the chain's own trustworthiness.
+ */
+function pickDonor(
+  donors: Per100[],
+  primary: Per100,
+  needsMicros: boolean,
+  needsFiber: boolean,
+): { minerals: Minerals; vitamins?: Vitamins; fiber?: number } | null {
+  for (const d of donors) {
+    if (d === primary) continue;
+    const givesVitamins = needsMicros && !!d.vitamins;
+    const givesFiber = needsFiber && typeof d.fiber === 'number';
+    const givesMinerals = Object.keys(d.minerals).length > 0 && Object.keys(primary.minerals).length === 0;
+    if (!givesVitamins && !givesFiber && !givesMinerals) continue;
+    return {
+      minerals: d.minerals,
+      ...(givesVitamins && d.vitamins ? { vitamins: d.vitamins } : {}),
+      ...(givesFiber ? { fiber: d.fiber } : {}),
+    };
+  }
+  return null;
 }
 
 function clamp01(n: number): number {

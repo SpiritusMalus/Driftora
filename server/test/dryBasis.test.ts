@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { cookedFromDry, dryStarchYield, looksDryBasis } from '../src/nutrition/dryBasis.js';
+import { cookedFromDry, dryFromCooked, dryStarchYield, looksDryBasis, rowBasis } from '../src/nutrition/dryBasis.js';
 import type { Per100 } from '../src/types.js';
 
 function per100(over: Partial<Per100> = {}): Per100 {
@@ -57,4 +57,32 @@ test('cookedFromDry: divides every per-100g value by the yield factor, keeps sou
   assert.equal(cooked.minerals.k, 34.5); // 100 / 2.9 = 34.48
   assert.equal(cooked.source, 'usda'); // provenance preserved
   assert.equal(dry.kcal, 360); // input untouched
+});
+
+// ---- basis is a property of the PAIR, not of one side ------------------------
+
+test('rowBasis: a starch row states dry, cooked, or nothing at all', () => {
+  assert.equal(rowBasis(['лапша', 'noodles'], per100({ kcal: 410 })), 'dry');
+  assert.equal(rowBasis(['лапша быстрого приготовления', 'instant noodles'], per100({ kcal: 134 })), 'cooked');
+  // The gap between the two thresholds is deliberately unreadable: a row there
+  // states neither basis, and guessing is what breaks the honest half.
+  assert.equal(rowBasis(['рис', 'rice'], per100({ kcal: 220 })), 'unknown');
+  // Not a starch → the two states don't differ threefold, so we say nothing.
+  assert.equal(rowBasis(['масло', 'butter'], per100({ kcal: 748 })), 'unknown');
+  assert.equal(rowBasis(['грудка', 'chicken breast'], per100({ kcal: 165 })), 'unknown');
+});
+
+test('dryFromCooked mirrors cookedFromDry — the same water, read the other way', () => {
+  const cooked = per100({ source: 'skurikhin', kcal: 134, prot: 4, fat: 6, carb: 16, fiber: 1, minerals: { k: 40 } });
+  const dry = dryFromCooked(cooked, 2.5);
+  assert.equal(dry.kcal, 335); // 134 × 2.5
+  assert.equal(dry.prot, 10);
+  assert.equal(dry.fat, 15);
+  assert.equal(dry.carb, 40);
+  assert.equal(dry.fiber, 2.5);
+  assert.equal(dry.minerals.k, 100);
+  assert.equal(dry.source, 'skurikhin'); // provenance preserved
+  assert.equal(cooked.kcal, 134); // input untouched
+  // Round-trip: dry → cooked → dry lands back where it started.
+  assert.equal(cookedFromDry(dry, 2.5).kcal, 134);
 });

@@ -25,6 +25,9 @@ import { withDbLock } from '../db/tx';
 type AnyDb = BaseSQLiteDatabase<any, any, any>;
 
 let _cached: string | null = null;
+/** The in-flight (or finished) get-or-create, so callers can WAIT for the id
+ *  instead of racing it. Set by the first `ensureInstallId`. */
+let _ready: Promise<string> | null = null;
 
 /** 32 hex chars. The id is a meter key, not a secret — so when the native RNG
  *  is unavailable (bare env), Math.random is an acceptable fallback. */
@@ -51,6 +54,11 @@ export function newInstallId(): string {
  *  the whole point of a stable install id. Uses `ensureSettingsUnlocked`: the
  *  locked variant would wait for the lock this already holds. */
 export async function ensureInstallId(db: AnyDb): Promise<string> {
+  _ready = mintInstallId(db);
+  return _ready;
+}
+
+async function mintInstallId(db: AnyDb): Promise<string> {
   return withDbLock(
     db,
     async () => {
@@ -73,4 +81,31 @@ export async function ensureInstallId(db: AnyDb): Promise<string> {
  *  (requests then just fall back to the server's ip-scoped bucket). */
 export function getCachedInstallId(): string | null {
   return _cached;
+}
+
+/**
+ * ИДЕНТИФИКАТОР — ПРЕДУСЛОВИЕ ЗАПРОСА, А НЕ ПОБОЧНЫЙ ЭФФЕКТ СТАРТА.
+ *
+ * Чеканка id идёт fire-and-forget при инициализации БД, и синхронный
+ * `getCachedInstallId` до её конца отдавал null: запрос уходил БЕЗ заголовка и
+ * попадал в общую по адресу корзину — ровно то, ради чего id и заводился (на
+ * проде это видно как `ip_fallback_active` при нулевых `installs_active`).
+ * Здесь запрос ЖДЁТ уже идущую чеканку — но не дольше `timeoutMs`: заблокировать
+ * еду из-за счётчика было бы хуже той самой корзины, поэтому по истечении срока
+ * (или если чеканка ещё не начиналась) отдаём что есть, обычно null.
+ */
+export async function whenInstallId(timeoutMs = 3000): Promise<string | null> {
+  if (_cached) return _cached;
+  if (!_ready) return null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      _ready.catch(() => null),
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }

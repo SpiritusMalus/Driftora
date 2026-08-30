@@ -165,6 +165,7 @@ export function withItemManualMacros(
       per100,
       matched_name: undefined,
       dry_basis: undefined,
+      dry_weight: undefined,
       micros_estimated: undefined,
       scaled: scaleToGrams(per100, it.grams),
     };
@@ -238,6 +239,7 @@ export function withItemReplacement(
       // The old row's hints don't describe the new pick; the user is now in
       // control of the match, so drop them rather than mislabel the swap.
       dry_basis: undefined,
+      dry_weight: undefined,
       micros_estimated: undefined,
       alternatives: [previous, ...keepAlternatives],
       scaled: scaleToGrams(replacement.per100, it.grams),

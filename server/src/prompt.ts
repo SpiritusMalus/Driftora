@@ -29,6 +29,7 @@ For each distinct food or drink in the input, output:
 - est_grams: your best estimate of the eaten weight in grams, from explicit quantities or typical portions.
 - confidence: 0..1, how sure you are about the food identity and portion.
 - prepared: true when the named item is an already-prepared dish eaten as-is — soups, stews, salads, casseroles, ready composite meals (суп харчо, жаркое, плов, оливье). false for ingredients and simple products that may still be cooked or re-cooked at home (raw meat or fish, vegetables, eggs, pasta, rice, dumplings, bread).
+- weight_basis: WHICH STATE the grams you just gave refer to. "dry" when the number is the weight of the UNCOOKED product — a pack's net weight, a scooped portion of groats, pasta, noodles or powder measured before cooking (a brand named without any portion of its own is its pack: «доширак», «спагетти Barilla»). "as_eaten" when the number is the weight of the food as it is actually eaten — a plate, a bowl, a ready dish, bread, fruit. When in doubt, "as_eaten".
 - estimate: your best ROUGH per-100g figures for the food as typically prepared — ALL FOUR of kcal_100g, prot_100g, fat_100g, carb_100g together. See the estimate rule below.
 
 Rules:
@@ -55,6 +56,12 @@ export const IDENTIFY_SCHEMA = {
           est_grams: { type: 'number' },
           confidence: { type: 'number' },
           prepared: { type: 'boolean' },
+          weight_basis: {
+            type: 'string',
+            enum: ['dry', 'as_eaten'],
+            description:
+              'Which state est_grams refers to: "dry" for the weight of the uncooked product (a pack\'s net weight, groats/pasta/noodles measured before cooking), "as_eaten" for the weight of the food as eaten. When in doubt, "as_eaten".',
+          },
           estimate: {
             type: 'object',
             description: 'Rough per-100g figures from the model — a sanity-check / last-resort fallback, never authoritative. Provide ALL FOUR fields together (kcal_100g, prot_100g, fat_100g, carb_100g) or omit the whole object — never a partial estimate.',
@@ -230,6 +237,7 @@ For each distinct food or drink visible, output:
 - confidence: 0..1, how sure you are about the food identity and portion.
 - prepared: true when the item is an already-prepared dish eaten as-is (soup, stew, salad, casserole, ready meal); false for ingredients and simple products.
 - packaged: true only for a packaged product whose wrapper carries a printed nutrition panel — see the rule below.
+- weight_basis: WHICH STATE est_grams refers to. "dry" when the number is the weight of the UNCOOKED product — typically the net weight printed on a pack of noodles, groats, pasta or powder that has not been cooked yet. "as_eaten" when it is the weight of the food as it is actually eaten — anything on a plate or in a bowl, a ready dish, bread, fruit, and any packaged food eaten straight from its wrapper. When in doubt, "as_eaten".
 
 Rules:
 - Split a composite plate into its meaningful COMPONENTS — name every distinct food you can see, including the ones hidden under a sauce or a topping.
@@ -271,6 +279,12 @@ export const IDENTIFY_PHOTO_SCHEMA = {
             type: 'boolean',
             description:
               'This item is a packaged product whose wrapper carries a printed nutrition panel or net weight. Triggers a second, dedicated pass that reads the panel; no numbers are transcribed in this response.',
+          },
+          weight_basis: {
+            type: 'string',
+            enum: ['dry', 'as_eaten'],
+            description:
+              'Which state est_grams refers to: "dry" for the weight of the uncooked product (a pack of noodles/groats/pasta not cooked yet), "as_eaten" for the weight of the food as eaten. When in doubt, "as_eaten".',
           },
         },
         required: ['name_ru', 'name_en', 'est_grams', 'confidence', 'prepared'],

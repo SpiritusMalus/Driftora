@@ -174,6 +174,11 @@ export function ItemCard({
               <Text style={[styles.dryBasisText, { color: theme.text }, theme.font.body]}>{t('food.dryBasis')}</Text>
             </View>
           ) : null}
+          {item.dry_weight ? (
+            <View style={[styles.dryBasisNote, { borderColor: theme.primary, backgroundColor: theme.card }]}>
+              <Text style={[styles.dryBasisText, { color: theme.text }, theme.font.body]}>{t('food.dryWeight')}</Text>
+            </View>
+          ) : null}
           {refereeFlagged ? (
             <View style={[styles.dryBasisNote, { borderColor: theme.primary, backgroundColor: theme.card }]}>
               <Text style={[styles.dryBasisText, { color: theme.text }, theme.font.body]}>

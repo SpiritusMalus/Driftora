@@ -38,6 +38,13 @@ export const foodItems = sqliteTable('food_items', {
   proteinG: real('protein_g').notNull().default(0),
   fatG: real('fat_g').notNull().default(0),
   carbG: real('carb_g').notNull().default(0),
+  // ПРОВЕНАНС ПЕРЕЖИВАЕТ СОХРАНЕНИЕ. Откуда взялись эти числа: 'usda',
+  // 'skurikhin', 'label', 'ai_estimate'… Без него запись, посчитанную моделью
+  // «на глаз» (±30%), при следующем открытии нельзя было отличить от точного
+  // матча из базы: бейдж «≈ оценка ИИ» смотрит на источник, а источник умирал
+  // при записи. Null = строка, сохранённая до этой колонки (провенанс тогда
+  // действительно неизвестен, и врать о нём мы не будем).
+  source: text('source'),
 });
 
 /// A per-food match the user explicitly chose (disambiguation layer 2). Keyed by

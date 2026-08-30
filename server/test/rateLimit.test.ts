@@ -156,3 +156,43 @@ test('global burst guard trips across mixed routes for one IP', async () => {
     await stop();
   }
 });
+
+/** POST text as a given install id, all from ONE address — the production shape:
+ *  the SNI router hides the client, so every request arrives from the same IP. */
+function postTextAs(base: string, installId: string): Promise<Response> {
+  return realFetch(`${base}/food/parse`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Forwarded-For': '127.0.0.1', // адрес потерян в цепочке прокси — как на проде
+      'X-Install-Id': installId,
+    },
+    body: JSON.stringify({ text: 'омлет', region: 'US' }),
+  });
+}
+
+test('за одним адресом установки не съедают лимит друг у друга', async () => {
+  const { base, stop } = await startApp({ limits: { textPerDay: 1, burstPerMin: 1000, globalPerMin: 1000 } });
+  try {
+    // Первая установка выбирает свой суточный лимит целиком.
+    assert.equal((await postTextAs(base, 'install-aaaa-1111')).status, 200);
+    assert.equal((await postTextAs(base, 'install-aaaa-1111')).status, 429);
+    // Вторая приходит с ТОГО ЖЕ адреса — и лимит у неё свой.
+    assert.equal((await postTextAs(base, 'install-bbbb-2222')).status, 200);
+  } finally {
+    await stop();
+  }
+});
+
+test('ёмкость сервиса — отдельный потолок, а не побочный эффект общего адреса', async () => {
+  const { base, stop } = await startApp({ limits: { globalPerMin: 1, textPerDay: 1000, burstPerMin: 1000 } });
+  try {
+    assert.equal((await postTextAs(base, 'install-aaaa-1111')).status, 200);
+    // Другая установка, свой личный лимит нетронут — но коробка уже занята.
+    const second = await postTextAs(base, 'install-bbbb-2222');
+    assert.equal(second.status, 429);
+    assert.equal(((await second.json()) as { error: { code: string } }).error.code, 'rate_limited');
+  } finally {
+    await stop();
+  }
+});
