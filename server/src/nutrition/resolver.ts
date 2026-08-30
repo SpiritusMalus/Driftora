@@ -368,18 +368,27 @@ export class Resolver {
       // while USDA's «в панировке» row went on to win the walk at full
       // confidence (owner report 2026-08-25). The gate must measure by the same
       // rule that found the row, or a match gets found and then thrown away.
-      const coverage = Math.max(
-        queryCoverage(name, primary.name ?? name),
-        primary.matchedKey === undefined ? 0 : queryCoverage(name, primary.matchedKey),
-      );
+      const shownName = primary.name ?? name;
+      const coverageByName = queryCoverage(name, shownName);
+      const coverageByKey = primary.matchedKey === undefined ? -1 : queryCoverage(name, primary.matchedKey);
+      const coverage = Math.max(coverageByName, Math.max(coverageByKey, 0));
+      // ЧТО ИМЕННО ОПРАВДАЛО МАТЧ — по этому виду и судим ниже. Строку могли
+      // найти по алиасу, и тогда спрашивать «а объясняет ли запрос ПОКАЗЫВАЕМОЕ
+      // имя» бессмысленно: оно матч не оправдывало.
+      const justifiedBy = coverageByKey > coverageByName ? (primary.matchedKey as string) : shownName;
       // ГЛАВНОЕ СЛОВО ПОТЕРЯНО — тонко даже при проходном покрытии. «cereal bun»
       // против строки «cereal» даёт ровно 0.5 и раньше ОСТАНАВЛИВАЛО обход:
       // булочка приезжала хлопьями, с чужими числами и правильным именем.
       // Доля тут не помощник — «борщ украинский» → «борщ» тоже 0.5, но там
       // уцелело главное слово и еда та же. Различает их только то, ЧТО совпало.
-      const headLost =
-        headNounLost(name, primary.name ?? name) &&
-        (primary.matchedKey === undefined || headNounLost(name, primary.matchedKey));
+      // Судим ТУ сторону, что оправдала матч. Раньше здесь стояло «и» по обоим
+      // видам, и это пропускало главный случай: `headNounLost` отвечает «нет»
+      // не только когда главное слово на месте, но и когда ей нечего сказать —
+      // совпадения нет вовсе. Показываемое имя «гречка варёная» запрос
+      // «гречневая лапша» не объясняет НИКАК, функция молчала, «и» читало это
+      // молчание как «всё в порядке» — а матч тем временем держался на алиасе
+      // «гречневая», то есть на голом определении. Лапша так и оставалась кашей.
+      const headLost = headNounLost(name, justifiedBy);
       if (coverage < MIN_CHAIN_COVERAGE || headLost) {
         // Keep the FIRST thin hit: the chain is ordered by trustworthiness, so an
         // early source's weak row still beats a later source's weak row.

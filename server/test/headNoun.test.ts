@@ -99,3 +99,26 @@ test('цепочка: обычное уточнение по-прежнему о
 
   assert.equal(resolved.per100.kcal, 49);
 });
+
+test('цепочка: матч, оправданный алиасом-определением, тоже тонкий', async () => {
+  // «гречка варёная» в таблице имеет алиас «гречневая» — голое определение.
+  // Запрос «гречневая лапша» цеплялся за него: показываемое имя запрос не
+  // объясняло никак, правило молчало, и лапша приезжала кашей (usda 92).
+  // Судить надо ТУ сторону, что оправдала матч, — здесь это алиас.
+  const groats: NutritionProvider = {
+    name: 'skurikhin',
+    regions: ['RU', 'US'] as const,
+    async search() {
+      return { name: 'гречка варёная', matchedKey: 'гречневая', per100: per100(92), confidence: 0.9 };
+    },
+  } as NutritionProvider;
+  // Русскоязычный источник: получает «гречневая лапша» и отвечает лапшой.
+  const noodles = stub('usda', 'лапша гречневая', 348);
+
+  const resolved = await new Resolver([groats, noodles]).resolveItem(
+    { name_ru: 'гречневая лапша', name_en: 'soba noodles', est_grams: 200, confidence: 0.9 },
+    'RU',
+  );
+
+  assert.equal(resolved.per100.kcal, 348, 'выиграть должна лапша, а не каша');
+});
