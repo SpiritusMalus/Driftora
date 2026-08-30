@@ -21,7 +21,7 @@
 
 import type { AudioInput, PhotoInput } from './foodParser';
 
-import { getCachedInstallId } from './installId';
+import { whenInstallId } from './installId';
 
 /** One activity parsed from a free-text description — mirrors server ParsedWorkout. */
 export interface ParsedWorkout {
@@ -100,7 +100,7 @@ class HttpWorkoutParser implements WorkoutParser {
     token?: string,
     // Lazy — the install id is minted async at DB init, after this singleton
     // may already exist (same pattern as HttpFoodParserOptions.installId).
-    private readonly installId?: () => string | null,
+    private readonly installId?: () => string | null | Promise<string | null>,
     private readonly timeoutMs = DEFAULT_TIMEOUT_MS,
   ) {
     // Derive the sibling endpoints from the food base URL (…/food/parse → …/workout/parse*).
@@ -111,9 +111,10 @@ class HttpWorkoutParser implements WorkoutParser {
     this.authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
   }
 
-  /** Per-request headers: static auth + the current install id, if minted yet. */
-  private headers(): Record<string, string> {
-    const id = this.installId?.();
+  /** Per-request headers: static auth + the install id, waiting for the mint if
+   *  it is still in flight (the getter caps its own wait). */
+  private async headers(): Promise<Record<string, string>> {
+    const id = await this.installId?.();
     return id ? { ...this.authHeaders, 'X-Install-Id': id } : { ...this.authHeaders };
   }
 
@@ -156,8 +157,8 @@ class HttpWorkoutParser implements WorkoutParser {
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: input.json
-          ? { 'Content-Type': 'application/json', ...this.headers() }
-          : this.headers(),
+          ? { 'Content-Type': 'application/json', ...(await this.headers()) }
+          : await this.headers(),
         body: input.json ? JSON.stringify(input.json) : input.form,
         signal: controller.signal,
       });
@@ -182,5 +183,5 @@ let _online: HttpWorkoutParser | null = null;
 export function getWorkoutParser(aiConsent: boolean): WorkoutParser | null {
   const base = process.env.EXPO_PUBLIC_FOOD_API_URL;
   if (!base || !aiConsent) return null;
-  return (_online ??= new HttpWorkoutParser(base, process.env.EXPO_PUBLIC_FOOD_API_TOKEN, getCachedInstallId));
+  return (_online ??= new HttpWorkoutParser(base, process.env.EXPO_PUBLIC_FOOD_API_TOKEN, whenInstallId));
 }

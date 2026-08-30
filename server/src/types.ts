@@ -280,6 +280,13 @@ export interface IdentifiedItem {
   // flag — the reading itself happens in a second, dedicated pass over the same
   // photo (`readPackageLabel`), so a plate of food never pays for panel work.
   packaged?: boolean;
+  // WHICH STATE `est_grams` was measured in. A weight and a per-100g row each
+  // carry their own basis, and multiplying across a mismatch is a threefold
+  // error in either direction — the observer is the only one who knows which
+  // state was weighed, so we ask for it instead of guessing downstream.
+  // Absent = no signal (older models, older cached parses): treated as unknown,
+  // which keeps the pre-existing one-directional heuristic in charge.
+  weight_basis?: 'dry' | 'as_eaten';
   label?: LabelReading;
   // The model's rough per-100g guess — referee band + DB-miss fallback.
   estimate?: AiEstimate;
@@ -331,6 +338,17 @@ export interface NutritionItem {
   // dish — so `grams × per100` overcounts ~3× (absorbed water). We don't rewrite
   // the numbers; the client shows a "check the weight" note. Only `true` is sent.
   dry_basis?: boolean;
+  // The MIRROR of `dry_basis`, and the same honesty rule: the weight is the
+  // UNCOOKED product (a pack's net weight) while the matched row describes the
+  // COOKED dish, so `grams × per100` UNDERCOUNTS by the same water uptake.
+  // Numbers are never rewritten — the client shows the note and the converted
+  // row rides along as the top one-tap alternative. Only `true` is sent.
+  dry_weight?: boolean;
+  // The per-100g SHOWN here was re-stated onto the state the weight is in (a
+  // cooked row read as the dry pack, or the reverse) — the client must say so
+  // plainly instead of leaving the person to wonder why the number moved. The
+  // ORIGINAL row is always the first alternative. Only `true` is sent.
+  basis_adjusted?: boolean;
   // TRANSPARENCY: some of the vitamins/minerals here were BACK-FILLED from a
   // generic USDA record (by name_en) because the primary source (curated RU / a
   // crowd OFF product) carries no micronutrients. They're an approximate proxy,
@@ -662,6 +680,8 @@ export function normalizeIdentified(payload: unknown): IdentifiedItem[] {
     // Strictly boolean true — "false"/1/garbage from a loose model stays off.
     if (r.prepared === true) item.prepared = true;
     if (r.packaged === true) item.packaged = true;
+    // Only the two contract values; anything else is "no signal", never a guess.
+    if (r.weight_basis === 'dry' || r.weight_basis === 'as_eaten') item.weight_basis = r.weight_basis;
     // Photo label read-out: the model's structured guess, reconciled against the
     // panel parsed from its own verbatim transcription. Only agreeing readings
     // survive — see `crossCheckLabel`.

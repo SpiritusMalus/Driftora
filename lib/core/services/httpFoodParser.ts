@@ -62,6 +62,8 @@ function isItem(v: unknown): v is NutritionItem {
     (i.matched_name === undefined || typeof i.matched_name === 'string') &&
     (i.prepared === undefined || typeof i.prepared === 'boolean') &&
     (i.dry_basis === undefined || typeof i.dry_basis === 'boolean') &&
+    (i.dry_weight === undefined || typeof i.dry_weight === 'boolean') &&
+    (i.basis_adjusted === undefined || typeof i.basis_adjusted === 'boolean') &&
     (i.micros_estimated === undefined || typeof i.micros_estimated === 'boolean') &&
     (i.alternatives === undefined || (Array.isArray(i.alternatives) && i.alternatives.every(isAlternative)))
   );
@@ -218,8 +220,10 @@ export interface HttpFoodParserOptions {
   /** When set, every request carries `Authorization: Bearer <token>`. */
   token?: string;
   /** Lazy getter for the per-install id (`X-Install-Id`) — lazy because the id
-   *  is minted async at DB init and may appear after this parser is built. */
-  installId?: () => string | null;
+   *  is minted async at DB init and may appear after this parser is built. May
+   *  return a promise: the caller AWAITS the mint rather than racing it, so the
+   *  first request of a fresh install is metered per install and not per IP. */
+  installId?: () => string | null | Promise<string | null>;
   /** Override the photo/audio upload timeout (defaults to `UPLOAD_TIMEOUT_MS`). */
   uploadTimeoutMs?: number;
 }
@@ -233,7 +237,7 @@ export class HttpFoodParser implements FoodParser {
   /** Extra headers on every request — `Authorization` when a token is set. */
   private readonly authHeaders: Record<string, string>;
   /** Lazy per-install id for the server's AI-quota meter (may appear late). */
-  private readonly installId?: () => string | null;
+  private readonly installId?: () => string | null | Promise<string | null>;
   /** Longer timeout for the slow multipart uploads (photo/audio). */
   private readonly uploadTimeoutMs: number;
 
@@ -253,9 +257,10 @@ export class HttpFoodParser implements FoodParser {
     this.uploadTimeoutMs = opts.uploadTimeoutMs ?? UPLOAD_TIMEOUT_MS;
   }
 
-  /** Per-request headers: static auth + the current install id, if minted yet. */
-  private headers(): Record<string, string> {
-    const id = this.installId?.();
+  /** Per-request headers: static auth + the install id, waiting for the mint if
+   *  it is still in flight (the getter caps its own wait). */
+  private async headers(): Promise<Record<string, string>> {
+    const id = await this.installId?.();
     return id ? { ...this.authHeaders, 'X-Install-Id': id } : { ...this.authHeaders };
   }
 
@@ -271,7 +276,7 @@ export class HttpFoodParser implements FoodParser {
     try {
       const res = await fetch(this.searchEndpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...this.headers() },
+        headers: { 'Content-Type': 'application/json', ...(await this.headers()) },
         // `ai: true` — reaching THIS (online) parser already means AI consent was
         // granted (getFoodParser returns the offline stub otherwise), so the
         // server may add an ai_estimate row when the DBs come up empty.
@@ -324,7 +329,7 @@ export class HttpFoodParser implements FoodParser {
     try {
       const res = await fetch(this.barcodeEndpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...this.headers() },
+        headers: { 'Content-Type': 'application/json', ...(await this.headers()) },
         body: JSON.stringify({ code: trimmed, region }),
         signal: controller.signal,
       });
@@ -398,7 +403,7 @@ export class HttpFoodParser implements FoodParser {
     try {
       const res = await fetch(this.endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...this.headers() },
+        headers: { 'Content-Type': 'application/json', ...(await this.headers()) },
         body: JSON.stringify({ text, region }),
         signal: controller.signal,
       });
@@ -443,7 +448,7 @@ export class HttpFoodParser implements FoodParser {
 
       const res = await fetch(this.photoEndpoint, {
         method: 'POST',
-        headers: this.headers(),
+        headers: await this.headers(),
         body: form,
         signal: controller.signal,
       });
@@ -487,7 +492,7 @@ export class HttpFoodParser implements FoodParser {
 
       const res = await fetch(this.audioEndpoint, {
         method: 'POST',
-        headers: this.headers(),
+        headers: await this.headers(),
         body: form,
         signal: controller.signal,
       });

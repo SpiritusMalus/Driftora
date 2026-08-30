@@ -39,16 +39,77 @@ const DRY_KCAL_FLOOR = 250;
 /// dry-basis warning AND an invented «готовое» alternative at ÷2.5 kcal.
 const DRY_KCAL_CEIL = 500;
 
+/// Below this a starch row is describing the COOKED state: boiled rice, pasta
+/// and groats live at ~90–160 kcal/100 g, and nothing dry comes anywhere near
+/// it. The gap between this and [DRY_KCAL_FLOOR] is deliberately left as
+/// «unknown»: a row in it (a drained-but-dense pilaf, an unclear crowd entry)
+/// states neither basis clearly, and guessing there is how you break the honest
+/// half of the corpus.
+const COOKED_KCAL_CEIL = 200;
+
+/**
+ * WHICH STATE a matched row describes — the row half of the basis pair.
+ *
+ * A weight and a per-100g row each carry their own basis (dry product vs the
+ * finished dish), and `grams × per100` is only true when the two agree. This
+ * says what the ROW is; [IdentifiedItem.weightBasis] says what the WEIGHT is.
+ * Neither is judged without the other — see the resolver.
+ *
+ * Only starches are classified: they are the foods whose two states differ by
+ * a factor of three. Everything else answers 'unknown' and is left alone.
+ */
+export function rowBasis(names: (string | undefined)[], per100: Per100): Basis {
+  if (per100.source === 'estimate') return 'unknown'; // a fabricated placeholder isn't a label
+  const hay = names.filter((n) => typeof n === 'string' && n.length > 0).join(' ');
+  if (!DRY_STARCH_RE.test(hay)) return 'unknown';
+  if (per100.kcal >= DRY_KCAL_FLOOR && per100.kcal <= DRY_KCAL_CEIL) return 'dry';
+  if (per100.kcal > 0 && per100.kcal < COOKED_KCAL_CEIL) return 'cooked';
+  return 'unknown';
+}
+
+/** The state a weight or a per-100g row is stated in. */
+export type Basis = 'dry' | 'cooked' | 'unknown';
+
+/**
+ * Above this many grams a starch weight is читается as the FINISHED dish. Below
+ * it, for a food that triples when cooked, the number is almost always the dry
+ * product: a pack of instant noodles is 60–120 g and yields ~250–350 g cooked,
+ * while 90 g of *cooked* noodles is not a portion anybody logs. Deliberately
+ * low — a 150 g side of rice is a real cooked portion and must stay untouched.
+ */
+const DRY_PACK_MAX_G = 120;
+
+/** A cooked starch portion outside this range is not a portion; used to check
+ *  that reading the weight as dry actually produces something edible. */
+const COOKED_PORTION_G = { min: 150, max: 600 } as const;
+
+/**
+ * ВЕС БЕЗ БАЗИСА — ПОЛОВИНА ФАКТА, и назвать его может только наблюдатель.
+ * Мы спрашиваем модель (`weight_basis`), но она это поле молча пропускает даже
+ * как обязательное, поэтому у сервера есть свой, узкий вывод — ровно для
+ * случая, где молчание означает ошибку втрое.
+ *
+ * `grams` относятся к СУХОМУ продукту, когда еда — крахмал с известным
+ * коэффициентом разваривания, вес мал для готовой порции, а прочитанный как
+ * сухой он даёт правдоподобную порцию. «Доширак 90 г» проходит (90 × 2.5 = 225 г
+ * готовой лапши); «гречневая лапша 200 г» и «рис 150 г» — нет: там вес честно
+ * готовый, и трогать его не за что.
+ */
+export function weighedDry(names: (string | undefined)[], grams: number): boolean {
+  if (grams <= 0 || grams > DRY_PACK_MAX_G) return false;
+  const factor = dryStarchYield(names);
+  if (factor === null) return false;
+  const cooked = grams * factor;
+  return cooked >= COOKED_PORTION_G.min && cooked <= COOKED_PORTION_G.max;
+}
+
 /**
  * True when `per100` looks like a DRY-product label for a starch the user most
  * likely weighed cooked. `names` = every name we can check (logged RU/EN + the
  * matched DB row's own name — the row name is the strongest signal of state).
  */
 export function looksDryBasis(names: (string | undefined)[], per100: Per100): boolean {
-  if (per100.source === 'estimate') return false; // a fabricated placeholder isn't a label
-  if (per100.kcal < DRY_KCAL_FLOOR || per100.kcal > DRY_KCAL_CEIL) return false;
-  const hay = names.filter((n) => typeof n === 'string' && n.length > 0).join(' ');
-  return DRY_STARCH_RE.test(hay);
+  return rowBasis(names, per100) === 'dry';
 }
 
 /**
@@ -96,7 +157,22 @@ const round1 = (x: number): number => Math.round(x * 10) / 10;
  * the same water uptake. Never mutates the input; keeps the original `source`.
  */
 export function cookedFromDry(per100: Per100, factor: number): Per100 {
-  const div = (x: number) => x / factor;
+  return rebase(per100, 1 / factor);
+}
+
+/**
+ * The MIRROR conversion: a COOKED-basis per-100g re-stated on the DRY product
+ * the weight refers to (per-100g dry = per-100g cooked × factor). Same water
+ * uptake, read the other way — 100 g of the dry pack becomes `factor`× that
+ * weight cooked, so the dry product is `factor`× as dense.
+ */
+export function dryFromCooked(per100: Per100, factor: number): Per100 {
+  return rebase(per100, factor);
+}
+
+/** Scales every nutrient of a per-100g by `mult`; never mutates the input. */
+function rebase(per100: Per100, mult: number): Per100 {
+  const div = (x: number) => x * mult;
   const minerals: Minerals = {};
   for (const [k, v] of Object.entries(per100.minerals)) {
     if (typeof v === 'number' && Number.isFinite(v)) minerals[k as keyof Minerals] = round1(div(v));

@@ -1407,7 +1407,16 @@ export default function FoodLogScreen() {
                   },
                 ]}
               >
-                <Text style={[styles.segmentText, { color: active ? theme.onPrimary : theme.text }, theme.font.body]}>
+                {/* РАВНЫЕ ДОЛИ РЯДА — ФИКСИРОВАННАЯ ШИРИНА, и слово в ней должно
+                    ужиматься, а не рваться: при 130% шрифта «Штрихкод» ломался
+                    посреди слова («Штрихко/д»). Одна строка + подгонка кегля
+                    держит подпись целой на любом масштабе. */}
+                <Text
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.8}
+                  style={[styles.segmentText, { color: active ? theme.onPrimary : theme.text }, theme.font.body]}
+                >
                   {t(`food.inputMode.${key}`)}
                 </Text>
               </Pressable>

@@ -1192,9 +1192,18 @@ export const en = {
     totalAllMisses: 'No total yet — this food isn’t in the database. Enter its macros above or find a close match manually.',
     aiEstimateNote: 'Some numbers are a rough AI estimate (not in our database). They’re counted in the total — adjust the weight or enter macros for accuracy.',
     notInDb: 'This food isn’t in the database, so no numbers are filled in. Enter its calories and macros per 100 g — from the label, say — or find a close match manually.',
-    // Honest note: label numbers are for the DRY product vs. a cooked-dish weight.
-    dryBasis:
-      'These numbers are for the dry product. If the weight is for the cooked dish, calories are overstated roughly 3×. Enter the dry weight, or search manually for a “cooked” match. We never rewrite the numbers.',
+    // Dry and cooked are the same food, three times apart per 100 g. People need
+    // two answers: what we read it as, and what to do if we read it wrong.
+    basis: {
+      dryTitle: 'Counted as the dry product',
+      dryBody: 'The weight looks like a pack before cooking. If you weighed the cooked dish, pick the first option below.',
+      cookedTitle: 'Counted as the cooked dish',
+      cookedBody:
+        'The database row is for the dry product, but the weight looks like a cooked portion. If you weighed it dry, pick the first option below.',
+      checkTitle: 'Check the weight',
+      checkBody:
+        'These numbers are for the dry product. If this is the cooked weight, calories are roughly 3× lower — a matching option is below.',
+    },
     refereeMismatch:
       'This looks like the wrong product: the figures are far from what’s expected for this dish. Pick an option below — an AI estimate is included.',
     // Vitamins & minerals for the whole dish, as a share of the daily norm (bars).

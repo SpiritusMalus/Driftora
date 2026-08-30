@@ -25,6 +25,7 @@ import {
   type CommunityFoods,
 } from './nutrition/community.js';
 import { buildMealDraft, buildProviders } from './orchestrator.js';
+import { RESPONSE_BUDGET_MS, withinBudget } from './httpTimeout.js';
 import { localizeAlternatives, localizeDraft } from './nutrition/translateNames.js';
 import { createInstallQuota, installIdOf } from './installQuota.js';
 import { createEntitlements, type PurchaseVerifier } from './entitlements.js';
@@ -540,6 +541,9 @@ export function createApp(
 
   // Global per-IP burst guard, before body parsing/routes so abuse is cheap to
   // reject; /health is never limited (skip lives in the limiter).
+  // Ёмкость коробки идёт ПЕРЕД личным лимитом: личный ключ теперь у каждого
+  // свой, и без общего потолка сервис не был бы ограничен ничем.
+  app.use(limiters.global);
   app.use(limiters.burst);
 
   app.use(express.json({ limit: '16kb' }));
@@ -1141,7 +1145,14 @@ export function createApp(
       // Timed as its own stage — it is an LLM round-trip on cache-cold labels
       // and was the last untimed chunk of the user-visible wait.
       const translateStart = Date.now();
-      const localized = await localizeDraft(draft, region);
+      // Перевод — украшение: если бюджет ответа кончается, разбор уезжает с
+      // английскими ярлыками, но УЕЗЖАЕТ. Раньше он мог опоздать вместе с ним.
+      const localized = await withinBudget(
+        startedAt,
+        route === 'text' ? RESPONSE_BUDGET_MS.text : RESPONSE_BUDGET_MS.upload,
+        () => localizeDraft(draft, region),
+        draft,
+      );
       metrics.recordStage('translate', Date.now() - translateStart);
       metrics.recordParse(route, region, draft, Date.now() - startedAt);
       // `heard` rides alongside the draft, never inside it: it is a record of
@@ -1209,14 +1220,31 @@ export function createApp(
     // quota (free 30/day vs the 300/day per-IP text cap). Out of budget → the
     // DB candidates still return; only the card is withheld.
     const wantAi = body.ai === true && aiQuota.tryConsume(req, res);
+    // Один бюджет на весь ответ: строки базы — главное, карточка ИИ и перевод
+    // ярлыков — украшения. Сумма их собственных таймаутов (≈44 с) вдвое
+    // перерастала ожидание телефона (25 с), и человек видел «нет сети» поверх
+    // уже посчитанного и оплаченного ответа.
+    const searchStartedAt = Date.now();
     const [found, aiCard] = await Promise.all([
       resolver.search(query, region).catch(() => ({ candidates: [], sourcesDown: true })),
-      wantAi ? aiSearchCard(query, region).catch(() => null) : Promise.resolve(null),
+      wantAi
+        ? withinBudget(
+            searchStartedAt,
+            RESPONSE_BUDGET_MS.text,
+            () => aiSearchCard(query, region).catch(() => null),
+            null,
+          )
+        : Promise.resolve(null),
     ]);
     // Localize the English DB candidate labels to Russian (RU, behind the flag).
     // The AI card's name is already Russian (from the estimate), so it's appended
     // after localization untouched.
-    const localized = await localizeAlternatives(found.candidates, region);
+    const localized = await withinBudget(
+      searchStartedAt,
+      RESPONSE_BUDGET_MS.text,
+      () => localizeAlternatives(found.candidates, region),
+      found.candidates,
+    );
     // Honesty marker for the client: is the SHARED base actually on? With it
     // off, «впишите — появится для остальных» is a false promise (contribute
     // drops the row), so the client swaps that empty-state copy for an honest one.

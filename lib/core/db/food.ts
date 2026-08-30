@@ -187,6 +187,9 @@ async function insertDraftItems(db: AnyDb, entryId: number, d: MealDraft): Promi
       proteinG: it.scaled.prot,
       fatG: it.scaled.fat,
       carbG: it.scaled.carb,
+      // Куда делись числа — туда же и их происхождение: без него открытая
+      // заново запись выдаёт оценку модели за строку из базы.
+      source: it.per100.source,
     })),
   );
 }
@@ -435,6 +438,7 @@ export async function repeatFoodEntry(db: AnyDb, id: number, ts: Date = new Date
           proteinG: it.proteinG,
           fatG: it.fatG,
           carbG: it.carbG,
+          source: it.source, // копия несёт то же происхождение, что и оригинал
         })),
       );
     }
@@ -443,23 +447,30 @@ export async function repeatFoodEntry(db: AnyDb, id: number, ts: Date = new Date
 }
 
 /// Rebuild an editable [MealDraft] from a stored entry + items. Storage keeps
-/// only the SCALED macros (provenance/minerals are lost), so each item's per-100g
-/// is *derived back* from `scaled / grams` purely to let grams edits rescale; the
-/// initially-shown `scaled` stays the exact stored fact. Pure — no db access.
+/// the SCALED macros and the item's PROVENANCE (minerals are still lost), so
+/// each item's per-100g is *derived back* from `scaled / grams` purely to let
+/// grams edits rescale; the initially-shown `scaled` stays the exact stored
+/// fact. Pure — no db access.
 export function draftFromStoredEntry(region: Region, items: FoodItem[]): MealDraft {
   const nItems: NutritionItem[] = items.map((it) => {
     const grams = it.qtyG && it.qtyG > 0 ? it.qtyG : 100;
     const factor = grams / 100;
+    // ЧЕМ БЫЛА ЗАПИСЬ, ТЕМ И ОСТАЁТСЯ. Пока провенанс не хранился, всё
+    // прочитанное обратно выглядело точным матчем из базы: позиция, которую
+    // модель прикинула «на глаз» (±30%), теряла и бейдж «≈ оценка ИИ», и
+    // заметку под ним — редактирование граммов пересчитывало выдуманный
+    // per-100 как факт. Строки, записанные ДО колонки, честно неизвестны и
+    // остаются 'history' — журналом пользователя.
+    const stored = it.source;
+    const source: Per100['source'] =
+      stored && stored !== 'estimate' ? (stored as Per100['source']) : 'history';
     const per100: Per100 = {
       kcal: Math.round(it.kcal / factor),
       prot: Math.round((it.proteinG / factor) * 10) / 10,
       fat: Math.round((it.fatG / factor) * 10) / 10,
       carb: Math.round((it.carbG / factor) * 10) / 10,
       minerals: {},
-      // Provenance wasn't stored; the saved scaled macro is the user's own
-      // recorded fact, so tag it 'history' (their journal) — NOT 'estimate',
-      // which now means an unfilled DB miss the total deliberately skips.
-      source: 'history',
+      source,
     };
     return {
       name_ru: it.name,
@@ -470,7 +481,9 @@ export function draftFromStoredEntry(region: Region, items: FoodItem[]): MealDra
       per100,
       // Keep the exact stored totals for the initial render (lossless until edited).
       scaled: { kcal: it.kcal, prot: it.proteinG, fat: it.fatG, carb: it.carbG, minerals: {} },
-      approximate: false,
+      // Веc человек подтвердил, а вот СОСТАВ модели остаётся оценкой — «≈» на
+      // итоге держится тем же признаком, что и бейдж на позиции.
+      approximate: source === 'ai_estimate',
     };
   });
   return recomputeDraft(region, nItems);

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { headNounLost } from '../src/nutrition/scoring.js';
+import { headNounLost, introducesForeignForm } from '../src/nutrition/scoring.js';
 import { Resolver } from '../src/nutrition/resolver.js';
 import type { NutritionProvider } from '../src/nutrition/provider.js';
 
@@ -121,4 +121,24 @@ test('цепочка: матч, оправданный алиасом-опред
   );
 
   assert.equal(resolved.per100.kcal, 348, 'выиграть должна лапша, а не каша');
+});
+
+// ---- чужая форма: строка превращает еду в другой продукт ---------------------
+
+test('introducesForeignForm: печенье с овсянкой — не овсянка', () => {
+  assert.equal(introducesForeignForm('oatmeal cooked', "Lecour's, Oatmeal Raisin Soft Cooked Cookies"), true);
+  assert.equal(introducesForeignForm('овсянка', 'Овсяное печенье'), true);
+  assert.equal(introducesForeignForm('яблоко', 'Яблочный сок'), true);
+  assert.equal(introducesForeignForm('гречка', 'Гречневые чипсы'), true);
+});
+
+test('introducesForeignForm: запрос сам про эту форму — правило молчит', () => {
+  assert.equal(introducesForeignForm('овсяное печенье', 'Овсяное печенье «Юбилейное»'), false);
+  assert.equal(introducesForeignForm('яблочный сок', 'Сок яблочный осветлённый'), false);
+});
+
+test('introducesForeignForm: обычная еда правило не трогает', () => {
+  assert.equal(introducesForeignForm('овсянка', 'Овсяная каша на молоке'), false);
+  assert.equal(introducesForeignForm('борщ', 'Суп борщ украинский'), false); // борщ и правда суп
+  assert.equal(introducesForeignForm('куриная грудка', 'Куриная грудка запечённая'), false);
 });

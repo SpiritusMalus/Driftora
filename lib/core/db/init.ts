@@ -231,6 +231,11 @@ export const MIGRATIONS: string[] = [
   // not chosen; the day view keeps the keyword/clock fallback for old rows.
   `ALTER TABLE food_entries ADD COLUMN meal TEXT`,
   `ALTER TABLE food_entries ADD COLUMN parse_status TEXT`,
+  // 2026-08-30: per-item provenance. Storage kept only the scaled macros, so a
+  // reopened entry showed a model's ±30% guess exactly like a USDA row — the
+  // honesty badge had nothing left to read. Nullable: older rows genuinely
+  // don't know where their numbers came from.
+  `ALTER TABLE food_items ADD COLUMN source TEXT`,
   // 2026-07-12: the Home mood row became a left-swipe gesture. Shown-once
   // interactive coach flag + how many times the swipe actually opened the mood
   // screen (the subtle Home hint retires after 3).

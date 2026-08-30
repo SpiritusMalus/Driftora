@@ -716,7 +716,12 @@ export function WorkoutSection({
                     },
                   ]}
                 >
+                  {/* Тот же закон, что и у режимов ввода еды: подпись в равной
+                      доле ряда ужимается, но не рвётся посреди слова. */}
                   <Text
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.8}
                     style={[
                       styles.segmentText,
                       { color: active ? theme.onPrimary : m === 'ai' && coaching ? theme.primary : theme.subtle },

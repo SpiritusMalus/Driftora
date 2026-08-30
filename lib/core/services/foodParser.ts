@@ -115,6 +115,14 @@ export interface NutritionItem {
   // dish, so the total overcounts ~3× (absorbed water). The card shows a "check
   // the weight" note — we never rewrite the numbers. Cleared on manual/replace.
   dry_basis?: boolean;
+  // The MIRROR hint: the weight is the UNCOOKED product (a pack's net weight)
+  // while the matched row describes the cooked dish, so the total UNDERCOUNTS
+  // by the same water. Same treatment — a note and a converted alternative,
+  // never a rewritten number. Cleared on manual/replace.
+  dry_weight?: boolean;
+  // The per-100g shown was re-stated onto the state the weight is in. The card
+  // says so in plain words and keeps the original row one tap away.
+  basis_adjusted?: boolean;
   // Server hint: some vitamins/minerals were back-filled from a generic USDA
   // record because the primary source (curated RU / OFF) carries none. They're
   // an approximate proxy — the card says so. Cleared on manual/replace.
