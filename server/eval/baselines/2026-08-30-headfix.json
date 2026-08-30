@@ -1,0 +1,45 @@
+{
+  "total": 34,
+  "passed": 30,
+  "failed": 4,
+  "passRate": 0.8823529411764706,
+  "emptyRate": 0.058823529411764705,
+  "latencyMs": {
+    "p50": 1171,
+    "p95": 3441,
+    "max": 4372
+  },
+  "sourceCounts": {
+    "skurikhin": 9,
+    "fatsecret": 8,
+    "usda": 15,
+    "ai_estimate": 2,
+    "openfoodfacts": 2
+  },
+  "failures": [
+    {
+      "id": "ru-instant-noodles",
+      "failures": [
+        "kcal 121 outside 150–700"
+      ]
+    },
+    {
+      "id": "us-oatmeal",
+      "failures": [
+        "kcal 853 outside 80–600"
+      ]
+    },
+    {
+      "id": "ru-vegetable-plate-fiber",
+      "failures": [
+        "totals.fiber missing"
+      ]
+    },
+    {
+      "id": "ru-branded-buckwheat",
+      "failures": [
+        "kcal 64 outside 100–800"
+      ]
+    }
+  ]
+}
