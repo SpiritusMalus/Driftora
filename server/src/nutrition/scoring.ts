@@ -1,4 +1,4 @@
-import { tokenScore } from './ruSearch.js';
+import { looksAdjectiveRu, tokenScore } from './ruSearch.js';
 
 /**
  * Candidate ranking for nutrition lookups (disambiguation layer 1). Providers
@@ -110,6 +110,61 @@ export function queryCoverage(query: string, candidate: string): number {
  * routinely cost a token or two without making the match wrong.
  */
 export const MIN_CHAIN_COVERAGE = 0.5;
+
+/**
+ * ГЛАВНОЕ СЛОВО ПОТЕРЯНО: находка объяснила только ОПРЕДЕЛЕНИЯ запроса, а
+ * существительное, ради которого запрос и был сделан, в ней не нашлось.
+ *
+ * Порог покрытия этого не ловит и поймать не может: «борщ украинский» → «борщ»
+ * и «гречневая лапша» → «гречка варёная» одинаково дают 1 из 2. Разница не в
+ * доле, а в том, КАКОЕ слово уцелело. В первом случае отпало уточнение и еда
+ * осталась та же; во втором совпало определение, а лапша превратилась в кашу —
+ * это другое блюдо, и числа у него чужие.
+ *
+ * Отсюда правило: если в запросе есть и определения, и существительные, и
+ * НИ ОДНО существительное не покрыто, находка тонкая. Возвращаем true —
+ * резолвер пометит её `weak`, и она уступит место следующему источнику или
+ * честной оценке модели. Ничего не выбрасывается: тонкая находка остаётся
+ * запасным вариантом, как и любая другая.
+ *
+ * Запрос без существительных («жареное»), из одних существительных
+ * («борщ», «куриная грудка» после стемминга — оба слова считаем именами) и
+ * запрос на латинице правило не трогает: там ему нечего различать.
+ */
+export function headNounLost(query: string, candidate: string): boolean {
+  const q = normalizeName(query);
+  const c = normalizeName(candidate);
+  if (q.length === 0 || c.length === 0) return false;
+  const words = q.split(' ').filter((w) => w.length > 0 && !/^\d+$/.test(w));
+  if (words.length < 2) return false;
+  const ct = c.split(' ').filter((w) => w.length > 0);
+  const covered = (w: string): boolean => ct.some((k) => tokenScore(w, k) >= TOKEN_COVERED);
+
+  // ГДЕ ГЛАВНОЕ СЛОВО. По-русски это существительное (морфология надёжно
+  // отличает его от определения). По-английски — ПОСЛЕДНЕЕ слово: «cereal
+  // bun», «soba noodles», «chicken breast» — везде смысл несёт хвост.
+  //
+  // Английская ветка нужна не для красоты: сама подмена и случается там.
+  // Провайдеров спрашивают по name_en, покрытие считают по английской паре, а
+  // русское имя в ответе — уже перевод для показа. «Гречневая лапша» стала
+  // кашей на паре «soba noodles» ↔ crop, и по русским словам этого не видно.
+  //
+  // По-английски правило работает ТОЛЬКО на паре из двух слов. Дальше «хвост
+  // несёт смысл» перестаёт быть правдой: в «oat bran mistral» последним стоит
+  // БРЕНД, и требовать его покрытия значило бы отвергать честную строку «Oat
+  // Bran» в пользу брендовой. Морфология такой ошибки не делает, поэтому
+  // русскую ветку длиной не ограничиваем.
+  const cyrillic = /[а-яё]/i.test(q);
+  if (!cyrillic && words.length !== 2) return false;
+  const heads = cyrillic ? words.filter((w) => !looksAdjectiveRu(w)) : words.slice(-1);
+  const rest = words.filter((w) => !heads.includes(w));
+  // Нужны обе роли: у запроса из одних главных слов подменять нечего.
+  if (heads.length === 0 || rest.length === 0) return false;
+  // Хоть одно главное слово объяснено — еда та же, отпало уточнение.
+  if (heads.some(covered)) return false;
+  // Главное не объяснено, а уточнение — да. Это и есть подмена.
+  return rest.some(covered);
+}
 
 /** Prefer generic/whole foods; lightly penalize branded products. */
 export function genericBonus(foodType?: string): number {
