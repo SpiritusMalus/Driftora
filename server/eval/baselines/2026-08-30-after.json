@@ -1,0 +1,46 @@
+{
+  "total": 34,
+  "passed": 30,
+  "failed": 4,
+  "passRate": 0.8823529411764706,
+  "emptyRate": 0.058823529411764705,
+  "latencyMs": {
+    "p50": 1219,
+    "p95": 3712,
+    "max": 4354
+  },
+  "sourceCounts": {
+    "skurikhin": 9,
+    "fatsecret": 10,
+    "usda": 16,
+    "ai_estimate": 2,
+    "openfoodfacts": 1
+  },
+  "failures": [
+    {
+      "id": "ru-instant-noodles",
+      "failures": [
+        "kcal 121 outside 150–700"
+      ]
+    },
+    {
+      "id": "ru-vegetable-plate-fiber",
+      "failures": [
+        "totals.fiber missing"
+      ]
+    },
+    {
+      "id": "ru-branded-buckwheat",
+      "failures": [
+        "kcal 74 outside 100–800"
+      ]
+    },
+    {
+      "id": "ru-buckwheat-noodles",
+      "failures": [
+        "no item matching \"макарон\"",
+        "no item matching \"паста\""
+      ]
+    }
+  ]
+}

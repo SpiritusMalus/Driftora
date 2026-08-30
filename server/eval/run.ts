@@ -29,6 +29,16 @@ const APP_TOKEN = process.env.APP_TOKEN ?? '';
 /** One at a time by default: the service is rate-limited and this is not a load test. */
 const CONCURRENCY = Number(process.env.EVAL_CONCURRENCY) || 1;
 const TIMEOUT_MS = Number(process.env.EVAL_TIMEOUT_MS) || 30_000;
+/**
+ * Пауза между кейсами. Сервис держит per-IP лимит (`RL_BURST_PER_MIN`, по
+ * умолчанию 30/мин), и прогон против БОЕВОГО адреса упирался в него на
+ * четвёртом кейсе: двадцать строк подряд «← HTTP 429», прогон бесполезен.
+ * 2500 мс держат нас под лимитом с запасом; для локального сервиса без
+ * лимитера ставится 0.
+ */
+const DELAY_MS = Number(process.env.EVAL_DELAY_MS ?? 2_500);
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 function arg(name: string): string | undefined {
   const index = process.argv.indexOf(`--${name}`);
@@ -80,6 +90,7 @@ async function runAll(cases: EvalCase[]): Promise<CaseResult[]> {
       const index = next++;
       const testCase = cases[index];
       if (!testCase) return;
+      if (index > 0 && DELAY_MS > 0) await sleep(DELAY_MS);
       const result = await runCase(testCase);
       results[index] = result;
       const mark = result.pass ? 'ok  ' : 'FAIL';

@@ -48,6 +48,15 @@ export interface EvalCase {
      * A missing totals.fiber fails the same as a low one: absent IS the bug.
      */
     fiberMin?: number;
+    /**
+     * Ни одна ПОДОБРАННАЯ строка (`matched_name`) не должна содержать этих
+     * подстрок. Отдельно от `nameContains`, потому что ловит другой сбой:
+     * там модель ошиблась в НАЗВАНИИ, здесь она назвала блюдо верно, а резолвер
+     * подставил под него чужую строку. «Злаковая булочка» приезжала с
+     * `matched_name: «Хлопья»` — имя правильное, числа от другой еды, и
+     * `nameContains: ["булоч"]` такой случай пропускает (совпало по имени).
+     */
+    matchedNameForbids?: string[];
   };
 }
 
@@ -123,6 +132,14 @@ export function scoreCase(
     const wanted = needle.toLowerCase();
     if (!items.some((item) => names(item).includes(wanted))) {
       failures.push(`no item matching "${needle}"`);
+    }
+  }
+
+  for (const needle of testCase.expect.matchedNameForbids ?? []) {
+    const banned = needle.toLowerCase();
+    const hit = items.find((item) => (item.matched_name ?? '').toLowerCase().includes(banned));
+    if (hit) {
+      failures.push(`«${hit.name_ru ?? '?'}» подобрано как «${hit.matched_name}» (запрещено: "${needle}")`);
     }
   }
 

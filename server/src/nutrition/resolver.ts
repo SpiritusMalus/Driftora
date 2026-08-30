@@ -18,7 +18,7 @@ import { isBarcode } from './openfoodfacts.js';
 import { ProviderUnavailable, type NutritionProvider, type ProviderResult } from './provider.js';
 import { kcalBandViolated } from './plausibility.js';
 import { hasCyrillic } from './ruSearch.js';
-import { contradictsQuery, demoteContradictions, MIN_CHAIN_COVERAGE, queryCoverage } from './scoring.js';
+import { contradictsQuery, demoteContradictions, headNounLost, MIN_CHAIN_COVERAGE, queryCoverage } from './scoring.js';
 import { translationLost, unexplainedSpecifics } from './specificity.js';
 
 /**
@@ -372,7 +372,15 @@ export class Resolver {
         queryCoverage(name, primary.name ?? name),
         primary.matchedKey === undefined ? 0 : queryCoverage(name, primary.matchedKey),
       );
-      if (coverage < MIN_CHAIN_COVERAGE) {
+      // ГЛАВНОЕ СЛОВО ПОТЕРЯНО — тонко даже при проходном покрытии. «cereal bun»
+      // против строки «cereal» даёт ровно 0.5 и раньше ОСТАНАВЛИВАЛО обход:
+      // булочка приезжала хлопьями, с чужими числами и правильным именем.
+      // Доля тут не помощник — «борщ украинский» → «борщ» тоже 0.5, но там
+      // уцелело главное слово и еда та же. Различает их только то, ЧТО совпало.
+      const headLost =
+        headNounLost(name, primary.name ?? name) &&
+        (primary.matchedKey === undefined || headNounLost(name, primary.matchedKey));
+      if (coverage < MIN_CHAIN_COVERAGE || headLost) {
         // Keep the FIRST thin hit: the chain is ordered by trustworthiness, so an
         // early source's weak row still beats a later source's weak row.
         if (!weakFallback) weakFallback = { ...hit, weak: true };

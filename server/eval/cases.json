@@ -4,202 +4,468 @@
     "text": "борщ",
     "region": "RU",
     "note": "Curated RU dish, the canonical smoke test — must resolve to a real row, not an estimate.",
-    "expect": { "minItems": 1, "kcalRange": [60, 450], "nameContains": ["борщ"], "requireResolved": true }
+    "expect": {
+      "minItems": 1,
+      "kcalRange": [
+        60,
+        450
+      ],
+      "nameContains": [
+        "борщ"
+      ],
+      "requireResolved": true
+    }
   },
   {
     "id": "ru-tarhun-lemonade",
     "text": "лимонад тархун 0.5",
     "region": "RU",
     "note": "REGRESSION (fixed 2026-07-20, PR #163): matched «Сушеный эстрагон» and returned 974 kcal. A sweet soda is ~200-260 kcal per 0.5 l; anything near 900 means a thin match is being passed off as a fact.",
-    "expect": { "minItems": 1, "kcalRange": [40, 400] }
+    "expect": {
+      "minItems": 1,
+      "kcalRange": [
+        40,
+        400
+      ]
+    }
   },
   {
     "id": "ru-protein-pudding",
     "text": "протеиновый пудинг",
     "region": "RU",
     "note": "REGRESSION (PR #154): resolved through FatSecret but the matched row was hidden, so the user could not see what the numbers described.",
-    "expect": { "minItems": 1, "kcalRange": [30, 600] }
+    "expect": {
+      "minItems": 1,
+      "kcalRange": [
+        30,
+        600
+      ]
+    }
   },
   {
     "id": "ru-omelette-three-eggs",
     "text": "омлет из трёх яиц",
     "region": "RU",
     "note": "Count-based portion («три») must drive the weight — the largest single error source is mass, not composition.",
-    "expect": { "minItems": 1, "kcalRange": [150, 700] }
+    "expect": {
+      "minItems": 1,
+      "kcalRange": [
+        150,
+        700
+      ]
+    }
   },
   {
     "id": "ru-buckwheat-cooked",
     "text": "гречка отварная 200 г",
     "region": "RU",
     "note": "Explicit cooked state + explicit grams: ~90-130 kcal/100 g cooked. A dry-basis row would return ~3x too much.",
-    "expect": { "minItems": 1, "kcalRange": [120, 400], "requireResolved": true }
+    "expect": {
+      "minItems": 1,
+      "kcalRange": [
+        120,
+        400
+      ],
+      "requireResolved": true
+    }
   },
   {
     "id": "ru-instant-noodles",
     "text": "доширак",
     "region": "RU",
     "note": "The dry↔cooked trap in its purest form: the label is per dry weight, the eaten dish is mostly absorbed water.",
-    "expect": { "minItems": 1, "kcalRange": [150, 700] }
+    "expect": {
+      "minItems": 1,
+      "kcalRange": [
+        150,
+        700
+      ]
+    }
   },
   {
     "id": "ru-multi-item-meal",
     "text": "гречка с курицей и салат из огурцов",
     "region": "RU",
     "note": "Multi-component meal — every component must survive identification, not just the first.",
-    "expect": { "minItems": 3, "kcalRange": [200, 1200] }
+    "expect": {
+      "minItems": 3,
+      "kcalRange": [
+        200,
+        1200
+      ]
+    }
   },
   {
     "id": "ru-branded-yoghurt",
     "text": "актимель клубника",
     "region": "RU",
     "note": "Branded product — the OFF/FatSecret leg of the chain.",
-    "expect": { "minItems": 1, "kcalRange": [20, 300] }
+    "expect": {
+      "minItems": 1,
+      "kcalRange": [
+        20,
+        300
+      ]
+    }
   },
   {
     "id": "ru-coffee-with-milk",
     "text": "кофе с молоком",
     "region": "RU",
     "note": "Near-zero-calorie drink. A three-digit answer here means a wrong row (whole milk treated as the whole cup).",
-    "expect": { "minItems": 1, "kcalRange": [5, 250] }
+    "expect": {
+      "minItems": 1,
+      "kcalRange": [
+        5,
+        250
+      ]
+    }
   },
   {
     "id": "ru-two-apples",
     "text": "два яблока",
     "region": "RU",
     "note": "Plain count arithmetic — two medium apples, ~180 g each.",
-    "expect": { "minItems": 1, "kcalRange": [70, 350], "nameContains": ["яблок"] }
+    "expect": {
+      "minItems": 1,
+      "kcalRange": [
+        70,
+        350
+      ],
+      "nameContains": [
+        "яблок"
+      ]
+    }
   },
   {
     "id": "ru-cottage-cheese-5",
     "text": "творог 5% 200 грамм",
     "region": "RU",
     "note": "Fat percentage in the query must select the right row; 5% ≈ 120 kcal/100 g.",
-    "expect": { "minItems": 1, "kcalRange": [150, 400], "requireResolved": true }
+    "expect": {
+      "minItems": 1,
+      "kcalRange": [
+        150,
+        400
+      ],
+      "requireResolved": true
+    }
   },
   {
     "id": "ru-salad-olivier",
     "text": "оливье 250 г",
     "region": "RU",
     "note": "Prepared composite dish — its per-100 g already describes the finished salad, so no cooking adjustment on top.",
-    "expect": { "minItems": 1, "kcalRange": [250, 900] }
+    "expect": {
+      "minItems": 1,
+      "kcalRange": [
+        250,
+        900
+      ]
+    }
   },
   {
     "id": "ru-soup-no-weight",
     "text": "тарелка супа",
     "region": "RU",
     "note": "No weight given at all: the service must assume a portion and say so, not refuse.",
-    "expect": { "minItems": 1, "kcalRange": [30, 600] }
+    "expect": {
+      "minItems": 1,
+      "kcalRange": [
+        30,
+        600
+      ]
+    }
   },
   {
     "id": "ru-bread-slice",
     "text": "два куска чёрного хлеба",
     "region": "RU",
     "note": "Household unit («кусок») → grams.",
-    "expect": { "minItems": 1, "kcalRange": [60, 400] }
+    "expect": {
+      "minItems": 1,
+      "kcalRange": [
+        60,
+        400
+      ]
+    }
   },
   {
     "id": "ru-chicken-breast-grilled",
     "text": "куриная грудка на гриле 150 г",
     "region": "RU",
     "note": "Cooking method + explicit weight; ~165 kcal/100 g cooked.",
-    "expect": { "minItems": 1, "kcalRange": [150, 450], "requireResolved": true }
+    "expect": {
+      "minItems": 1,
+      "kcalRange": [
+        150,
+        450
+      ],
+      "requireResolved": true
+    }
   },
   {
     "id": "ru-nuts-walnut",
     "text": "горсть грецких орехов",
     "region": "RU",
     "note": "Very energy-dense per gram, so a portion error here is the most expensive kind. ~30 g handful ≈ 200 kcal.",
-    "expect": { "minItems": 1, "kcalRange": [80, 600] }
+    "expect": {
+      "minItems": 1,
+      "kcalRange": [
+        80,
+        600
+      ]
+    }
   },
   {
     "id": "ru-kefir-500",
     "text": "кефир 1% пол-литра",
     "region": "RU",
     "note": "Volume («пол-литра») → grams for a liquid.",
-    "expect": { "minItems": 1, "kcalRange": [100, 450] }
+    "expect": {
+      "minItems": 1,
+      "kcalRange": [
+        100,
+        450
+      ]
+    }
   },
   {
     "id": "ru-pelmeni",
     "text": "пельмени 300 г",
     "region": "RU",
     "note": "Common RU dish where the raw/boiled distinction changes the answer.",
-    "expect": { "minItems": 1, "kcalRange": [300, 1000] }
+    "expect": {
+      "minItems": 1,
+      "kcalRange": [
+        300,
+        1000
+      ]
+    }
   },
   {
     "id": "ru-nonsense-input",
     "text": "асдфгх йцукен",
     "region": "RU",
     "note": "NEGATIVE case: gibberish must NOT produce confident food. Zero items is the correct answer, so minItems is 0 and no band applies.",
-    "expect": { "minItems": 0 }
+    "expect": {
+      "minItems": 0
+    }
   },
   {
     "id": "ru-non-food",
     "text": "сходил в магазин за продуктами",
     "region": "RU",
     "note": "NEGATIVE case: a sentence about food that is not a meal. Inventing items here is how phantom calories enter a day.",
-    "expect": { "minItems": 0 }
+    "expect": {
+      "minItems": 0
+    }
   },
   {
     "id": "us-oatmeal",
     "text": "bowl of oatmeal with milk",
     "region": "US",
     "note": "US region → USDA leg of the chain.",
-    "expect": { "minItems": 1, "kcalRange": [80, 600] }
+    "expect": {
+      "minItems": 1,
+      "kcalRange": [
+        80,
+        600
+      ]
+    }
   },
   {
     "id": "us-big-mac",
     "text": "big mac and medium fries",
     "region": "US",
     "note": "Branded fast food, two components; ~560 + ~340 kcal.",
-    "expect": { "minItems": 2, "kcalRange": [500, 1500] }
+    "expect": {
+      "minItems": 2,
+      "kcalRange": [
+        500,
+        1500
+      ]
+    }
   },
   {
     "id": "us-greek-yogurt",
     "text": "6 oz greek yogurt",
     "region": "US",
     "note": "Imperial unit → grams.",
-    "expect": { "minItems": 1, "kcalRange": [60, 350] }
+    "expect": {
+      "minItems": 1,
+      "kcalRange": [
+        60,
+        350
+      ]
+    }
   },
   {
     "id": "us-chicken-salad",
     "text": "grilled chicken salad with ranch dressing",
     "region": "US",
     "note": "Composite dish where the dressing carries most of the fat — dropping it is a silent 200 kcal undercount.",
-    "expect": { "minItems": 2, "kcalRange": [200, 1000] }
+    "expect": {
+      "minItems": 2,
+      "kcalRange": [
+        200,
+        1000
+      ]
+    }
   },
   {
     "id": "ru-shawarma",
     "text": "шаурма с курицей",
     "region": "RU",
     "note": "RU street-food gap closed 2026-08-21 (#207, curatedRu): before it the query fell through every table. Must resolve to a real row (~198 kcal/100g, whole item several hundred), not an AI guess.",
-    "expect": { "minItems": 1, "kcalRange": [250, 900], "nameContains": ["шаурм"], "requireResolved": true }
+    "expect": {
+      "minItems": 1,
+      "kcalRange": [
+        250,
+        900
+      ],
+      "nameContains": [
+        "шаурм"
+      ],
+      "requireResolved": true
+    }
   },
   {
     "id": "ru-plov",
     "text": "плов с курицей",
     "region": "RU",
     "note": "Second half of the same RU-base gap (UX-аудит 2026-08-20): плов was a documented miss alongside шаурма.",
-    "expect": { "minItems": 1, "kcalRange": [250, 900], "nameContains": ["плов"], "requireResolved": true }
+    "expect": {
+      "minItems": 1,
+      "kcalRange": [
+        250,
+        900
+      ],
+      "nameContains": [
+        "плов"
+      ],
+      "requireResolved": true
+    }
   },
   {
     "id": "ru-vegetable-plate-fiber",
     "text": "тарелка овощей",
     "region": "RU",
     "note": "REGRESSION (#213, 2026-08-23): fiber was absent from all 203 local rows (importer skipped nutrient 1079) and word-form matching dropped correct rows — «тарелка овощей» totalled 0.4 g fiber instead of ~8. Fiber must be present and non-trivial.",
-    "expect": { "minItems": 1, "kcalRange": [30, 350], "fiberMin": 3 }
+    "expect": {
+      "minItems": 1,
+      "kcalRange": [
+        30,
+        350
+      ],
+      "fiberMin": 3
+    }
   },
   {
     "id": "ru-cucumbers-wordform",
     "text": "огурцы 200 грамм",
     "region": "RU",
     "note": "REGRESSION (#213): the matcher rejected the correct row on word forms («огурцы» ≠ «огурец»), so 3 of 4 items never reached the DB. Plural query must still land on the real vegetable row.",
-    "expect": { "minItems": 1, "kcalRange": [15, 80], "nameContains": ["огур"], "requireResolved": true }
+    "expect": {
+      "minItems": 1,
+      "kcalRange": [
+        15,
+        80
+      ],
+      "nameContains": [
+        "огур"
+      ],
+      "requireResolved": true
+    }
   },
   {
     "id": "ru-branded-buckwheat",
     "text": "гречка мистраль",
     "region": "RU",
     "note": "REGRESSION (#209/#210, 2026-08-22): the coverage gate compared our own translation against the answer to that translation, so ANY branded query lost its brand; «мистраль» only resolves once the OFF snapshot + specificity fix hold. Brand may resolve to the branded row or an honest generic — but never to nothing.",
-    "expect": { "minItems": 1, "kcalRange": [100, 800], "nameContains": ["греч"], "requireResolved": true }
+    "expect": {
+      "minItems": 1,
+      "kcalRange": [
+        100,
+        800
+      ],
+      "nameContains": [
+        "греч"
+      ],
+      "requireResolved": true
+    }
+  },
+  {
+    "id": "ru-cereal-bun",
+    "text": "Сэндвич «Вега»: злаковая булочка со сливочным сыром, салатом, помидорами, свежим огурцом и соусом бальзамик",
+    "region": "RU",
+    "note": "КЛАСС «модификатор сам еда» — отчёт владельца 2026-08-30, снимок меню. В составе сэндвича «злаковая булочка» приезжала с matched_name «Хлопья»: FatSecret спрашивают по name_en «cereal bun», «cereal» покрывает 1 из 2 токенов = ровно порог MIN_CHAIN_COVERAGE 0.5, гейт пропускает, ГЛАВНОЕ слово теряется. Имя при этом верное, поэтому ловится только через matchedNameForbids. Голая фраза «злаковая булочка» матчится верно — баг живёт именно в разборе предложения, где имена даёт модель.",
+    "expect": {
+      "minItems": 3,
+      "nameContains": [
+        "булоч"
+      ],
+      "matchedNameForbids": [
+        "хлопь",
+        "flake"
+      ]
+    }
+  },
+  {
+    "id": "ru-oat-cookie",
+    "text": "овсяное печенье",
+    "region": "RU",
+    "note": "Тот же класс: «овсяное» — самостоятельная еда (овсянка, 350+ ккал) и перебивает «печенье». Должно остаться печеньем.",
+    "expect": {
+      "minItems": 1,
+      "nameContains": [
+        "печень"
+      ],
+      "requireResolved": true
+    }
+  },
+  {
+    "id": "ru-buckwheat-noodles",
+    "text": "гречневая лапша",
+    "region": "RU",
+    "note": "ОТКРЫТЫЙ БАГ, правилом headNounLost НЕ закрыт (2026-08-30). «гречневая лапша» приезжает как «гречка варёная» (usda 92) — каша вместо лапши. Здесь подмена пришла не из нашего гейта покрытия: name_en «soba noodles» с «buckwheat groats» не пересекается ни одним словом, строку выбрал сам поиск провайдера. Кейс оставлен КРАСНЫМ намеренно — как счётчик оставшейся работы, а не как регресс.",
+    "expect": {
+      "minItems": 1,
+      "nameContains": [
+        "лапш",
+        "макарон",
+        "паста"
+      ],
+      "requireResolved": true
+    }
+  },
+  {
+    "id": "ru-corn-flakes-control",
+    "text": "кукурузные хлопья",
+    "region": "RU",
+    "note": "КОНТРОЛЬ ОТ ПЕРЕКОСА: здесь «хлопья» и есть главное слово, а «кукурузные» — законный модификатор. Если ужесточение покрытия начнёт валить и такие запросы, оно зашло слишком далеко.",
+    "expect": {
+      "minItems": 1,
+      "nameContains": [
+        "хлопь",
+        "flake",
+        "кукуруз"
+      ],
+      "requireResolved": true
+    }
+  },
+  {
+    "id": "ru-wheat-bran-control",
+    "text": "пшеничные отруби",
+    "region": "RU",
+    "note": "КОНТРОЛЬ: брендовый/составной запрос, где модификатор («пшеничные») законно уточняет главное слово («отруби»). Отруби ~180-360 ккал/100 г.",
+    "expect": {
+      "minItems": 1,
+      "nameContains": [
+        "отруб",
+        "bran"
+      ],
+      "requireResolved": true
+    }
   }
 ]
