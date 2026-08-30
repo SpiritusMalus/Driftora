@@ -73,7 +73,7 @@
     "id": "ru-instant-noodles",
     "text": "доширак",
     "region": "RU",
-    "note": "The dry↔cooked trap in its purest form: the label is per dry weight, the eaten dish is mostly absorbed water.",
+    "note": "СТАБИЛЬНО КРАСНЫЙ, диагноз 2026-08-30. «доширак» → 90 г × 134 ккал/100 = 121. Это ОБРАТНАЯ ловушка сырое↔готовое: модель даёт вес СУХОЙ пачки (90 г — столько и весит доширак), а строка «лапша быстрого приготовления» (skurikhin 134) — плотность ГОТОВОГО блюда. Настоящая пачка ~400 ккал. `looksDryBasis` этот случай не ловит: он сторожит противоположное направление (вес готового × сухая строка) и требует плотность ≥250. Лечится не порогом, а признанием того, что БАЗИС ВЕСА и БАЗИС СТРОКИ должны совпадать; делать это вслепую нельзя — легко сломать «гречневую лапшу 200 г», где вес честно готовый.",
     "expect": {
       "minItems": 1,
       "kcalRange": [
@@ -351,7 +351,7 @@
     "id": "ru-vegetable-plate-fiber",
     "text": "тарелка овощей",
     "region": "RU",
-    "note": "REGRESSION (#213, 2026-08-23): fiber was absent from all 203 local rows (importer skipped nutrient 1079) and word-form matching dropped correct rows — «тарелка овощей» totalled 0.4 g fiber instead of ~8. Fiber must be present and non-trivial.",
+    "note": "СТАБИЛЬНО КРАСНЫЙ, диагноз 2026-08-30. «тарелка овощей» → «Овощная смесь» (fatsecret 64), клетчатки в строке НЕТ, в итог приходит null. Механизм донора (`backfillMicros`) исправен и клетчатку умеет, но донор ищется в USDA по name_en и для расплывчатых «fresh vegetables» не набирает порог MICRO_BACKFILL_MIN_CONFIDENCE 0.4. Опускать порог глобально нельзя — это прирастит чужие микроэлементы везде. Нужен либо более умный подбор донора, либо честное «нет данных» вместо null.",
     "expect": {
       "minItems": 1,
       "kcalRange": [

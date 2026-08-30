@@ -179,6 +179,9 @@ function topConfidence(items: IdentifiedItem[]): number {
  * only). `strict: false` — the schema carries no `additionalProperties: false`,
  * so loose json_schema adherence is enough; `normalizeIdentified` is defensive.
  */
+/// Постоянный seed для всех разборов — см. `buildPayload`.
+const IDENTIFY_SEED = 20260830;
+
 export function buildPayload(
   messages: ChatMessage[],
   model: string,
@@ -203,6 +206,17 @@ export function buildPayload(
   // later) available, where pinning a single provider would make us go down
   // whenever it does.
   if (ignoreProviders && ignoreProviders.length > 0) payload.provider = { ignore: [...ignoreProviders] };
+  // ОДИН И ТОТ ЖЕ ОБЕД — ОДИН И ТОТ ЖЕ ОТВЕТ. Температура тут и так 0, но этого
+  // мало: один слаг OpenRouter обслуживают несколько апстримов, и тот же
+  // сэндвич возвращался то «Хлопьями», то «Цельнозерновым хлебом», то «Бо
+  // буном» — владелец видел три разных числа на одном блюде. Фиксированный
+  // seed делает выдачу воспроизводимой у провайдеров, которые его понимают;
+  // остальные его молча игнорируют, так что доступностью мы не платим (в
+  // отличие от жёсткого `only` на одного провайдера — см. коммент выше).
+  //
+  // Значение произвольно и не имеет смысла само по себе — важно лишь то, что
+  // оно НЕ МЕНЯЕТСЯ между вызовами.
+  payload.seed = IDENTIFY_SEED;
   // OpenRouter unified reasoning control; omitted entirely for 'off'/unset so
   // providers keep their default behavior. NB: a tiny reasoning.max_tokens
   // budget is NOT an alternative — measured 2026-07-21, it drives this model
