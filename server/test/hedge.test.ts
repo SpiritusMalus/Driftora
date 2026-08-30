@@ -78,3 +78,16 @@ test('hedge: VISION_HEDGE_MS=0 falls back to the sequential retry path', async (
   assert.equal(items.length, 1);
   assert.equal(calls, 1);
 });
+
+test('seed: один и тот же обед уходит с одним и тем же seed', async () => {
+  // Температура 0 не делает выдачу воспроизводимой: слаг OpenRouter обслуживают
+  // несколько апстримов, и один сэндвич возвращался тремя разными строками.
+  // Постоянный seed — то, что провайдер может использовать, чтобы повторить
+  // ответ; кто не умеет, тот игнорирует, и доступностью мы не платим.
+  const { buildPayload } = await import('../src/llm.js');
+  const a = buildPayload([{ role: 'user', content: 'борщ' }], 'test/flash') as { seed?: unknown };
+  const b = buildPayload([{ role: 'user', content: 'борщ' }], 'test/flash') as { seed?: unknown };
+
+  assert.equal(typeof a.seed, 'number');
+  assert.equal(a.seed, b.seed, 'seed обязан быть ПОСТОЯННЫМ — иначе он бесполезен');
+});
