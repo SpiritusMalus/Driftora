@@ -22,7 +22,12 @@ export interface MetricsSnapshot {
   empty?: number;
   escalations?: number;
   sources?: Record<string, number | undefined>;
-  latency_ms?: Record<string, { avg?: number; count?: number } | undefined>;
+  // p95/max появились рядом со средним и здесь ТОЛЬКО читаются: ни один порог
+  // на них не заведён намеренно. Перевод тревоги со среднего на хвост — это
+  // отдельное решение, которое СРАЗУ начнёт срабатывать (в том и смысл), и
+  // принимать его вслепую, до первых суток настоящих данных, нечестно.
+  latency_ms?: Record<string, { avg?: number; count?: number; p95?: number; max?: number } | undefined>;
+  abandoned?: Record<string, number | undefined>;
 }
 
 export interface Violation {
@@ -106,20 +111,28 @@ export function evaluate(metrics: MetricsSnapshot): {
     const count = entry?.count ?? 0;
     if (count === 0 || avg === 0) continue;
     const limit = THRESHOLDS.latencyMs[route];
+    // Средним начинается расследование, хвостом оно продолжается: 20 с в
+    // среднем и 55 с на p95 — это не «чуть медленно», это часть ответов за
+    // сроком ожидания телефона. Число едет в сообщение, порогом не становится.
+    const p95 = entry?.p95 ?? 0;
+    const abandoned = metrics.abandoned?.[route] ?? 0;
+    const tail =
+      (p95 > 0 ? `, p95 ${p95} ms` : '') +
+      (abandoned > 0 ? `, ${abandoned} abandoned by the client` : '');
     if (avg > limit.alert) {
       const judged = count >= THRESHOLDS.minLatencySample;
       violations.push({
         level: judged ? 'alert' : 'slo',
         sli: `latency.${route}`,
         message:
-          `${route} average ${avg} ms over the alert ceiling ${limit.alert} ms (n=${count})` +
+          `${route} average ${avg} ms over the alert ceiling ${limit.alert} ms (n=${count}${tail})` +
           (judged ? '' : ` — under the ${THRESHOLDS.minLatencySample} requests needed to alert on an average`),
       });
     } else if (avg > limit.slo) {
       violations.push({
         level: 'slo',
         sli: `latency.${route}`,
-        message: `${route} average ${avg} ms over the ${limit.slo} ms target (n=${count})`,
+        message: `${route} average ${avg} ms over the ${limit.slo} ms target (n=${count}${tail})`,
       });
     }
   }

@@ -668,6 +668,40 @@ export function createApp(
     next();
   });
 
+  /**
+   * КЛИЕНТ УШЁЛ, НЕ ДОЖДАВШИСЬ — единственное звено этой поломки, которое до
+   * сих пор не попадало ни в один счётчик.
+   *
+   * Каждый таймаут в сервисе честен по отдельности, но тратятся они ПОДРЯД:
+   * опознание, потом необязательная эскалация, потом проход по этикетке. Сумму
+   * никто не сравнивал со сроком, который держит телефон (25 с на текст, 50 с
+   * на загрузку, 12 с на тренировку). Когда сумма побеждает, происходит шесть
+   * вещей и ни одна не видна: телефон обрывает запрос; Express этого не
+   * замечает и вызов к модели доезжает до конца и оплачивается; квота списана
+   * ещё на входе; `recordParse` записывает УСПЕХ; среднее прячет выброс; а
+   * человек читает «Похоже, нет интернета» на заведомо живой связи.
+   *
+   * Ненулевое значение здесь — это работа, за которую заплачено и которую никто
+   * не получил. Рядом с `p95` в `latency_ms` оно прямо называет маршрут, чей
+   * бюджет пора укоротить.
+   */
+  const ABANDONABLE: Record<string, string> = {
+    '/food/parse': 'text',
+    '/food/parse-photo': 'photo',
+    '/food/parse-audio': 'audio',
+    '/food/search': 'search',
+    '/workout/parse': 'workout_text',
+    '/workout/parse-photo': 'workout_photo',
+    '/workout/parse-audio': 'workout_audio',
+  };
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const route = ABANDONABLE[req.path];
+    // `close` fires on a finished response too — `writableEnded` is what tells
+    // «мы ответили» apart from «трубку положили».
+    if (route) res.on('close', () => { if (!res.writableEnded) metrics.recordAbandoned(route); });
+    next();
+  });
+
   app.get('/health', (_req: Request, res: Response) => {
     res.json({ status: 'ok' });
   });

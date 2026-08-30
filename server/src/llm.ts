@@ -244,6 +244,54 @@ function responsePayload(data: unknown): unknown {
   }
 }
 
+/**
+ * Token spend, straight off the `usage` block every OpenRouter completion
+ * already carries. Nothing was reading it, so the three features that multiply
+ * our bill — the hedge, the PRO escalation and the label pass — have been
+ * running blind. Call counts cannot substitute: completion length on this model
+ * runs from ~200 tokens to the 6144 ceiling once a decode loop starts, and a
+ * thirty-fold spread makes «how many calls» nearly uninformative about cost.
+ *
+ * Aggregate-only, like everything in metrics: a label and two integers, never
+ * a byte of the request.
+ */
+function recordUsage(data: unknown, label: string | undefined, model: string): void {
+  const u = (data as { usage?: { prompt_tokens?: unknown; completion_tokens?: unknown } } | null)?.usage;
+  if (!u) return; // some providers omit it — better a gap than an invented zero
+  const prompt = typeof u.prompt_tokens === 'number' ? u.prompt_tokens : 0;
+  const completion = typeof u.completion_tokens === 'number' ? u.completion_tokens : 0;
+  metrics.recordUsage(`${label ?? 'other'}|${model}`, prompt, completion);
+}
+
+/**
+ * Did the fields this schema marks `required` actually come back?
+ *
+ * #227 recorded from production that the model «молча не выводит даже как
+ * обязательное» — for `weight_basis` and `prepared` alike — and the resolver
+ * grew `weighedDry` to survive the silence. What that observation never did was
+ * split BY ROUTE, and the two candidate causes predict different splits: a gap
+ * only on typed text points at that path's schema (it alone names
+ * `weight_basis` in `required` while never declaring the property); a gap on
+ * every route points at `strict: false`, under which `required` is advice
+ * rather than a grammar. One is a six-line fix, the other a contract migration.
+ * This tells them apart from live traffic, changing nothing.
+ */
+function recordRequiredFields(data: unknown, label: string | undefined): void {
+  if (!label) return;
+  const payload = responsePayload(data) as { items?: unknown } | null;
+  const items = Array.isArray(payload?.items) ? payload.items : null;
+  if (!items) return;
+  for (const raw of items) {
+    if (!raw || typeof raw !== 'object') continue;
+    const r = raw as Record<string, unknown>;
+    // Presence means a USABLE value, not merely a key: a field that arrives as
+    // null or as a word outside the enum is silence wearing a different hat —
+    // `normalizeIdentified` drops it either way.
+    metrics.recordSchemaField(label, 'weight_basis', r.weight_basis === 'dry' || r.weight_basis === 'as_eaten');
+    metrics.recordSchemaField(label, 'prepared', typeof r.prepared === 'boolean');
+  }
+}
+
 /** Parse `choices[0].message.content` (a JSON string) → `IdentifiedItem[]`. */
 export function parseResponse(data: unknown): IdentifiedItem[] {
   const payload = responsePayload(data);
@@ -294,6 +342,8 @@ async function complete(
   timeoutMs: number = TIMEOUT_MS.openrouter,
   reasoningEffort?: string,
   ignoreProviders?: readonly string[],
+  /** Which call this is, for the token counter — never leaves /metrics. */
+  label?: string,
 ): Promise<unknown> {
   const key = process.env.OPENROUTER_API_KEY || '';
   if (!key) {
@@ -326,7 +376,9 @@ async function complete(
   // with an HTTP 200, at a telltale flat 20.1 s. A body we cannot read is a
   // transport failure, never an answer.
   try {
-    return (await res.json()) as unknown;
+    const data = (await res.json()) as unknown;
+    recordUsage(data, label, model);
+    return data;
   } catch (err) {
     if (isTimeout(err)) throw new UpstreamTimeoutError(`OpenRouter body timed out after ${timeoutMs}ms`);
     throw new VisionUnavailableError(
@@ -398,10 +450,11 @@ async function completeWithRetry(
   timeouts: RetryTimeouts = PATIENT_TIMEOUTS,
   reasoningEffort?: string,
   ignoreProviders?: readonly string[],
+  label?: string,
 ): Promise<{ data: unknown; truncated: boolean }> {
   let first: unknown;
   try {
-    first = await complete(messages, model, schema, 0, timeouts.first, reasoningEffort, ignoreProviders);
+    first = await complete(messages, model, schema, 0, timeouts.first, reasoningEffort, ignoreProviders, label);
     // A provider error rides in on HTTP 200 — fail now rather than retry into a
     // rate limit that is already refusing us.
     const failed = providerErrorOf(first);
@@ -418,7 +471,7 @@ async function completeWithRetry(
   metrics.recordTruncationRetry();
   let second: unknown;
   try {
-    second = await complete(messages, model, schema, RETRY_TEMPERATURE, timeouts.retry, reasoningEffort, ignoreProviders);
+    second = await complete(messages, model, schema, RETRY_TEMPERATURE, timeouts.retry, reasoningEffort, ignoreProviders, label);
   } catch (err) {
     if (err instanceof UpstreamTimeoutError) {
       throw new VisionUnavailableError('OpenRouter timed out on both attempts', 'timeout');
@@ -470,7 +523,7 @@ async function completeHedged(
   schema: object,
   // Per-path knobs: the photo path runs the patient defaults; the text path
   // passes its own earlier trigger + lane budgets (+ the low reasoning effort).
-  opts: { timeouts?: RetryTimeouts; hedgeAfterMs?: number; reasoningEffort?: string } = {},
+  opts: { timeouts?: RetryTimeouts; hedgeAfterMs?: number; reasoningEffort?: string; label?: string } = {},
 ): Promise<{ data: unknown; truncated: boolean }> {
   // VISION_HEDGE_MS keeps global precedence (tests set tiny values; 0 = off) —
   // despite the name it now governs every hedged path, text included.
@@ -479,7 +532,7 @@ async function completeHedged(
       ? Number(process.env.VISION_HEDGE_MS)
       : (opts.hedgeAfterMs ?? DEFAULT_HEDGE_AFTER_MS);
   if (!Number.isFinite(hedgeAfterMs) || hedgeAfterMs <= 0) {
-    return completeWithRetry(messages, model, schema, opts.timeouts, opts.reasoningEffort);
+    return completeWithRetry(messages, model, schema, opts.timeouts, opts.reasoningEffort, undefined, opts.label);
   }
   const lanes = opts.timeouts ?? PATIENT_TIMEOUTS;
 
@@ -487,7 +540,7 @@ async function completeHedged(
   type Tagged = { ok: true; out: Outcome } | { ok: false; err: unknown };
 
   const attempt = async (temperature: number, timeoutMs: number): Promise<Outcome> => {
-    const data = await complete(messages, model, schema, temperature, timeoutMs, opts.reasoningEffort);
+    const data = await complete(messages, model, schema, temperature, timeoutMs, opts.reasoningEffort, undefined, opts.label);
     const failed = providerErrorOf(data);
     if (failed) throw new VisionUnavailableError(failed, 'provider_error');
     return { data, truncated: finishReasonOf(data) === 'length' };
@@ -559,7 +612,7 @@ async function callModel(
   messages: ChatMessage[],
   model: string,
   schema: object = IDENTIFY_SCHEMA,
-  opts: { hedge?: boolean; text?: boolean; effort?: string; ignoreProviders?: readonly string[] } = {},
+  opts: { hedge?: boolean; text?: boolean; effort?: string; ignoreProviders?: readonly string[]; label?: string } = {},
 ): Promise<ModelAnswer> {
   // Explicit per-caller effort wins; the text flag implies the text throttle.
   // No opts at all (e.g. the PRO-model escalation) keeps the provider default —
@@ -571,8 +624,8 @@ async function callModel(
         model,
         schema,
         opts.text
-          ? { timeouts: TEXT_HEDGE_TIMEOUTS, hedgeAfterMs: TEXT_HEDGE_AFTER_MS, reasoningEffort: effort }
-          : { reasoningEffort: effort },
+          ? { timeouts: TEXT_HEDGE_TIMEOUTS, hedgeAfterMs: TEXT_HEDGE_AFTER_MS, reasoningEffort: effort, label: opts.label }
+          : { reasoningEffort: effort, label: opts.label },
       )
     : await completeWithRetry(
         messages,
@@ -581,8 +634,10 @@ async function callModel(
         opts.text ? TEXT_TIMEOUTS : PATIENT_TIMEOUTS,
         effort,
         opts.ignoreProviders,
+        opts.label,
       );
   const items = parseResponse(data);
+  recordRequiredFields(data, opts.label);
   // A truncated answer that yielded nothing is a SERVER failure, not an honest
   // "no food here" — returning [] would render as «не распознал» and hide the
   // breakage (exactly how the 1024-token ceiling went unnoticed for weeks).
@@ -603,7 +658,7 @@ async function callModel(
 async function identifyWithEscalation(
   messages: ChatMessage[],
   schema: object = IDENTIFY_SCHEMA,
-  opts: { hedge?: boolean; text?: boolean; effort?: string; ignoreProviders?: readonly string[] } = {},
+  opts: { hedge?: boolean; text?: boolean; effort?: string; ignoreProviders?: readonly string[]; label?: string } = {},
 ): Promise<ModelAnswer> {
   const base = await callModel(messages, MODEL, schema, opts);
   if (!PRO_MODEL) return base;
@@ -615,7 +670,13 @@ async function identifyWithEscalation(
   try {
     // Эскалация наследует те же ограничения маршрута: иначе спасательный вызов
     // уходит ровно на тот провайдер, из-за которого мы сюда попали.
-    escalated = await callModel(messages, PRO_MODEL, schema, { ignoreProviders: opts.ignoreProviders });
+    escalated = await callModel(messages, PRO_MODEL, schema, {
+      ignoreProviders: opts.ignoreProviders,
+      // Its own label: the rescue runs a different model at full reasoning
+      // depth, and folding its tokens into the base call's would hide exactly
+      // the number that says whether it is worth paying for.
+      label: opts.label ? `${opts.label}_pro` : undefined,
+    });
   } catch {
     return base; // escalation is best-effort; keep the fast result on failure
   }
@@ -623,6 +684,9 @@ async function identifyWithEscalation(
   const better =
     escalated.items.length > base.items.length ||
     (escalated.items.length > 0 && topConfidence(escalated.items) > topConfidence(base.items));
+  // Counted apart from the ATTEMPT above: `escalations` alone never said
+  // whether the most expensive optional call in the service earns its price.
+  if (better) metrics.recordEscalationBetter();
   // The winner's raw completion travels with it, so a transcript never gets
   // paired with the other model's items.
   return better ? escalated : base;
@@ -659,6 +723,10 @@ export async function estimateFoodPer100(name: string, region: Region): Promise<
     ],
     MODEL,
     ESTIMATE_SEARCH_SCHEMA,
+    undefined,
+    undefined,
+    undefined,
+    'estimate',
   );
   return parseEstimate(data, name);
 }
@@ -728,6 +796,8 @@ export async function translateFoodLabels(labels: string[]): Promise<string[]> {
       TRANSLATE_LABELS_SCHEMA,
       TEXT_TIMEOUTS,
       REASONING_EFFORT_TEXT,
+      undefined,
+      'translate',
     ));
   } catch {
     return labels; // upstream failure → keep English, never throw into a parse
@@ -769,7 +839,7 @@ export async function identifyFromText(text: string, region: Region): Promise<Id
     IDENTIFY_TEXT_SCHEMA,
     // Hedged like the photo path, with text-sized knobs (duplicate at 6 s,
     // patient lanes): one fail-fast lane went 503 on flaky afternoons.
-    { text: true, hedge: true },
+    { text: true, hedge: true, label: 'identify_text' },
   )).items;
 }
 
@@ -800,7 +870,7 @@ export async function identifyFromPhoto(
     IDENTIFY_PHOTO_SCHEMA,
     // The slow path gets the hedge: a duplicate re-roll fired at ~12 s cuts the
     // looping tail from 43 s to ~25 s (see completeHedged).
-    { hedge: true, effort: REASONING_EFFORT_MEDIA },
+    { hedge: true, effort: REASONING_EFFORT_MEDIA, label: 'identify_photo' },
   ));
   // Полезная нагрузка достаётся из сырого ответа тем же `responsePayload`, что
   // и расшифровка в голосовом пути: на верхнем уровне ModelAnswer лежат items.
@@ -849,7 +919,7 @@ export async function readPackageLabel(
       READ_LABEL_SCHEMA,
       // Misreads at low effort are caught by crossCheckLabel (two independent
       // parses must agree) — the failure mode is «no label», never wrong numbers.
-      { reasoningEffort: REASONING_EFFORT_MEDIA },
+      { reasoningEffort: REASONING_EFFORT_MEDIA, label: 'read_label' },
     ));
   } catch {
     return undefined; // panel unreadable → the DB row stands, as before
@@ -882,11 +952,18 @@ export async function identifyFromAudio(
       },
     ],
     IDENTIFY_AUDIO_SCHEMA,
-    { effort: REASONING_EFFORT_MEDIA, ignoreProviders: AUDIO_IGNORE_PROVIDERS },
+    { effort: REASONING_EFFORT_MEDIA, ignoreProviders: AUDIO_IGNORE_PROVIDERS, label: 'identify_audio' },
   );
   // The transcript comes from the SAME answer the items came from, so the words
   // shown always belong to the parse being shown.
-  return { items: answer.items, heard: parseHeard(answer.data) };
+  const heard = parseHeard(answer.data);
+  // `heard` was made `required` on 2026-08-26 to turn the tester's «текст
+  // должен быть, даже если ничего не нашлось» from a request in the prompt into
+  // a guarantee in the schema. Whether the schema actually guarantees anything
+  // is the open question of this whole audit — so the promise is measured where
+  // it is kept, not asserted in a unit test over the schema literal.
+  metrics.recordSchemaField('identify_audio', 'heard', heard.length > 0);
+  return { items: answer.items, heard };
 }
 
 /** `choices[0].message.content` → parsed JSON payload, or null on any malformation. */
@@ -918,6 +995,8 @@ export async function parseWorkoutFromText(text: string): Promise<ParsedWorkout[
     PARSE_WORKOUT_SCHEMA,
     TEXT_TIMEOUTS,
     REASONING_EFFORT_TEXT,
+    undefined,
+    'workout_text',
   );
   return normalizeParsedWorkouts(completionPayload(data));
 }
@@ -943,6 +1022,8 @@ export async function parseWorkoutFromAudio(base64: string, format: string): Pro
     PARSE_WORKOUT_SCHEMA,
     PATIENT_TIMEOUTS,
     REASONING_EFFORT_MEDIA,
+    undefined,
+    'workout_audio',
   );
   return normalizeParsedWorkouts(completionPayload(data));
 }
@@ -970,6 +1051,8 @@ export async function parseWorkoutFromPhoto(base64: string, mimeType: string): P
     PARSE_WORKOUT_PHOTO_SCHEMA,
     PATIENT_TIMEOUTS,
     REASONING_EFFORT_MEDIA,
+    undefined,
+    'workout_photo',
   );
   return normalizeParsedWorkoutPhoto(completionPayload(data));
 }

@@ -77,3 +77,98 @@ test('recordFunnel counts steps and paywall sources', () => {
   assert.equal(src.limit, (srcBefore.limit ?? 0) + 2);
   assert.equal(src.menu, (srcBefore.menu ?? 0) + 1);
 });
+
+/**
+ * ХВОСТ, А НЕ СРЕДНЕЕ — и ДВА числа, а не одно.
+ *
+ * Здесь же зафиксирована граница самого p95, чтобы его не читали как «самый
+ * медленный ответ»: одиночный выброс из двадцати — это ровно те 5%, которые
+ * перцентиль по определению отсекает. Назвать его может только `max`. Поэтому
+ * в снапшот выведены оба: p95 говорит, как живёт подавляющее большинство,
+ * max — что вообще случалось. Порог по одному p95 пропустил бы редкий, но
+ * реальный обрыв связи; порог по одному max орал бы на любой единичный сбой.
+ */
+test('одиночный выброс называет max, а p95 честно остаётся низким', () => {
+  assert.equal(metrics.snapshot().stage_ms['tail_one']?.count ?? 0, 0);
+  for (let i = 0; i < 19; i += 1) metrics.recordStage('tail_one', 1_500);
+  metrics.recordStage('tail_one', 60_000);
+
+  const s = metrics.snapshot().stage_ms['tail_one']!;
+  assert.equal(s.count, 20);
+  assert.ok(s.avg < 5_000, `среднее выглядит здоровым: ${s.avg} ms`);
+  assert.equal(s.p95, 2_000, '19 из 20 — это ровно 95%, выброс за перцентилем');
+  assert.equal(s.max, 60_000, 'а max называет его точно, без округления по корзинам');
+});
+
+test('устойчивый медленный хвост поднимает p95 — то, чего среднее не показывает', () => {
+  assert.equal(metrics.snapshot().stage_ms['tail_many']?.count ?? 0, 0);
+  // 16 быстрых и 4 медленных: среднее ≈ 12.8 с, и по нему маршрут ещё «в норме»,
+  // хотя каждый пятый ответ уже за пределом ожидания телефона.
+  for (let i = 0; i < 16; i += 1) metrics.recordStage('tail_many', 1_500);
+  for (let i = 0; i < 4; i += 1) metrics.recordStage('tail_many', 60_000);
+
+  const s = metrics.snapshot().stage_ms['tail_many']!;
+  assert.ok(s.avg < 15_000, `среднее всё ещё не тревожит: ${s.avg} ms`);
+  assert.ok(s.p95 >= 50_000, `а p95 обязан выдать хвост, получено ${s.p95} ms`);
+});
+
+test('p95 — это ВЕРХНЯЯ граница корзины, а не интерполяция', () => {
+  for (let i = 0; i < 10; i += 1) metrics.recordStage('edge_probe', 2_500);
+  const s = metrics.snapshot().stage_ms['edge_probe']!;
+  // 2500 мс лежит в корзине (2000, 3000] — честный ответ «уложились в 3 с».
+  assert.equal(s.p95, 3_000);
+  assert.equal(s.max, 2_500);
+});
+
+test('пустой счётчик не выдумывает перцентиль', () => {
+  const s = metrics.snapshot().latency_ms.workout_photo!;
+  if (s.count === 0) {
+    assert.equal(s.p95, 0);
+    assert.equal(s.max, 0);
+  }
+});
+
+test('recordAbandoned считает брошенные клиентом запросы по маршрутам', () => {
+  const before = metrics.snapshot().abandoned['photo'] ?? 0;
+  metrics.recordAbandoned('photo');
+  metrics.recordAbandoned('photo');
+  metrics.recordAbandoned('text');
+  const after = metrics.snapshot();
+  assert.equal(after.abandoned['photo'], before + 2);
+  assert.equal(after.abandoned['text'], 1);
+});
+
+/**
+ * Счётчик отвечает на вопрос «доезжает ли обязательное поле», поэтому считать
+ * он обязан ОБЕ стороны: только доли present/total различают «модель молчит»
+ * и «этот маршрут просто мало ходили».
+ */
+test('recordSchemaField копит и приходы, и общее число', () => {
+  metrics.recordSchemaField('identify_text', 'weight_basis', true);
+  metrics.recordSchemaField('identify_text', 'weight_basis', false);
+  metrics.recordSchemaField('identify_text', 'weight_basis', false);
+  const s = metrics.snapshot().schema_fields['identify_text.weight_basis']!;
+  assert.equal(s.total, 3);
+  assert.equal(s.present, 1);
+});
+
+test('recordUsage складывает токены по вызову и модели', () => {
+  metrics.recordUsage('identify_photo|test-model', 900, 300);
+  metrics.recordUsage('identify_photo|test-model', 850, 6_000);
+  const t = metrics.snapshot().tokens['identify_photo|test-model']!;
+  assert.equal(t.calls, 2);
+  assert.equal(t.prompt, 1_750);
+  // Тридцатикратный разброс на выходе — причина, по которой счётчик вызовов
+  // ничего не говорит о цене.
+  assert.equal(t.completion, 6_300);
+});
+
+test('польза эскалации считается отдельно от попытки', () => {
+  const before = metrics.snapshot();
+  metrics.recordEscalation();
+  metrics.recordEscalation();
+  metrics.recordEscalationBetter();
+  const after = metrics.snapshot();
+  assert.equal(after.escalations, before.escalations + 2);
+  assert.equal(after.escalations_better, before.escalations_better + 1);
+});

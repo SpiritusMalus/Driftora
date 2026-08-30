@@ -13,6 +13,56 @@ type WorkoutRoute = 'workout_text' | 'workout_photo' | 'workout_audio';
 /** The monetization funnel's steps, in the order a paying user walks them. */
 type FunnelStep = 'paywall_shown' | 'checkout_started' | 'payments_succeeded';
 
+/**
+ * Latency histogram edges, in ms. Fixed buckets rather than a growing sample:
+ * memory stays constant however long the process lives, which is the only
+ * property that matters for a registry nobody resets.
+ *
+ * WHY THIS EXISTS. Every latency number here used to be an AVERAGE, and an
+ * average is blind to exactly the failure this file was written to catch. A
+ * photo route answering in 20 s on average while one request in twenty takes
+ * 55 s looks healthy in `avg` — and 55 s is past the client's 50 s deadline,
+ * so that request was hung up on by the phone, billed by us in full, and
+ * recorded HERE AS A SUCCESS (`recordParse` runs on the success path; the
+ * client's disconnect is invisible to Express). The tail is the part the user
+ * lives in; the mean is the part that hides it.
+ */
+const BUCKET_EDGES_MS = [1_000, 2_000, 3_000, 5_000, 8_000, 12_000, 17_000, 25_000, 35_000, 50_000, 70_000] as const;
+
+/** Sum/count (for the mean everything already reads) plus the shape around it. */
+type Timing = { sum: number; count: number; max: number; buckets: number[] };
+
+function newTiming(): Timing {
+  return { sum: 0, count: 0, max: 0, buckets: new Array(BUCKET_EDGES_MS.length + 1).fill(0) };
+}
+
+function observe(t: Timing, ms: number): void {
+  t.sum += ms;
+  t.count += 1;
+  if (ms > t.max) t.max = ms;
+  let i = 0;
+  while (i < BUCKET_EDGES_MS.length && ms > BUCKET_EDGES_MS[i]!) i += 1;
+  t.buckets[i] = (t.buckets[i] ?? 0) + 1;
+}
+
+/**
+ * The upper EDGE of the bucket holding the 95th percentile — read it as «95% of
+ * these finished within N ms», never as a precise quantile. Deliberately not
+ * interpolated: a bucketed p95 dressed up with single-millisecond precision
+ * invites decisions the data cannot carry. Past the last edge there is no
+ * ceiling to name, so the observed max is the honest answer.
+ */
+function percentile95(t: Timing): number {
+  if (t.count === 0) return 0;
+  const target = t.count * 0.95;
+  let seen = 0;
+  for (let i = 0; i < t.buckets.length; i += 1) {
+    seen += t.buckets[i] ?? 0;
+    if (seen >= target) return i < BUCKET_EDGES_MS.length ? BUCKET_EDGES_MS[i]! : t.max;
+  }
+  return t.max;
+}
+
 class MetricsRegistry {
   private readonly startedAt = Date.now();
   private readonly requests: Record<string, number> = {
@@ -58,24 +108,20 @@ class MetricsRegistry {
   private escalations = 0;
   /** Answers that hit the token ceiling mid-generation and were re-rolled. */
   private truncationRetries = 0;
-  private readonly latency: Record<string, { sum: number; count: number }> = {
-    text: { sum: 0, count: 0 },
-    photo: { sum: 0, count: 0 },
-    audio: { sum: 0, count: 0 },
-    workout_text: { sum: 0, count: 0 },
-    workout_photo: { sum: 0, count: 0 },
-    workout_audio: { sum: 0, count: 0 },
+  private readonly latency: Record<string, Timing> = {
+    text: newTiming(),
+    photo: newTiming(),
+    audio: newTiming(),
+    workout_text: newTiming(),
+    workout_photo: newTiming(),
+    workout_audio: newTiming(),
   };
 
   /** Record one completed parse from its result draft (no content touched). */
   recordParse(route: FoodRoute, region: Region, draft: MealDraft, ms: number): void {
     this.requests[route] = (this.requests[route] ?? 0) + 1;
     this.byRegion[region] += 1;
-    const lat = this.latency[route];
-    if (lat) {
-      lat.sum += ms;
-      lat.count += 1;
-    }
+    observe((this.latency[route] ??= newTiming()), ms);
     if (draft.items.length === 0) this.empty += 1;
     if (draft.flags.low_confidence) this.lowConfidence += 1;
     for (const item of draft.items) this.sources[item.per100.source] += 1;
@@ -95,9 +141,7 @@ class MetricsRegistry {
    */
   recordWorkoutParse(route: WorkoutRoute, empty: boolean, ms: number): void {
     this.requests[route] = (this.requests[route] ?? 0) + 1;
-    const lat = (this.latency[route] ??= { sum: 0, count: 0 });
-    lat.sum += ms;
-    lat.count += 1;
+    observe((this.latency[route] ??= newTiming()), ms);
     if (empty) this.empty += 1;
   }
 
@@ -134,12 +178,10 @@ class MetricsRegistry {
    * says WHERE those seconds went — without it every tuning decision is a
    * reconstruction from ad-hoc logs (which is exactly how this session started).
    */
-  private readonly stages: Record<string, { sum: number; count: number }> = {};
+  private readonly stages: Record<string, Timing> = {};
 
   recordStage(stage: string, ms: number): void {
-    const s = (this.stages[stage] ??= { sum: 0, count: 0 });
-    s.sum += ms;
-    s.count += 1;
+    observe((this.stages[stage] ??= newTiming()), ms);
   }
 
   /** Packaged product whose panel was served from cache — no second vision call. */
@@ -211,15 +253,104 @@ class MetricsRegistry {
     }
   }
 
+  /**
+   * Requests whose CLIENT hung up before we answered, by route.
+   *
+   * THE FAILURE NOBODY COULD SEE. Every per-route budget in this service is
+   * honest on its own, but they are spent in SEQUENCE: identify, then the
+   * optional escalation, then the label pass. Nothing ever compared the sum
+   * against the deadline the phone actually holds (25 s typed, 50 s upload,
+   * 12 s for a workout). When the sum wins, six things happen in a row and not
+   * one of them reaches a counter: the phone aborts; Express never notices (no
+   * `req.on('close')` anywhere, so the upstream call runs to completion and is
+   * billed); the AI quota was already spent at the door; `recordParse` files it
+   * as a SUCCESS; `avg` buries the outlier; and the user reads «нет интернета»
+   * on a connection that is plainly working.
+   *
+   * This counter is the first link made visible. A non-zero value here means
+   * work we paid for that nobody received — and paired with `p95` in
+   * `latency_ms` it says exactly which route to shorten.
+   */
+  private readonly abandoned: Record<string, number> = {};
+
+  recordAbandoned(route: string): void {
+    this.abandoned[route] = (this.abandoned[route] ?? 0) + 1;
+  }
+
+  /**
+   * Does a field the schema marks `required` actually come back? Keyed
+   * `<route>.<field>`, as present-out-of-total.
+   *
+   * WHY MEASURE SOMETHING THE SCHEMA GUARANTEES. Because it does not. #227
+   * recorded, from production, that the model «молча не выводит даже как
+   * обязательное» — for `weight_basis` and for `prepared` — and the server
+   * grew a narrow heuristic (`weighedDry`) to survive the silence. But the
+   * observation was never split by ROUTE, and the two candidate causes predict
+   * different splits: if the field is missing only on the typed-text path, the
+   * cause is that path's schema (it alone lists `weight_basis` in `required`
+   * while never declaring the property); if it is missing everywhere, the cause
+   * is `strict: false`, under which `required` is a suggestion rather than a
+   * grammar. One is a six-line fix, the other is a contract migration. This
+   * counter tells them apart from live traffic, at no risk, in a day.
+   */
+  private readonly schemaFields: Record<string, { present: number; total: number }> = {};
+
+  recordSchemaField(route: string, field: string, present: boolean): void {
+    const key = `${route}.${field}`;
+    const s = (this.schemaFields[key] ??= { present: 0, total: 0 });
+    s.total += 1;
+    if (present) s.present += 1;
+  }
+
+  /**
+   * Token spend per `<call>|<model>`, straight from the `usage` block every
+   * OpenRouter completion already carries and nothing was reading.
+   *
+   * Call COUNTS cannot stand in for this. Three features multiply our spend —
+   * the hedge (a duplicate call on the slow tail), the escalation (a second,
+   * stronger model at full reasoning depth) and the label pass (a second vision
+   * call) — and on this model completion length runs from ~200 tokens to the
+   * 6144 ceiling when a decode loop starts. A thirty-fold spread means the
+   * number of calls says almost nothing about the bill.
+   */
+  private readonly tokens: Record<string, { prompt: number; completion: number; calls: number }> = {};
+
+  recordUsage(label: string, promptTokens: number, completionTokens: number): void {
+    const t = (this.tokens[label] ??= { prompt: 0, completion: 0, calls: 0 });
+    t.prompt += promptTokens;
+    t.completion += completionTokens;
+    t.calls += 1;
+  }
+
+  /**
+   * Escalations that actually IMPROVED on the fast model's answer.
+   *
+   * `escalations` counts attempts, and it is incremented before the verdict is
+   * computed — so the most expensive optional call in the service has, until
+   * now, had no signal at all about whether it earns its price. Read as a ratio
+   * against `escalations`: a low one means `OPENROUTER_PRO_MODEL` is buying
+   * latency and tokens and giving back the fast model's answer.
+   */
+  private escalationsBetter = 0;
+
+  recordEscalationBetter(): void {
+    this.escalationsBetter += 1;
+  }
+
   snapshot() {
-    const latency_ms: Record<string, { avg: number; count: number }> = {};
-    for (const [route, { sum, count }] of Object.entries(this.latency)) {
-      latency_ms[route] = { avg: count > 0 ? Math.round(sum / count) : 0, count };
-    }
-    const stage_ms: Record<string, { avg: number; count: number }> = {};
-    for (const [stage, { sum, count }] of Object.entries(this.stages)) {
-      stage_ms[stage] = { avg: count > 0 ? Math.round(sum / count) : 0, count };
-    }
+    // `avg` and `count` keep their names, positions and meanings: checkSlo reads
+    // them, and the two new numbers are meant to be read NEXT TO the mean, not
+    // instead of it. Nothing that consumes /metrics today has to change.
+    const summarize = (t: Timing) => ({
+      avg: t.count > 0 ? Math.round(t.sum / t.count) : 0,
+      count: t.count,
+      p95: percentile95(t),
+      max: t.max,
+    });
+    const latency_ms: Record<string, ReturnType<typeof summarize>> = {};
+    for (const [route, t] of Object.entries(this.latency)) latency_ms[route] = summarize(t);
+    const stage_ms: Record<string, ReturnType<typeof summarize>> = {};
+    for (const [stage, t] of Object.entries(this.stages)) stage_ms[stage] = summarize(t);
     return {
       uptime_s: Math.round((Date.now() - this.startedAt) / 1000),
       requests: { ...this.requests },
@@ -233,7 +364,11 @@ class MetricsRegistry {
       empty: this.empty,
       low_confidence: this.lowConfidence,
       escalations: this.escalations,
+      escalations_better: this.escalationsBetter,
       truncation_retries: this.truncationRetries,
+      abandoned: { ...this.abandoned },
+      schema_fields: { ...this.schemaFields },
+      tokens: { ...this.tokens },
       label_cache_hits: this.labelCacheHits,
       hedges: this.hedges,
       sources: { ...this.sources },
