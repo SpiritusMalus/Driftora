@@ -1586,6 +1586,12 @@ export const en = {
     activate: 'Activate key',
     activating: 'Checking the key…',
     keyNote: 'Paid on the website, or moving the subscription to a second phone? Enter the key here.',
+    // Plans come from the server. Until they arrive there must be no purchase
+    // block: the button used to render anyway and read «Pay 0 ₽» — a price that
+    // does not exist.
+    keyNoteOnly: 'Have a subscription key? Enter it here.',
+    plansUnavailable: 'Could not load the plans — the server looks unreachable. You can still enter a subscription key.',
+    retry: 'Refresh',
     errors: {
       email: 'Enter an email — the receipt goes there.',
       email_required: 'Enter an email — the receipt goes there.',

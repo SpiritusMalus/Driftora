@@ -471,7 +471,12 @@ export function createApp(
     // An unreachable source is a metric, not a shrug: /metrics.source_outages is
     // how a throttled Open Food Facts shows up as a number instead of quietly
     // downgrading branded lookups to generic rows.
-    (source) => metrics.recordSourceUnavailable(source),
+    // ПРИЧИНА, А НЕ ТОЛЬКО ФАКТ. Резолвер вычисляет её (`ProviderUnavailable.reason()`)
+    // и передаёт вторым аргументом, но стрелка здесь принимала один — TypeScript
+    // такое присваивание разрешает молча, и `source_outage_reasons` заполнялся
+    // одним лишь `<источник>.unknown`. Прибор из #228 был слеп ровно там, где
+    // нужен: «USDA отвалился 3 раза» без ответа на «таймаут или 429».
+    (source, reason) => metrics.recordSourceUnavailable(source, reason),
   ),
   opts: CreateAppOptions = {},
 ): express.Express {

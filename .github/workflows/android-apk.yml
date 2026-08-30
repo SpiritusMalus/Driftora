@@ -21,6 +21,18 @@ on:
           - assembleRelease
           - bundleRelease
           - assembleDebug
+      store:
+        # Google Play требует продавать цифровой доступ только через Play
+        # Billing, а российскому разработчику Play Billing недоступен. Значит
+        # сборка для Play не должна содержать покупку внутри приложения вовсе —
+        # `play` убирает тарифы, цену и форму оплаты, оставляя ввод ключа.
+        # `none` (по умолчанию) — сборка для прямой раздачи, продаёт как раньше.
+        description: Где будет жить эта сборка (play убирает покупку внутри приложения)
+        type: choice
+        default: none
+        options:
+          - none
+          - play
       arch:
         # APK-only knob. The prebuild default packs FOUR ABIs into one
         # universal APK (~135 MB); arm64-v8a alone covers effectively every
@@ -50,6 +62,8 @@ jobs:
       # Static app token paired with the server's APP_TOKEN (repo secret; PR #84).
       # Without the secret the build sends no Authorization header — same as before.
       EXPO_PUBLIC_FOOD_API_TOKEN: ${{ secrets.EXPO_PUBLIC_FOOD_API_TOKEN }}
+      # Пусто для обычной сборки, `play` — для загрузки в Google Play (см. вход `store`).
+      EXPO_PUBLIC_STORE: ${{ inputs.store == 'play' && 'play' || '' }}
     steps:
       - uses: actions/checkout@v7
 

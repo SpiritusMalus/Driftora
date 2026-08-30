@@ -29,6 +29,11 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
+      "_blockedPermissionsNote": "SYSTEM_ALERT_WINDOW приезжает из зависимостей — приложение ничего не рисует поверх других окон, а Play ревьюит это право отдельно. WRITE_EXTERNAL_STORAGE не нужен: копия отдаётся через системный диалог. READ_EXTERNAL_STORAGE НЕ блокируем — minSdk 26, выбор фото на Android 8-12 без него не работает.",
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ],
       "softwareKeyboardLayoutMode": "resize",
       "permissions": [
         "android.permission.RECORD_AUDIO",

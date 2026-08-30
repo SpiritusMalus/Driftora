@@ -219,6 +219,14 @@ export default function SubscriptionScreen() {
   const quota = status?.quota ?? null;
   const busy = phase.kind === 'creating' || phase.kind === 'settling' || phase.kind === 'activating';
   const price = plans.find((p) => p.id === selected)?.amount ?? '';
+  // ГДЕ ЭТУ СБОРКУ ВЗЯЛИ, ТАМ И ПРАВИЛА ОПЛАТЫ. Google Play требует продавать
+  // цифровой доступ только через Play Billing, а российскому разработчику
+  // Play Billing недоступен — значит в сборке для Play покупки внутри
+  // приложения не должно быть вовсе: ни тарифов, ни цены, ни формы оплаты, ни
+  // упоминания, что купить можно где-то ещё (Play считает это уводом на
+  // внешнюю оплату). Остаётся ввод ключа — он ничего не продаёт.
+  // Флаг ПУСТОЙ по умолчанию: APK с сайта продолжает продавать как продавал.
+  const purchaseInApp = process.env.EXPO_PUBLIC_STORE !== 'play';
 
   return (
     <Screen>
@@ -275,11 +283,24 @@ export default function SubscriptionScreen() {
         </Card>
       ) : null}
 
-      {!sellsAnything ? (
+      {!purchaseInApp ? null : !sellsAnything ? (
         <Card>
           <Text style={[styles.body, { color: theme.subtle }, theme.font.body]}>
             {t('subscription.errors.not_selling')}
           </Text>
+        </Card>
+      ) : plans.length === 0 ? (
+        /* NO PLANS, NO PURCHASE BLOCK. The list is fetched from the server, and
+           a failed fetch left it empty while the block below rendered anyway —
+           with `Number('')` as its price, so the button read «Оплатить 0 ₽»:
+           a price that does not exist, on a button that cannot be pressed.
+           Seen on a real install whose network was down. Say what happened,
+           offer the retry, and keep the key field reachable underneath. */
+        <Card>
+          <Text style={[styles.body, { color: theme.subtle }, theme.font.body]}>
+            {t('subscription.plansUnavailable')}
+          </Text>
+          <PrimaryButton label={t('subscription.retry')} onPress={() => void reload()} style={styles.cta} />
         </Card>
       ) : (
         <>
@@ -373,7 +394,7 @@ export default function SubscriptionScreen() {
         disabled={busy || keyInput.trim().length === 0 || db == null}
         style={styles.cta}
       />
-      <Text style={[styles.small, { color: theme.subtle }, theme.font.body]}>{t('subscription.keyNote')}</Text>
+      <Text style={[styles.small, { color: theme.subtle }, theme.font.body]}>{t(purchaseInApp ? 'subscription.keyNote' : 'subscription.keyNoteOnly')}</Text>
 
       {/* ЮKassa's hosted form. Full screen, cancellable, and it closes itself the
           moment the payment redirects back to us. */}
