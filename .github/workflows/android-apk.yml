@@ -182,9 +182,14 @@ jobs:
           fi
           echo "signature matches the registered release key"
 
+      # Artifact storage is a 500 MB pool on the Free plan and is NOT waived for
+      # public repositories (only runner minutes are). At ~36 MB per APK and 14
+      # days of retention, a week of QA builds hit ~1 GB and GitHub started
+      # refusing uploads (2026-09-04). An APK is installed the same day, so three
+      # days is plenty; the .aab is the Play upload and is worth keeping longer.
       - uses: actions/upload-artifact@v7
         with:
           name: driftora-android-${{ inputs.variant == 'bundleRelease' && 'aab' || 'apk' }}
           path: ${{ steps.apk.outputs.path }}
           if-no-files-found: error
-          retention-days: 14
+          retention-days: ${{ inputs.variant == 'bundleRelease' && 14 || 3 }}
