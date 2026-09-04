@@ -21,6 +21,7 @@ import { hasCyrillic } from './ruSearch.js';
 import {
   contradictsQuery,
   demoteContradictions,
+  dropsForm,
   headNounLost,
   introducesForeignForm,
   MIN_CHAIN_COVERAGE,
@@ -418,7 +419,16 @@ export class Resolver {
       // «oatmeal cooked» садилось на «Oatmeal Raisin Soft Cooked Cookies»: все
       // слова запроса на месте, покрытие полное, еда — печенье.
       const foreignForm = introducesForeignForm(userQuery, shownName) && introducesForeignForm(name, shownName);
-      if (coverage < MIN_CHAIN_COVERAGE || headLost || foreignForm) {
+      // ФОРМА ПОТЕРЯНА. Третья сторона той же ошибки: запрос назвал форму, а
+      // строка её не несёт — ни в показываемом имени, ни в алиасе, который
+      // оправдал матч. «glazed cottage cheese bar» → «Творог» (87 ккал): все
+      // слова, кроме формы, совпали, покрытие 0.5 проходило, главное слово по
+      // английской паре из четырёх слов не судится — и сырок в шоколаде
+      // приезжал творогом (скрин владельца 2026-09-03). Судим по имени, КОТОРЫМ
+      // спрашивали ЭТОГО провайдера: форму в нём мог назвать и человек, и наш
+      // перевод — и в обоих случаях строка без неё описывает другую еду.
+      const formLost = dropsForm(name, shownName) && dropsForm(name, justifiedBy);
+      if (coverage < MIN_CHAIN_COVERAGE || headLost || foreignForm || formLost) {
         // Keep the FIRST thin hit: the chain is ordered by trustworthiness, so an
         // early source's weak row still beats a later source's weak row.
         if (!weakFallback) weakFallback = { ...hit, weak: true };
