@@ -108,6 +108,24 @@ jobs:
           echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.p12" >> "$GITHUB_ENV"
           echo "signed=true" >> "$GITHUB_OUTPUT"
 
+      # Google Play refuses a bundle whose versionCode it has already seen, and
+      # app.json pins versionCode 1 (eas.json's autoIncrement only runs on EAS,
+      # not here). For the store bundle take the workflow run number: it only
+      # grows, and every upload is a fresh run. Preview APKs deliberately keep
+      # 1 so an older build can still be installed over a newer one without an
+      # uninstall — which would wipe the local diary.
+      - name: Version code for Google Play
+        if: inputs.variant == 'bundleRelease'
+        run: |
+          node -e '
+            const fs = require("fs");
+            const cfg = JSON.parse(fs.readFileSync("app.json", "utf8"));
+            cfg.expo.android.versionCode = Number(process.env.GITHUB_RUN_NUMBER);
+            fs.writeFileSync("app.json", JSON.stringify(cfg, null, 2) + "\n");
+            console.log("versionCode =", cfg.expo.android.versionCode);
+          '
+          echo "Google Play versionCode: **$GITHUB_RUN_NUMBER** (versionName $(node -p 'require("./app.json").expo.version'))" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Expo prebuild (android)
         env:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
