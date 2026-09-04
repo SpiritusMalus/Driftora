@@ -7,8 +7,10 @@ import { Card } from '@/components/ui/Card';
 import { TextField } from '@/components/ui/TextField';
 import { ApproxBadge, NutrientDetail } from '@/components/food/nutrientViews';
 import { searchSourcesDown } from '@/lib/core/services/communityBase';
+import { energyFromMacros } from '@/lib/core/services/energy';
 import { normalizeChoiceName } from '@/lib/core/services/foodChoice';
 import type { NutritionAlternative, NutritionItem } from '@/lib/core/services/foodParser';
+import type { ManualMacroInput } from '@/lib/core/services/mealDraft';
 import { pieceGramsFor } from '@/lib/core/services/pieceUnits';
 import { type Theme } from '@/lib/theme/theme';
 
@@ -27,7 +29,7 @@ export function ItemCard({
   hideCalories: boolean;
   theme: Theme;
   onGrams: (grams: number) => void;
-  onManualMacros: (macros: { kcal: number; prot: number; fat: number; carb: number }) => void;
+  onManualMacros: (macros: ManualMacroInput) => void;
   onSelectAlternative: (altIndex: number) => void;
   onSearch: (query: string) => Promise<NutritionAlternative[]>;
   onReplace: (replacement: NutritionAlternative) => void;
@@ -82,6 +84,13 @@ export function ItemCard({
   // (they both answer «take a different product»). Opens itself when the auto-pick
   // is shaky (low confidence or a referee flag) so the choice isn't buried.
   const [otherOpen, setOtherOpen] = useState(item.confidence < 0.5 || refereeFlagged);
+  // The per-100g editor is ALWAYS open where the numbers are the user's to
+  // supply (a DB miss) or to correct (an AI guess, their own earlier entry).
+  // For a DB row it hides behind «Изменить БЖУ»: the row is usually right, but
+  // a label in hand beats a generic table row, and the person must be able to
+  // say so — with the kcal following the macros, not typed beside them.
+  const editorAlways = isMiss || item.per100.source === 'manual' || item.per100.source === 'ai_estimate';
+  const [editOpen, setEditOpen] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [searching, setSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<NutritionAlternative[] | null>(null);
@@ -178,6 +187,23 @@ export function ItemCard({
           {/* Full micro breakdown, collapsed. */}
           <NutrientDetail values={item.scaled} caption={t('food.detail.basis', { grams })} theme={theme} />
 
+          {/* Any row can be corrected by hand (owner report 2026-09-03: the
+              numbers were untouchable unless the DB had missed). Opens the same
+              per-100g editor a miss gets; the first edit flips the source to an
+              honest «введено вручную». */}
+          {!editorAlways ? (
+            <Pressable
+              onPress={() => setEditOpen((v) => !v)}
+              hitSlop={6}
+              accessibilityRole="button"
+              accessibilityLabel={editOpen ? t('food.editMacrosHide') : t('food.editMacros')}
+            >
+              <Text style={[styles.editToggle, { color: theme.primary }, theme.font.body]}>
+                {editOpen ? t('food.editMacrosHide') : t('food.editMacros')}
+              </Text>
+            </Pressable>
+          ) : null}
+
           {/* HONESTY notes — only when they apply. */}
           {/* СУХОЕ ИЛИ ГОТОВОЕ — одна еда с разницей втрое на 100 г, и человек
               должен видеть ДВЕ вещи сразу: как мы её прочли (заголовок) и что
@@ -202,10 +228,18 @@ export function ItemCard({
         </>
       )}
 
-      {/* Manual per-100g entry — on a DB miss (enter real numbers) and over an AI
-          estimate (correct the guess → source flips to honest 'manual'). */}
-      {isMiss || item.per100.source === 'manual' || item.per100.source === 'ai_estimate' ? (
-        <ManualMacros item={item} isMiss={isMiss} theme={theme} onManualMacros={onManualMacros} />
+      {/* Manual per-100g entry — on a DB miss (enter real numbers), over an AI
+          estimate (correct the guess → source flips to honest 'manual'), and on
+          demand over any DB row (see editorAlways). Rendered at ONE position so
+          the typed strings survive the source flip mid-edit. */}
+      {editorAlways || editOpen ? (
+        <ManualMacros
+          item={item}
+          isMiss={isMiss}
+          hideCalories={hideCalories}
+          theme={theme}
+          onManualMacros={onManualMacros}
+        />
       ) : null}
 
       {/* WEIGHT — the main thing users adjust. When the weight was GUESSED (not
@@ -406,48 +440,73 @@ function PieceControl({
   );
 }
 
-/// Per-100g macro entry for a DB miss (and editing it afterwards). Keeps its own
-/// input strings so partial typing isn't clobbered by re-renders; every change
-/// pushes the parsed macros up via `onManualMacros` (→ source becomes 'manual').
+/// Per-100g composition entry — for a DB miss (fill in real numbers), over an
+/// AI estimate, and, behind «Изменить БЖУ», over any DB row the user knows
+/// better than. Keeps its own input strings so partial typing isn't clobbered
+/// by re-renders; every change pushes the parsed macros up via
+/// `onManualMacros` (→ source becomes 'manual').
+///
+/// CALORIES FOLLOW THE MACROS. The kcal line is DERIVED by the one formula
+/// (`energy.ts`) the moment any macro is typed, and is shown, not typed — so a
+/// person who changes «жиры» sees the calories move with it, and the card can
+/// never carry a kcal that contradicts the Б/Ж/У beside it (owner report
+/// 2026-09-03: «нет корреляции БЖУ с калориями»). Only while every macro is
+/// blank does a kcal field appear — the menu case, where calories are all
+/// anyone knows.
 function ManualMacros({
   item,
   isMiss,
+  hideCalories,
   theme,
   onManualMacros,
 }: {
   item: NutritionItem;
   isMiss: boolean;
+  hideCalories: boolean;
   theme: Theme;
-  onManualMacros: (macros: { kcal: number; prot: number; fat: number; carb: number }) => void;
+  onManualMacros: (macros: ManualMacroInput) => void;
 }) {
   const { t } = useTranslation();
-  // Seed from the current per100 when the user is editing already-entered manual
-  // macros; blank on a fresh miss so nothing fabricated is shown.
-  const init = (n: number) => (isMiss ? '' : String(n));
-  const [kcal, setKcal] = useState(init(item.per100.kcal));
+  // Seed from the current per100 when editing numbers that already exist (a
+  // manual entry, an AI estimate, a DB row); blank on a fresh miss so nothing
+  // fabricated is shown. Fiber is blank unless the row actually carries it.
+  const init = (n: number | undefined) => (isMiss || n === undefined ? '' : String(n));
   const [prot, setProt] = useState(init(item.per100.prot));
   const [fat, setFat] = useState(init(item.per100.fat));
   const [carb, setCarb] = useState(init(item.per100.carb));
+  const [fiber, setFiber] = useState(init(item.per100.fiber));
+  const [kcal, setKcal] = useState(init(item.per100.kcal));
+  const macrosGiven = [prot, fat, carb, fiber].some((v) => toNumber(v) > 0);
+  // The same arithmetic the draft applies (`withItemManualMacros`) — shown
+  // live so the number moves under the person's thumb.
+  const derivedKcal = Math.round(
+    energyFromMacros({ prot: toNumber(prot), fat: toNumber(fat), carb: toNumber(carb), fiber: toNumber(fiber) }),
+  );
 
-  function push(next: { kcal: string; prot: string; fat: string; carb: string }) {
+  function push(next: { prot: string; fat: string; carb: string; fiber: string; kcal: string }) {
     onManualMacros({
-      kcal: toNumber(next.kcal),
       prot: toNumber(next.prot),
       fat: toNumber(next.fat),
       carb: toNumber(next.carb),
+      // Blank = unknown, not a zero: the item then carries no fiber at all.
+      ...(next.fiber.trim().length > 0 ? { fiber: toNumber(next.fiber) } : {}),
+      // Honoured by the draft only while no macro is given (see ManualMacroInput).
+      kcal: toNumber(next.kcal),
     });
   }
 
-  const fields: { key: 'kcal' | 'prot' | 'fat' | 'carb'; label: string; value: string; set: (v: string) => void }[] = [
-    { key: 'kcal', label: t('units.kcal'), value: kcal, set: setKcal },
+  const fields: { key: 'prot' | 'fat' | 'carb' | 'fiber'; label: string; value: string; set: (v: string) => void }[] = [
     { key: 'prot', label: t('macros.protein'), value: prot, set: setProt },
     { key: 'fat', label: t('macros.fat'), value: fat, set: setFat },
     { key: 'carb', label: t('macros.carbs'), value: carb, set: setCarb },
+    { key: 'fiber', label: t('macros.fiber'), value: fiber, set: setFiber },
   ];
 
   return (
     <View style={styles.manualWrap}>
-      <Text style={[styles.manualLabel, { color: theme.subtle }, theme.font.body]}>{t('food.enterMacros')}</Text>
+      <Text style={[styles.manualLabel, { color: theme.subtle }, theme.font.body]}>
+        {isMiss ? t('food.enterMacros') : t('food.editMacrosLabel')}
+      </Text>
       <View style={styles.manualRow}>
         {fields.map((f) => (
           <View key={f.key} style={styles.manualField}>
@@ -456,7 +515,7 @@ function ManualMacros({
               value={f.value}
               onChangeText={(v) => {
                 f.set(v);
-                push({ kcal, prot, fat, carb, [f.key]: v });
+                push({ prot, fat, carb, fiber, kcal, [f.key]: v });
               }}
               keyboardType="numeric"
               // An em-dash, not «0»: four zeros in a row read as pre-filled
@@ -467,6 +526,31 @@ function ManualMacros({
           </View>
         ))}
       </View>
+      {hideCalories ? null : macrosGiven ? (
+        <View style={styles.kcalDerivedWrap}>
+          <Text style={[styles.kcalDerived, { color: theme.text }, theme.font.bodySemiBold]}>
+            {t('food.kcalDerived', { kcal: derivedKcal })}
+          </Text>
+          <Text style={[styles.kcalFormula, { color: theme.subtle }, theme.font.body]}>{t('food.kcalFormula')}</Text>
+        </View>
+      ) : (
+        <View style={styles.kcalOnlyRow}>
+          <View style={styles.kcalOnlyField}>
+            <Text style={[styles.manualFieldLabel, { color: theme.subtle }, theme.font.body]}>{t('units.kcal')}</Text>
+            <TextField
+              value={kcal}
+              onChangeText={(v) => {
+                setKcal(v);
+                push({ prot, fat, carb, fiber, kcal: v });
+              }}
+              keyboardType="numeric"
+              placeholder="—"
+              style={styles.manualInput}
+            />
+          </View>
+          <Text style={[styles.kcalOnlyHint, { color: theme.subtle }, theme.font.body]}>{t('food.kcalOnly')}</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -512,6 +596,15 @@ const styles = StyleSheet.create({
   manualField: { flex: 1 },
   manualFieldLabel: { fontSize: 11, marginBottom: 2 },
   manualInput: { textAlign: 'center' },
+  // Derived-calories line under the macro row, and the calories-only fallback.
+  kcalDerivedWrap: { marginTop: 8 },
+  kcalDerived: { fontSize: 15 },
+  kcalFormula: { fontSize: 11, lineHeight: 15, marginTop: 2 },
+  kcalOnlyRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginTop: 8 },
+  kcalOnlyField: { width: 92 },
+  kcalOnlyHint: { fontSize: 11, lineHeight: 15, flex: 1, paddingBottom: 12 },
+  // «Изменить БЖУ» — the quiet link under the composition lines.
+  editToggle: { fontSize: 13, marginTop: 4 },
   gramsInput: { width: 64, paddingVertical: 8, fontSize: 14, textAlign: 'center' },
   gramsUnit: { fontSize: 12 },
   badge: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },

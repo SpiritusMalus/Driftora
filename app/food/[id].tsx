@@ -28,6 +28,7 @@ import { daysAgo, localDayKey, tsOnDay } from '@/lib/i18n/formatDay';
 import type { MealDraft, NutritionAlternative, Region } from '@/lib/core/services/foodParser';
 import { getFoodParser, resolveRegion } from '@/lib/core/services/foodParserProvider';
 import {
+  type ManualMacroInput,
   removeDraftItem,
   withItemAlternative,
   withItemGrams,
@@ -137,9 +138,9 @@ export default function FoodEntryScreen() {
     setDraft((prev) => (prev ? withItemAlternative(prev, index, altIndex) : prev));
   }
 
-  // Only reachable on a DB miss / manual / ai-estimate item; a stored dish is
-  // tagged 'history', so this stays dormant here too.
-  function onManualMacros(index: number, macros: { kcal: number; prot: number; fat: number; carb: number }) {
+  // Any dish can be corrected here — «Изменить БЖУ» opens the same per-100g
+  // editor the log screen has; kcal follows the macros by the one formula.
+  function onManualMacros(index: number, macros: ManualMacroInput) {
     setDraft((prev) => (prev ? withItemManualMacros(prev, index, macros) : prev));
   }
 

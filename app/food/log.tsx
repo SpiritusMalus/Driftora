@@ -65,7 +65,16 @@ import {
 import type { AudioInput, MealDraft, NutritionAlternative, NutritionItem, PhotoInput, Region } from '@/lib/core/services/foodParser';
 import type { Sex } from '@/lib/core/insights/bodyMetrics';
 import { getFoodParser, resolveRegion } from '@/lib/core/services/foodParserProvider';
-import { itemFromQuickMeal, recomputeDraft, scaleToGrams, withItemAlternative, withItemGrams, withItemManualMacros, withItemReplacement } from '@/lib/core/services/mealDraft';
+import {
+  itemFromQuickMeal,
+  type ManualMacroInput,
+  recomputeDraft,
+  scaleToGrams,
+  withItemAlternative,
+  withItemGrams,
+  withItemManualMacros,
+  withItemReplacement,
+} from '@/lib/core/services/mealDraft';
 import { mergeReparsedDraft } from '@/lib/core/services/reparseMerge';
 import { capturePhoto, isPhotoCaptureAvailable, type PhotoSource } from '@/lib/core/services/photoProvider';
 import { getSpeechService } from '@/lib/core/services/speechProvider';
@@ -968,7 +977,7 @@ export default function FoodLogScreen() {
 
   function onItemManualMacros(
     index: number,
-    macros: { kcal: number; prot: number; fat: number; carb: number },
+    macros: ManualMacroInput,
   ) {
     setDraft((prev) => (prev ? withItemManualMacros(prev, index, macros) : prev));
   }

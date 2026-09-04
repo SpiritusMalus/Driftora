@@ -8,6 +8,7 @@ import type {
   Region,
   Vitamins,
 } from './foodParser';
+import { energyFromMacros } from '@/lib/core/services/energy';
 
 /// Mirrors the server's math (server/src/types.ts) so the client can recompute
 /// totals live as the user confirms grams — without another round-trip.
@@ -139,22 +140,45 @@ export function recomputeDraft(region: Region, items: NutritionItem[]): MealDraf
   };
 }
 
+/// What the user types per 100 g. CALORIES ARE NOT AN INDEPENDENT INPUT: whenever
+/// any macro is given, kcal is DERIVED from the macros by the one formula
+/// (`energy.ts`) and the typed `kcal` is ignored — so the card can never show a
+/// kcal that contradicts the Б/Ж/У beside it (owner report 2026-09-03: «нет
+/// корреляции БЖУ с калориями»). `kcal` is honoured only for a calories-only
+/// entry — a menu that prints kcal and nothing else — where there is nothing to
+/// derive from. `fiber` is stored only when typed (absent = unknown, never a
+/// zero-fill) and discounts the energy at its own 2 kcal/g.
+export interface ManualMacroInput {
+  prot: number;
+  fat: number;
+  carb: number;
+  fiber?: number;
+  kcal?: number;
+}
+
 /// Set user-entered per-100g macros for one item (a DB miss the user is filling
-/// in by hand) and recompute. The source becomes the honest `'manual'` label —
-/// never a fabricated DB number — and the scaled total follows the current grams.
-/// Macros only (minerals stay empty for v1); negatives are floored to 0.
-export function withItemManualMacros(
-  draft: MealDraft,
-  index: number,
-  macros: { kcal: number; prot: number; fat: number; carb: number },
-): MealDraft {
+/// in by hand, or a DB row they know better than) and recompute. The source
+/// becomes the honest `'manual'` label — never a fabricated DB number — and the
+/// scaled total follows the current grams. Minerals stay empty; negatives are
+/// floored to 0. See [ManualMacroInput] for how kcal is settled.
+export function withItemManualMacros(draft: MealDraft, index: number, macros: ManualMacroInput): MealDraft {
   const items = draft.items.map((it, i) => {
     if (i !== index) return it;
+    const prot = Math.max(0, round1(macros.prot));
+    const fat = Math.max(0, round1(macros.fat));
+    const carb = Math.max(0, round1(macros.carb));
+    const fiber =
+      typeof macros.fiber === 'number' && Number.isFinite(macros.fiber) ? Math.max(0, round1(macros.fiber)) : undefined;
+    const macrosGiven = prot > 0 || fat > 0 || carb > 0 || (fiber ?? 0) > 0;
+    const kcal = macrosGiven
+      ? Math.round(energyFromMacros({ prot, fat, carb, fiber }))
+      : Math.max(0, Math.round(macros.kcal ?? 0));
     const per100: Per100 = {
-      kcal: Math.max(0, Math.round(macros.kcal)),
-      prot: Math.max(0, round1(macros.prot)),
-      fat: Math.max(0, round1(macros.fat)),
-      carb: Math.max(0, round1(macros.carb)),
+      kcal,
+      prot,
+      fat,
+      carb,
+      ...(fiber === undefined ? {} : { fiber }),
       minerals: {},
       source: 'manual',
     };

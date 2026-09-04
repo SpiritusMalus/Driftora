@@ -1215,6 +1215,15 @@ export const en = {
       estimated: 'Some vitamins/minerals are a proxy from the USDA database matched by name, not this exact product’s values.',
     },
     enterMacros: 'Enter per 100 g:',
+    // Editing the composition of ANY item, not just a DB miss. Calories are not a
+    // separate input: they are derived from the macros by the one formula, so the
+    // numbers on a card can never contradict each other.
+    editMacros: 'Edit macros',
+    editMacrosHide: 'Hide macro editing',
+    editMacrosLabel: 'Composition per 100 g — adjust if you know better (from the label, say):',
+    kcalDerived: '= {{kcal}} kcal per 100 g',
+    kcalFormula: 'Calories are computed from the macros: 4·P + 9·F + 4·C, fiber 2 kcal/g.',
+    kcalOnly: 'Only know the calories? Enter them here.',
     source: {
       usda: 'from USDA',
       skurikhin: 'from Skurikhin tables',

@@ -176,8 +176,51 @@ export function headNounLost(query: string, candidate: string): boolean {
 /// `\b` в JS считает границу слова по ASCII, поэтому кириллические края
 /// размечаются руками: без этого «сок» не находился в «яблочный сок», зато
 /// нашёлся бы в «сахарный песок».
-const FOREIGN_FORM_RE =
-  /(печень[ея]|cookie|cookies|biscuit|торт|пирожн|cake|пирог|\bpie\b|кекс|muffin|батончик|\bbar\b|чипс|chips|крекер|cracker|конфет|candy|мороженое|ice\s*cream|сироп|syrup|(?<![а-яё])сок(?![а-яё])|juice|(?<![а-яё])блин|pancake|вафл|waffle)/i;
+///
+/// КАЖДАЯ ФОРМА — ДВУЯЗЫЧНАЯ ГРУППА, а не россыпь слов. Провайдера спрашивают
+/// по-английски, а имя строки он часто отдаёт уже по-русски (FatSecret с
+/// `language=ru`: «glazed cottage cheese bar» → «Творог»), поэтому «спросили
+/// сок — нашли juice» должно читаться как ОДНА и та же форма, иначе всякая
+/// локализованная строка выглядела бы потерявшей форму.
+///
+/// Внутри группы — ещё и СИНОНИМЫ ЛОКАЛИЗАЦИИ: FatSecret отдаёт «Оладьи» на
+/// `pancakes`, «Пломбир» на `ice cream`, «Чизкейк» на `cheesecake`, «Нектар»
+/// на `juice`. Без них каждая такая строка считалась бы потерявшей форму, а
+/// с ними группа отвечает на единственный нужный вопрос: «это та же форма
+/// еды?» — и сладкая выпечка тут намеренно одна группа (печенье ↔ бисквит ↔
+/// торт ↔ кекс: разница между ними не та ошибка, которую ловят эти ворота).
+const FORM_GROUPS: readonly RegExp[] = [
+  /печень[ея]|cookie|cookies|biscuit|бисквит|торт|пирожн|cake|чизкейк|кекс|капкейк|muffin|маффин|брауни|brownie|пирог|\bpie\b/i,
+  // «chocolate bar» / «candy bar» — по-русски просто «шоколад»/«батончик»:
+  // локализация теряет слово «bar», а еда та же, поэтому эти два сочетания
+  // из формы исключены (плитка шоколада — шоколад, а не «форма без строки»).
+  /батончик|(?<!chocolate\s)(?<!candy\s)\bbar\b/i,
+  /чипс|chips|crisps/i,
+  /крекер|cracker|галет|сухарик/i,
+  /конфет|candy|леденц|зефир|пастил|мармелад|marshmallow|gumm(?:y|ies)|lollipop|toffee/i,
+  /мороженое|ice\s*cream|пломбир|эскимо|gelato|sorbet|сорбет|щербет/i,
+  /сироп|syrup/i,
+  /(?<![а-яё])сок(?![а-яё])|juice|нектар|nectar|(?<![а-яё])морс(?![а-яё])|компот/i,
+  /(?<![а-яё])блин|pancake|олад|crepe|драник|hash\s*brown|fritter|сырник/i,
+  /вафл|waffle/i,
+  // Сырок — не творог и не сыр: другой продукт в другой форме (плитка в
+  // глазури ~400 ккал против творога ~100). Только ЦЕЛОЕ слово: «сырники» и
+  // «сырокопчёная» начинаются так же, но формой не являются.
+  /(?<![а-яё])сыр(?:ок|к[иаеу]|ком|ками|ках)(?![а-яё])|curd\s+(?:snack|bar)|cheese\s+(?:snack|bar)|syrok/i,
+];
+const FOREIGN_FORM_RE = new RegExp(FORM_GROUPS.map((g) => g.source).join('|'), 'i');
+
+/**
+ * ПОКРЫТИЕ — тоже форма, но только в ОДНУ сторону. Глазурь и шоколад делают
+ * из продукта другой продукт («сырок глазированный» ≠ «творог», «клубника в
+ * шоколаде» ≠ «клубника»), поэтому строка, потерявшая покрытие, — чужая
+ * ([dropsForm]). А вот строка, которая покрытие ДОБАВИЛА, ещё не чужая:
+ * глазированный пончик — всё ещё пончик, и демотировать честную строку
+ * «Doughnut, glazed» на запрос «donut» было бы регрессом — поэтому в
+ * [introducesForeignForm] эта группа не участвует.
+ */
+const COATING_GROUP = /глазир|(?<![а-яё])глазур|glazed|в шоколаде|chocolate[ -]covered|chocolate[ -]coated/i;
+const QUERY_FORM_GROUPS: readonly RegExp[] = [...FORM_GROUPS, COATING_GROUP];
 
 /**
  * True when the CANDIDATE introduces a food form the query never asked for —
@@ -195,6 +238,30 @@ export function introducesForeignForm(query: string, candidate: string): boolean
   const form = FOREIGN_FORM_RE.exec(c);
   if (!form) return false;
   return !FOREIGN_FORM_RE.test(q); // запрос сам про эту форму — всё в порядке
+}
+
+/**
+ * ФОРМА ПОТЕРЯНА — зеркало [introducesForeignForm] в другую сторону: запрос
+ * назвал форму (батончик, печенье, сырок, «в шоколаде»), а строка не несёт НИ
+ * ОДНОЙ из названных. «glazed cottage cheese bar» садился на «Творог»
+ * (FatSecret, 87 ккал/100 г): все слова, кроме формы, на месте, покрытие
+ * ровно 0.5 проходит порог, [headNounLost] молчит (по-английски правило
+ * работает только на паре из двух слов) — и сырок в шоколаде приезжал
+ * творогом, вчетверо легче настоящего (скрин владельца 2026-09-03).
+ *
+ * Судится по ГРУППАМ, а не по словам: «juice» в запросе и «сок» в строке —
+ * одна форма (локализованные имена FatSecret приходят по-русски на английский
+ * запрос). Достаточно, чтобы строка несла ХОТЬ ОДНУ из форм запроса: «cookie
+ * dough ice cream» против «Ice Cream, Vanilla» — форма на месте, дальше пусть
+ * судят покрытие и главное слово.
+ */
+export function dropsForm(query: string, candidate: string): boolean {
+  const q = normalizeName(query);
+  const c = normalizeName(candidate);
+  if (q.length === 0 || c.length === 0) return false;
+  const asked = QUERY_FORM_GROUPS.filter((g) => g.test(q));
+  if (asked.length === 0) return false;
+  return !asked.some((g) => g.test(c));
 }
 
 /** Prefer generic/whole foods; lightly penalize branded products. */
