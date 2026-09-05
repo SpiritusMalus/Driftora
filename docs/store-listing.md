@@ -139,11 +139,12 @@ Google Sign-In появляется только при активной под�
 2. Создать приложение → заполнить витрину (тексты выше, иконка, баннер,
    2+ скриншота).
 3. Анкеты: Data safety + рейтинг (ответы выше). Privacy policy URL:
-   https://family-pie.ru/driftora/legal
+   https://family-pie.ru/driftora/privacy (НЕ `/terms` — это оферта)
 4. Сборка: `gh workflow run android-apk.yml --ref master -f variant=bundleRelease`
    → артефакт `driftora-android-aab`. При первой загрузке согласиться на Play
    App Signing (наш ключ становится upload key — это норма).
-5. Каждая следующая загрузка: поднять `android.versionCode` в app.json.
+5. Каждая следующая загрузка — новый run: `versionCode` бандла = номер запуска
+   workflow (#232), руками ничего не поднимать.
 6. Закрытое тестирование: трек Closed testing, email-список 12+ тестеров,
    14 дней непрерывно, потом заявка на продакшен.
 7. RuStore (параллельно, без ожидания): обычный подписанный APK из
@@ -152,3 +153,67 @@ Google Sign-In появляется только при активной под�
 ⚠️ Пока биллинг включён не будет: в Play-сборке НЕ светить кнопку оплаты
 внутри приложения (политика Play Billing). Легальный путь для Play — покупка
 на сайте + активация ключа в приложении.
+
+---
+
+## Что заявлено в консоли Play (05.09.2026, карточка `com.driftora.app`)
+
+Карточка заполнена целиком; ниже — ответы, которые придётся повторять при
+пересдаче анкет или новых правах в манифесте.
+
+- **Privacy policy:** `https://family-pie.ru/driftora/privacy`.
+- **Content rating** (IARC, категория «All other app types»): везде «нет» —
+  нет обмена контентом между пользователями, нет онлайн-контента, нет покупок
+  цифровых товаров, нет геолокации, не браузер, не новости → Everyone / 3+.
+  ⚠️ «да» на UGC / онлайн-контент / покупки даёт Teen 14+ с дескриптором
+  «Inappropriate Language» и запрет аудитории младше 13.
+- **Target audience:** только 18+.
+- **Sign in details:** нет ограничений (бесплатная квота ИИ доступна ревьюеру).
+  Ads — нет. Advertising ID — нет. Government — нет. Financial — нет.
+- **Data safety** (всё «collected», ничего «shared» — OpenRouter = процессор):
+  Photos, Voice or sound recordings, Other user-generated content — эфемерно,
+  по желанию, App functionality; Device or other IDs (install id) — не
+  эфемерно, по желанию, App functionality + Fraud prevention; App interactions
+  (маячок `/funnel/paywall`) — Analytics. Шифрование в транзите — да; аккаунтов
+  нет; запрос удаления — да, ссылка на политику. Health & fitness — не
+  собирается (живёт на устройстве). Эфемерное Play тоже требует раскрыть,
+  в витрине его не показывает.
+- **Health apps:** Activity and fitness, Nutrition and weight management,
+  Sleep management, Stress management; региональных требований нет.
+- **Health data permissions** — с первым бандлом Play потребовал текст на
+  каждое из 11 прав `android.permission.health.*` (по-английски):
+  - `READ_STEPS` — Daily step count is read from Health Connect (with the
+    user's explicit permission) to show today's steps on the Home and Activity
+    screens and to add step-based calories to the daily food budget. On-device
+    only, local encrypted database, never sent to our servers or third parties.
+  - `READ_EXERCISE` — Workout sessions are imported only if the user enables
+    device import in settings, to list them on the Workouts screen and count
+    their calories in the daily budget without double counting step-based
+    estimates. On-device only.
+  - `READ_ACTIVE_CALORIES_BURNED` — Imported after the user enables device
+    import; shown on the Activity screen as an alternative estimate of daily
+    energy expenditure and used on-device to calibrate the food budget.
+  - `READ_WEIGHT` / `READ_BODY_FAT` — Smart-scale weigh-ins and body fat are
+    imported only after the user taps «Connect» on the Weight screen; shown on
+    the Weight screen, used on-device for the weight trend, the measured
+    expenditure estimate and RMR (Katch–McArdle). Stored locally only.
+  - `READ_SLEEP` — Sleep duration is shown next to steps and mood on the «Body
+    and mood» screen. On-device only.
+  - `READ_VO2_MAX`, `READ_HEART_RATE_VARIABILITY`, `READ_OXYGEN_SATURATION`,
+    `READ_RESPIRATORY_RATE`, `READ_RESTING_HEART_RATE` — imported only when the
+    user enables extended import (`app_settings.health_import_extended`);
+    displayed as daily recovery/wellbeing indicators on the Activity and «Body
+    and mood» screens. Display only, never used for calculations, never
+    uploaded.
+- **Store settings:** категория Health & Fitness, e-mail
+  tihonenkoeugene@gmail.com, сайт `https://family-pie.ru/` (страницы
+  `/driftora` без хвоста нет — 404).
+- **Скриншоты витрины:** `docs/store/screenshots/*.png` (1080×1920, рамка с
+  подписью, экран эмулятора 1080×2400 внутри). Генератор —
+  `xcrun swift docs/store/screenshots/compose.swift <папка с 01_main.png …>`;
+  подписи и порядок в нём же.
+- **Треки:** internal — opt-in
+  `https://play.google.com/apps/internaltest/4700659331729457931`; closed
+  «Alpha» — `https://play.google.com/apps/testing/com.driftora.app`; список
+  тестеров «Driftora internal» общий для обоих. Для продакшена: 12 тестеров
+  подключены одновременно 14 дней подряд, затем «Apply for production».
