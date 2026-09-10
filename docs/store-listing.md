@@ -217,3 +217,12 @@ Google Sign-In появляется только при активной под�
   «Alpha» — `https://play.google.com/apps/testing/com.driftora.app`; список
   тестеров «Driftora internal» общий для обоих. Для продакшена: 12 тестеров
   подключены одновременно 14 дней подряд, затем «Apply for production».
+- **Набор тестеров без ручного списка (10.09.2026):** трек Alpha переведён на
+  Google-группу `driftora-testers@googlegroups.com` (вступление открыто для
+  всех, без одобрения; участников видят только владелец/менеджеры). Тестеру
+  нужны два клика: вступить в группу
+  `https://groups.google.com/g/driftora-testers` → стать тестером
+  `https://play.google.com/apps/testing/com.driftora.app`. Замена списка на
+  группу ушла на review 10.09 (обычно быстро, до 7 дней) — пока не
+  опубликована, группа не даёт доступа. Релиз на Alpha: 124 (1.0.0) от 05.09,
+  «Available to selected testers».
