@@ -1,0 +1,9 @@
+[Unit]
+Description=Check for a verified Driftora release
+[Timer]
+OnBootSec=90
+OnUnitInactiveSec=120
+RandomizedDelaySec=10
+Persistent=true
+[Install]
+WantedBy=timers.target

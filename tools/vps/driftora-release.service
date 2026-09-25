@@ -1,0 +1,9 @@
+[Unit]
+Description=Deploy CI-verified Driftora master
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/driftora-release
+TimeoutStartSec=15min
+UMask=0077
