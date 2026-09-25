@@ -78,3 +78,6 @@ jobs:
       # replaced. Cheaper to find out here.
       - name: Build
         run: npm run build
+
+      - name: Deployment safety tests
+        run: python3 -m unittest discover -s ../tools/vps -p 'test_*.py' -v
