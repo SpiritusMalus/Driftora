@@ -80,15 +80,29 @@ def release(sha):
     activate(target)
     return {'state':'deployed','sha':sha,'runtime_sha':sha,'code_tree':command(['git','--git-dir',MIRROR,'rev-parse',sha+':server']),'verified_at':time.time()}
 
+def process_matches(target):
+    pid=command(['systemctl','show',SERVICE,'--property=MainPID','--value'])
+    try:
+        return int(pid)>0 and Path('/proc/'+pid+'/cwd').resolve(strict=True)==target.resolve()
+    except (OSError,ValueError):
+        return False
+
+def wait_for_process(target):
+    # Type=simple reports started before the child has completed chdir/exec.
+    for _ in range(30):
+        if process_matches(target):return
+        time.sleep(1)
+    raise RuntimeError('Wrong process version after restart')
+
 def activate(target):
     old=DROPIN.read_bytes() if DROPIN.exists() else None
     DROPIN.parent.mkdir(parents=True,exist_ok=True)
     tmp=DROPIN.with_suffix('.new');tmp.write_text('[Service]\nWorkingDirectory='+str(target)+'\n');tmp.replace(DROPIN)
     try:
         command(['systemctl','daemon-reload']);command(['systemctl','restart',SERVICE])
-        pid=command(['systemctl','show',SERVICE,'--property=MainPID','--value'])
-        if Path('/proc/'+pid+'/cwd').resolve()!=target.resolve():raise RuntimeError('Wrong process version after restart')
+        wait_for_process(target)
         if not health('http://127.0.0.1:8787/health') or not health('https://food.family-pie.ru/health'):raise RuntimeError('Live health check failed')
+        if not process_matches(target):raise RuntimeError('Process changed during health checks')
     except Exception:
         if old is None:DROPIN.unlink(missing_ok=True)
         else:DROPIN.write_bytes(old)

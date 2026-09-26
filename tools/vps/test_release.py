@@ -17,16 +17,28 @@ class ReleaseTests(unittest.TestCase):
    stream.seek(0)
    with tarfile.open(fileobj=stream) as tf:
     with self.assertRaises(RuntimeError):r.safe_members(tf)
+ def test_waits_for_child_working_directory(self):
+  with patch.object(r,'process_matches',side_effect=[False,False,True]) as check,patch.object(r.time,'sleep') as sleep:
+   r.wait_for_process(Path('/release'))
+   self.assertEqual(check.call_count,3)
+   self.assertEqual(sleep.call_count,2)
+ def test_successful_activation_verifies_health_and_process(self):
+  with tempfile.TemporaryDirectory() as tmp:
+   root=Path(tmp);drop=root/'release.conf'
+   with patch.object(r,'DROPIN',drop),patch.object(r,'command'),patch.object(r,'process_matches',side_effect=[False,True,True]),patch.object(r,'health',return_value=True) as health,patch.object(r.time,'sleep'):
+    r.activate(root/'new')
+   self.assertIn(str(root/'new'),drop.read_text())
+   self.assertEqual(health.call_count,2)
  def test_failed_activation_restores_previous_configuration(self):
   with tempfile.TemporaryDirectory() as tmp:
    root=Path(tmp);drop=root/'release.conf';drop.write_text('previous configuration')
-   with patch.object(r,'DROPIN',drop),patch.object(r,'command',return_value='0'):
+   with patch.object(r,'DROPIN',drop),patch.object(r,'command',return_value='0'),patch.object(r.time,'sleep'):
     with self.assertRaises(RuntimeError):r.activate(root/'new')
    self.assertEqual(drop.read_text(),'previous configuration')
  def test_failed_first_activation_removes_new_dropin(self):
   with tempfile.TemporaryDirectory() as tmp:
    root=Path(tmp);drop=root/'release.conf'
-   with patch.object(r,'DROPIN',drop),patch.object(r,'command',return_value='0'):
+   with patch.object(r,'DROPIN',drop),patch.object(r,'command',return_value='0'),patch.object(r.time,'sleep'):
     with self.assertRaises(RuntimeError):r.activate(root/'new')
    self.assertFalse(drop.exists())
 if __name__=='__main__':unittest.main()
