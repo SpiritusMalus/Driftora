@@ -169,7 +169,12 @@ export interface PlanPrice {
   description: string;
 }
 
-const DEFAULT_PRICE_RUB: Record<string, number> = { monthly: 199, yearly: 1990 };
+const DEFAULT_PRICE_RUB: Record<string, number> = {
+  monthly: 199,
+  quarterly: 549,
+  semiannual: 999,
+  yearly: 1990,
+};
 const DESCRIPTION_MAX = 128;
 
 /**

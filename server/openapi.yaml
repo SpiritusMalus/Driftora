@@ -249,7 +249,7 @@ paths:
             schema:
               type: object
               properties:
-                plan: { type: string, enum: [monthly, yearly], default: monthly }
+                plan: { type: string, enum: [monthly, quarterly, semiannual, yearly], default: monthly }
                 email:
                   type: string
                   description: Buyer's email. Required when the shop issues fiscal receipts (BILLING_RECEIPT=1).
