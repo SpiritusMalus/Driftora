@@ -5,6 +5,8 @@
 #
 # Использование:
 #   ./scripts/grant.sh                      # месяц
+#   ./scripts/grant.sh quarterly            # 90 дней
+#   ./scripts/grant.sh semiannual           # 180 дней
 #   ./scripts/grant.sh yearly               # год
 #   ./scripts/grant.sh yearly "Пете за баг" # год + пометка, за что
 #

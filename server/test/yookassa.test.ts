@@ -62,6 +62,16 @@ test('licence: a payment issues a key good for the plan’s length', () => {
   assert.equal(licenses.byKey(lic.key)?.key, lic.key);
 });
 
+test('licence: 90- and 180-day purchases and early renewals keep the full paid time', () => {
+  const licenses = createLicenses({ path: '', now: () => NOW });
+  const quarterly = licenses.applyPayment('pay-90', 'quarterly');
+  assert.equal(quarterly.paidUntil, NOW + 90 * DAY);
+  const extended = licenses.applyPayment('pay-180', 'semiannual', quarterly.key);
+  assert.equal(extended.key, quarterly.key);
+  assert.equal(extended.paidUntil, NOW + 270 * DAY);
+  assert.equal(licenses.applyPayment('pay-180', 'semiannual', quarterly.key).paidUntil, extended.paidUntil);
+});
+
 test('licence: the same payment applied twice does not sell two months', () => {
   const licenses = createLicenses({ path: '', now: () => NOW });
   const first = licenses.applyPayment('pay-1', 'monthly');
@@ -508,6 +518,24 @@ test('checkout: a broken price env falls back instead of selling for nothing', (
   assert.equal(formatAmount('очень дорого', 199), '199.00');
   assert.equal(formatAmount('-5', 199), '199.00');
   assert.equal(resolvePrices({} as NodeJS.ProcessEnv).monthly?.amount, '199.00');
+  assert.equal(resolvePrices({} as NodeJS.ProcessEnv).quarterly?.amount, '549.00');
+  assert.equal(resolvePrices({} as NodeJS.ProcessEnv).semiannual?.amount, '999.00');
+  assert.equal(resolvePrices({} as NodeJS.ProcessEnv).yearly?.amount, '1990.00');
+});
+
+test('checkout: new plans send the matching price and plan to ЮKassa', async () => {
+  for (const [plan, amount] of [['quarterly', '549.00'], ['semiannual', '999.00']] as const) {
+    const { seen, impl } = captureFetch();
+    const create = createYooKassaPaymentCreator({
+      shopId: 'shop', secretKey: 'secret', fetchImpl: impl,
+      prices: resolvePrices({} as NodeJS.ProcessEnv),
+    });
+    const payment = await create({ plan, returnUrl: 'https://food.example/billing/done' });
+    assert.equal(payment.amount, amount);
+    const body = JSON.parse(String(seen[0]?.init.body)) as { amount: { value: string }; metadata: { plan: string } };
+    assert.equal(body.amount.value, amount);
+    assert.equal(body.metadata.plan, plan);
+  }
 });
 
 test('checkout route: an unknown plan is refused rather than quietly charged as monthly', async () => {

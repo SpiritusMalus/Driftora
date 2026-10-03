@@ -1633,6 +1633,8 @@ export const ru = {
     extendSection: 'Продлить',
     plans: {
       monthly: 'На месяц',
+      quarterly: 'На 90 дней',
+      semiannual: 'На 180 дней',
       yearly: 'На год',
     },
     planDays: '{{n}} дней доступа',
