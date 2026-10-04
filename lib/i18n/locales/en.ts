@@ -1578,6 +1578,7 @@ export const en = {
     extendSection: 'Extend',
     plans: {
       monthly: 'Monthly',
+      bimonthly: '60 days',
       quarterly: '90 days',
       semiannual: '180 days',
       yearly: 'Yearly',

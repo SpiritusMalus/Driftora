@@ -20,17 +20,19 @@
 
 ## 0. Где будет жить сборка (Google Play)
 
-Google Play требует продавать цифровой доступ только через Play Billing, а
-российскому разработчику Play Billing недоступен. Поэтому сборка **для Play** не
-должна содержать покупку внутри приложения вовсе: ни тарифов, ни цены, ни формы
-оплаты, ни фразы «оплатите на сайте» — последнее Play считает уводом на внешнюю
-оплату. Остаётся поле ввода ключа: оно ничего не продаёт.
+Для широкой географии Play внешняя оплата цифрового доступа скрыта: остаётся
+активация ключа. Google отдельно освобождает от обязательного Play Billing
+платежи пользователей в России; при этом Play Billing для них приостановлен.
+Для закрытого RU-теста можно показать покупку через ЮKassa внутри приложения,
+если доступ к тестовому треку ограничен Россией. Источник:
+https://support.google.com/googleplay/android-developer/answer/11950272
 
 Переключается одной переменной сборки:
 
 ```
-EXPO_PUBLIC_STORE=play    # сборка для Google Play — покупки внутри нет
-EXPO_PUBLIC_STORE=        # пусто (по умолчанию) — APK для прямой раздачи, продаёт как раньше
+EXPO_PUBLIC_STORE=play          # широкая география Google Play — покупки внутри нет
+EXPO_PUBLIC_STORE=play-ru-test  # закрытый тест только для пользователей России — ЮKassa внутри
+EXPO_PUBLIC_STORE=none          # APK для прямой раздачи — ЮKassa внутри
 ```
 
 В CI это вход `store` у `android-apk.yml`. Сервер при этом не меняется: он
@@ -50,6 +52,9 @@ BILLING_PUBLIC_URL=https://food.family-pie.ru
 BILLING_SALES_URL=https://family-pie.ru/driftora/subscription
 BILLING_WEB_ORIGINS=https://family-pie.ru,https://www.family-pie.ru
 BILLING_PRICE_MONTHLY=199
+BILLING_PRICE_BIMONTHLY=379
+BILLING_PRICE_QUARTERLY=549
+BILLING_PRICE_SEMIANNUAL=999
 BILLING_PRICE_YEARLY=1990
 BILLING_RECEIPT=0
 BILLING_ADMIN_TOKEN=<длинный случайный секрет, НЕ равный APP_TOKEN>

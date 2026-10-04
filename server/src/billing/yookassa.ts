@@ -171,6 +171,7 @@ export interface PlanPrice {
 
 const DEFAULT_PRICE_RUB: Record<string, number> = {
   monthly: 199,
+  bimonthly: 379,
   quarterly: 549,
   semiannual: 999,
   yearly: 1990,

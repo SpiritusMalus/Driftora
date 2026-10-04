@@ -219,13 +219,10 @@ export default function SubscriptionScreen() {
   const quota = status?.quota ?? null;
   const busy = phase.kind === 'creating' || phase.kind === 'settling' || phase.kind === 'activating';
   const price = plans.find((p) => p.id === selected)?.amount ?? '';
-  // ГДЕ ЭТУ СБОРКУ ВЗЯЛИ, ТАМ И ПРАВИЛА ОПЛАТЫ. Google Play требует продавать
-  // цифровой доступ только через Play Billing, а российскому разработчику
-  // Play Billing недоступен — значит в сборке для Play покупки внутри
-  // приложения не должно быть вовсе: ни тарифов, ни цены, ни формы оплаты, ни
-  // упоминания, что купить можно где-то ещё (Play считает это уводом на
-  // внешнюю оплату). Остаётся ввод ключа — он ничего не продаёт.
-  // Флаг ПУСТОЙ по умолчанию: APK с сайта продолжает продавать как продавал.
+  // Широкая Play-сборка скрывает внешнюю оплату. Закрытый RU-тест собирается
+  // с play-ru-test: для платежей пользователей в России Google указывает
+  // исключение из обязательного Play Billing. География трека должна быть RU.
+  // Обычный APK (`none`) также оставляет покупку через ЮKassa внутри приложения.
   const purchaseInApp = process.env.EXPO_PUBLIC_STORE !== 'play';
 
   return (
