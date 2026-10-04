@@ -30,6 +30,7 @@ const DAY_MS = 86_400_000;
 /** How long each plan adds. `metadata.plan` on the payment picks one. */
 export const PLAN_DAYS: Record<string, number> = {
   monthly: 30,
+  bimonthly: 60,
   quarterly: 90,
   semiannual: 180,
   yearly: 365,

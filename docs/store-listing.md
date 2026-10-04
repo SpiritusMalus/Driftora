@@ -140,7 +140,9 @@ Google Sign-In появляется только при активной под�
    2+ скриншота).
 3. Анкеты: Data safety + рейтинг (ответы выше). Privacy policy URL:
    https://family-pie.ru/driftora/privacy (НЕ `/terms` — это оферта)
-4. Сборка: `gh workflow run android-apk.yml --ref master -f variant=bundleRelease`
+4. Сборка для широкого Play-трека: `gh workflow run android-apk.yml --ref master -f variant=bundleRelease -f store=play`.
+   Для закрытого теста с оплатой ЮKassa и доступом только из России:
+   `gh workflow run android-apk.yml --ref master -f variant=bundleRelease -f store=play-ru-test`.
    → артефакт `driftora-android-aab`. При первой загрузке согласиться на Play
    App Signing (наш ключ становится upload key — это норма).
 5. Каждая следующая загрузка — новый run: `versionCode` бандла = номер запуска
@@ -150,9 +152,10 @@ Google Sign-In появляется только при активной под�
 7. RuStore (параллельно, без ожидания): обычный подписанный APK из
    `assembleRelease`, ЮKassa разрешена, закрытый тест не требуется.
 
-⚠️ Пока биллинг включён не будет: в Play-сборке НЕ светить кнопку оплаты
-внутри приложения (политика Play Billing). Легальный путь для Play — покупка
-на сайте + активация ключа в приложении.
+Перед RU-тестом с покупкой в приложении ограничить географию трека Россией.
+Текущая Alpha на 04.10.2026 охватывает 178 стран; релиз 124 собран с `store=play`
+и скрывает оплату. Для платежей пользователей России Google указывает
+исключение: https://support.google.com/googleplay/android-developer/answer/11950272
 
 ---
 

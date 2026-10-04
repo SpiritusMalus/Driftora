@@ -62,8 +62,10 @@ test('licence: a payment issues a key good for the plan’s length', () => {
   assert.equal(licenses.byKey(lic.key)?.key, lic.key);
 });
 
-test('licence: 90- and 180-day purchases and early renewals keep the full paid time', () => {
+test('licence: 60-, 90- and 180-day purchases and early renewals keep the full paid time', () => {
   const licenses = createLicenses({ path: '', now: () => NOW });
+  const bimonthly = licenses.applyPayment('pay-60', 'bimonthly');
+  assert.equal(bimonthly.paidUntil, NOW + 60 * DAY);
   const quarterly = licenses.applyPayment('pay-90', 'quarterly');
   assert.equal(quarterly.paidUntil, NOW + 90 * DAY);
   const extended = licenses.applyPayment('pay-180', 'semiannual', quarterly.key);
@@ -518,13 +520,14 @@ test('checkout: a broken price env falls back instead of selling for nothing', (
   assert.equal(formatAmount('очень дорого', 199), '199.00');
   assert.equal(formatAmount('-5', 199), '199.00');
   assert.equal(resolvePrices({} as NodeJS.ProcessEnv).monthly?.amount, '199.00');
+  assert.equal(resolvePrices({} as NodeJS.ProcessEnv).bimonthly?.amount, '379.00');
   assert.equal(resolvePrices({} as NodeJS.ProcessEnv).quarterly?.amount, '549.00');
   assert.equal(resolvePrices({} as NodeJS.ProcessEnv).semiannual?.amount, '999.00');
   assert.equal(resolvePrices({} as NodeJS.ProcessEnv).yearly?.amount, '1990.00');
 });
 
 test('checkout: new plans send the matching price and plan to ЮKassa', async () => {
-  for (const [plan, amount] of [['quarterly', '549.00'], ['semiannual', '999.00']] as const) {
+  for (const [plan, amount] of [['bimonthly', '379.00'], ['quarterly', '549.00'], ['semiannual', '999.00']] as const) {
     const { seen, impl } = captureFetch();
     const create = createYooKassaPaymentCreator({
       shopId: 'shop', secretKey: 'secret', fetchImpl: impl,

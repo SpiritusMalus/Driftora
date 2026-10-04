@@ -5,6 +5,7 @@
 #
 # Использование:
 #   ./scripts/grant.sh                      # месяц
+#   ./scripts/grant.sh bimonthly            # 60 дней
 #   ./scripts/grant.sh quarterly            # 90 дней
 #   ./scripts/grant.sh semiannual           # 180 дней
 #   ./scripts/grant.sh yearly               # год
