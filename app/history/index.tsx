@@ -1,3 +1,4 @@
+import { formatDecimal, formatInt } from '@/lib/core/format';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -84,7 +85,7 @@ export default function HistoryScreen() {
           } else {
             const parts: string[] = [];
             if (stepsN != null) parts.push(`${formatSteps(stepsN)} ${t(pluralKey('steps.unit', stepsN))}`);
-            if (weightN != null) parts.push(`${weightN.toFixed(1)} ${t('weight.unit')}`);
+            if (weightN != null) parts.push(`${formatDecimal(weightN, 1)} ${t('weight.unit')}`);
             subtitle = parts.length > 0 ? parts.join(' · ') : mood != null ? undefined : t('history.noFood');
           }
           specs.push({
@@ -131,7 +132,7 @@ export default function HistoryScreen() {
 
 /// Thin-space thousands so "6 240" reads like the steps widget (mirrors [date]).
 function formatSteps(n: number): string {
-  return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  return formatInt(n);
 }
 
 const styles = StyleSheet.create({

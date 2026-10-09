@@ -1,3 +1,4 @@
+import { formatDecimal, formatInt } from '@/lib/core/format';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -312,7 +313,7 @@ export default function HomeScreen() {
   // «92.4 кг — 3 дн. назад» or a gentle weekly-cadence CTA before the first log.
   const weightSubtitle = (() => {
     if (weightRow == null) return t('home.feeders.weightCta');
-    const kg = weightRow.weightKg.toFixed(1);
+    const kg = formatDecimal(weightRow.weightKg, 1);
     const days = daysAgo(weightRow.date);
     if (days <= 0) return t('home.feeders.weightToday', { kg });
     if (days === 1) return t('home.feeders.weightYesterday', { kg });
@@ -611,7 +612,7 @@ function swipeLeft(dx: number, dy: number): boolean {
 
 /// Thin-space thousands so "6 240" reads like the mockup.
 function formatSteps(n: number): string {
-  return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  return formatInt(n);
 }
 
 /// Whole local days between a 'YYYY-MM-DD' day key and today (0 = today).

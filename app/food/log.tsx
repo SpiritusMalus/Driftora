@@ -1,3 +1,4 @@
+import { currentLocale } from '@/lib/i18n';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -963,7 +964,7 @@ export default function FoodLogScreen() {
       setSource('text');
       setParseIssue(null);
       setDraft((prev) => recomputeDraft(region, [...(prev?.items ?? []), item]));
-      setBarcodeOutcome({ kind: 'found', name: item.name_ru, kcal: Math.round(item.scaled.kcal) });
+      setBarcodeOutcome({ kind: 'found', name: currentLocale() === 'en' ? item.name_en || item.name_ru : item.name_ru, kcal: Math.round(item.scaled.kcal) });
     } catch {
       setBarcodeOutcome({ kind: 'unavailable' });
     } finally {
@@ -1097,7 +1098,7 @@ export default function FoodLogScreen() {
           // Key by the RAW typed name (so the correction sticks to what the user
           // types next time); store the DISPLAY name (real DB row once re-picked).
           await rememberFoodChoice(db, region, lookupNameForItem(it, region), {
-            name: displayItemName(it, region),
+            name: displayItemName(it, region, currentLocale()),
             per100: it.per100,
           });
         }

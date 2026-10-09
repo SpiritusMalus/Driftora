@@ -1,3 +1,4 @@
+import { formatInt } from '@/lib/core/format';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -742,7 +743,7 @@ function DayProgress({
           {usualProjection != null ? (
             <Text style={[styles.dayWorkout, { color: theme.subtle }, theme.font.body]}>
               {t('food.day.usualProjection', {
-                steps: Math.round(usualSteps ?? 0).toLocaleString('ru-RU'),
+                steps: formatInt(usualSteps ?? 0),
                 kcal: usualProjection,
               })}
             </Text>

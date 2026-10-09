@@ -1,5 +1,9 @@
+import i18n from '@/lib/i18n';
 import { sql } from 'drizzle-orm';
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
+
+import { ensureSettings } from './settings';
+import { refreshLocalizedReminders } from '@/lib/i18n/reminders';
 
 import { withDbLock, withTx } from './tx';
 
@@ -113,6 +117,9 @@ export async function importAllTables(db: AnyDb, doc: BackupDocument): Promise<v
     },
     'importAllTables',
   );
+  const settings = await ensureSettings(db);
+  await i18n.changeLanguage(settings.locale === 'en' ? 'en' : 'ru');
+  await refreshLocalizedReminders(db);
 }
 
 /// The list of tables this version exports — exposed so the drift test can assert

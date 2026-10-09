@@ -29,6 +29,7 @@ export async function ensureSettingsUnlocked(db: AnyDb): Promise<AppSettings> {
 /// Fields the settings screen can change. `reminderTimes` is a list of "HH:mm"
 /// strings (persisted as JSON).
 export interface SettingsPatch {
+  locale?: 'ru' | 'en';
   targetKcal?: number;
   targetProteinG?: number;
   targetFatG?: number;
@@ -142,6 +143,7 @@ export async function updateSettings(
   if (patch.communityFoodShare != null) set.communityFoodShare = patch.communityFoodShare;
   if (patch.healthImportExtended != null) set.healthImportExtended = patch.healthImportExtended;
   if (patch.healthConnected != null) set.healthConnected = patch.healthConnected;
+  if (patch.locale === 'ru' || patch.locale === 'en') set.locale = patch.locale;
   if (patch.region != null) set.region = patch.region;
   if (patch.legalAcceptedVersion != null) set.legalAcceptedVersion = patch.legalAcceptedVersion;
   // `…At` fields accept an explicit null (clearing consent on AI-off), so probe

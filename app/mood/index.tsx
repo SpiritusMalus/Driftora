@@ -1,3 +1,4 @@
+import { formatInt } from '@/lib/core/format';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useRef, useState } from 'react';
@@ -441,7 +442,7 @@ function formatTime(d: Date): string {
 
 /// Thin-space thousands so "6 240" reads like the steps widget.
 function formatSteps(n: number): string {
-  return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  return formatInt(n);
 }
 
 /// The body-column glyph for each insight signal.

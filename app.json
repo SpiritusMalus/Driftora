@@ -13,7 +13,9 @@
       "infoPlist": {
         "NSHealthShareUsageDescription": "Доступ к данным Здоровья (шаги, сон, вес, % жира, тренировки, пульс покоя и другие показатели) нужен, чтобы показывать вашу активность и точнее считать дневную норму калорий. Данные остаются на устройстве.",
         "NSSpeechRecognitionUsageDescription": "Распознавание речи используется для голосового ввода еды.",
-        "NSMicrophoneUsageDescription": "Микрофон нужен для голосового ввода того, что вы съели."
+        "NSMicrophoneUsageDescription": "Микрофон нужен для голосового ввода того, что вы съели.",
+        "CFBundleAllowMixedLocalizations": true,
+        "CFBundleDevelopmentRegion": "ru"
       },
       "entitlements": {
         "com.apple.developer.healthkit": true
@@ -59,7 +61,17 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      "expo-localization",
+      [
+        "expo-localization",
+        {
+          "supportedLocales": {
+            "ios": [
+              "ru",
+              "en"
+            ]
+          }
+        }
+      ],
       "expo-font",
       "expo-sqlite",
       "expo-notifications",
@@ -111,6 +123,10 @@
         "projectId": "5d1181a1-14af-48d8-af76-b2ad161eae42"
       }
     },
-    "owner": "tihonenkoeugene"
+    "owner": "tihonenkoeugene",
+    "locales": {
+      "ru": "./assets/locales/ru.json",
+      "en": "./assets/locales/en.json"
+    }
   }
 }

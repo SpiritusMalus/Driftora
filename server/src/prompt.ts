@@ -213,9 +213,9 @@ export const TRANSLATE_LABELS_SCHEMA = {
   required: ['translations'],
 } as const;
 
-export function userTranslateLabelsInstruction(labels: string[]): string {
+export function userTranslateLabelsInstruction(labels: string[], locale: 'ru' | 'en' = 'ru'): string {
   const list = labels.map((l, i) => `${i + 1}. ${l}`).join('\n');
-  return `Translate these ${labels.length} food labels to short Russian names, preserving order and count:\n\n${list}`;
+  return `Translate these ${labels.length} food labels to short ${locale === 'en' ? 'English' : 'Russian'} names, preserving order and count:\n\n${list}`;
 }
 
 /**
@@ -378,7 +378,7 @@ export function userReadLabelInstruction(productName: string): string {
  * `estimate` from the system prompt). Uses the base IDENTIFY_SCHEMA.
  */
 export function userAudioInstruction(region: Region): string {
-  return `Region: ${region}. The audio is a person describing, in Russian, a meal they ate. First write down what you heard, verbatim, in "heard" — their own words, in Russian, with no interpretation and no food names you inferred. Then identify the foods and estimate grams. Identification and grams are your primary job; the nutrition DB is authoritative for numbers. If you recognise no food at all, still fill "heard".`;
+  return `Region: ${region}. The audio is a person describing a meal they ate, in any language. First write down what you heard, verbatim, in "heard" — their own words, in the language spoken, with no interpretation and no food names you inferred. Then identify the foods and estimate grams. Identification and grams are your primary job; the nutrition DB is authoritative for numbers. If you recognise no food at all, still fill "heard".`;
 }
 
 /**
@@ -447,8 +447,8 @@ Classification rules:
 - Several activities in one description → several entries.
 - Never invent an activity that was not mentioned. If there is nothing activity-like, return an empty workouts array.`;
 
-export function userWorkoutInstruction(): string {
-  return `Parse the workout description below into structured activities (type, minutes, pace where applicable). Do not compute calories.`;
+export function userWorkoutInstruction(locale: 'ru' | 'en' = 'ru'): string {
+  return `Parse the workout description below into structured activities (type, minutes, pace where applicable). Do not compute calories. Write the display label in name_ru in ${locale === 'en' ? 'English' : 'Russian'} (the field name is a legacy API name).`;
 }
 
 /**
@@ -480,8 +480,8 @@ Rules:
 - This is NOT a food photo. If the image is not a workout/tracker screen at all, return an empty workouts array and no device numbers.
 - Never invent an activity or a number that is not on the screen.`;
 
-export function userWorkoutPhotoInstruction(): string {
-  return `Read the workout screenshot: transcribe the tracker's printed calorie/duration totals if visible, and parse the activities. Do not estimate calories yourself.`;
+export function userWorkoutPhotoInstruction(locale: 'ru' | 'en' = 'ru'): string {
+  return `Read the workout screenshot: transcribe the tracker's printed calorie/duration totals if visible, and parse the activities. Do not estimate calories yourself. Write the display label in name_ru in ${locale === 'en' ? 'English' : 'Russian'} (the field name is a legacy API name).`;
 }
 
 /** JSON Schema for workout parsing — structured output, no nutrition numbers. */

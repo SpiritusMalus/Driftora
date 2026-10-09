@@ -33,11 +33,12 @@ export function choiceKey(region: Region, name: string): string {
 export function displayItemName(
   item: Pick<NutritionItem, 'name_ru' | 'name_en' | 'matched_name' | 'userChosen'>,
   region: Region,
+  locale?: 'ru' | 'en',
 ): string {
   if (item.userChosen && item.matched_name && item.matched_name.trim().length > 0) {
     return item.matched_name.trim();
   }
-  return lookupNameForItem(item, region);
+  return lookupNameForItem(item, locale ? (locale === 'en' ? 'US' : 'RU') : region);
 }
 
 /**

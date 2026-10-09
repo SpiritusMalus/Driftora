@@ -1,3 +1,4 @@
+import { formatDate } from '@/lib/core/format';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -239,7 +240,7 @@ export default function ReviewScreen() {
       </Pressable>
       {restarted != null ? (
         <Text style={[styles.restartNote, { color: theme.tertiary }, theme.font.body]}>
-          {t('review.restart.since', { date: restarted.toLocaleDateString() })}
+          {t('review.restart.since', { date: formatDate(restarted) })}
         </Text>
       ) : null}
     </Screen>

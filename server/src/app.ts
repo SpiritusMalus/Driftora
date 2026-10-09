@@ -568,7 +568,7 @@ export function createApp(
     if (origin && webOrigins.includes(origin)) {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Vary', 'Origin');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept-Language, X-Install-Id');
       res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
     }
     if (req.method === 'OPTIONS') {
@@ -663,7 +663,7 @@ export function createApp(
     if (ALLOWED_ORIGIN) {
       res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGIN);
       res.setHeader('Vary', 'Origin');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Accept-Language, X-Install-Id');
       res.setHeader('Access-Control-Allow-Methods', 'POST, GET, OPTIONS');
     }
     if (req.method === 'OPTIONS') {
@@ -1157,6 +1157,11 @@ export function createApp(
     res.json({ ok: true });
   });
 
+  function displayLocale(req: Request): 'ru' | 'en' | undefined {
+    const lang = req.get('Accept-Language')?.split(',')[0]?.trim().toLowerCase();
+    return lang?.startsWith('en') ? 'en' : lang?.startsWith('ru') ? 'ru' : undefined;
+  }
+
   // Shared tail for both inputs: identified items → resolved MealDraft, with the
   // same error mapping + aggregate metrics. Never leaks the input or a stack trace.
   async function respondWithDraft(
@@ -1165,6 +1170,7 @@ export function createApp(
     region: Region,
     // Audio also returns what it HEARD; every other route just returns items.
     identify: () => Promise<IdentifiedItem[] | { items: IdentifiedItem[]; heard?: string }>,
+    locale?: 'ru' | 'en',
   ): Promise<void> {
     const startedAt = Date.now();
     try {
@@ -1189,7 +1195,7 @@ export function createApp(
       const localized = await withinBudget(
         startedAt,
         route === 'text' ? RESPONSE_BUDGET_MS.text : RESPONSE_BUDGET_MS.upload,
-        () => localizeDraft(draft, region),
+        () => localizeDraft(draft, region, locale),
         draft,
       );
       metrics.recordStage('translate', Date.now() - translateStart);
@@ -1229,7 +1235,7 @@ export function createApp(
       return;
     }
 
-    await respondWithDraft(res, 'text', region, () => identifyFromText(text, region));
+    await respondWithDraft(res, 'text', region, () => identifyFromText(text, region), displayLocale(req));
   });
 
   // Free-text DB search for the manual "find it yourself" picker (disambiguation
@@ -1281,8 +1287,8 @@ export function createApp(
     const localized = await withinBudget(
       searchStartedAt,
       RESPONSE_BUDGET_MS.text,
-      () => localizeAlternatives(found.candidates, region),
-      found.candidates,
+      () => localizeAlternatives(aiCard ? [...found.candidates, aiCard] : found.candidates, region, displayLocale(req)),
+      aiCard ? [...found.candidates, aiCard] : found.candidates,
     );
     // Honesty marker for the client: is the SHARED base actually on? With it
     // off, «впишите — появится для остальных» is a false promise (contribute
@@ -1292,7 +1298,7 @@ export function createApp(
     // never answered is not «этой еды нет в базе». The client says so instead of
     // inviting the user to type the food in as if it were genuinely missing.
     res.json({
-      candidates: aiCard ? [...localized, aiCard] : localized,
+      candidates: localized,
       ...(found.sourcesDown ? { sources_down: true } : {}),
     });
   });
@@ -1390,8 +1396,7 @@ export function createApp(
     // найденной строки. Пустым он быть не может — сюда мы попадаем только с
     // одним из двух.
     const title = identifiedName ?? top?.name ?? (aiCard as NutritionAlternative).name;
-    res.json({
-      item: {
+    const barcodeDraft: MealDraft = { ...emptyMealDraft(region), items: [{
         // Заголовок — имя ТОВАРА с упаковки, если оно известно: человек
         // сканировал конкретную пачку и должен увидеть именно её.
         name_ru: title,
@@ -1403,8 +1408,10 @@ export function createApp(
         scaled: scaleToGrams(per100, grams),
         approximate: true,
         ...(matchedName ? { matched_name: matchedName } : {}),
-      },
-    });
+      }] };
+    const localizedBarcode = await withinBudget(startedAt, RESPONSE_BUDGET_MS.text,
+      () => localizeDraft(barcodeDraft, region, displayLocale(req)), barcodeDraft);
+    res.json({ item: localizedBarcode.items[0] });
   });
 
   /**
@@ -1452,7 +1459,7 @@ export function createApp(
     }
     const startedAt = Date.now();
     try {
-      const workouts = await parseWorkoutFromText(text);
+      const workouts = await parseWorkoutFromText(text, displayLocale(req) ?? 'ru');
       metrics.recordWorkoutParse('workout_text', workouts.length === 0, Date.now() - startedAt);
       res.json({ workouts });
     } catch (err) {
@@ -1492,7 +1499,7 @@ export function createApp(
     const format = audioFormat(file.mimetype, file.originalname);
     const startedAt = Date.now();
     try {
-      const workouts = await parseWorkoutFromAudio(file.buffer.toString('base64'), format);
+      const workouts = await parseWorkoutFromAudio(file.buffer.toString('base64'), format, displayLocale(req) ?? 'ru');
       metrics.recordWorkoutParse('workout_audio', workouts.length === 0, Date.now() - startedAt);
       res.json({ workouts });
     } catch (err) {
@@ -1512,7 +1519,7 @@ export function createApp(
     const mimeType = sniffImageMime(file.buffer) ?? (file.mimetype || 'image/jpeg');
     const startedAt = Date.now();
     try {
-      const parsed = await parseWorkoutFromPhoto(file.buffer.toString('base64'), mimeType);
+      const parsed = await parseWorkoutFromPhoto(file.buffer.toString('base64'), mimeType, displayLocale(req) ?? 'ru');
       metrics.recordWorkoutParse('workout_photo', parsed.workouts.length === 0, Date.now() - startedAt);
       res.json(parsed);
     } catch (err) {
@@ -1585,7 +1592,7 @@ export function createApp(
         metrics.recordStage('label', Date.now() - labelStart);
       }
       return items;
-    });
+    }, displayLocale(req));
   });
 
   // Voice input: multipart `audio` (a short spoken meal description) + `region` →
@@ -1600,7 +1607,7 @@ export function createApp(
     }
     const format = audioFormat(file.mimetype, file.originalname);
     const base64 = file.buffer.toString('base64');
-    await respondWithDraft(res, 'audio', region, () => identifyFromAudio(base64, format, region));
+    await respondWithDraft(res, 'audio', region, () => identifyFromAudio(base64, format, region), displayLocale(req));
   });
 
   // Map multer rejections (e.g. oversized upload) to a clean error envelope.

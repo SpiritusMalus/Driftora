@@ -21,6 +21,8 @@
 
 import type { AudioInput, PhotoInput } from './foodParser';
 
+import { currentLocale } from '@/lib/i18n';
+
 import { whenInstallId } from './installId';
 
 /** One activity parsed from a free-text description — mirrors server ParsedWorkout. */
@@ -115,7 +117,7 @@ class HttpWorkoutParser implements WorkoutParser {
    *  it is still in flight (the getter caps its own wait). */
   private async headers(): Promise<Record<string, string>> {
     const id = await this.installId?.();
-    return id ? { ...this.authHeaders, 'X-Install-Id': id } : { ...this.authHeaders };
+    return { ...this.authHeaders, 'Accept-Language': currentLocale(), ...(id ? { 'X-Install-Id': id } : {}) };
   }
 
   async parse(text: string): Promise<ParsedWorkout[]> {

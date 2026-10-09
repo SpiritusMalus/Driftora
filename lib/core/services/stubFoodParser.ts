@@ -21,21 +21,22 @@ function p100(kcal: number, prot: number, fat: number, carb: number, minerals: M
 }
 
 const FOODS: { keywords: string[]; def: FoodDef }[] = [
-  { keywords: ['яйц', 'яиц'], def: { name_ru: 'Яйцо', name_en: 'egg', defGrams: 50, per100: p100(155, 13, 11, 1.1, { na: 124, k: 126 }) } },
-  { keywords: ['омлет'], def: { name_ru: 'Омлет', name_en: 'omelette', defGrams: 150, per100: p100(154, 11, 12, 1, { na: 155 }) } },
-  { keywords: ['кофе'], def: { name_ru: 'Кофе', name_en: 'coffee', defGrams: 200, per100: p100(1, 0.1, 0, 0, { k: 49 }) } },
-  { keywords: ['молок'], def: { name_ru: 'Молоко', name_en: 'milk', defGrams: 200, per100: p100(60, 3.2, 3.2, 4.7, { ca: 113, k: 143 }) } },
-  { keywords: ['хлеб', 'булк', 'тост'], def: { name_ru: 'Хлеб', name_en: 'bread', defGrams: 30, per100: p100(265, 9, 3.2, 49, { na: 491 }) } },
-  { keywords: ['банан'], def: { name_ru: 'Банан', name_en: 'banana', defGrams: 120, per100: p100(89, 1.1, 0.3, 23, { k: 358, mg: 27 }) } },
-  { keywords: ['кур'], def: { name_ru: 'Курица', name_en: 'chicken breast', defGrams: 150, per100: p100(165, 31, 3.6, 0, { na: 74, k: 256 }) } },
-  { keywords: ['рис'], def: { name_ru: 'Рис', name_en: 'rice', defGrams: 150, per100: p100(130, 2.7, 0.3, 28, { mg: 12 }) } },
-  { keywords: ['греч'], def: { name_ru: 'Гречка', name_en: 'buckwheat', defGrams: 150, per100: p100(110, 4, 1.1, 21, { mg: 51, fe: 1.3 }) } },
-  { keywords: ['творог'], def: { name_ru: 'Творог', name_en: 'cottage cheese', defGrams: 180, per100: p100(98, 18, 2, 3.3, { ca: 83, na: 364 }) } },
-  { keywords: ['ябло'], def: { name_ru: 'Яблоко', name_en: 'apple', defGrams: 180, per100: p100(52, 0.3, 0.2, 14, { k: 107 }) } },
-  { keywords: ['чай'], def: { name_ru: 'Чай', name_en: 'tea', defGrams: 200, per100: p100(1, 0, 0, 0.2) } },
+  { keywords: ['яйц', 'яиц', 'egg'], def: { name_ru: 'Яйцо', name_en: 'egg', defGrams: 50, per100: p100(155, 13, 11, 1.1, { na: 124, k: 126 }) } },
+  { keywords: ['омлет', 'omelet'], def: { name_ru: 'Омлет', name_en: 'omelette', defGrams: 150, per100: p100(154, 11, 12, 1, { na: 155 }) } },
+  { keywords: ['кофе', 'coffee'], def: { name_ru: 'Кофе', name_en: 'coffee', defGrams: 200, per100: p100(1, 0.1, 0, 0, { k: 49 }) } },
+  { keywords: ['молок', 'milk'], def: { name_ru: 'Молоко', name_en: 'milk', defGrams: 200, per100: p100(60, 3.2, 3.2, 4.7, { ca: 113, k: 143 }) } },
+  { keywords: ['хлеб', 'булк', 'тост', 'bread'], def: { name_ru: 'Хлеб', name_en: 'bread', defGrams: 30, per100: p100(265, 9, 3.2, 49, { na: 491 }) } },
+  { keywords: ['банан', 'banana'], def: { name_ru: 'Банан', name_en: 'banana', defGrams: 120, per100: p100(89, 1.1, 0.3, 23, { k: 358, mg: 27 }) } },
+  { keywords: ['кур', 'chicken'], def: { name_ru: 'Курица', name_en: 'chicken breast', defGrams: 150, per100: p100(165, 31, 3.6, 0, { na: 74, k: 256 }) } },
+  { keywords: ['рис', 'rice'], def: { name_ru: 'Рис', name_en: 'rice', defGrams: 150, per100: p100(130, 2.7, 0.3, 28, { mg: 12 }) } },
+  { keywords: ['греч', 'buckwheat'], def: { name_ru: 'Гречка', name_en: 'buckwheat', defGrams: 150, per100: p100(110, 4, 1.1, 21, { mg: 51, fe: 1.3 }) } },
+  { keywords: ['творог', 'cottage cheese'], def: { name_ru: 'Творог', name_en: 'cottage cheese', defGrams: 180, per100: p100(98, 18, 2, 3.3, { ca: 83, na: 364 }) } },
+  { keywords: ['ябло', 'apple'], def: { name_ru: 'Яблоко', name_en: 'apple', defGrams: 180, per100: p100(52, 0.3, 0.2, 14, { k: 107 }) } },
+  { keywords: ['чай', 'tea'], def: { name_ru: 'Чай', name_en: 'tea', defGrams: 200, per100: p100(1, 0, 0, 0.2) } },
 ];
 
 const NUM_WORDS: Record<string, number> = {
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6,
   один: 1, одно: 1, одна: 1, два: 2, две: 2, три: 3,
   трёх: 3, трех: 3, четыре: 4, пять: 5, шесть: 6,
 };
@@ -56,7 +57,7 @@ export class StubFoodParser implements FoodParser {
   async parse(text: string, region: Region): Promise<MealDraft> {
     const chunks = text
       .toLowerCase()
-      .split(/[,;]|\sи\s|\sс\s|\+/)
+      .split(/[,;]|\sи\s|\sс\s|\sand\s|\swith\s|\+/)
       .map((c) => c.trim())
       .filter((c) => c.length > 0);
 
@@ -69,7 +70,7 @@ export class StubFoodParser implements FoodParser {
         const per100: Per100 = { source: 'estimate', ...match.def.per100 };
         items.push({
           name_ru: qty > 1 ? `${match.def.name_ru} ×${qty}` : match.def.name_ru,
-          name_en: match.def.name_en,
+          name_en: qty > 1 ? `${match.def.name_en} ×${qty}` : match.def.name_en,
           grams,
           grams_source: 'estimated',
           confidence: 0.4,

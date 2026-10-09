@@ -1,0 +1,11 @@
+{
+  "ios": {
+    "NSHealthShareUsageDescription": "Health access (steps, sleep, weight, body fat, workouts, resting heart rate and other metrics) lets Driftora show your activity and calculate your daily calorie target more accurately. Data stays on your device.",
+    "NSSpeechRecognitionUsageDescription": "Speech recognition lets you enter food by voice.",
+    "NSMicrophoneUsageDescription": "The microphone lets you describe meals and workouts by voice.",
+    "NSPhotoLibraryUsageDescription": "Photo access lets you identify a meal or read a workout screenshot.",
+    "NSCameraUsageDescription": "The camera lets you photograph a meal or scan a product barcode.",
+    "NSFaceIDUsageDescription": "Face ID unlocks your encryption key so you can open a backup.",
+    "NSPhotoLibraryAddUsageDescription": "Access lets you save the selected image."
+  }
+}

@@ -1,3 +1,6 @@
+import { currentLocale, type AppLocale } from '@/lib/i18n';
+import { PRIVACY_POLICY_EN, TERMS_OF_USE_EN } from './documents.en';
+
 /// Bundled legal text for the in-app readers (TASK-2026-06-19 §E). Metro has no
 /// markdown loader and we add no new deps, so the canonical `legal/*.md` files
 /// are mirrored here as plain strings and rendered by a tiny markdown view
@@ -5,9 +8,8 @@
 /// family-pie canon (content/driftora/*.ru.md) — the `.md` files are the version
 /// hosted at the public family-pie legal page for the stores.
 ///
-/// Russian is the only language here on purpose: the audience and РКН are
-/// Russian, and the documents carry legal weight in Russian. Operator-specific
-/// fields are filled from the finalized family-pie canon (ИП Тихоненко Е.Ю.).
+/// The Russian canon remains unchanged; documents.en.ts contains its English
+/// reading translation with the same dates, terms and operator details.
 ///
 /// Paragraphs MUST stay one line each: the renderer turns every `\n` into a line
 /// break, so the `.md` mirror's hard wraps are unwrapped here.
@@ -175,6 +177,7 @@ Driftora помогает заботиться о себе: вести днев�
 
 export type LegalDoc = 'terms' | 'privacy';
 
-export function legalDocText(doc: LegalDoc): string {
+export function legalDocText(doc: LegalDoc, locale: AppLocale = currentLocale()): string {
+  if (locale === 'en') return doc === 'terms' ? TERMS_OF_USE_EN : PRIVACY_POLICY_EN;
   return doc === 'terms' ? TERMS_OF_USE_RU : PRIVACY_POLICY_RU;
 }

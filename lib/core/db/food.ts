@@ -1,3 +1,4 @@
+import { currentLocale } from '@/lib/i18n';
 import { and, desc, eq, gte, inArray, lt, notInArray } from 'drizzle-orm';
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
@@ -181,7 +182,7 @@ async function insertDraftItems(db: AnyDb, entryId: number, d: MealDraft): Promi
     items.map((it) => ({
       entryId,
       // Real DB name once the user re-picked a match; their own words otherwise.
-      name: displayItemName(it, d.region),
+      name: displayItemName(it, d.region, currentLocale()),
       qtyG: it.grams,
       kcal: it.scaled.kcal,
       proteinG: it.scaled.prot,

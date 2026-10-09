@@ -1,3 +1,4 @@
+import { currentLocale } from '@/lib/i18n';
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -43,7 +44,7 @@ export function ItemCard({
   // re-pick). The matched DB row, when it differs, is shown on the «Как в базе»
   // line below — not crammed into the title in parens (which read as «молоко
   // 1.8% (молоко 3.2%)» → «почему 3.2%?»).
-  const titleName = item.userChosen && item.matched_name ? item.matched_name : item.name_ru;
+  const titleName = item.userChosen && item.matched_name ? item.matched_name : (currentLocale() === 'en' ? item.name_en || item.name_ru : item.name_ru || item.name_en);
   // TRANSPARENCY: which DB row the numbers actually describe — shown on its own
   // «Как в базе: …» line whenever it differs from the title the user sees. We
   // deliberately DON'T suppress it just because it looks like a translation of

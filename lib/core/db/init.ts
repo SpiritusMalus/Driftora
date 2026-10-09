@@ -143,6 +143,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
   community_food_share INTEGER NOT NULL DEFAULT 0,
   health_import_extended INTEGER NOT NULL DEFAULT 0,
   health_connected INTEGER NOT NULL DEFAULT 0,
+  locale TEXT NOT NULL DEFAULT 'ru',
   region TEXT NOT NULL DEFAULT 'auto',
   legal_accepted_version TEXT NOT NULL DEFAULT '',
   legal_accepted_at INTEGER,
@@ -162,6 +163,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
 /// lightweight migration path the app actually runs on-device; the drizzle-kit
 /// migration in `drizzle/` mirrors it for tooling/history.
 export const MIGRATIONS: string[] = [
+  `ALTER TABLE app_settings ADD COLUMN locale TEXT NOT NULL DEFAULT 'ru'`,
   // 2026-06-18: region override for the food parser (BUILD-SPEC finalize, part B).
   `ALTER TABLE app_settings ADD COLUMN region TEXT NOT NULL DEFAULT 'auto'`,
   // 2026-06-19: РКН-safe AI consent (TASK-2026-06-19-rkn-ai-consent). Two

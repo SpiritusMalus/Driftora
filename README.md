@@ -30,6 +30,15 @@ sync-server/        FastAPI E2E backup/sync (dev only, not deployed)
 
 ## The app
 
+### Languages
+Russian is the default on every new installation, including English-language devices.
+Choose **Settings → Language → Русский / English**; the choice applies immediately and
+is preserved across restarts and encrypted backups. It changes UI copy, numeric/date
+formatting, speech recognition and generated labels, without changing the nutrition
+region or translating your diary and manually written records. Bundled legal readers
+support both languages; iOS permission text uses the system-selected app language.
+
+
 ### Requirements
 - Node 18+ and the Expo toolchain (`npx expo`).
 - A **custom dev client** — this app uses native modules (op-sqlite, secure-store, local-auth,
