@@ -1460,6 +1460,10 @@ export const ru = {
     },
   },
   settings: {
+    language: 'Язык / Language',
+    languageNote: 'Выбор сохраняется сразу. Регион базы продуктов не меняется.',
+    languageSaveError: 'Не удалось сохранить язык. Попробуйте ещё раз.',
+
     title: 'Настройки',
     site: 'Наш сайт',
     pause: 'Сделать перерыв',
@@ -1550,6 +1554,9 @@ export const ru = {
       mood: 'Справился(ась) со стрессом',
     },
     auto: {
+      localizedStepsGoal: 'Вы достигли цели по шагам.',
+      localizedProteinGoal: 'Вы достигли цели по белку.',
+      localizedWorkout: 'Сегодня вы потренировались.',
       stepsGoal: 'Дневная цель по шагам выполнена — {{steps}} {{stepsWord}} 🎉',
       stepsGoal2: 'Цель по шагам сегодня закрыта — {{steps}} {{stepsWord}}. Ноги вас несут 🎉',
       stepsGoal3: '{{steps}} {{stepsWord}} — дневная цель взята. Тело скажет спасибо 🚶',

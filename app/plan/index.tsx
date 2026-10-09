@@ -1,3 +1,4 @@
+import { formatDecimal, formatInt } from '@/lib/core/format';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
@@ -278,7 +279,7 @@ export default function PlanScreen() {
       <Pressable onPress={() => router.push('/weight')} hitSlop={6} style={styles.fromRow}>
         <Text style={[styles.fromText, { color: theme.subtle }, theme.font.body]}>
           {latestKg > 0
-            ? t('planScreen.fromWeight', { kg: latestKg.toFixed(1) })
+            ? t('planScreen.fromWeight', { kg: formatDecimal(latestKg, 1) })
             : t('planScreen.noWeight')}
         </Text>
         <Ionicons name="chevron-forward" size={14} color={theme.tertiary} />
@@ -364,8 +365,8 @@ export default function PlanScreen() {
               <>
                 <Text style={[styles.planIntro, { color: theme.text }, theme.font.body]}>
                   {t(`weight.plan.intro.${plan.mode}`, {
-                    kg: latestKg.toFixed(1),
-                    pace: plan.paceKgPerWeek.toFixed(1),
+                    kg: formatDecimal(latestKg, 1),
+                    pace: formatDecimal(plan.paceKgPerWeek, 1),
                   })}
                 </Text>
                 <Text style={[styles.planKcal, { color: theme.heroAccent }, theme.font.heading]}>
@@ -568,7 +569,7 @@ export default function PlanScreen() {
               <Text style={[styles.note, { color: theme.subtle }, theme.font.body]}>
                 {t(expenditure.weightSlopeKgPerWeek === 0 ? 'weight.burn.explainFlat' : 'weight.burn.explain', {
                   intake: expenditure.avgIntakeKcal,
-                  trend: Math.abs(expenditure.weightSlopeKgPerWeek).toFixed(2),
+                  trend: formatDecimal(Math.abs(expenditure.weightSlopeKgPerWeek), 2),
                   dir: t(expenditure.weightSlopeKgPerWeek < 0 ? 'weight.burn.dirDown' : 'weight.burn.dirUp'),
                 })}
               </Text>
@@ -666,7 +667,7 @@ export default function PlanScreen() {
                     <>
                       <Text style={[styles.note, { color: theme.subtle }, theme.font.body]}>
                         {t('weight.deviceFat.line', {
-                          pct: measured.toFixed(1),
+                          pct: formatDecimal(measured, 1),
                           date: formatDay(deviceFat.date),
                         })}
                       </Text>
@@ -867,7 +868,7 @@ function formatDay(date: string): string {
 
 /// Group thousands using the locale separator: 8400 → '8 400'.
 function formatStepCount(n: number): string {
-  return Math.round(n).toLocaleString('ru-RU');
+  return formatInt(n);
 }
 
 const styles = StyleSheet.create({

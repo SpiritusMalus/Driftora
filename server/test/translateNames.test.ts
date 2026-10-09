@@ -96,3 +96,18 @@ test('localizeAlternatives is a no-op for a non-RU region', async () => {
   const out = await localizeAlternatives(list, 'US');
   assert.equal(out, list);
 });
+
+test('English display translates Cyrillic labels and keeps its cache separate from Russian', async () => {
+  const seen: string[][] = [];
+  const en = await translateBatch(['Творог EnTest', 'Milk'], async (misses) => {
+    seen.push(misses);
+    return ['Cottage cheese EnTest'];
+  }, 'en');
+  assert.deepEqual(seen, [['Творог EnTest']]);
+  assert.equal(en.get('Творог EnTest'), 'Cottage cheese EnTest');
+  assert.equal(en.has('Milk'), false);
+  const ru = await translateBatch(['Cottage cheese EnTest'], async () => ['Творог EnTest'], 'ru');
+  assert.equal(ru.get('Cottage cheese EnTest'), 'Творог EnTest');
+  const cached = await translateBatch(['Творог EnTest'], async () => { throw Error('cache miss'); }, 'en');
+  assert.equal(cached.get('Творог EnTest'), 'Cottage cheese EnTest');
+});

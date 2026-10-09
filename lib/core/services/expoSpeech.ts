@@ -1,3 +1,5 @@
+import { speechLocale } from '@/lib/i18n';
+
 import type { SpeechEndReason, SpeechErrorCode, SpeechService } from './speech';
 
 /// Map the recognizer's raw error code (Web Speech / native) to our small,
@@ -77,7 +79,7 @@ export class ExpoSpeechService implements SpeechService {
   async listen(
     onResult: (text: string, isFinal: boolean) => void,
     onEnd?: (reason?: SpeechEndReason) => void,
-    localeId = 'ru-RU',
+    localeId = speechLocale(),
   ): Promise<void> {
     // `onEnd` must fire exactly once, on the first terminal path we hit
     // (denied/missing module/end/error), so the caller's "listening" UI always

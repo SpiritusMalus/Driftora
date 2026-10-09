@@ -1,3 +1,4 @@
+import { formatDecimal } from '@/lib/core/format';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState, type ReactNode } from 'react';
@@ -105,8 +106,8 @@ export default function WeightScreen() {
       const delta = prev ? kg - prev.weightKg : 0;
       setWeightAck(
         prev && Math.abs(delta) >= 0.05
-          ? t('weight.savedDelta', { kg: kg.toFixed(1), delta: signedKg(delta) })
-          : t('weight.savedNow', { kg: kg.toFixed(1) }),
+          ? t('weight.savedDelta', { kg: formatDecimal(kg, 1), delta: signedKg(delta) })
+          : t('weight.savedNow', { kg: formatDecimal(kg, 1) }),
       );
       setItems(await listWeights(db, 30));
     } finally {
@@ -118,7 +119,7 @@ export default function WeightScreen() {
   const trend = summarizeWeightTrend(points);
   const trendLine = (() => {
     if (!trend) return null;
-    const abs = Math.abs(trend.deltaKg).toFixed(1);
+    const abs = formatDecimal(Math.abs(trend.deltaKg), 1);
     const days = trend.spanDays;
     if (trend.direction === 'steady') return t('weight.trend.steady', { days, abs });
     if (trend.direction === 'down') return t('weight.trend.down', { days, abs });
@@ -140,8 +141,8 @@ export default function WeightScreen() {
     subtitle: w.source === 'device' ? t('weight.source.device') : t('weight.source.manual'),
     right: (
       <Text style={[styles.rowKg, { color: theme.text }, theme.font.bodySemiBold]}>
-        {w.weightKg.toFixed(1)} {t('weight.unit')}
-        {w.bodyFatPct != null ? ` · ${w.bodyFatPct.toFixed(1)}%` : ''}
+        {formatDecimal(w.weightKg, 1)} {t('weight.unit')}
+        {w.bodyFatPct != null ? ` · ${formatDecimal(w.bodyFatPct, 1)}%` : ''}
       </Text>
     ),
   }));
@@ -171,7 +172,7 @@ export default function WeightScreen() {
 
   const bmiSummary =
     bmi != null
-      ? t('weight.bmi.summary', { value: bmi.toFixed(1), category: t(`weight.bmi.category.${bmiCategory(bmi)}`) })
+      ? t('weight.bmi.summary', { value: formatDecimal(bmi, 1), category: t(`weight.bmi.category.${bmiCategory(bmi)}`) })
       : latestKg <= 0
         ? t('weight.bmi.needWeightShort')
         : t('weight.bmi.needHeightShort');
@@ -186,7 +187,7 @@ export default function WeightScreen() {
           <>
             <View style={styles.heroRow}>
               <Text style={[styles.heroNum, { color: theme.text }, theme.font.display]}>
-                {latestKg.toFixed(1)}
+                {formatDecimal(latestKg, 1)}
               </Text>
               <Text style={[styles.heroUnit, { color: theme.subtle }, theme.font.body]}>{t('weight.unit')}</Text>
             </View>
@@ -266,12 +267,12 @@ export default function WeightScreen() {
               <>
                 <Text style={[styles.bmiValue, { color: theme.text }, theme.font.bodySemiBold]}>
                   {t('weight.bmi.value', {
-                    value: bmi.toFixed(1),
+                    value: formatDecimal(bmi, 1),
                     category: t(`weight.bmi.category.${bmiCategory(bmi)}`),
                   })}
                 </Text>
                 <Text style={[styles.note, { color: theme.subtle }, theme.font.body]}>
-                  {t('weight.bmi.current', { kg: latestKg.toFixed(1), cm: Math.round(heightCm) })}
+                  {t('weight.bmi.current', { kg: formatDecimal(latestKg, 1), cm: Math.round(heightCm) })}
                 </Text>
                 <Text style={[styles.note, { color: theme.subtle }, theme.font.body]}>{t('weight.bmi.ranges')}</Text>
               </>
@@ -337,7 +338,7 @@ function toNumber(v: string): number {
 
 /// '+0.4' / '-0.4' — the sign IS the message, so it is always printed.
 function signedKg(delta: number): string {
-  return `${delta > 0 ? '+' : ''}${delta.toFixed(1)}`;
+  return `${delta > 0 ? '+' : ''}${formatDecimal(delta, 1)}`;
 }
 
 /// Local calendar day as 'YYYY-MM-DD' (matches the weights table's day key).

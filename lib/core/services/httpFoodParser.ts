@@ -1,3 +1,5 @@
+import { currentLocale } from '@/lib/i18n';
+
 import type {
   AudioInput,
   BarcodeLookup,
@@ -261,7 +263,7 @@ export class HttpFoodParser implements FoodParser {
    *  it is still in flight (the getter caps its own wait). */
   private async headers(): Promise<Record<string, string>> {
     const id = await this.installId?.();
-    return id ? { ...this.authHeaders, 'X-Install-Id': id } : { ...this.authHeaders };
+    return { ...this.authHeaders, 'Accept-Language': currentLocale(), ...(id ? { 'X-Install-Id': id } : {}) };
   }
 
   /**

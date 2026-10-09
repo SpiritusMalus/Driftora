@@ -1408,6 +1408,10 @@ export const en = {
     },
   },
   settings: {
+    language: 'Language',
+    languageNote: 'Saved immediately. The nutrition database region stays the same.',
+    languageSaveError: 'Could not save the language. Please try again.',
+
     title: 'Settings',
     site: 'Our site',
     pause: 'Take a break',
@@ -1496,6 +1500,9 @@ export const en = {
       mood: 'Handled stress',
     },
     auto: {
+      localizedStepsGoal: 'You reached your step goal.',
+      localizedProteinGoal: 'You reached your protein goal.',
+      localizedWorkout: 'You worked out today.',
       stepsGoal: 'Daily step goal reached — {{steps}} {{stepsWord}} 🎉',
       stepsGoal2: 'Step goal done today — {{steps}} {{stepsWord}}. Your legs carried you 🎉',
       stepsGoal3: '{{steps}} {{stepsWord}} — daily goal hit. Your body thanks you 🚶',

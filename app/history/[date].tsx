@@ -1,3 +1,4 @@
+import { formatDecimal, formatInt } from '@/lib/core/format';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
@@ -193,7 +194,7 @@ export default function HistoryDayScreen() {
   // a two-row card — they're context, not the day's headline.
   const bodyParts: string[] = [];
   if (weightKg != null)
-    bodyParts.push(`${t('history.weightRow')} ${weightKg.toFixed(1)} ${t('weight.unit')}`);
+    bodyParts.push(`${t('history.weightRow')} ${formatDecimal(weightKg, 1)} ${t('weight.unit')}`);
   if (steps != null) bodyParts.push(`${t('history.stepsRow')} ${formatSteps(steps)}`);
   const bodyLine = bodyParts.length > 0 ? bodyParts.join(' · ') : null;
 
@@ -309,7 +310,7 @@ function formatTime(d: Date): string {
 
 /// Thin-space thousands so "6 240" reads like the steps widget.
 function formatSteps(n: number): string {
-  return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  return formatInt(n);
 }
 
 const styles = StyleSheet.create({

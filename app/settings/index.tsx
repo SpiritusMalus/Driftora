@@ -1,3 +1,4 @@
+import { formatInt } from '@/lib/core/format';
 import { usePreventRemove } from '@react-navigation/native';
 import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
@@ -17,6 +18,8 @@ import { grantAiConsent, needsAiConsent, revokeAiConsent } from '@/lib/core/cons
 import { getDbDriver } from '@/lib/core/db/client';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { ensureSettings, parseReminderTimes, updateSettings } from '@/lib/core/db/settings';
+import i18n, { currentLocale, type AppLocale } from '@/lib/i18n';
+import { refreshLocalizedReminders } from '@/lib/i18n/reminders';
 import type { LegalDoc } from '@/lib/legal/documents';
 import { SITE_URL } from '@/lib/legal/links';
 import { getStepsForDay, dayKey } from '@/lib/core/db/steps';
@@ -128,6 +131,21 @@ export default function SettingsScreen() {
     setReminders([...reminders, v].sort());
     setNewTime('');
     dirty();
+  }
+
+  async function onLanguageChange(locale: AppLocale) {
+    if (!db || saving || locale === currentLocale()) return;
+    setSaving(true);
+    try {
+      await updateSettings(db, { locale });
+      await i18n.changeLanguage(locale);
+      // Rebuild already scheduled copy from persisted settings, not unsaved edits.
+      await refreshLocalizedReminders(db);
+    } catch {
+      Alert.alert(t('settings.languageSaveError'));
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function onSave() {
@@ -281,6 +299,16 @@ export default function SettingsScreen() {
           {t('settings.privacyHeroLead')}
         </Text>
       </View>
+
+      <SectionHeader>{t('settings.language')}</SectionHeader>
+      <ChipRow>
+        {(['ru', 'en'] as const).map((locale) => (
+          <Chip key={locale} label={locale === 'ru' ? 'Русский' : 'English'}
+            selected={currentLocale() === locale} disabled={!db || !loaded || saving}
+            onPress={() => void onLanguageChange(locale)} />
+        ))}
+      </ChipRow>
+      <Note theme={theme}>{t('settings.languageNote')}</Note>
 
       <SectionHeader>{t('settings.goalsSection')}</SectionHeader>
       <ToggleRow label={t('settings.pause')} value={paused} onChange={(v) => { setPaused(v); dirty(); }} theme={theme} />
@@ -490,7 +518,7 @@ function StepChips({ value, onSelect }: { value: string; onSelect: (v: string) =
       {STEP_CHIPS.map((chip) => (
         <Chip
           key={chip.v}
-          label={chip.l}
+          label={formatInt(Number(chip.v))}
           selected={chip.v === value.trim()}
           onPress={() => onSelect(chip.v)}
           size="block"

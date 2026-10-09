@@ -6,6 +6,8 @@ import {
   type ReactNode,
 } from 'react';
 
+import i18n, { defaultLocale } from '@/lib/i18n';
+
 import type { Database } from './client';
 
 const DatabaseContext = createContext<Database | null>(null);
@@ -19,6 +21,7 @@ const DatabaseContext = createContext<Database | null>(null);
  * web), in which case screens fall back to placeholders.
  */
 export function DatabaseProvider({ children }: { children: ReactNode }) {
+  const [ready, setReady] = useState(false);
   const [db, setDb] = useState<Database | null>(null);
 
   useEffect(() => {
@@ -31,7 +34,9 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
           import('../services/installId'),
         ]);
         const opened = await openDatabase();
-        await ensureSettings(opened);
+        const settings = await ensureSettings(opened);
+        if (!mounted) return;
+        await i18n.changeLanguage(settings.locale === 'en' ? 'en' : defaultLocale);
         // Fire-and-forget: the AI-quota meter id must never block (or fail) DB
         // provisioning — without it requests just use the server's ip bucket.
         // Re-registering the licence key on launch is not redundant: the server
@@ -54,9 +59,16 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
             await refreshEntitlement(opened);
           })
           .catch((e) => console.warn('subscription refresh failed:', e));
-        if (mounted) setDb(opened);
+        if (mounted) {
+          setDb(opened);
+          void import('@/lib/i18n/reminders')
+            .then(({ refreshLocalizedReminders }) => refreshLocalizedReminders(opened))
+            .catch((e) => console.warn('reminder initialization failed:', e));
+        }
       } catch (e) {
         console.warn('DB init failed:', e);
+      } finally {
+        if (mounted) setReady(true);
       }
     })();
     return () => {
@@ -64,6 +76,7 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  if (!ready) return null;
   return <DatabaseContext.Provider value={db}>{children}</DatabaseContext.Provider>;
 }
 

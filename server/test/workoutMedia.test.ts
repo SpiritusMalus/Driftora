@@ -130,3 +130,21 @@ test('POST /workout/parse-photo: an implausible device_kcal is dropped, activiti
     await stop();
   }
 });
+
+test('English UI reaches the workout model through the real HTTP route; missing header remains Russian', async () => {
+  nextLlmPayload = { workouts: [{ type: 'run', name_ru: 'Running', minutes: 20, confidence: 0.9 }] };
+  const { base, stop } = await startApp();
+  try {
+    const request = async (language?: string) => realFetch(`${base}/workout/parse`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', ...(language ? { 'Accept-Language': language } : {}) },
+      body: JSON.stringify({ text: 'Ran for twenty minutes' }),
+    });
+    const en = await request('en-US,en;q=0.9');
+    assert.equal(en.status, 200);
+    assert.equal((await en.json() as any).workouts[0].name_ru, 'Running');
+    assert.match(lastLlmBody.messages[0].content, /short English label/);
+    assert.match(lastLlmBody.messages[1].content, /name_ru in English/);
+    await request();
+    assert.match(lastLlmBody.messages[1].content, /name_ru in Russian/);
+  } finally { await stop(); }
+});

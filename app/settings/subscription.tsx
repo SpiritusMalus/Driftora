@@ -1,3 +1,4 @@
+import { formatDate } from '@/lib/core/format';
 import { useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -236,7 +237,7 @@ export default function SubscriptionScreen() {
         </Text>
         {active && status && status.expiresAt > 0 ? (
           <Text style={[styles.body, { color: theme.subtle }, theme.font.body]}>
-            {t('subscription.until', { date: new Date(status.expiresAt).toLocaleDateString() })}
+            {t('subscription.until', { date: formatDate(new Date(status.expiresAt)) })}
           </Text>
         ) : null}
         {/* The count, in the one place a person comes to ask for it. Until this

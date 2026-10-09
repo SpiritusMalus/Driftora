@@ -1,3 +1,4 @@
+import { localizedWinMessage } from '@/lib/i18n/wins';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from 'expo-router';
@@ -122,11 +123,11 @@ export default function WinsScreen() {
       key: String(w.id),
       icon,
       tint: auto ? theme.primary : theme.accent,
-      title: w.message,
+      title: localizedWinMessage(w, t),
       subtitle: formatWinDate(w.ts, t),
       right: (
         <Pressable
-          onPress={() => onShare(w.message)}
+          onPress={() => onShare(localizedWinMessage(w, t))}
           hitSlop={8}
           accessibilityLabel={t('wins.share')}
           style={({ pressed }) => ({ opacity: pressed ? 0.5 : 1, paddingLeft: 12 })}

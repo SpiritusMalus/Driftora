@@ -265,6 +265,7 @@ export const appSettings = sqliteTable('app_settings', {
   targetsSetAt: integer('targets_set_at'),
   // Nutrition region for the food parser: 'auto' follows device locale, else
   // forces RU/US (resolveRegion: appSettings.region ?? deviceLocale.region).
+  locale: text('locale', { enum: ['ru', 'en'] }).notNull().default('ru'),
   region: text('region', { enum: ['auto', 'RU', 'US'] }).notNull().default('auto'),
   reminderTimes: text('reminder_times').notNull().default('[]'),
   hideCalories: integer('hide_calories', { mode: 'boolean' }).notNull().default(false),

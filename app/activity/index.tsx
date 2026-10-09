@@ -1,3 +1,4 @@
+import { formatInt } from '@/lib/core/format';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
@@ -420,7 +421,7 @@ function formatDay(date: string): string {
 
 /// Group thousands using the locale separator: 8400 → '8 400'.
 function formatStepCount(n: number): string {
-  return Math.round(n).toLocaleString('ru-RU');
+  return formatInt(n);
 }
 
 

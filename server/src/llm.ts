@@ -783,17 +783,19 @@ function parseEstimate(data: unknown, fallbackName: string): FoodEstimate | null
  * returns the inputs UNCHANGED, so the caller safely falls back to English.
  * Never touches nutrition numbers; the source tag stays truthful.
  */
-export async function translateFoodLabels(labels: string[]): Promise<string[]> {
+export async function translateFoodLabels(labels: string[], locale: 'ru' | 'en' = 'ru'): Promise<string[]> {
   if (labels.length === 0) return [];
   let raw: unknown;
   try {
     ({ data: raw } = await completeWithRetry(
       [
-        { role: 'system', content: TRANSLATE_LABELS_SYSTEM_PROMPT },
-        { role: 'user', content: userTranslateLabelsInstruction(labels) },
+        { role: 'system', content: locale === 'en' ? TRANSLATE_LABELS_SYSTEM_PROMPT.replace(/Russian/g, 'English').replace('from English into English', 'from Russian into English') : TRANSLATE_LABELS_SYSTEM_PROMPT },
+        { role: 'user', content: userTranslateLabelsInstruction(labels, locale) },
       ],
       MODEL,
-      TRANSLATE_LABELS_SCHEMA,
+      locale === 'en' ? { ...TRANSLATE_LABELS_SCHEMA, properties: { translations: {
+        ...TRANSLATE_LABELS_SCHEMA.properties.translations, description: 'Short English food names, one per input label, in the same order.',
+      } } } : TRANSLATE_LABELS_SCHEMA,
       TEXT_TIMEOUTS,
       REASONING_EFFORT_TEXT,
       undefined,
@@ -985,11 +987,11 @@ function completionPayload(data: unknown): unknown {
  * is universal). kcal is computed client-side, so nothing energy-related is
  * returned — the model only maps text → type/minutes/pace (+ a MET for 'other').
  */
-export async function parseWorkoutFromText(text: string): Promise<ParsedWorkout[]> {
+export async function parseWorkoutFromText(text: string, locale: 'ru' | 'en' = 'ru'): Promise<ParsedWorkout[]> {
   const { data } = await completeWithRetry(
     [
-      { role: 'system', content: PARSE_WORKOUT_SYSTEM_PROMPT },
-      { role: 'user', content: `${userWorkoutInstruction()}\n\n${text}` },
+      { role: 'system', content: locale === 'en' ? PARSE_WORKOUT_SYSTEM_PROMPT.replace(/Russian/g, 'English') : PARSE_WORKOUT_SYSTEM_PROMPT },
+      { role: 'user', content: `${userWorkoutInstruction(locale)}\n\n${text}` },
     ],
     MODEL,
     PARSE_WORKOUT_SCHEMA,
@@ -1006,14 +1008,14 @@ export async function parseWorkoutFromText(text: string): Promise<ParsedWorkout[
  * parser: the clip rides in as an `input_audio` part, everything else —
  * prompt, schema, honesty split (kcal stays client-side) — is identical.
  */
-export async function parseWorkoutFromAudio(base64: string, format: string): Promise<ParsedWorkout[]> {
+export async function parseWorkoutFromAudio(base64: string, format: string, locale: 'ru' | 'en' = 'ru'): Promise<ParsedWorkout[]> {
   const { data } = await completeWithRetry(
     [
-      { role: 'system', content: PARSE_WORKOUT_SYSTEM_PROMPT },
+      { role: 'system', content: locale === 'en' ? PARSE_WORKOUT_SYSTEM_PROMPT.replace(/Russian/g, 'English') : PARSE_WORKOUT_SYSTEM_PROMPT },
       {
         role: 'user',
         content: [
-          { type: 'text', text: userWorkoutInstruction() },
+          { type: 'text', text: userWorkoutInstruction(locale) },
           { type: 'input_audio', input_audio: { data: base64, format } },
         ],
       },
@@ -1035,14 +1037,14 @@ export async function parseWorkoutFromAudio(base64: string, format: string): Pro
  * energy values, unlike every other workout parse: they are the tracker's
  * measurements passing through, not model arithmetic.
  */
-export async function parseWorkoutFromPhoto(base64: string, mimeType: string): Promise<ParsedWorkoutPhoto> {
+export async function parseWorkoutFromPhoto(base64: string, mimeType: string, locale: 'ru' | 'en' = 'ru'): Promise<ParsedWorkoutPhoto> {
   const { data } = await completeWithRetry(
     [
-      { role: 'system', content: PARSE_WORKOUT_PHOTO_SYSTEM_PROMPT },
+      { role: 'system', content: locale === 'en' ? PARSE_WORKOUT_PHOTO_SYSTEM_PROMPT.replace(/Russian/g, 'English') : PARSE_WORKOUT_PHOTO_SYSTEM_PROMPT },
       {
         role: 'user',
         content: [
-          { type: 'text', text: userWorkoutPhotoInstruction() },
+          { type: 'text', text: userWorkoutPhotoInstruction(locale) },
           { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } },
         ],
       },

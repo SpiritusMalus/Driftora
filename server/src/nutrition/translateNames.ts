@@ -2,7 +2,7 @@ import { translateFoodLabels } from '../llm.js';
 import type { MealDraft, NutritionAlternative, Region } from '../types.js';
 
 /**
- * DISPLAY-ONLY localization of English nutrition-DB row labels into Russian.
+ * DISPLAY-ONLY localization of food labels into the explicit UI language.
  *
  * The RU source chain falls through to English DBs (USDA/FatSecret) for the long
  * tail — «каша дружба» → «Rice with Milk», variants «Millet»/«Fish Porridge» —
@@ -64,13 +64,14 @@ function isCyrillic(s: string): boolean {
 export async function translateBatch(
   labels: string[],
   translate: (misses: string[]) => Promise<string[]> = translateFoodLabels,
+  locale: 'ru' | 'en' = 'ru',
 ): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   const misses: string[] = [];
   for (const raw of labels) {
     const label = raw.trim();
-    if (label.length === 0 || isCyrillic(label)) continue;
-    const key = label.toLowerCase();
+    if (label.length === 0 || (locale === 'ru' ? isCyrillic(label) : !isCyrillic(label))) continue;
+    const key = `${locale}:${label.toLowerCase()}`;
     const hit = cache.get(key);
     if (hit !== undefined) {
       out.set(label, hit);
@@ -87,7 +88,7 @@ export async function translateBatch(
     // translateFoodLabels returns the input unchanged on failure — only cache a
     // genuine translation (non-empty and actually different from the English).
     if (ru.length > 0 && ru.toLowerCase() !== en.toLowerCase()) {
-      cache.set(en.toLowerCase(), ru);
+      cache.set(`${locale}:${en.toLowerCase()}`, ru);
       out.set(en, ru);
     }
   }
@@ -96,19 +97,20 @@ export async function translateBatch(
 
 /**
  * Localize a parsed meal draft's display labels (matched row + alternatives).
- * No-op unless enabled and the region is RU. Fully defensive: any failure keeps
- * the original English draft rather than dropping the parse.
+ * Explicit locale overrides the display language only; old clients retain RU-region behavior.
+ * Any failure keeps the original draft and never changes nutrient values.
  */
-export async function localizeDraft(draft: MealDraft, region: Region): Promise<MealDraft> {
-  if (!enabled() || region !== 'RU') return draft;
+export async function localizeDraft(draft: MealDraft, region: Region, locale?: 'ru' | 'en'): Promise<MealDraft> {
+  if (!enabled() || (!locale && region !== 'RU')) return draft;
   try {
     const labels: string[] = [];
     for (const it of draft.items) {
+      if (locale) labels.push(locale === 'en' ? it.name_en || it.name_ru : it.name_ru || it.name_en);
       if (it.matched_name) labels.push(it.matched_name);
       for (const alt of it.alternatives ?? []) labels.push(alt.name);
     }
     if (labels.length === 0) return draft;
-    const map = await translateBatch(labels);
+    const map = await translateBatch(labels, (misses) => translateFoodLabels(misses, locale ?? 'ru'), locale ?? 'ru');
     if (map.size === 0) return draft;
     const items = draft.items.map((it) => {
       const matched = it.matched_name != null ? map.get(it.matched_name) : undefined;
@@ -118,6 +120,8 @@ export async function localizeDraft(draft: MealDraft, region: Region): Promise<M
       });
       return {
         ...it,
+        ...(locale === 'en' && map.has(it.name_en || it.name_ru) ? { name_en: map.get(it.name_en || it.name_ru)! } : {}),
+        ...(locale === 'ru' && map.has(it.name_ru || it.name_en) ? { name_ru: map.get(it.name_ru || it.name_en)! } : {}),
         ...(matched != null ? { matched_name: matched } : {}),
         ...(alternatives != null ? { alternatives } : {}),
       };
@@ -130,15 +134,16 @@ export async function localizeDraft(draft: MealDraft, region: Region): Promise<M
 
 /**
  * Localize a flat list of DB candidates (the manual-search picker). Same rules
- * as the draft path — RU only, behind the flag, English on any failure.
+ * as the draft path — explicit UI language, original labels on any failure.
  */
 export async function localizeAlternatives(
   list: NutritionAlternative[],
   region: Region,
+  locale?: 'ru' | 'en',
 ): Promise<NutritionAlternative[]> {
-  if (!enabled() || region !== 'RU' || list.length === 0) return list;
+  if (!enabled() || (!locale && region !== 'RU') || list.length === 0) return list;
   try {
-    const map = await translateBatch(list.map((a) => a.name));
+    const map = await translateBatch(list.map((a) => a.name), (misses) => translateFoodLabels(misses, locale ?? 'ru'), locale ?? 'ru');
     if (map.size === 0) return list;
     return list.map((a) => {
       const ru = map.get(a.name);
