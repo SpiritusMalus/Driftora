@@ -3,7 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 import { AccordionChevron } from '@/components/ui/AccordionChevron';
 import { Card } from '@/components/ui/Card';
@@ -79,6 +79,8 @@ interface DayGoal {
 export default function FoodDayScreen() {
   const { t } = useTranslation();
   const theme = useTheme();
+  const { fontScale } = useWindowDimensions();
+  const timeWidth = Math.ceil(36 * Math.max(1, fontScale));
   const router = useRouter();
   const db = useDatabase();
   // Which day the screen is showing — today by default, walked with the same
@@ -496,7 +498,7 @@ export default function FoodDayScreen() {
                     onPress={e.parseStatus === 'failed' ? () => void onRetryParse(e.id) : undefined}
                   >
                     <View style={styles.rowMain}>
-                      <Text style={[styles.rowTime, { color: theme.subtle }, theme.font.body]}>{formatTime(e.ts)}</Text>
+                      <Text style={[styles.rowTime, { width: timeWidth, color: theme.subtle }, theme.font.body]}>{formatTime(e.ts)}</Text>
                       <View style={styles.rowRail}>
                         {index < group.entries.length - 1 ? <View style={[styles.rowRule, { backgroundColor: theme.separator }]} /> : null}
                         <View style={[styles.rowNode, { backgroundColor: theme.subtle }]} />
@@ -531,13 +533,13 @@ export default function FoodDayScreen() {
                 ) : (
                 <Card variant="section" style={styles.row} onPress={() => onToggleRow(e)}>
                   <View style={styles.rowMain}>
-                    <Text style={[styles.rowTime, { color: theme.subtle }, theme.font.body]}>{formatTime(e.ts)}</Text>
+                    <Text style={[styles.rowTime, { width: timeWidth, color: theme.subtle }, theme.font.body]}>{formatTime(e.ts)}</Text>
                     <View style={styles.rowRail}>
                       {index < group.entries.length - 1 ? <View style={[styles.rowRule, { backgroundColor: theme.separator }]} /> : null}
                       <View style={[styles.rowNode, { backgroundColor: theme.primary }]} />
                     </View>
                     <View style={styles.rowBody}>
-                  <View style={styles.rowHead}>
+                  <View style={[styles.rowHead, fontScale > 1.5 && styles.rowHeadLarge]}>
                     {/* Open row = the full name, however long (the «выдвижной
                         тайтл»); folded = the one-line dish summary as before. */}
                     <Text
@@ -550,7 +552,7 @@ export default function FoodDayScreen() {
                           : shortMealTitle(e.rawText)
                         : t('food.untitled')}
                     </Text>
-                    <View style={styles.rowEnergy}>
+                    <View style={[styles.rowEnergy, fontScale > 1.5 && styles.rowEnergyLarge]}>
                       <Text style={[styles.rowKcal, { color: theme.text }, theme.font.bodyMedium]}>{Math.round(e.kcal)}</Text>
                       <Text style={[styles.rowKcalUnit, { color: theme.subtle }, theme.font.body]}>{t('units.kcal')}</Text>
                     </View>
@@ -654,6 +656,8 @@ function DayProgress({
   const { t } = useTranslation();
   const router = useRouter();
   const kcalEaten = Math.round(totals.kcal);
+  const { fontScale } = useWindowDimensions();
+  const largeType = fontScale > 1.5;
   // «Base + earned» budget, shown as a transparent sum: the deficit base (what
   // the chosen tempo asks for) plus today's steps and workouts ON TOP — never
   // below the healthy day-minimum. Movement always raises the day and re-opens
@@ -747,8 +751,8 @@ function DayProgress({
         <>
           {/* Hero: the answer to «сколько ещё можно» — big and first. Over-plan
               stays calm (no red): the amber accent, «сверх плана» as the label. */}
-          <View style={styles.dayHeroRow}>
-            <Text style={[styles.dayHeroNum, { color: onPlan ? theme.text : theme.accent }, theme.font.display]}>
+          <View style={[styles.dayHeroRow, largeType && styles.dayHeroRowLarge]}>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={[styles.dayHeroNum, { color: onPlan ? theme.text : theme.accent }, theme.font.display]}>
               {onPlan ? remaining : overBy}
             </Text>
             <Text style={[styles.dayHeroLabel, { color: theme.subtle }, theme.font.body]}>
@@ -784,9 +788,9 @@ function DayProgress({
           </Pressable>
         </>
       )}
-      <View style={[styles.macroRow, { borderColor: theme.separator }]}>
+      <View style={[styles.macroRow, largeType && styles.macroRowLarge, { borderColor: theme.separator }]}>
         {macros.map((m) => (
-          <View key={m.label} style={styles.macroCol}>
+          <View key={m.label} style={[styles.macroCol, largeType && styles.macroColLarge]}>
             <Text style={[styles.macroLabel, { color: theme.subtle }, theme.font.body]}>
               {m.label}
             </Text>
@@ -1040,7 +1044,9 @@ const styles = StyleSheet.create({
   rowBody: { flex: 1, minWidth: 0 },
   rowHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
   rowText: { fontSize: 16, lineHeight: 22, flex: 1, minWidth: 0 },
-  rowTime: { fontSize: 11, lineHeight: 17, width: 34, marginTop: 2, fontVariant: ['tabular-nums'] },
+  rowTime: { fontSize: 11, lineHeight: 17, marginTop: 2, fontVariant: ['tabular-nums'] },
+  rowHeadLarge: { flexDirection: 'column', alignItems: 'stretch' },
+  rowEnergyLarge: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'flex-start', gap: 6 },
   rowEnergy: { alignItems: 'flex-end', minWidth: 43 },
   rowKcal: { fontSize: 17, lineHeight: 22, textAlign: 'right', fontVariant: ['tabular-nums'] },
   rowKcalUnit: { fontSize: 11, lineHeight: 16, marginTop: 2 },
@@ -1062,6 +1068,7 @@ const styles = StyleSheet.create({
   dayChip: { fontSize: 12 },
   // The remaining/over figure stays the same fact, in the open day hierarchy.
   dayHeroRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: 8 },
+  dayHeroRowLarge: { flexDirection: 'column', alignItems: 'flex-start' },
   dayHeroNum: { fontSize: 49, lineHeight: 54, letterSpacing: -1.4, flexShrink: 1 },
   dayHeroLabel: { fontSize: 13, lineHeight: 18, flexShrink: 1 },
   daySecondary: { fontSize: 13, marginTop: 8 },
@@ -1070,6 +1077,8 @@ const styles = StyleSheet.create({
   dayHowLink: { fontSize: 12, marginTop: 6, textDecorationLine: 'underline' },
   macroRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 16, marginTop: 18 },
   macroCol: { flexGrow: 1, flexBasis: '28%', minWidth: 76 },
+  macroRowLarge: { flexDirection: 'column', flexWrap: 'nowrap' },
+  macroColLarge: { flexBasis: 'auto', flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 },
   macroLabel: { fontSize: 12, lineHeight: 17, marginBottom: 5 },
   macroValue: { fontSize: 17, lineHeight: 23, fontVariant: ['tabular-nums'] },
   macroTarget: { fontSize: 12 },

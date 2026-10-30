@@ -26,7 +26,7 @@ export function FoodBar({
         style={({ pressed }) => [styles.textButton, { opacity: pressed ? 0.8 : 1 }]}
       >
         <Ionicons name="create-outline" size={20} color={theme.onPrimary} />
-        <Text numberOfLines={1} style={[styles.placeholder, { color: theme.onPrimary }, theme.font.bodyMedium]}>
+        <Text style={[styles.placeholder, { color: theme.onPrimary }, theme.font.bodyMedium]}>
           {placeholder}
         </Text>
       </Pressable>

@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { FillBar } from '@/components/ui/FillBar';
 import { formatInt } from '@/lib/core/format';
@@ -47,6 +47,7 @@ export function FoodTodayWidget({
 }) {
   const { t } = useTranslation();
   const theme = useTheme();
+  const { fontScale } = useWindowDimensions();
   const reduced = useReducedMotion();
 
   // «Печать» нового значения: fade the figure back in when the rounded total
@@ -114,13 +115,13 @@ export function FoodTodayWidget({
         <Text style={[styles.movementHint, { color: theme.subtle }, theme.font.body]}>{movementHint}</Text>
       ) : null}
 
-      <View style={styles.macros}>
+      <View style={[styles.macros, fontScale > 1.5 && styles.macrosLarge]}>
         {macros.map((m) => (
-          <View key={m.key} style={styles.macro}>
-            <Text style={[styles.macroLabel, { color: theme.subtle }, theme.font.body]} numberOfLines={1}>
+          <View key={m.key} style={[styles.macro, fontScale > 1.5 && styles.macroLarge]}>
+            <Text style={[styles.macroLabel, { color: theme.subtle }, theme.font.body]}>
               {t(`macros.${m.key}`)}
             </Text>
-            <Text style={[styles.macroValue, { color: theme.text }, theme.font.bodyMedium]}>
+            <Text style={[styles.macroValue, fontScale > 1.5 && styles.macroValueLarge, { color: theme.text }, theme.font.bodyMedium]}>
               {formatInt(m.value)}
               <Text style={[styles.macroTarget, { color: theme.subtle }, theme.font.body]}>
                 /{m.target > 0 ? formatInt(m.target) : '—'} {t('units.g')}
@@ -146,8 +147,11 @@ const styles = StyleSheet.create({
   kcalBar: { marginTop: 17 },
   movementHint: { fontSize: 12, marginTop: 10, lineHeight: 17 },
   macros: { flexDirection: 'row', justifyContent: 'space-between', gap: 9, marginTop: 15 },
+  macrosLarge: { flexDirection: 'column', gap: 12 },
   macro: { flex: 1, gap: 2 },
+  macroLarge: { flex: 0, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between', columnGap: 12, rowGap: 2 },
   macroLabel: { fontSize: 11 },
   macroValue: { fontSize: 15, lineHeight: 21 },
+  macroValueLarge: { flexShrink: 1, maxWidth: '100%', textAlign: 'right' },
   macroTarget: { fontSize: 11, lineHeight: 17 },
 });

@@ -81,7 +81,7 @@ export function WeightWidget({
         >
           <Ionicons name={open ? 'remove' : 'add'} size={18} color={theme.icon} />
         </Pressable>
-        <Pressable onPress={() => router.push('/weight')} hitSlop={8}>
+        <Pressable onPress={() => router.push('/weight')} hitSlop={8} style={styles.openButton}>
           <Ionicons name="chevron-forward" size={16} color={theme.tertiary} />
         </Pressable>
       </View>
@@ -123,17 +123,18 @@ export function WeightWidget({
 }
 
 const styles = StyleSheet.create({
-  row: { paddingVertical: 16, borderBottomWidth: StyleSheet.hairlineWidth },
+  row: { paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
   head: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44 },
   headMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
   headText: { flex: 1 },
   plusBtn: { width: 32, height: 32, borderRadius: 4, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  openButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   rangeHint: { fontSize: 12, marginTop: 6 },
   title: { fontSize: 15 },
   subtitle: { fontSize: 13, marginTop: 1 },
-  inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 },
-  input: { flex: 1 },
+  inputRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 12 },
+  input: { flex: 1, minWidth: 112 },
   unit: { fontSize: 14 },
-  saveBtn: { paddingVertical: 9, paddingHorizontal: 16, borderRadius: 6 },
+  saveBtn: { paddingVertical: 9, paddingHorizontal: 16, borderRadius: 6, marginLeft: 'auto' },
   saveText: { fontSize: 14 },
 });

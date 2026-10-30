@@ -2,7 +2,7 @@ import { formatDecimal, formatInt } from '@/lib/core/format';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FoodTodayWidget } from '@/components/home/FoodTodayWidget';
@@ -75,6 +75,36 @@ export default function HomeScreen() {
   const router = useRouter();
   const db = useDatabase();
   const insets = useSafeAreaInsets();
+  const keyboardFrame = useRef<View>(null);
+  const keyboardRestHeight = useRef(0);
+  const [keyboardInset, setKeyboardInset] = useState(0);
+
+  useEffect(() => {
+    if (theme.isIOS) return;
+    let active = true;
+    let ticket = 0;
+    // Android edge-to-edge can leave the native viewport behind the IME.
+    // Measure only its actual overlap; adjustResize devices need no extra inset.
+    const show = Keyboard.addListener('keyboardDidShow', (event) => {
+      const current = ++ticket;
+      keyboardFrame.current?.measureInWindow((_x, _y, _width, height) => {
+        if (active && current === ticket) {
+          const nativeResize = Math.max(0, keyboardRestHeight.current - height);
+          setKeyboardInset(Math.max(0, event.endCoordinates.height - nativeResize));
+        }
+      });
+    });
+    const hide = Keyboard.addListener('keyboardDidHide', () => {
+      ticket += 1;
+      setKeyboardInset(0);
+    });
+    return () => {
+      active = false;
+      ticket += 1;
+      show.remove();
+      hide.remove();
+    };
+  }, [theme.isIOS]);
 
   const [steps, setSteps] = useState<number | null>(null);
   // Median of recent recorded days — the food budget's morning stand-in until
@@ -466,7 +496,15 @@ export default function HomeScreen() {
       : null;
 
   return (
-    <View style={[styles.fill, { backgroundColor: theme.background, paddingTop: insets.top }]} {...homePan.panHandlers}>
+    <View
+      ref={keyboardFrame}
+      onLayout={(event) => {
+        if (!Keyboard.isVisible()) keyboardRestHeight.current = event.nativeEvent.layout.height;
+      }}
+      style={[styles.fill, { backgroundColor: theme.background, paddingTop: insets.top, paddingBottom: keyboardInset }]}
+      {...homePan.panHandlers}
+    >
+    <KeyboardAvoidingView behavior={theme.isIOS ? 'padding' : undefined} enabled={theme.isIOS} style={styles.fill}>
       <Stack.Screen
         options={{
           // The same history and sections controls now belong to the selected
@@ -478,9 +516,10 @@ export default function HomeScreen() {
         style={styles.fill}
         contentContainerStyle={[
           theme.isIOS ? styles.iosContent : styles.androidContent,
-          { paddingBottom: 96 + insets.bottom },
+          { paddingBottom: 20 },
         ]}
         contentInsetAdjustmentBehavior="never"
+        keyboardShouldPersistTaps="handled"
       >
         <View style={styles.brandRow}>
           <Text style={[styles.brand, { color: theme.text }, theme.font.bodySemiBold]}>driftora</Text>
@@ -550,7 +589,6 @@ export default function HomeScreen() {
         <DayRibbonTimeline
           entries={foodEntries}
           hideCalories={settings?.hideCalories ?? false}
-          onOpenDay={() => router.push('/food')}
           onOpenEntry={(entry) => router.push(entry.parseStatus != null ? '/food' : `/food/${entry.id}`)}
         />
         <WeightWidget db={db} subtitle={weightSubtitle} onSaved={reload} />
@@ -604,7 +642,7 @@ export default function HomeScreen() {
         style={[
           styles.footer,
           theme.isIOS ? styles.footerIOS : styles.footerAndroid,
-          { bottom: (theme.isIOS ? 12 : 16) + insets.bottom, backgroundColor: theme.background },
+          { paddingBottom: (theme.isIOS ? 12 : 16) + insets.bottom, backgroundColor: theme.background },
         ]}
       >
         <FoodBar
@@ -630,6 +668,7 @@ export default function HomeScreen() {
           }}
         />
       ) : null}
+    </KeyboardAvoidingView>
     </View>
   );
 }
@@ -661,12 +700,12 @@ const styles = StyleSheet.create({
   iosContent: { paddingHorizontal: 22, paddingTop: 4, paddingBottom: 96 },
   brandRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44 },
   brand: { fontSize: 20, letterSpacing: -0.6 },
-  dayHeading: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between', columnGap: 12, rowGap: 4, marginTop: 22, marginBottom: 24 },
+  dayHeading: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between', columnGap: 12, rowGap: 4, marginTop: 12, marginBottom: 14 },
   date: { fontSize: 12, lineHeight: 18, paddingBottom: 4 },
   daySummary: { fontSize: 13, lineHeight: 19, marginTop: 18, marginBottom: 10 },
   pageDots: { marginTop: 14 },
   northStar: { fontSize: 12, textAlign: 'center', marginTop: 22 },
-  footer: { position: 'absolute', left: 0, right: 0 },
+  footer: { flexShrink: 0 },
   footerAndroid: { paddingHorizontal: 24, paddingTop: 10 },
   footerIOS: { paddingHorizontal: 22, paddingTop: 10 },
   pauseBanner: { marginBottom: 4 },

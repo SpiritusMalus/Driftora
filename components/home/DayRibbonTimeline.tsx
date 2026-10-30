@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 import type { FoodEntry } from '@/lib/core/db/schema';
 import { formatInt } from '@/lib/core/format';
@@ -12,35 +12,29 @@ import { useTheme } from '@/lib/theme/theme';
 export function DayRibbonTimeline({
   entries,
   hideCalories,
-  onOpenDay,
   onOpenEntry,
 }: {
   entries: readonly FoodEntry[] | null;
   hideCalories: boolean;
-  onOpenDay: () => void;
   onOpenEntry: (entry: FoodEntry) => void;
 }) {
   const { t } = useTranslation();
   const theme = useTheme();
+  const { fontScale } = useWindowDimensions();
+  const timeWidth = Math.ceil(44 * Math.max(1, fontScale));
   // DB day lists are newest-first. The ribbon reads from morning to evening;
   // never mutate the shared query result or change the underlying day list.
   const ordered = entries == null ? null : [...entries].sort((a, b) => a.ts.getTime() - b.ts.getTime());
 
   return (
     <View style={[styles.section, { borderBottomColor: theme.separator }]}>
-      <View style={styles.headingRow}>
-        <Text style={[styles.heading, theme.font.heading, { color: theme.text }]}>{t('history.foodSection')}</Text>
-        <Pressable onPress={onOpenDay} accessibilityRole="button" accessibilityLabel={t('home.food.title')} style={styles.openDay}>
-          <Ionicons name="arrow-forward" size={21} color={theme.text} style={{ transform: [{ rotate: '-45deg' }] }} />
-        </Pressable>
-      </View>
       {ordered == null ? (
         <ActivityIndicator color={theme.primary} style={styles.loading} />
       ) : ordered.length === 0 ? (
         <Text style={[styles.empty, theme.font.body, { color: theme.subtle }]}>{t('food.emptyDay')}</Text>
       ) : (
         <View style={styles.timeline}>
-          <View pointerEvents="none" style={[styles.line, { backgroundColor: theme.separator }]} />
+          <View pointerEvents="none" style={[styles.line, { left: timeWidth + 16, backgroundColor: theme.separator }]} />
           {ordered.map((entry) => {
             const parsing = entry.parseStatus != null;
             const title = parsing
@@ -54,7 +48,7 @@ export function DayRibbonTimeline({
                 onPress={() => onOpenEntry(entry)}
                 style={({ pressed }) => [styles.entry, { opacity: pressed ? 0.6 : 1 }]}
               >
-                <Text style={[styles.time, theme.font.body, { color: theme.subtle }]}>{time}</Text>
+                <Text style={[styles.time, theme.font.body, { width: timeWidth, color: theme.subtle }]}>{time}</Text>
                 <View style={styles.nodeColumn}><View style={[styles.node, { backgroundColor: theme.primary }]} /></View>
                 <View style={styles.entryBody}>
                   <Text style={[styles.entryTitle, theme.font.bodyMedium, { color: theme.text }]}>{title}</Text>
@@ -87,16 +81,13 @@ export function DayRibbonTimeline({
 }
 
 const styles = StyleSheet.create({
-  section: { marginTop: 20, paddingBottom: 18, borderBottomWidth: StyleSheet.hairlineWidth },
-  headingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  heading: { fontSize: 18, lineHeight: 25 },
-  openDay: { minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center', marginRight: -10 },
+  section: { marginTop: 14, paddingBottom: 12, borderBottomWidth: StyleSheet.hairlineWidth },
   loading: { marginVertical: 24 },
   empty: { fontSize: 14, lineHeight: 21, paddingTop: 12, paddingBottom: 12 },
   timeline: { position: 'relative' },
-  line: { position: 'absolute', left: 58, width: 1, top: 24, bottom: 28 },
+  line: { position: 'absolute', width: 1, top: 24, bottom: 28 },
   entry: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingTop: 18, paddingBottom: 18 },
-  time: { width: 42, fontSize: 12, lineHeight: 22, fontVariant: ['tabular-nums'] },
+  time: { fontSize: 12, lineHeight: 22, fontVariant: ['tabular-nums'] },
   nodeColumn: { width: 12, alignItems: 'center', paddingTop: 8 },
   node: { width: 6, height: 6, borderRadius: 3 },
   entryBody: { flex: 1, minWidth: 0 },

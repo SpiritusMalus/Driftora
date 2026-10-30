@@ -46,7 +46,7 @@ export function WorkoutWidget({
             </Text>
           </View>
         </Pressable>
-        <Pressable onPress={() => router.push('/workout')} hitSlop={8}>
+        <Pressable onPress={() => router.push('/workout')} hitSlop={8} style={styles.openButton}>
           <Ionicons name="chevron-forward" size={16} color={theme.tertiary} />
         </Pressable>
       </View>
@@ -55,10 +55,11 @@ export function WorkoutWidget({
 }
 
 const styles = StyleSheet.create({
-  row: { paddingVertical: 16, borderBottomWidth: StyleSheet.hairlineWidth },
+  row: { paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
   head: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44 },
   headMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
   headText: { flex: 1 },
+  openButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   title: { fontSize: 15 },
   subtitle: { fontSize: 13, marginTop: 1 },
 });
