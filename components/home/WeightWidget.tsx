@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { Card } from '@/components/ui/Card';
 import { TextField } from '@/components/ui/TextField';
 import { upsertWeight } from '@/lib/core/db/weight';
 import { weightValid } from '@/lib/core/insights/bodySetup';
@@ -58,12 +57,12 @@ export function WeightWidget({
   }
 
   return (
-    <Card style={styles.card}>
+    <View style={[styles.row, { borderColor: theme.separator }]}>
       <View style={styles.head}>
         <Pressable onPress={() => router.push('/weight')} style={styles.headMain} hitSlop={4}>
           <Ionicons name="scale-outline" size={18} color={theme.accent} />
           <View style={styles.headText}>
-            <Text style={[styles.title, { color: theme.text }, theme.font.bodySemiBold]}>{t('home.feeders.weight')}</Text>
+            <Text style={[styles.title, { color: theme.text }, theme.font.bodyMedium]}>{t('home.feeders.weight')}</Text>
             {/* Two lines — mirrors the other Home feeders' subtitles. */}
             <Text style={[styles.subtitle, { color: theme.subtle }, theme.font.body]} numberOfLines={2}>
               {subtitle}
@@ -77,7 +76,7 @@ export function WeightWidget({
           accessibilityLabel={t('home.inlineAdd')}
           style={({ pressed }) => [
             styles.plusBtn,
-            { borderColor: theme.separator, backgroundColor: theme.card, opacity: pressed ? 0.6 : 1 },
+            { borderColor: theme.separator, opacity: pressed ? 0.6 : 1 },
           ]}
         >
           <Ionicons name={open ? 'remove' : 'add'} size={18} color={theme.icon} />
@@ -119,16 +118,16 @@ export function WeightWidget({
           {t('weight.rangeHint')}
         </Text>
       ) : null}
-    </Card>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { marginBottom: 12 },
-  head: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  row: { paddingVertical: 16, borderBottomWidth: StyleSheet.hairlineWidth },
+  head: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44 },
   headMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
   headText: { flex: 1 },
-  plusBtn: { width: 32, height: 32, borderRadius: 8, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  plusBtn: { width: 32, height: 32, borderRadius: 4, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   rangeHint: { fontSize: 12, marginTop: 6 },
   title: { fontSize: 15 },
   subtitle: { fontSize: 13, marginTop: 1 },

@@ -335,7 +335,7 @@ export default function SettingsScreen() {
 
       <Text style={[styles.groupLabel, { color: theme.subtle }, theme.font.body]}>{t('settings.reminders')}</Text>
       {reminders.map((time) => (
-        <Card key={time} style={styles.timeRow} padded={false}>
+        <Card key={time} variant="section" style={styles.timeRow} padded={false}>
           <Text style={[styles.timeText, { color: theme.text }, theme.font.bodyMedium]}>{time}</Text>
           <Pressable
             onPress={() => { setReminders(reminders.filter((x) => x !== time)); dirty(); }}
@@ -545,7 +545,7 @@ function ToggleRow({
   disabled?: boolean;
 }) {
   return (
-    <Card style={styles.toggleRow} padded={false}>
+    <Card variant="section" style={styles.toggleRow} padded={false}>
       <Text
         style={[
           styles.toggleLabel,
@@ -583,23 +583,22 @@ function toNumber(v: string): number {
 
 const styles = StyleSheet.create({
   hint: { fontSize: 13, textAlign: 'center', marginBottom: 12 },
-  hero: { marginTop: 4, marginBottom: 6, marginHorizontal: 4 },
+  hero: { marginTop: 4, marginBottom: 6 },
   heroLine: { fontSize: 20, lineHeight: 27 },
   field: { marginBottom: 12 },
-  fieldLabel: { fontSize: 12, marginBottom: 5 },
-  groupLabel: { fontSize: 12, marginTop: 6, marginBottom: 8, marginHorizontal: 4 },
+  fieldLabel: { fontSize: 13, marginBottom: 6 },
+  groupLabel: { fontSize: 14, marginTop: 18, marginBottom: 8 },
   chipRow: { marginBottom: 4 },
   nextHint: { fontSize: 12, marginTop: 8, marginHorizontal: 4 },
   timeRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 8,
+    paddingVertical: 14,
+    marginBottom: 0,
   },
-  timeText: { fontSize: 15 },
-  timeAddRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
+  timeText: { fontSize: 16, fontVariant: ['tabular-nums'] },
+  timeAddRow: { flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 12 },
   timeInput: { flex: 1 },
   timeAddBtn: { borderWidth: 1.5, borderRadius: 6, paddingHorizontal: 18, paddingVertical: 12 },
   timeAddText: { fontSize: 14 },
@@ -608,11 +607,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    marginBottom: 10,
+    paddingVertical: 14,
+    marginBottom: 0,
   },
-  toggleLabel: { fontSize: 14, flex: 1, paddingRight: 12 },
+  toggleLabel: { fontSize: 16, lineHeight: 22, flex: 1, paddingRight: 12 },
   segment: { flexDirection: 'row', gap: 8 },
   segmentBtn: { flex: 1, borderWidth: 1.5, borderRadius: 6, paddingVertical: 11, alignItems: 'center' },
   segmentText: { fontSize: 14 },

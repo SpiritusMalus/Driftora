@@ -144,9 +144,9 @@ export default function WinsScreen() {
   return (
     <Screen>
       {hasWins ? (
-        <Animated.View style={[styles.hero, heroIn]}>
-          <Text style={[styles.heroLabel, { color: theme.labelCaps }, theme.font.bodyBold]}>
-            {t('wins.totalLabel').toUpperCase()}
+        <Animated.View style={[styles.hero, { borderColor: theme.separator }, heroIn]}>
+          <Text style={[styles.heroLabel, { color: theme.text }, theme.font.heading]}>
+            {t('wins.totalLabel')}
           </Text>
           <View style={styles.heroRow}>
             <Text style={[styles.heroNum, { color: theme.heroAccent }, theme.font.display]}>
@@ -252,10 +252,10 @@ function winStreak(items: Win[]): number {
 
 const styles = StyleSheet.create({
   // Hero — total wins big (coral, the reward), streak riding under it.
-  hero: { marginTop: 8, marginBottom: 16 },
-  heroLabel: { fontSize: 12, letterSpacing: 1.44, marginBottom: 4 },
+  hero: { marginTop: 8, marginBottom: 20, paddingBottom: 20, borderBottomWidth: StyleSheet.hairlineWidth },
+  heroLabel: { fontSize: 18, lineHeight: 24, letterSpacing: -0.25, marginBottom: 10 },
   heroRow: { flexDirection: 'row', alignItems: 'baseline', gap: 10 },
-  heroNum: { fontSize: 40, lineHeight: 44 },
+  heroNum: { fontSize: 49, lineHeight: 54, letterSpacing: -1.4, fontVariant: ['tabular-nums'] },
   heroStreak: { fontSize: 14, lineHeight: 19 },
   emptyHero: { fontSize: 15, lineHeight: 21, marginTop: 8, marginBottom: 16 },
 

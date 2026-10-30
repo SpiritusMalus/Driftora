@@ -176,9 +176,9 @@ export default function ReviewScreen() {
 
   return (
     <Screen>
-      <View style={styles.hero}>
-        <Text style={[styles.heroLabel, { color: theme.labelCaps }, theme.font.bodyBold]}>
-          {t('review.totalLabel').toUpperCase()}
+      <View style={[styles.hero, { borderColor: theme.separator }]}>
+        <Text style={[styles.heroLabel, { color: theme.text }, theme.font.heading]}>
+          {t('review.totalLabel')}
         </Text>
         <View style={styles.heroRow}>
           <Text style={[styles.heroNum, { color: theme.heroAccent }, theme.font.heading]}>
@@ -211,7 +211,7 @@ export default function ReviewScreen() {
       {normsLine ? (
         <>
           <SectionHeader>{t('review.norms.title')}</SectionHeader>
-          <Card style={styles.card}>
+          <Card variant="section" style={styles.card}>
             <Text style={[styles.normsBody, { color: theme.text }, theme.font.body]}>{normsLine}</Text>
             <Text style={[styles.normsSource, { color: theme.subtle }, theme.font.body]}>
               {t('review.norms.source')}
@@ -221,7 +221,7 @@ export default function ReviewScreen() {
       ) : null}
 
       {trap ? (
-        <Card style={[styles.card, { backgroundColor: theme.iconBg, borderColor: theme.cardBorder }]}>
+        <Card variant="section" style={styles.card}>
           <Text style={[styles.trapTitle, { color: theme.text }, theme.font.bodySemiBold]}>
             {t('diary.trap.title')}
           </Text>
@@ -257,22 +257,22 @@ const styles = StyleSheet.create({
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
   // Hero — north-star log-days big (coral, the reward), streak riding beside it
   // (mirrors the Wins hero). Bare on the page, no tinted card.
-  hero: { marginTop: 8, marginBottom: 4 },
-  heroLabel: { fontSize: 12, letterSpacing: 1.44, marginBottom: 4 },
+  hero: { marginTop: 8, marginBottom: 4, paddingBottom: 20, borderBottomWidth: StyleSheet.hairlineWidth },
+  heroLabel: { fontSize: 18, lineHeight: 24, letterSpacing: -0.25, marginBottom: 10 },
   heroRow: { flexDirection: 'row', alignItems: 'baseline', gap: 10 },
-  heroNum: { fontSize: 40, lineHeight: 44 },
+  heroNum: { fontSize: 49, lineHeight: 54, letterSpacing: -1.4, fontVariant: ['tabular-nums'] },
   heroStreak: { fontSize: 14, lineHeight: 19 },
   reassurance: { fontSize: 12, marginTop: 10, lineHeight: 17 },
   restartBtn: { alignSelf: 'center', paddingVertical: 14, paddingHorizontal: 16, marginTop: 24 },
   restartText: { fontSize: 13 },
   restartNote: { fontSize: 12, textAlign: 'center', marginTop: -6 },
   deltaCaption: { fontSize: 12, marginTop: 14, lineHeight: 16 },
-  card: { marginTop: 12 },
+  card: { marginTop: 0 },
   rowRight: { alignItems: 'flex-end' },
-  rowValue: { fontSize: 16 },
+  rowValue: { fontSize: 17, fontVariant: ['tabular-nums'] },
   rowDelta: { fontSize: 12, marginTop: 2 },
   normsBody: { fontSize: 14, lineHeight: 20 },
   normsSource: { fontSize: 11, marginTop: 8, fontStyle: 'italic', lineHeight: 16 },
-  trapTitle: { fontSize: 14 },
+  trapTitle: { fontSize: 18, lineHeight: 24 },
   trapBody: { fontSize: 13, marginTop: 4, lineHeight: 18 },
 });

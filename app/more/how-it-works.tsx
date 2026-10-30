@@ -73,7 +73,7 @@ export default function HowItWorksScreen() {
       {SECTIONS.map((key) => {
         const expanded = !!open[key];
         return (
-          <Card key={key} style={styles.card}>
+          <Card key={key} variant="section" style={styles.card}>
             <Pressable
               onPress={() => setOpen((o) => ({ ...o, [key]: !o[key] }))}
               accessibilityRole="button"
@@ -103,11 +103,11 @@ export default function HowItWorksScreen() {
 }
 
 const styles = StyleSheet.create({
-  hero: { marginTop: 4, marginBottom: 18, marginHorizontal: 4 },
+  hero: { marginTop: 4, marginBottom: 18 },
   heroLine: { fontSize: 20, lineHeight: 27 },
-  card: { marginBottom: 12 },
+  card: { marginBottom: 0 },
   head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  title: { fontSize: 17, flex: 1, paddingRight: 12 },
+  title: { fontSize: 18, lineHeight: 24, letterSpacing: -0.25, flex: 1, paddingRight: 12 },
   // Reading text: 15/22 in the main color — the section body is the page's
   // content, not a caption, so it doesn't get the subtle-grey caption styling.
   body: { marginTop: 10 },

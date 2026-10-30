@@ -1,14 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useTheme } from '@/lib/theme/theme';
 
-/// The pinned "tell or type what you ate" bar at the bottom of Home — a pencil
-/// glyph, a muted placeholder, and a circular mic. Tapping the bar opens the
-/// food log for typing; tapping the mic opens it primed for voice. Both keep
-/// the same circular microphone with the flat blue action fill.
+/// Two direct entry points share the pinned blue action bar: text opens the
+/// existing food composer, and the microphone opens that composer for voice.
 export function FoodBar({
   placeholder,
   onPressText,
@@ -20,49 +17,29 @@ export function FoodBar({
 }) {
   const theme = useTheme();
   const { t } = useTranslation();
-  // The microphone takes the same readable on-primary ink as PrimaryButton.
-  const mic = (
-    <Ionicons name="mic-outline" size={22} color={theme.onPrimary} />
-  );
-
   return (
-    <Pressable
-      onPress={onPressText}
-      style={({ pressed }) => [
-        styles.bar,
-        theme.isIOS ? styles.barIOS : styles.barAndroid,
-        {
-          backgroundColor: theme.card,
-          borderColor: theme.cardBorder,
-          opacity: pressed ? 0.9 : 1,
-        },
-      ]}
-    >
-      <Ionicons name="create-outline" size={18} color={theme.tertiary} />
-      <Text numberOfLines={1} style={[styles.placeholder, { color: theme.subtle }, theme.font.body]}>
-        {placeholder}
-      </Text>
+    <View style={[styles.bar, { backgroundColor: theme.primary }]}>
+      <Pressable
+        onPress={onPressText}
+        accessibilityRole="button"
+        accessibilityLabel={placeholder}
+        style={({ pressed }) => [styles.textButton, { opacity: pressed ? 0.8 : 1 }]}
+      >
+        <Ionicons name="create-outline" size={20} color={theme.onPrimary} />
+        <Text numberOfLines={1} style={[styles.placeholder, { color: theme.onPrimary }, theme.font.bodyMedium]}>
+          {placeholder}
+        </Text>
+      </Pressable>
       <Pressable
         onPress={onPressMic}
         hitSlop={8}
         accessibilityRole="button"
         accessibilityLabel={t('food.voice')}
-        style={({ pressed }) => [{ opacity: pressed ? 0.85 : 1 }]}
+        style={({ pressed }) => [styles.micButton, { opacity: pressed ? 0.8 : 1 }]}
       >
-        {theme.isIOS ? (
-          <View style={[styles.micIOS, { backgroundColor: theme.primary }]}>{mic}</View>
-        ) : (
-          <LinearGradient
-            colors={theme.primaryGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.micAndroid}
-          >
-            {mic}
-          </LinearGradient>
-        )}
+        <Ionicons name="mic-outline" size={22} color={theme.onPrimary} />
       </Pressable>
-    </Pressable>
+    </View>
   );
 }
 
@@ -70,25 +47,23 @@ const styles = StyleSheet.create({
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingLeft: 16,
-    paddingRight: 8,
-    paddingVertical: 8,
+    minHeight: 57,
+    borderRadius: 3,
   },
-  barAndroid: {
-    borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
+  textButton: {
+    flex: 1,
+    minHeight: 57,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingLeft: 17,
+    paddingVertical: 12,
   },
-  barIOS: {
-    borderRadius: 10,
-  },
-  placeholder: { flex: 1, fontSize: 14 },
-  micAndroid: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+  placeholder: { flex: 1, fontSize: 15 },
+  micButton: {
+    width: 57,
+    minHeight: 57,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  micIOS: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
 });

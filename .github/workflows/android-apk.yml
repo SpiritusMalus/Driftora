@@ -7,6 +7,8 @@ name: Android APK (preview)
 # asserted afterwards: the debug key the Expo template would otherwise use is
 # world-known, cannot anchor Google Sign-In, and produces APKs that refuse to
 # update an installed build. Without the secret the build still runs and warns.
+# assembleDebug uses the template's debug key for local QA and Metro; it does
+# not restore the release keystore or compare against the release certificate.
 #
 # Trigger manually from the Actions tab (or `gh workflow run android-apk.yml`).
 
@@ -95,6 +97,7 @@ jobs:
       # produces an APK that cannot update an installed one.
       - name: Restore release keystore
         id: signing
+        if: inputs.variant != 'assembleDebug'
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
@@ -125,10 +128,25 @@ jobs:
           '
           echo "Google Play versionCode: **$GITHUB_RUN_NUMBER** (versionName $(node -p 'require("./app.json").expo.version'))" >> "$GITHUB_STEP_SUMMARY"
 
+      # Keep local visual QA separate from an owner's installed release profile.
+      # These identity changes exist only in the runner's generated debug build.
+      - name: Isolate debug QA app identity
+        if: inputs.variant == 'assembleDebug'
+        run: |
+          node -e '
+            const fs = require("fs");
+            const cfg = JSON.parse(fs.readFileSync("app.json", "utf8"));
+            cfg.expo.android.package = "com.driftora.app.qa";
+            cfg.expo.name = "Driftora QA";
+            cfg.expo.scheme = "driftora-qa";
+            fs.writeFileSync("app.json", JSON.stringify(cfg, null, 2) + "\n");
+            console.log("Debug QA application id:", cfg.expo.android.package);
+          '
+
       - name: Expo prebuild (android)
         env:
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ inputs.variant != 'assembleDebug' && secrets.ANDROID_KEYSTORE_PASSWORD || '' }}
+          ANDROID_KEY_ALIAS: ${{ inputs.variant != 'assembleDebug' && secrets.ANDROID_KEY_ALIAS || '' }}
         run: npx expo prebuild --platform android --no-install
 
       - name: Build (${{ inputs.variant }})
@@ -172,7 +190,7 @@ jobs:
       # Google Sign-In rejects the app for an unknown fingerprint. So assert the
       # fingerprint, and fail the run if it is not ours.
       - name: Verify APK signature
-        if: steps.signing.outputs.signed == 'true'
+        if: inputs.variant != 'assembleDebug' && steps.signing.outputs.signed == 'true'
         env:
           EXPECTED_SHA1: ${{ vars.ANDROID_SIGNING_SHA1 }}
         run: |
@@ -198,6 +216,22 @@ jobs:
             exit 1
           fi
           echo "signature matches the registered release key"
+
+      - name: Verify debug APK signature (local QA)
+        if: inputs.variant == 'assembleDebug'
+        run: |
+          set -euo pipefail
+          apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort | tail -1)"
+          "$apksigner" verify --verbose --print-certs "${{ steps.apk.outputs.path }}"
+          {
+            echo "### Debug APK for local UI QA"
+            echo
+            echo "assembleDebug APK signature verified with apksigner."
+            echo "Package: **com.driftora.app.qa** · name: Driftora QA · scheme: driftora-qa."
+            echo "Co-installs separately from the release app and its local data."
+            echo "Uses Android debug signing for emulator/device testing with Metro."
+            echo "**Not a store release.** The release keystore was not restored or used."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # Artifact storage is a 500 MB pool on the Free plan and is NOT waived for
       # public repositories (only runner minutes are). At ~36 MB per APK and 14

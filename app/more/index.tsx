@@ -22,10 +22,6 @@ export default function MoreScreen() {
   const theme = useTheme();
   const router = useRouter();
 
-  const coralTile = theme.primarySoft;
-  const amberTile = theme.accentSoft;
-  const neutralTile = theme.fill;
-
   // Section 1 — the two things you WRITE that Home has no room for. СМЭР used
   // to be reachable only from inside the mood screen (swipe + one more tap),
   // which is deep for a record people open mid-anxiety.
@@ -34,7 +30,6 @@ export default function MoreScreen() {
       key: 'diary',
       icon: 'create-outline',
       tint: theme.primary,
-      iconBg: coralTile,
       title: t('more.sections.diary'),
       subtitle: t('more.subtitles.diary'),
       onPress: () => router.push('/diary'),
@@ -45,7 +40,6 @@ export default function MoreScreen() {
       key: 'days',
       icon: 'calendar-outline',
       tint: theme.accent,
-      iconBg: amberTile,
       title: t('more.sections.days'),
       subtitle: t('more.subtitles.days'),
       onPress: () => router.push('/history'),
@@ -58,7 +52,6 @@ export default function MoreScreen() {
       key: 'wins',
       icon: 'trophy-outline',
       tint: theme.primary,
-      iconBg: coralTile,
       title: t('more.sections.wins'),
       subtitle: t('more.subtitles.wins'),
       onPress: () => router.push('/wins'),
@@ -67,7 +60,6 @@ export default function MoreScreen() {
       key: 'review',
       icon: 'stats-chart-outline',
       tint: theme.accent,
-      iconBg: amberTile,
       title: t('more.sections.review'),
       subtitle: t('more.subtitles.review'),
       onPress: () => router.push('/review'),
@@ -82,7 +74,6 @@ export default function MoreScreen() {
       key: 'plan',
       icon: 'flag-outline',
       tint: theme.primary,
-      iconBg: coralTile,
       title: t('more.sections.plan'),
       subtitle: t('more.subtitles.plan'),
       onPress: () => router.push('/plan'),
@@ -91,7 +82,6 @@ export default function MoreScreen() {
       key: 'how',
       icon: 'help-circle-outline',
       tint: theme.primary,
-      iconBg: coralTile,
       title: t('more.sections.how'),
       subtitle: t('more.subtitles.how'),
       onPress: () => router.push('/more/how-it-works'),
@@ -103,7 +93,6 @@ export default function MoreScreen() {
       key: 'subscription',
       icon: 'sparkles-outline',
       tint: theme.primary,
-      iconBg: coralTile,
       title: t('subscription.openRow'),
       subtitle: t('subscription.openRowNote'),
       onPress: () => router.push('/settings/subscription'),
@@ -112,7 +101,6 @@ export default function MoreScreen() {
       key: 'settings',
       icon: 'settings-outline',
       tint: theme.icon,
-      iconBg: neutralTile,
       title: t('more.sections.settings'),
       subtitle: t('more.subtitles.settings'),
       onPress: () => router.push('/settings'),
@@ -120,7 +108,7 @@ export default function MoreScreen() {
   ];
 
   return (
-    <Screen>
+    <Screen contentStyle={styles.content}>
       <SectionHeader>{t('more.groups.diaries')}</SectionHeader>
       <ListGroup rows={diaries} />
       <SectionHeader>{t('more.groups.progress')}</SectionHeader>
@@ -136,5 +124,6 @@ export default function MoreScreen() {
 }
 
 const styles = StyleSheet.create({
-  dailyNote: { fontSize: 13, lineHeight: 18, marginTop: 20, marginHorizontal: 4 },
+  content: { paddingTop: 0 },
+  dailyNote: { fontSize: 13, lineHeight: 19, marginTop: 24 },
 });

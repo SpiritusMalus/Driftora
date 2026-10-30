@@ -3,7 +3,6 @@ import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { Card } from '@/components/ui/Card';
 import { useTheme } from '@/lib/theme/theme';
 
 /// Home widget: today's WORKOUTS as ONE calm row, split out from the steps
@@ -33,12 +32,12 @@ export function WorkoutWidget({
         : t('home.feeders.workoutsToday', { kcal: countedKcal });
 
   return (
-    <Card style={styles.card}>
+    <View style={[styles.row, { borderColor: theme.separator }]}>
       <View style={styles.head}>
         <Pressable onPress={() => router.push('/workout')} style={styles.headMain} hitSlop={4}>
           <Ionicons name="barbell-outline" size={18} color={theme.accent} />
           <View style={styles.headText}>
-            <Text style={[styles.title, { color: theme.text }, theme.font.bodySemiBold]}>
+            <Text style={[styles.title, { color: theme.text }, theme.font.bodyMedium]}>
               {t('home.feeders.workouts')}
             </Text>
             {/* Two lines — same insight-sentence subtitle as the steps row. */}
@@ -51,13 +50,13 @@ export function WorkoutWidget({
           <Ionicons name="chevron-forward" size={16} color={theme.tertiary} />
         </Pressable>
       </View>
-    </Card>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { marginBottom: 12 },
-  head: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  row: { paddingVertical: 16, borderBottomWidth: StyleSheet.hairlineWidth },
+  head: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44 },
   headMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
   headText: { flex: 1 },
   title: { fontSize: 15 },

@@ -8,28 +8,22 @@ export function SectionHeader({ children }: { children: string }) {
   return (
     <Text
       style={[
-        theme.isIOS ? styles.ios : styles.android,
-        { color: theme.isIOS ? theme.subtle : theme.labelCaps },
-        theme.isIOS ? [theme.font.body, { fontWeight: '400' as const }] : theme.font.bodyBold,
+        styles.heading,
+        { color: theme.text },
+        theme.font.heading,
       ]}
     >
-      {children.toUpperCase()}
+      {children}
     </Text>
   );
 }
 
 const styles = StyleSheet.create({
-  android: {
-    fontSize: 12,
-    letterSpacing: 0.6,
-    marginTop: 18,
+  heading: {
+    fontSize: 18,
+    lineHeight: 24,
+    letterSpacing: -0.25,
+    marginTop: 26,
     marginBottom: 10,
-  },
-  ios: {
-    fontSize: 13,
-    letterSpacing: -0.08,
-    marginTop: 22,
-    marginBottom: 6,
-    marginLeft: 20,
   },
 });

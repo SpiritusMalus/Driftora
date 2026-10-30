@@ -213,16 +213,9 @@ export default function DiaryNewScreen() {
         accessibilityRole="progressbar"
         accessibilityLabel={t('diary.progress', { current: step + 1, total: STEPS.length })}
       >
-        {STEPS.map((_, i) => (
-          <View
-            key={i}
-            style={[
-              styles.dot,
-              { backgroundColor: i <= step ? theme.primary : theme.separator },
-              i === step && styles.dotActive,
-            ]}
-          />
-        ))}
+        <Text style={[styles.progress, { color: theme.subtle }, theme.font.body]}>
+          {t('diary.progress', { current: step + 1, total: STEPS.length })}
+        </Text>
       </View>
       <Text style={[styles.title, { color: theme.text }, theme.font.heading]}>
         {t(`diary.steps.${key}.title`)}
@@ -260,7 +253,7 @@ export default function DiaryNewScreen() {
           <>
             {/* Echo the thought being weighed, so "за/против" has a clear target
                 (user feedback: "в доводах нет того, что я выбрал в мыслях"). */}
-            <View style={[styles.thoughtRecall, { backgroundColor: theme.iconBg, borderColor: theme.cardBorder }]}>
+            <View style={[styles.thoughtRecall, { borderColor: theme.separator }]}>
               <Text style={[styles.thoughtRecallLabel, { color: theme.subtle }, theme.font.bodyMedium]}>
                 {t('diary.evidence.thoughtRecall')}
               </Text>
@@ -387,7 +380,7 @@ function EmotionsEditor({
   return (
     <View>
       {emotions.map((e, i) => (
-        <View key={i} style={[styles.emotionChip, { backgroundColor: theme.iconBg, borderColor: theme.cardBorder }]}>
+        <View key={i} style={[styles.emotionChip, { borderColor: theme.separator }]}>
           <Text style={[styles.emotionText, { color: theme.text }, theme.font.bodyMedium]}>
             {e.name} · {e.intensity}
           </Text>
@@ -482,14 +475,13 @@ function DistortionPicker({
 }
 
 const styles = StyleSheet.create({
-  dots: { flexDirection: 'row', gap: 6, marginTop: 4, marginBottom: 2 },
-  dot: { width: 7, height: 7, borderRadius: 4 },
-  dotActive: { width: 20 },
+  dots: { marginTop: 4, marginBottom: 8 },
+  progress: { fontSize: 12, lineHeight: 17 },
   title: { fontSize: 22, letterSpacing: -0.4, marginTop: 6 },
   hint: { fontSize: 13, marginTop: 6, marginBottom: 4, lineHeight: 19 },
-  fields: { marginVertical: 12 },
-  field: { marginBottom: 12 },
-  fieldLabel: { fontSize: 12, marginBottom: 6 },
+  fields: { marginVertical: 24 },
+  field: { marginBottom: 18 },
+  fieldLabel: { fontSize: 14, marginBottom: 8 },
   nav: { flexDirection: 'row', gap: 12, marginTop: 4 },
   navBtn: { flex: 1 },
   navBack: { borderWidth: 1.5, borderRadius: 6, paddingVertical: 15, alignItems: 'center', justifyContent: 'center' },
@@ -501,11 +493,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    borderRadius: 6,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    marginBottom: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingVertical: 12,
+    marginBottom: 12,
   },
   emotionText: { fontSize: 14 },
   emotionRemove: { fontSize: 14 },
@@ -515,7 +505,7 @@ const styles = StyleSheet.create({
   emotionAdd: { borderWidth: 1.5, borderRadius: 6, paddingHorizontal: 16, paddingVertical: 12, alignItems: 'center' },
   emotionAddText: { fontSize: 14 },
   moodWrap: { marginTop: 12 },
-  thoughtRecall: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 10, padding: 14, marginBottom: 14 },
+  thoughtRecall: { borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: 18, marginBottom: 18 },
   thoughtRecallLabel: { fontSize: 12, marginBottom: 6 },
   thoughtRecallText: { fontSize: 15, lineHeight: 21 },
   thoughtRecallTags: { fontSize: 12, marginTop: 8, fontStyle: 'italic' },

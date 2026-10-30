@@ -238,7 +238,7 @@ export default function HistoryDayScreen() {
       ) : (
         <>
           {hasFood ? (
-            <View style={styles.hero}>
+            <View style={[styles.hero, { borderColor: theme.separator }]}>
               <View style={styles.heroRow}>
                 <Text style={[styles.heroNum, { color: theme.heroAccent }, theme.font.heading]}>
                   {hideCalories ? Math.round(totals.prot) : Math.round(totals.kcal)}
@@ -317,16 +317,16 @@ const styles = StyleSheet.create({
   hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
   // Day headline: kcal (or protein) big in coral, macros riding quietly under —
   // mirrors the «Вес»/«Шаги» heroes from the redesign wave.
-  hero: { marginTop: 8, marginBottom: 18 },
+  hero: { marginTop: 8, marginBottom: 0, paddingBottom: 20, borderBottomWidth: StyleSheet.hairlineWidth },
   heroRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
-  heroNum: { fontSize: 40, lineHeight: 44 },
+  heroNum: { fontSize: 49, lineHeight: 54, letterSpacing: -1.4, fontVariant: ['tabular-nums'] },
   heroUnit: { fontSize: 15 },
-  heroSub: { fontSize: 13, lineHeight: 18, marginTop: 6, marginHorizontal: 4 },
-  section: { marginTop: 18 },
+  heroSub: { fontSize: 13, lineHeight: 18, marginTop: 8 },
+  section: { marginTop: 0 },
   // Quiet one-liner under «Еда» so the tap-to-edit affordance is stated, not
   // just implied by the chevron.
-  editHint: { fontSize: 12, lineHeight: 16, marginHorizontal: 4, marginBottom: 8 },
+  editHint: { fontSize: 12, lineHeight: 17, marginBottom: 8 },
   rowRight: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  rowValue: { fontSize: 14 },
-  bodyLine: { fontSize: 15, lineHeight: 21, marginHorizontal: 4 },
+  rowValue: { fontSize: 16, fontVariant: ['tabular-nums'] },
+  bodyLine: { fontSize: 16, lineHeight: 22 },
 });

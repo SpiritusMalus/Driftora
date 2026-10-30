@@ -11,20 +11,23 @@ export function Card({
   children,
   style,
   padded = true,
+  variant = 'card',
   onPress,
 }: {
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
   padded?: boolean;
+  /// Open page section; the default remains a contained surface for prompts.
+  variant?: 'card' | 'section';
   onPress?: () => void;
 }) {
   const theme = useTheme();
   const cardStyle = [
-    theme.isIOS ? styles.ios : styles.android,
-    padded && styles.padded,
+    variant === 'section' ? styles.section : theme.isIOS ? styles.ios : styles.android,
+    padded && (variant === 'section' ? styles.sectionPadded : styles.padded),
     {
-      backgroundColor: theme.card,
-      borderColor: theme.cardBorder,
+      backgroundColor: variant === 'section' ? 'transparent' : theme.card,
+      borderColor: variant === 'section' ? theme.separator : theme.cardBorder,
     },
     style,
   ];
@@ -43,4 +46,6 @@ const styles = StyleSheet.create({
   android: { borderRadius: 10, borderWidth: StyleSheet.hairlineWidth },
   ios: { borderRadius: 10 },
   padded: { padding: 16 },
+  section: { borderRadius: 0, borderWidth: 0, borderBottomWidth: StyleSheet.hairlineWidth },
+  sectionPadded: { paddingVertical: 18 },
 });

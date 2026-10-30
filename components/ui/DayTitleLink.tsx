@@ -9,7 +9,7 @@ import { useTheme } from '@/lib/theme/theme';
 /// on the two day panes; styled to match each platform's header type. Note:
 /// a custom headerTitle opts the screen out of the iOS large-title look — the
 /// tap affordance wins over the flourish.
-export function DayTitleLink({ label }: { label: string }) {
+export function DayTitleLink({ label, display = false }: { label: string; display?: boolean }) {
   const theme = useTheme();
   const router = useRouter();
   return (
@@ -21,6 +21,7 @@ export function DayTitleLink({ label }: { label: string }) {
         opacity: pressed ? 0.5 : 1,
         flexDirection: 'row',
         alignItems: 'center',
+        minHeight: display ? 44 : undefined,
       })}
     >
       <Text
@@ -30,6 +31,7 @@ export function DayTitleLink({ label }: { label: string }) {
             ? { color: theme.text, fontSize: 17 }
             : { color: theme.text, fontSize: 20 },
           theme.font.heading,
+          display && { fontSize: 36, lineHeight: 44, letterSpacing: -1.1 },
         ]}
       >
         {label}

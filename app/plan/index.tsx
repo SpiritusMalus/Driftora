@@ -291,9 +291,9 @@ export default function PlanScreen() {
         <>
           {/* ── 1. What I want → what that gives. One tap makes it the food
                  diary's goal. ── */}
-          <Card style={styles.card}>
+          <Card variant="section" style={styles.card}>
             <View style={styles.titleRow}>
-              <Text style={[styles.cardTitle, { color: theme.text }, theme.font.bodySemiBold]}>
+              <Text style={[styles.cardTitle, { color: theme.text }, theme.font.bodyMedium]}>
                 {t('weight.plan.title')}
               </Text>
               {ack?.where === 'plan' ? (
@@ -369,10 +369,15 @@ export default function PlanScreen() {
                     pace: formatDecimal(plan.paceKgPerWeek, 1),
                   })}
                 </Text>
-                <Text style={[styles.planKcal, { color: theme.heroAccent }, theme.font.heading]}>
+                <Text
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.75}
+                  style={[styles.planKcal, { color: theme.heroAccent }, theme.font.heading]}
+                >
                   {t('weight.plan.kcalPerDay', { kcal: plan.kcal })}
                 </Text>
-                <View style={styles.macroRow}>
+                <View style={[styles.macroRow, { borderColor: theme.separator }]}>
                   {(
                     [
                       [t('macros.protein'), plan.prot],
@@ -380,9 +385,9 @@ export default function PlanScreen() {
                       [t('macros.carbs'), plan.carb],
                     ] as const
                   ).map(([label, grams]) => (
-                    <View key={label} style={[styles.macroTile, { backgroundColor: theme.fill }]}>
+                    <View key={label} style={styles.macroTile}>
                       <Text style={[styles.macroLabel, { color: theme.subtle }, theme.font.body]}>{label}</Text>
-                      <Text style={[styles.macroValue, { color: theme.text }, theme.font.bodySemiBold]}>
+                      <Text style={[styles.macroValue, { color: theme.text }, theme.font.bodyMedium]}>
                         {grams} {t('units.g')}
                       </Text>
                     </View>
@@ -548,10 +553,10 @@ export default function PlanScreen() {
                  instead of a formula. Shown only once the data is dense enough
                  (measuredExpenditure gates it). ── */}
           {expenditure != null ? (
-            <Card style={styles.card}>
+            <Card variant="section" style={styles.card}>
               <View style={styles.burnTitleRow}>
-                <Text style={[styles.burnLabel, { color: theme.labelCaps }, theme.font.bodyBold]}>
-                  {t('weight.burn.title', { days: ADAPTIVE_WINDOW_DAYS }).toUpperCase()}
+                <Text style={[styles.burnLabel, { color: theme.text }, theme.font.bodyMedium]}>
+                  {t('weight.burn.title', { days: ADAPTIVE_WINDOW_DAYS })}
                 </Text>
                 {/* The tick lives in THIS card's header for apply and reset both
                     — the branch below changes with bmrFactor, so an in-branch
@@ -560,7 +565,12 @@ export default function PlanScreen() {
                   <Text style={[styles.ackTick, { color: theme.accent }, theme.font.bodyMedium]}>{ack.text}</Text>
                 ) : null}
               </View>
-              <Text style={[styles.planKcal, { color: theme.heroAccent }, theme.font.heading]}>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
+                style={[styles.planKcal, { color: theme.heroAccent }, theme.font.heading]}
+              >
                 {t('weight.burn.value', { kcal: expenditure.kcalPerDay })}
               </Text>
               <Text style={[styles.burnSub, { color: theme.subtle }, theme.font.body]}>
@@ -784,9 +794,9 @@ function Section({
   theme: Theme;
 }) {
   return (
-    <Card style={styles.sectionCard}>
+    <Card variant="section" style={styles.sectionCard}>
       <Pressable onPress={onToggle} style={styles.sectionHeader} hitSlop={6}>
-        <Text style={[styles.sectionTitle, { color: theme.text }, theme.font.bodySemiBold]}>{title}</Text>
+        <Text style={[styles.sectionTitle, { color: theme.text }, theme.font.bodyMedium]}>{title}</Text>
         <Text
           numberOfLines={1}
           style={[styles.sectionSummary, { color: ack ? theme.accent : theme.subtle }, theme.font.body]}
@@ -874,23 +884,23 @@ function formatStepCount(n: number): string {
 const styles = StyleSheet.create({
   fromRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4, marginBottom: 14, alignSelf: 'flex-start' },
   fromText: { fontSize: 13 },
-  card: { marginBottom: 16 },
+  card: { marginBottom: 6 },
   note: { fontSize: 12, marginTop: 6, lineHeight: 17 },
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  cardTitle: { fontSize: 16 },
+  cardTitle: { fontSize: 18 },
   ackTick: { fontSize: 13 },
   planIntro: { fontSize: 14, lineHeight: 20, marginTop: 4 },
   assumedAge: { fontSize: 12, lineHeight: 17, marginTop: 8 },
-  planKcal: { fontSize: 28, lineHeight: 32, marginTop: 8, marginBottom: 10 },
-  burnLabel: { fontSize: 12, letterSpacing: 1.44, marginBottom: 2 },
+  planKcal: { fontSize: 36, lineHeight: 42, letterSpacing: -1, marginTop: 12, marginBottom: 10 },
+  burnLabel: { fontSize: 18, flexShrink: 1, marginBottom: 2 },
   // No extra bottom margin (unlike titleRow): the caps label keeps its own
   // tight 2px gap to the hero number below.
   burnTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   burnSub: { fontSize: 13, lineHeight: 18, marginTop: -4, marginBottom: 8 },
-  macroRow: { flexDirection: 'row', gap: 8 },
-  macroTile: { flex: 1, borderRadius: 6, paddingVertical: 8, paddingHorizontal: 4, alignItems: 'center' },
+  macroRow: { flexDirection: 'row', gap: 10, borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: 17, marginVertical: 18 },
+  macroTile: { flex: 1, gap: 3 },
   macroLabel: { fontSize: 11 },
-  macroValue: { fontSize: 15, marginTop: 2 },
+  macroValue: { fontSize: 15, marginTop: 2, fontVariant: ['tabular-nums'] },
   appliedLine: { fontSize: 14, marginTop: 12 },
   heightRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8, marginTop: 2 },
   heightInput: { flex: 1 },
@@ -904,12 +914,12 @@ const styles = StyleSheet.create({
   whyToggle: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 12, alignSelf: 'flex-start' },
   whyToggleText: { fontSize: 13 },
   whyBody: { marginTop: 2 },
-  line: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth },
+  line: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', minHeight: 52, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth },
   lineName: { fontSize: 13, flexShrink: 1, paddingRight: 12 },
   lineValue: { fontSize: 13, textAlign: 'right' },
-  sectionCard: { marginBottom: 12 },
+  sectionCard: { marginBottom: 6 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  sectionTitle: { fontSize: 15 },
+  sectionTitle: { fontSize: 18, flexShrink: 1 },
   sectionSummary: { fontSize: 13, flex: 1, textAlign: 'right' },
   sectionBody: { marginTop: 12 },
 });

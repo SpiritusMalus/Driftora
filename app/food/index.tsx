@@ -484,17 +484,25 @@ export default function FoodDayScreen() {
               {/* The rise is for a row freshly ADDED while looking at today;
                   a past day shows existing facts — animating the whole list
                   would read as new data appearing. */}
-              {group.entries.map((e) => (
+              {group.entries.map((e, index) => (
                 <RiseIn key={e.id} enabled={isToday && seenIds.current != null && !seenIds.current.has(e.id)}>
                 {e.parseStatus != null ? (
                   // Background-parse rows: a pending shot waits quietly; a
                   // failed one is tap-to-retry (or an honest «снимите заново»
                   // alert once the photo died with its process).
                   <Card
+                    variant="section"
                     style={styles.row}
                     onPress={e.parseStatus === 'failed' ? () => void onRetryParse(e.id) : undefined}
                   >
-                    <View style={styles.rowHead}>
+                    <View style={styles.rowMain}>
+                      <Text style={[styles.rowTime, { color: theme.subtle }, theme.font.body]}>{formatTime(e.ts)}</Text>
+                      <View style={styles.rowRail}>
+                        {index < group.entries.length - 1 ? <View style={[styles.rowRule, { backgroundColor: theme.separator }]} /> : null}
+                        <View style={[styles.rowNode, { backgroundColor: theme.subtle }]} />
+                      </View>
+                      <View style={styles.rowBody}>
+                      <View style={styles.rowHead}>
                       <Ionicons
                         name={e.parseStatus === 'pending' ? 'hourglass-outline' : 'refresh-outline'}
                         size={16}
@@ -507,7 +515,6 @@ export default function FoodDayScreen() {
                       >
                         {e.parseStatus === 'pending' ? t('food.bg.parsing') : t('food.bg.failed')}
                       </Text>
-                      <Text style={[styles.rowTime, { color: theme.subtle }, theme.font.body]}>{formatTime(e.ts)}</Text>
                       <Pressable
                         onPress={() => onDelete(e.id)}
                         hitSlop={10}
@@ -517,10 +524,19 @@ export default function FoodDayScreen() {
                       >
                         <Ionicons name="close" size={18} color={theme.tertiary} />
                       </Pressable>
+                      </View>
+                      </View>
                     </View>
                   </Card>
                 ) : (
-                <Card style={styles.row} onPress={() => onToggleRow(e)}>
+                <Card variant="section" style={styles.row} onPress={() => onToggleRow(e)}>
+                  <View style={styles.rowMain}>
+                    <Text style={[styles.rowTime, { color: theme.subtle }, theme.font.body]}>{formatTime(e.ts)}</Text>
+                    <View style={styles.rowRail}>
+                      {index < group.entries.length - 1 ? <View style={[styles.rowRule, { backgroundColor: theme.separator }]} /> : null}
+                      <View style={[styles.rowNode, { backgroundColor: theme.primary }]} />
+                    </View>
+                    <View style={styles.rowBody}>
                   <View style={styles.rowHead}>
                     {/* Open row = the full name, however long (the «выдвижной
                         тайтл»); folded = the one-line dish summary as before. */}
@@ -534,7 +550,25 @@ export default function FoodDayScreen() {
                           : shortMealTitle(e.rawText)
                         : t('food.untitled')}
                     </Text>
-                    <Text style={[styles.rowTime, { color: theme.subtle }, theme.font.body]}>{formatTime(e.ts)}</Text>
+                    <View style={styles.rowEnergy}>
+                      <Text style={[styles.rowKcal, { color: theme.text }, theme.font.bodyMedium]}>{Math.round(e.kcal)}</Text>
+                      <Text style={[styles.rowKcalUnit, { color: theme.subtle }, theme.font.body]}>{t('units.kcal')}</Text>
+                    </View>
+                  </View>
+                  <View style={styles.rowMacrosLine}>
+                    <Text style={[styles.rowMacros, { color: theme.subtle }, theme.font.body]}>
+                      {!e.confirmed ? (
+                        // Adopted parse the user hasn't looked at yet — unfolding
+                        // the row is the review, so the pill rests on first tap.
+                        <Text style={{ color: theme.accent }}>{t('food.bg.review')} · </Text>
+                      ) : null}
+                      {t('macros.protShort')} {Math.round(e.proteinG)} ·{' '}
+                      {t('macros.fatShort')} {Math.round(e.fatG)} · {t('macros.carbShort')} {Math.round(e.carbG)}{' '}
+                      {t('units.g')}
+                    </Text>
+                    <AccordionChevron expanded={openIds.has(e.id)} color={theme.tertiary} />
+                  </View>
+                  <View style={styles.rowActions}>
                     {/* ALWAYS-VISIBLE pencil (device feedback 2026-08-17: the
                         edit link inside the unfolded body was easy to miss) —
                         editing is one tap from any state, same icon-button
@@ -567,22 +601,11 @@ export default function FoodDayScreen() {
                       <Ionicons name="close" size={18} color={theme.tertiary} />
                     </Pressable>
                   </View>
-                  <View style={styles.rowMacrosLine}>
-                    <Text style={[styles.rowMacros, { color: theme.subtle }, theme.font.body]}>
-                      {!e.confirmed ? (
-                        // Adopted parse the user hasn't looked at yet — unfolding
-                        // the row is the review, so the pill rests on first tap.
-                        <Text style={{ color: theme.accent }}>{t('food.bg.review')} · </Text>
-                      ) : null}
-                      {Math.round(e.kcal)} {t('units.kcal')} · {t('macros.protShort')} {Math.round(e.proteinG)} ·{' '}
-                      {t('macros.fatShort')} {Math.round(e.fatG)} · {t('macros.carbShort')} {Math.round(e.carbG)}{' '}
-                      {t('units.g')}
-                    </Text>
-                    <AccordionChevron expanded={openIds.has(e.id)} color={theme.tertiary} />
-                  </View>
                   <Collapsible open={openIds.has(e.id)}>
                     <EntryItems items={itemsByEntry.get(e.id) ?? []} theme={theme} />
                   </Collapsible>
+                    </View>
+                  </View>
                 </Card>
                 )}
                 </RiseIn>
@@ -711,9 +734,9 @@ function DayProgress({
       : []),
   ];
   return (
-    <Card style={styles.dayCard}>
+    <Card variant="section" style={styles.dayCard}>
       <View style={styles.dayHead}>
-        <Text style={[styles.dayEyebrow, { color: theme.labelCaps }, theme.font.bodyBold]}>
+        <Text style={[styles.dayEyebrow, { color: theme.text }, theme.font.heading]}>
           {t('food.day.title')}
         </Text>
         {goal.hideCalories || !onPlan ? null : (
@@ -732,7 +755,7 @@ function DayProgress({
               {t(onPlan ? 'food.day.left' : 'food.day.overBy')}
             </Text>
           </View>
-          <Bar value={kcalEaten} max={target} color={theme.primary} track={theme.fill} height={10} />
+          <Bar value={kcalEaten} max={target} color={theme.primary} track={theme.fill} height={5} />
           {/* Demoted to a quiet second line: съедено/цель (≈ when the steps are a
               forecast — the one place the ≈ lives now), then the transparent
               «база · шаги · тренировки» breakdown. */}
@@ -761,13 +784,15 @@ function DayProgress({
           </Pressable>
         </>
       )}
-      <View style={styles.macroRow}>
+      <View style={[styles.macroRow, { borderColor: theme.separator }]}>
         {macros.map((m) => (
           <View key={m.label} style={styles.macroCol}>
             <Text style={[styles.macroLabel, { color: theme.subtle }, theme.font.body]}>
-              {m.label} <Text style={{ color: theme.text }}>{m.eaten}</Text>/{m.target}
+              {m.label}
             </Text>
-            <Bar value={m.eaten} max={m.target} color={theme.accent} track={theme.fill} height={5} />
+            <Text style={[styles.macroValue, { color: theme.text }, theme.font.bodyMedium]}>
+              {m.eaten}<Text style={[styles.macroTarget, { color: theme.subtle }, theme.font.body]}>/{m.target}</Text>
+            </Text>
           </View>
         ))}
       </View>
@@ -842,7 +867,7 @@ function MicroDay({
   const anyDonor = measured.some((x) => x.donor != null);
 
   return (
-    <Card style={styles.dayCard}>
+    <Card variant="section" style={styles.dayCard}>
       <Pressable onPress={onToggle} style={styles.microHead} hitSlop={6}>
         {/* Title shrinks, counter never wraps — «измерено: 8» used to fold into a
             per-letter column when the long title ate the row (device screenshot). */}
@@ -985,18 +1010,18 @@ const styles = StyleSheet.create({
   // Past-day headline — mirrors the history day screen's hero.
   pastHero: { marginTop: 2, marginBottom: 16 },
   pastHeroRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
-  pastHeroNum: { fontSize: 40, lineHeight: 44 },
+  pastHeroNum: { fontSize: 49, lineHeight: 54, letterSpacing: -1.4 },
   pastHeroUnit: { fontSize: 15 },
   pastHeroSub: { fontSize: 13, lineHeight: 18, marginTop: 6, marginHorizontal: 4 },
   add: { marginTop: 0, marginBottom: 12 },
   repeatAck: { fontSize: 13, textAlign: 'center', marginBottom: 10 },
   hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
-  list: { gap: 22 },
-  group: { gap: 10 },
+  list: { gap: 26 },
+  group: { gap: 0 },
   mealHead: {
-    borderBottomWidth: 1,
-    paddingBottom: 6,
-    marginBottom: 2,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingBottom: 12,
+    marginBottom: 0,
   },
   mealHeadTop: {
     flexDirection: 'row',
@@ -1004,42 +1029,50 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 8,
   },
-  mealName: { fontSize: 14, textTransform: 'uppercase', letterSpacing: 0.6 },
+  mealName: { fontSize: 18, lineHeight: 24, letterSpacing: -0.25 },
   mealSum: { fontSize: 12 },
-  mealMacros: { fontSize: 12, marginTop: 3 },
-  row: {},
-  rowHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
-  rowText: { fontSize: 15, flex: 1 },
-  rowTime: { fontSize: 12 },
-  repeatBtn: { marginLeft: 2 },
+  mealMacros: { fontSize: 12, marginTop: 5 },
+  row: { paddingVertical: 16 },
+  rowMain: { flexDirection: 'row', alignItems: 'flex-start', gap: 9 },
+  rowRail: { width: 7, alignSelf: 'stretch', marginTop: 6 },
+  rowRule: { position: 'absolute', left: 3, width: 1, top: 7, bottom: -38 },
+  rowNode: { width: 7, height: 7, borderRadius: 3.5 },
+  rowBody: { flex: 1, minWidth: 0 },
+  rowHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
+  rowText: { fontSize: 16, lineHeight: 22, flex: 1, minWidth: 0 },
+  rowTime: { fontSize: 11, lineHeight: 17, width: 34, marginTop: 2, fontVariant: ['tabular-nums'] },
+  rowEnergy: { alignItems: 'flex-end', minWidth: 43 },
+  rowKcal: { fontSize: 17, lineHeight: 22, textAlign: 'right', fontVariant: ['tabular-nums'] },
+  rowKcalUnit: { fontSize: 11, lineHeight: 16, marginTop: 2 },
+  rowActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 6, marginTop: 8 },
+  repeatBtn: { minWidth: 36, minHeight: 36, alignItems: 'center', justifyContent: 'center' },
   // The macros line carries the fold affordance: text flexes, chevron keeps its
   // intrinsic width at the right edge.
   rowMacrosLine: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
-  rowMacros: { fontSize: 13, marginTop: 4, lineHeight: 19, flex: 1 },
+  rowMacros: { fontSize: 12, marginTop: 5, lineHeight: 18, flex: 1 },
   itemsBody: { borderTopWidth: 1, marginTop: 10, paddingTop: 10 },
   itemRow: { marginBottom: 8 },
   itemName: { fontSize: 14, lineHeight: 19 },
   itemMacros: { fontSize: 12, lineHeight: 17, marginTop: 1 },
   itemsEmpty: { fontSize: 12, lineHeight: 17 },
-  dayCard: { marginBottom: 16 },
-  dayHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
-  dayTitle: { fontSize: 15 },
-  // Small caps eyebrow above the hero number (was the 15px card title that
-  // out-shouted the figure it sat over).
-  dayEyebrow: { fontSize: 12, textTransform: 'uppercase', letterSpacing: 1.44 },
+  dayCard: { paddingTop: 8, paddingBottom: 20, marginBottom: 20 },
+  dayHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  dayTitle: { fontSize: 18, lineHeight: 24 },
+  dayEyebrow: { fontSize: 18, lineHeight: 24, letterSpacing: -0.25 },
   dayChip: { fontSize: 12 },
-  // The day's hero: the remaining/over figure, large (40/44 — the app-wide
-  // hero-number size), with a quiet unit label.
+  // The remaining/over figure stays the same fact, in the open day hierarchy.
   dayHeroRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8, marginBottom: 8 },
-  dayHeroNum: { fontSize: 40, lineHeight: 44 },
-  dayHeroLabel: { fontSize: 13 },
+  dayHeroNum: { fontSize: 49, lineHeight: 54, letterSpacing: -1.4, flexShrink: 1 },
+  dayHeroLabel: { fontSize: 13, lineHeight: 18, flexShrink: 1 },
   daySecondary: { fontSize: 13, marginTop: 8 },
   dayWorkout: { fontSize: 12, marginTop: 6, lineHeight: 17 },
   dayMoveLink: { textDecorationLine: 'underline' },
   dayHowLink: { fontSize: 12, marginTop: 6, textDecorationLine: 'underline' },
-  macroRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
-  macroCol: { flex: 1 },
-  macroLabel: { fontSize: 12, marginBottom: 4 },
+  macroRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 16, marginTop: 18 },
+  macroCol: { flexGrow: 1, flexBasis: '28%', minWidth: 76 },
+  macroLabel: { fontSize: 12, lineHeight: 17, marginBottom: 5 },
+  macroValue: { fontSize: 17, lineHeight: 23, fontVariant: ['tabular-nums'] },
+  macroTarget: { fontSize: 12 },
   barTrack: { overflow: 'hidden', width: '100%' },
   microHead: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   // The TITLE flexes/truncates; the counter keeps its intrinsic width so

@@ -182,7 +182,7 @@ export default function WeightScreen() {
       {/* ── 1. HERO — the current weight is the point of the screen. The trend
              rides right under it (single weigh-ins are noise), unifying with the
              «Шаги» hero. ── */}
-      <View style={styles.hero}>
+      <View style={[styles.hero, { borderColor: theme.separator }]}>
         {latestKg > 0 ? (
           <>
             <View style={styles.heroRow}>
@@ -318,9 +318,9 @@ function Section({
   theme: Theme;
 }) {
   return (
-    <Card style={styles.sectionCard}>
+    <Card variant="section" style={styles.sectionCard}>
       <Pressable onPress={onToggle} style={styles.sectionHeader} hitSlop={6}>
-        <Text style={[styles.sectionTitle, { color: theme.text }, theme.font.bodySemiBold]}>{title}</Text>
+        <Text style={[styles.sectionTitle, { color: theme.text }, theme.font.bodyMedium]}>{title}</Text>
         <Text numberOfLines={1} style={[styles.sectionSummary, { color: theme.subtle }, theme.font.body]}>
           {summary}
         </Text>
@@ -356,9 +356,9 @@ function formatDay(date: string): string {
 
 const styles = StyleSheet.create({
   // Hero — current weight big, trend riding under it (mirrors the «Шаги» hero).
-  hero: { marginTop: 8, marginBottom: 16 },
+  hero: { marginBottom: 24, paddingBottom: 18, borderBottomWidth: StyleSheet.hairlineWidth },
   heroRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
-  heroNum: { fontSize: 40, lineHeight: 44 },
+  heroNum: { fontSize: 36, lineHeight: 42, letterSpacing: -1 },
   heroUnit: { fontSize: 15 },
   heroTrend: { fontSize: 14, lineHeight: 19, marginTop: 6 },
   heroNote: { fontSize: 12, lineHeight: 17, marginTop: 3 },
@@ -366,17 +366,17 @@ const styles = StyleSheet.create({
   inputRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
   input: { flex: 1 },
   unit: { fontSize: 15 },
-  save: { marginBottom: 6 },
+  save: { marginBottom: 14 },
   weightAck: { fontSize: 14, textAlign: 'center', marginBottom: 10 },
-  planGroup: { marginTop: 4, marginBottom: 12 },
+  planGroup: { marginTop: 10 },
   note: { fontSize: 12, marginTop: 6, lineHeight: 17 },
   bmiValue: { fontSize: 15, marginTop: 2 },
   disclaimer: { fontSize: 11, fontStyle: 'italic', marginTop: 8, lineHeight: 16 },
   hint: { fontSize: 13, textAlign: 'center', marginTop: 8, marginBottom: 16 },
   rowKg: { fontSize: 16 },
-  sectionCard: { marginBottom: 12 },
+  sectionCard: { marginBottom: 6 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  sectionTitle: { fontSize: 15 },
+  sectionTitle: { fontSize: 18, flexShrink: 1 },
   sectionSummary: { fontSize: 13, flex: 1, textAlign: 'right' },
   sectionBody: { marginTop: 12 },
 });

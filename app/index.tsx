@@ -6,6 +6,7 @@ import { PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'rea
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FoodTodayWidget } from '@/components/home/FoodTodayWidget';
+import { DayRibbonTimeline } from '@/components/home/DayRibbonTimeline';
 import { StepsWidget } from '@/components/home/StepsWidget';
 import { WorkoutWidget } from '@/components/home/WorkoutWidget';
 import { SwipeCoach } from '@/components/home/SwipeCoach';
@@ -18,8 +19,8 @@ import { PageDots } from '@/components/ui/PageDots';
 import { selfInitiatedLogDays } from '@/lib/core/db/activity';
 import { hasAnyWinOnDay, runAutoWins } from '@/lib/core/db/autoWins';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
-import { todayMacroTotals } from '@/lib/core/db/food';
-import type { AppSettings } from '@/lib/core/db/schema';
+import { listEntriesForDay, sweepStalePendingEntries, todayMacroTotals } from '@/lib/core/db/food';
+import type { AppSettings, FoodEntry } from '@/lib/core/db/schema';
 import { latestMood } from '@/lib/core/db/mood';
 import { catchUpHealth, syncDayHealth } from '@/lib/core/db/healthSync';
 import { ensureSettings, parseReminderTimes, updateSettings } from '@/lib/core/db/settings';
@@ -40,6 +41,7 @@ import { daySummary, daysSince, type DaySummary } from '@/lib/core/insights/dayS
 import { dayOfYear, pickVariant } from '@/lib/core/insights/variant';
 import { stepInsight } from '@/lib/core/insights/stepInsight';
 import { useAppActiveEffect } from '@/lib/core/services/appActive';
+import { runningParseEntryIds, subscribeBackgroundParses } from '@/lib/core/services/backgroundParses';
 import { pluralKey } from '@/lib/i18n/plural';
 import { getHealthService } from '@/lib/core/services/healthProvider';
 import { getNotificationService } from '@/lib/core/services/notificationProvider';
@@ -91,6 +93,7 @@ export default function HomeScreen() {
   // Today's food totals + the settings row — fed to the Home input widgets
   // (food summary, weight plan preview). Kept alongside the insight state above.
   const [totals, setTotals] = useState({ kcal: 0, proteinG: 0, fatG: 0, carbG: 0 });
+  const [foodEntries, setFoodEntries] = useState<FoodEntry[] | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   // Raw workout burn today — for the food widget's movement-adjusted target
   // (steps are already loaded above; both feed the same eat-back layer).
@@ -100,9 +103,14 @@ export default function HomeScreen() {
   const [workoutSteps, setWorkoutSteps] = useState(0);
   // One /mood push per left-swipe gesture — releases when Home regains focus.
   const swipeNavLock = useRef(false);
+  const reloadSeq = useRef(0);
 
   const reload = useCallback(async () => {
         if (!db) return;
+        const seq = ++reloadSeq.current;
+        // Use the food day's existing orphan cleanup: an interrupted photo
+        // must offer retry instead of pretending a dead worker is still busy.
+        await sweepStalePendingEntries(db, undefined, runningParseEntryIds());
         // Settings FIRST (the extended-import flag), then the passive sync, and
         // only THEN the workout-kcal read: after watch imports landed, reading
         // todayWorkoutKcal in parallel with the sync raced against the very
@@ -128,13 +136,14 @@ export default function HomeScreen() {
         // the single source of the budget's burn, while the win rule only asks
         // «была ли сегодня тренировка» — re-summing kcal here would fork that
         // math for the sake of one `.length`.
-        const [tot, moodRow, review, weightLatest, workoutKcal, todayWorkouts] = await Promise.all([
+        const [tot, moodRow, review, weightLatest, workoutKcal, todayWorkouts, loggedFood] = await Promise.all([
           todayMacroTotals(db),
           latestMood(db),
           weekReview(db),
           latestWeight(db),
           todayWorkoutKcal(db),
           listWorkoutsForDay(db),
+          listEntriesForDay(db),
         ]);
         const stepsForGoals = stepCount ?? 0;
         // Personal baseline: today vs the median of recent prior days (steps
@@ -206,9 +215,13 @@ export default function HomeScreen() {
           if (lastActivity == null || dt > lastActivity) lastActivity = dt;
         }
         const daysGap = daysSince(lastActivity);
+        const usualStepCount = await typicalSteps(db);
+        // A completed background parse can start a newer pass during health
+        // sync. Publish one coherent snapshot, never repaint it with old rows.
+        if (seq !== reloadSeq.current) return;
         setSteps(stepCount);
         setWorkoutSteps(health.workoutSteps);
-        setUsualSteps(await typicalSteps(db));
+        setUsualSteps(usualStepCount);
         // A break promises «цели выключены» — feed an unreachable goal so the
         // insight can never say «личная цель достигнута» under the pause banner.
         setStepsMeaning(
@@ -218,6 +231,7 @@ export default function HomeScreen() {
         );
         setStepsBaselineKind(stepsBaseline ? stepsBaseline.kind : null);
         setTotals({ kcal: tot.kcal, proteinG: tot.proteinG, fatG: tot.fatG, carbG: tot.carbG });
+        setFoodEntries(loggedFood);
         setSettings(settingsRow);
         setWorkoutRawKcal(workoutKcal);
         setStreakWeeks(review.streakWeeks);
@@ -240,6 +254,11 @@ export default function HomeScreen() {
     useCallback(() => {
       swipeNavLock.current = false;
       void reload();
+      const unsubscribe = subscribeBackgroundParses(() => void reload());
+      return () => {
+        unsubscribe();
+        reloadSeq.current += 1;
+      };
     }, [reload]),
   );
 
@@ -447,13 +466,12 @@ export default function HomeScreen() {
       : null;
 
   return (
-    <View style={[styles.fill, { backgroundColor: theme.background }]} {...homePan.panHandlers}>
+    <View style={[styles.fill, { backgroundColor: theme.background, paddingTop: insets.top }]} {...homePan.panHandlers}>
       <Stack.Screen
         options={{
-          // The title IS the day switcher: «Сегодня ⌄» opens the day history
-          // («выбрать прошлый день и посмотреть логи еды и настроения»).
-          headerTitle: () => <DayTitleLink label={t('home.title')} />,
-          headerRight: () => <HeaderSectionsLink />,
+          // The same history and sections controls now belong to the selected
+          // day composition, rather than a separate native toolbar above it.
+          headerShown: false,
         }}
       />
       <ScrollView
@@ -462,24 +480,21 @@ export default function HomeScreen() {
           theme.isIOS ? styles.iosContent : styles.androidContent,
           { paddingBottom: 96 + insets.bottom },
         ]}
-        contentInsetAdjustmentBehavior="automatic"
+        contentInsetAdjustmentBehavior="never"
       >
-        {/* Noise cleanup 2026-07-10 («много шума, непонятно куда жмать»): the
-            greeting tagline and the empty-day summary are gone — a fresh day
-            opens straight on the food card. The summary line returns only once
-            it has something REAL to say (steps/mood/win/welcome-back). */}
-        {summary && summary.key !== 'empty' ? (
-          <Text style={[styles.daySummary, { color: theme.text }, theme.font.bodyMedium]}>
-            {t(`home.daySummary.${summary.key}`, {
-              steps: summary.steps != null ? formatSteps(summary.steps) : '',
-              stepsWord: summary.steps != null ? t(pluralKey('steps.unit', summary.steps)) : '',
-              mood: summary.mood ?? '',
-            })}
+        <View style={styles.brandRow}>
+          <Text style={[styles.brand, { color: theme.text }, theme.font.bodySemiBold]}>driftora</Text>
+          <HeaderSectionsLink compact />
+        </View>
+        <View style={styles.dayHeading}>
+          <DayTitleLink label={t('home.title')} display />
+          <Text style={[styles.date, { color: theme.subtle }, theme.font.body]}>
+            {`${new Date().getDate()} ${t(`history.m${new Date().getMonth() + 1}`)}, ${t(`history.w${new Date().getDay()}`)}`}
           </Text>
-        ) : null}
+        </View>
 
         {paused ? (
-          <Card style={styles.pauseBanner}>
+          <Card variant="section" style={styles.pauseBanner}>
             <Text style={[styles.pauseTitle, { color: theme.text }, theme.font.bodySemiBold]}>
               {t('home.paused.title')}
             </Text>
@@ -498,7 +513,7 @@ export default function HomeScreen() {
         ) : null}
 
         {setupNeeded ? (
-          <Card style={styles.setupCard}>
+          <Card variant="section" style={styles.setupCard}>
             <Text style={[styles.pauseTitle, { color: theme.text }, theme.font.bodySemiBold]}>
               {t('home.setup.title')}
             </Text>
@@ -532,6 +547,12 @@ export default function HomeScreen() {
           targetCarb={dayMacroTargets?.carb ?? 0}
           onPress={() => router.push('/food')}
         />
+        <DayRibbonTimeline
+          entries={foodEntries}
+          hideCalories={settings?.hideCalories ?? false}
+          onOpenDay={() => router.push('/food')}
+          onOpenEntry={(entry) => router.push(entry.parseStatus != null ? '/food' : `/food/${entry.id}`)}
+        />
         <WeightWidget db={db} subtitle={weightSubtitle} onSaved={reload} />
         <StepsWidget
           db={db}
@@ -553,6 +574,16 @@ export default function HomeScreen() {
           style={styles.pageDots}
         />
 
+        {summary && summary.key !== 'empty' ? (
+          <Text style={[styles.daySummary, { color: theme.subtle }, theme.font.body]}>
+            {t(`home.daySummary.${summary.key}`, {
+              steps: summary.steps != null ? formatSteps(summary.steps) : '',
+              stepsWord: summary.steps != null ? t(pluralKey('steps.unit', summary.steps)) : '',
+              mood: summary.mood ?? '',
+            })}
+          </Text>
+        ) : null}
+
         {/* The streak is the ONE number Home shows that lives on another
             screen — «Итоги недели» is where it is explained and can be reset.
             It was plain text until 2026-08-22, i.e. a dead end pointing at a
@@ -573,7 +604,7 @@ export default function HomeScreen() {
         style={[
           styles.footer,
           theme.isIOS ? styles.footerIOS : styles.footerAndroid,
-          { bottom: (theme.isIOS ? 12 : 16) + insets.bottom },
+          { bottom: (theme.isIOS ? 12 : 16) + insets.bottom, backgroundColor: theme.background },
         ]}
       >
         <FoodBar
@@ -626,14 +657,18 @@ function daysAgo(dayString: string): number {
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  androidContent: { paddingHorizontal: 18, paddingTop: 4, paddingBottom: 96 },
-  iosContent: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 96 },
-  daySummary: { fontSize: 15, lineHeight: 21, marginTop: 8, marginBottom: 10 },
+  androidContent: { paddingHorizontal: 24, paddingTop: 4, paddingBottom: 96 },
+  iosContent: { paddingHorizontal: 22, paddingTop: 4, paddingBottom: 96 },
+  brandRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44 },
+  brand: { fontSize: 20, letterSpacing: -0.6 },
+  dayHeading: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between', columnGap: 12, rowGap: 4, marginTop: 22, marginBottom: 24 },
+  date: { fontSize: 12, lineHeight: 18, paddingBottom: 4 },
+  daySummary: { fontSize: 13, lineHeight: 19, marginTop: 18, marginBottom: 10 },
   pageDots: { marginTop: 14 },
   northStar: { fontSize: 12, textAlign: 'center', marginTop: 22 },
   footer: { position: 'absolute', left: 0, right: 0 },
-  footerAndroid: { paddingHorizontal: 18 },
-  footerIOS: { paddingHorizontal: 16 },
+  footerAndroid: { paddingHorizontal: 24, paddingTop: 10 },
+  footerIOS: { paddingHorizontal: 22, paddingTop: 10 },
   pauseBanner: { marginBottom: 4 },
   setupCard: { marginTop: 12 },
   pauseTitle: { fontSize: 16 },

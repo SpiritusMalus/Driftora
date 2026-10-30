@@ -456,9 +456,9 @@ export default function BodySetupScreen() {
 
       {step === 'result' && plan != null ? (
         <>
-          <Card style={styles.card}>
-            <Text style={[styles.heroLabel, { color: theme.labelCaps }, theme.font.bodyBold]}>
-              {t('bodySetup.result.title').toUpperCase()}
+          <Card variant="section" style={styles.card}>
+            <Text style={[styles.heroLabel, { color: theme.text }, theme.font.bodyMedium]}>
+              {t('bodySetup.result.title')}
             </Text>
             <View style={styles.heroRow}>
               <Text style={[styles.heroKcal, { color: theme.heroAccent }, theme.font.heading]}>≈{plan.kcal}</Text>
@@ -466,7 +466,7 @@ export default function BodySetupScreen() {
                 {t('bodySetup.result.perDay')}
               </Text>
             </View>
-            <View style={styles.macroRow}>
+            <View style={[styles.macroRow, { borderColor: theme.separator }]}>
               {(
                 [
                   [t('macros.protein'), plan.prot],
@@ -474,9 +474,9 @@ export default function BodySetupScreen() {
                   [t('macros.carbs'), plan.carb],
                 ] as const
               ).map(([label, grams]) => (
-                <View key={label} style={[styles.macroTile, { backgroundColor: theme.fill }]}>
+                <View key={label} style={styles.macroTile}>
                   <Text style={[styles.macroLabel, { color: theme.subtle }, theme.font.body]}>{label}</Text>
-                  <Text style={[styles.macroValue, { color: theme.text }, theme.font.bodySemiBold]}>
+                  <Text style={[styles.macroValue, { color: theme.text }, theme.font.bodyMedium]}>
                     {grams} {t('units.g')}
                   </Text>
                 </View>
@@ -512,14 +512,14 @@ export default function BodySetupScreen() {
             </Text>
           </Card>
 
-          <Card style={styles.card}>
+          <Card variant="section" style={styles.card}>
             <Pressable
               onPress={() => setHowOpen((v) => !v)}
               accessibilityRole="button"
               accessibilityState={{ expanded: howOpen }}
               style={styles.accHead}
             >
-              <Text style={[styles.accTitle, { color: theme.text }, theme.font.bodySemiBold]}>
+              <Text style={[styles.accTitle, { color: theme.text }, theme.font.bodyMedium]}>
                 {t('bodySetup.result.howTitle')}
               </Text>
               <AccordionChevron expanded={howOpen} size={16} color={theme.subtle} />
@@ -619,8 +619,8 @@ function StepCard({
   theme: Theme;
 }) {
   return (
-    <Card style={styles.card}>
-      <Text style={[styles.stepTitle, { color: theme.text }, theme.font.bodySemiBold]}>{title}</Text>
+    <Card variant="section" style={styles.card}>
+      <Text style={[styles.stepTitle, { color: theme.text }, theme.font.bodyMedium]}>{title}</Text>
       {hint ? <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{hint}</Text> : null}
       <View style={styles.control}>{children}</View>
     </Card>
@@ -712,8 +712,8 @@ const styles = StyleSheet.create({
   backLink: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   backText: { fontSize: 14 },
   progress: { fontSize: 13 },
-  card: { marginBottom: 14 },
-  stepTitle: { fontSize: 19 },
+  card: { marginBottom: 6 },
+  stepTitle: { fontSize: 18 },
   hint: { fontSize: 13, lineHeight: 19, marginTop: 8 },
   control: { marginTop: 14 },
   unitRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
@@ -722,8 +722,8 @@ const styles = StyleSheet.create({
   invalid: { fontSize: 13, lineHeight: 18, marginTop: 8 },
   skip: { fontSize: 14, marginTop: 14, textAlign: 'center', paddingVertical: 4 },
   option: {
-    borderWidth: 1.5,
-    borderRadius: 10,
+    borderWidth: 1,
+    borderRadius: 6,
     paddingHorizontal: 14,
     paddingVertical: 12,
     marginBottom: 8,
@@ -734,19 +734,19 @@ const styles = StyleSheet.create({
   optionBody: { flex: 1 },
   optionTitle: { fontSize: 15 },
   optionDesc: { fontSize: 12, lineHeight: 17, marginTop: 3 },
-  heroLabel: { fontSize: 12, letterSpacing: 1.44, marginBottom: 6 },
+  heroLabel: { fontSize: 18, marginBottom: 14 },
   heroRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
-  heroKcal: { fontSize: 40, lineHeight: 44 },
+  heroKcal: { fontSize: 36, lineHeight: 42, letterSpacing: -1 },
   heroUnit: { fontSize: 14 },
-  macroRow: { flexDirection: 'row', gap: 8, marginTop: 16 },
-  macroTile: { flex: 1, borderRadius: 6, paddingVertical: 8, paddingHorizontal: 4, alignItems: 'center' },
+  macroRow: { flexDirection: 'row', gap: 10, borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: 17, marginVertical: 18 },
+  macroTile: { flex: 1, gap: 3 },
   macroLabel: { fontSize: 11 },
-  macroValue: { fontSize: 15, marginTop: 2 },
+  macroValue: { fontSize: 15, marginTop: 2, fontVariant: ['tabular-nums'] },
   appliedLine: { fontSize: 13, marginTop: 12 },
   overestimate: { fontSize: 13, lineHeight: 19, marginTop: 8 },
   willRefine: { fontSize: 12, lineHeight: 17, marginTop: 10 },
   accHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  accTitle: { fontSize: 15, flex: 1, paddingRight: 12 },
+  accTitle: { fontSize: 18, flex: 1, paddingRight: 12 },
   chevron: { fontSize: 15 },
   teaser: { fontSize: 13, lineHeight: 19, marginTop: 6 },
   boostSubTitle: { fontSize: 14, marginTop: 14 },

@@ -4,7 +4,6 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { Card } from '@/components/ui/Card';
 import { TextField } from '@/components/ui/TextField';
 import { setManualSteps } from '@/lib/core/db/steps';
 import { useTheme } from '@/lib/theme/theme';
@@ -61,12 +60,12 @@ export function StepsWidget({
   }
 
   return (
-    <Card style={styles.card}>
+    <View style={[styles.row, { borderColor: theme.separator }]}>
       <View style={styles.head}>
         <Pressable onPress={() => router.push('/activity')} style={styles.headMain} hitSlop={4}>
           <Ionicons name="walk-outline" size={18} color={theme.accent} />
           <View style={styles.headText}>
-            <Text style={[styles.title, { color: theme.text }, theme.font.bodySemiBold]}>{t('home.feeders.steps')}</Text>
+            <Text style={[styles.title, { color: theme.text }, theme.font.bodyMedium]}>{t('home.feeders.steps')}</Text>
             {/* Two lines: the subtitle is a full insight sentence («14 000 —
                 отличный объём ходьбы…») and one line cut it mid-thought
                 (device screenshot 2026-08-17). */}
@@ -82,7 +81,7 @@ export function StepsWidget({
           accessibilityLabel={t('home.inlineAdd')}
           style={({ pressed }) => [
             styles.plusBtn,
-            { borderColor: theme.separator, backgroundColor: theme.card, opacity: pressed ? 0.6 : 1 },
+            { borderColor: theme.separator, opacity: pressed ? 0.6 : 1 },
           ]}
         >
           <Ionicons name={open ? 'remove' : 'add'} size={18} color={theme.icon} />
@@ -123,16 +122,16 @@ export function StepsWidget({
       {estimateLine ? (
         <Text style={[styles.estimate, { color: theme.subtle }, theme.font.body]}>{estimateLine}</Text>
       ) : null}
-    </Card>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { marginBottom: 12 },
-  head: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  row: { paddingVertical: 16, borderBottomWidth: StyleSheet.hairlineWidth },
+  head: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44 },
   headMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
   headText: { flex: 1 },
-  plusBtn: { width: 32, height: 32, borderRadius: 8, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  plusBtn: { width: 32, height: 32, borderRadius: 4, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   title: { fontSize: 15 },
   subtitle: { fontSize: 13, marginTop: 1 },
   inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 },
