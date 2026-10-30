@@ -108,6 +108,7 @@
       "./plugins/withHealthConnect",
       "./plugins/withICloudKeychainSync",
       "./plugins/withReleaseSigning",
+      "./plugins/withScreenHeaderLifecycleGuard",
       [
         "expo-build-properties",
         {
