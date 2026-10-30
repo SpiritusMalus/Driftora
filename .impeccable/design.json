@@ -1,0 +1,243 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-30T19:04:51.876Z",
+  "title": "Design System: Driftora — Лента дня",
+  "extensions": {
+    "colorMeta": {
+      "action-light": {
+        "role": "primary",
+        "displayName": "Light action blue"
+      },
+      "on-action-light": {
+        "role": "neutral",
+        "displayName": "Light action foreground"
+      },
+      "canvas-light": {
+        "role": "neutral",
+        "displayName": "Light canvas"
+      },
+      "ink-light": {
+        "role": "neutral",
+        "displayName": "Light primary ink"
+      },
+      "secondary-ink-light": {
+        "role": "neutral",
+        "displayName": "Light secondary ink"
+      },
+      "rule-light": {
+        "role": "neutral",
+        "displayName": "Light rule"
+      },
+      "control-fill-light": {
+        "role": "neutral",
+        "displayName": "Light control well"
+      },
+      "action-fill-light": {
+        "role": "primary",
+        "displayName": "Light soft action well"
+      },
+      "action-dark": {
+        "role": "primary",
+        "displayName": "Dark action blue"
+      },
+      "on-action-dark": {
+        "role": "neutral",
+        "displayName": "Dark action foreground"
+      },
+      "canvas-dark": {
+        "role": "neutral",
+        "displayName": "Dark canvas"
+      },
+      "ink-dark": {
+        "role": "neutral",
+        "displayName": "Dark primary ink"
+      },
+      "secondary-ink-dark": {
+        "role": "neutral",
+        "displayName": "Dark secondary ink"
+      },
+      "rule-dark": {
+        "role": "neutral",
+        "displayName": "Dark rule"
+      },
+      "control-fill-dark": {
+        "role": "neutral",
+        "displayName": "Dark control well"
+      },
+      "action-fill-dark": {
+        "role": "primary",
+        "displayName": "Dark soft action well"
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Home daily figure",
+        "purpose": "Golos Text medium; local fit-to-width and tabular numerals where set in source."
+      },
+      "headline": {
+        "displayName": "Home day title",
+        "purpose": "Large tappable day title leading to history."
+      },
+      "title": {
+        "displayName": "Section title",
+        "purpose": "Shared section headings; smaller entry-title styles remain component-specific."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Golos Text regular for explanations and empty states."
+      },
+      "label": {
+        "displayName": "Primary action label",
+        "purpose": "Golos Text semibold for the primary action."
+      }
+    },
+    "motion": [
+      {
+        "name": "EASE_OUT",
+        "value": "cubic-bezier(0.23, 1, 0.32, 1)",
+        "purpose": "Shared React Native Easing.bezier in lib/theme/motion.ts."
+      },
+      {
+        "name": "DUR.press",
+        "value": "120ms",
+        "purpose": "Existing press feedback."
+      },
+      {
+        "name": "DUR.select",
+        "value": "160ms",
+        "purpose": "Existing selection transitions."
+      },
+      {
+        "name": "DUR.fade",
+        "value": "180ms",
+        "purpose": "Existing opacity changes, including a changed Home calorie total."
+      },
+      {
+        "name": "DUR.layout",
+        "value": "220ms",
+        "purpose": "Existing measured layout transitions."
+      },
+      {
+        "name": "DUR.enter",
+        "value": "240ms",
+        "purpose": "Existing entry transitions."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "large-system-text",
+        "value": "React Native fontScale > 1.5"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary action",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "PrimaryButton; light mode, pressed and disabled states retained.",
+      "html": "<button class=\"ds-primary\" type=\"button\">Записать еду</button>",
+      "css": ".ds-primary{font-family:'Golos Text',sans-serif;display:block;width:100%;border:0;border-radius:6px;padding:15px 0;background:#2449D8;color:#FFFFFF;font-size:16px;font-weight:600;text-align:center} .ds-primary:active:not(:disabled){opacity:.85} .ds-primary:disabled{opacity:.4} .ds-primary:hover{cursor:pointer} .ds-primary:focus-visible{outline:auto;outline-color:#2449D8}"
+    },
+    {
+      "name": "Primary action — dark",
+      "kind": "button",
+      "refersTo": "button-primary-dark",
+      "description": "PrimaryButton in dark mode; the on-action foreground is dark blue, not white.",
+      "html": "<button class=\"ds-primary-dark\" type=\"button\">Записать еду</button>",
+      "css": ".ds-primary-dark{font-family:'Golos Text',sans-serif;display:block;width:100%;border:0;border-radius:6px;padding:15px 0;background:#A4B8FF;color:#142A66;font-size:16px;font-weight:600;text-align:center} .ds-primary-dark:active:not(:disabled){opacity:.85} .ds-primary-dark:disabled{opacity:.4} .ds-primary-dark:hover{cursor:pointer} .ds-primary-dark:focus-visible{outline:auto;outline-color:#A4B8FF}"
+    },
+    {
+      "name": "Small meal chips",
+      "kind": "chip",
+      "refersTo": "chip-small",
+      "description": "Chip sm geometry, selected fill and semantic selected state.",
+      "html": "<div class=\"ds-chips\"><button type=\"button\" class=\"ds-chip\" aria-pressed=\"false\">Завтрак</button><button type=\"button\" class=\"ds-chip ds-chip-selected\" aria-pressed=\"true\">Обед</button><button type=\"button\" class=\"ds-chip\" aria-pressed=\"false\">Ужин</button></div>",
+      "css": ".ds-chips{display:flex;flex-wrap:wrap;gap:8px}.ds-chip{font-family:'Golos Text',sans-serif;border:1px solid #CDD5C8;border-radius:6px;padding:7px 12px;background:#F2F3EB;color:#17302A;font-size:13px;font-weight:400}.ds-chip-selected{background:#2449D8;color:#FFFFFF;border-color:#2449D8}.ds-chip:active:not(:disabled){opacity:.7}.ds-chip:disabled{opacity:.4} .ds-chip:hover{cursor:pointer} .ds-chip:focus-visible{outline:auto;outline-color:#2449D8}"
+    },
+    {
+      "name": "Multiline food field",
+      "kind": "input",
+      "refersTo": "text-field-android",
+      "description": "TextField Android geometry; the preview uses a CSS pixel for the native hairline.",
+      "html": "<textarea class=\"ds-field\" aria-label=\"Название продукта\" placeholder=\"Название продукта\"></textarea>",
+      "css": ".ds-field{font-family:'Golos Text',sans-serif;display:block;box-sizing:border-box;width:100%;min-height:80px;border:1px solid #CDD5C8;border-radius:6px;padding:14px 12px 12px;background:#E7EBDD;color:#17302A;font-size:17px;font-weight:400}.ds-field::placeholder{color:#59685E}.ds-field:hover{cursor:text}.ds-field:focus-visible{outline:auto;outline-color:#2449D8}"
+    },
+    {
+      "name": "Day navigation",
+      "kind": "nav",
+      "refersTo": "day-navigation",
+      "description": "DayNav at today: previous day enabled, next day and the current central label disabled.",
+      "html": "<nav class=\"ds-day-nav\" aria-label=\"Дни\"><button class=\"ds-day-arrow\" type=\"button\" aria-label=\"Предыдущий день\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" aria-hidden=\"true\"><path d=\"m12 4-6 6 6 6\"/></svg></button><button class=\"ds-day-label\" type=\"button\" disabled>Сегодня</button><button class=\"ds-day-arrow\" type=\"button\" aria-label=\"Следующий день\" disabled><svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" aria-hidden=\"true\"><path d=\"m8 4 6 6-6 6\"/></svg></button></nav>",
+      "css": ".ds-day-nav{display:flex;align-items:center;padding:3px;border-radius:6px;background:#E7EBDD;color:#17302A}.ds-day-arrow,.ds-day-label{font-family:'Golos Text',sans-serif;border:0;background:transparent;color:#17302A}.ds-day-arrow{display:flex;align-items:center;justify-content:center;width:40px;height:34px;border-radius:6px}.ds-day-label{flex:1;padding:7px 0;font-size:14px;font-weight:600}.ds-day-arrow:disabled{opacity:.3}.ds-day-arrow:active:not(:disabled),.ds-day-label:active:not(:disabled){opacity:.6} .ds-day-arrow:hover{cursor:pointer} .ds-day-arrow:focus-visible{outline:auto;outline-color:#2449D8} .ds-day-label:hover{cursor:pointer} .ds-day-label:focus-visible{outline:auto;outline-color:#2449D8}"
+    },
+    {
+      "name": "Contained panel",
+      "kind": "card",
+      "refersTo": "contained-card",
+      "description": "Default Card geometry, retained for contained content; neutral panel label is documentation-only.",
+      "html": "<div class=\"ds-contained\"><span class=\"ds-contained-label\">Contained Card</span></div>",
+      "css": ".ds-contained{font-family:'Golos Text',sans-serif;padding:16px;border:1px solid #CDD5C8;border-radius:10px;background:#F2F3EB;color:#17302A}.ds-contained-label{font-size:14px;font-weight:400}"
+    },
+    {
+      "name": "Open section",
+      "kind": "card",
+      "refersTo": "open-section",
+      "description": "Card section geometry; square, transparent and separated by a bottom hairline.",
+      "html": "<section class=\"ds-section\"><h3 class=\"ds-section-title\">Тело и настроение</h3></section>",
+      "css": ".ds-section{font-family:'Golos Text',sans-serif;padding:18px 0;background:transparent;color:#17302A;border:0;border-bottom:1px solid #CDD5C8;border-radius:0}.ds-section-title{margin:0;font-size:18px;line-height:24px;letter-spacing:-.25px;font-weight:500}"
+    },
+    {
+      "name": "Open navigation row",
+      "kind": "nav",
+      "refersTo": "open-section",
+      "description": "ListGroup Android row: outline glyph, title, subtitle and trailing chevron, without icon tile.",
+      "html": "<button class=\"ds-list-row\" type=\"button\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" aria-hidden=\"true\"><rect x=\"3\" y=\"4\" width=\"14\" height=\"13\" rx=\"1\"/><path d=\"M3 8h14M6 2v4M14 2v4\"/></svg><span class=\"ds-list-body\"><span class=\"ds-list-title\">Дни</span><span class=\"ds-list-subtitle\">Прошлые дни: еда, вес, шаги, настроение</span></span><svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" aria-hidden=\"true\"><path d=\"m8 4 6 6-6 6\"/></svg></button>",
+      "css": ".ds-list-row{font-family:'Golos Text',sans-serif;display:flex;align-items:center;gap:12px;width:100%;min-height:56px;padding:14px 0;border:0;border-bottom:1px solid #CDD5C8;background:transparent;color:#2449D8;text-align:left}.ds-list-body{flex:1;min-width:0;color:#17302A}.ds-list-title{display:block;font-size:16px;font-weight:500}.ds-list-subtitle{display:block;margin-top:4px;font-size:13px;line-height:18px;font-weight:400;color:#59685E}.ds-list-row>svg{flex-shrink:0}.ds-list-row>svg:last-child{color:#59685E}.ds-list-row:active{opacity:.6} .ds-list-row:hover{cursor:pointer} .ds-list-row:focus-visible{outline:auto;outline-color:#2449D8}"
+    },
+    {
+      "name": "Food dock",
+      "kind": "custom",
+      "refersTo": "food-dock",
+      "description": "FoodBar has separate text and microphone targets; safe-area placement belongs to its native screen.",
+      "html": "<div class=\"ds-food-dock\"><button class=\"ds-food-text\" type=\"button\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" aria-hidden=\"true\"><path d=\"M11 4H4v12h12V9M9 11l1-4 6-6 3 3-6 6-4 1Z\"/></svg><span>Записать еду</span></button><button class=\"ds-food-mic\" type=\"button\" aria-label=\"Голос\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" aria-hidden=\"true\"><rect x=\"7\" y=\"2\" width=\"6\" height=\"10\" rx=\"3\"/><path d=\"M4 9v1a6 6 0 0 0 12 0V9M10 16v3M6 19h8\"/></svg></button></div>",
+      "css": ".ds-food-dock{display:flex;align-items:center;min-height:57px;border-radius:3px;background:#2449D8;color:#FFFFFF}.ds-food-text,.ds-food-mic{font-family:'Golos Text',sans-serif;display:flex;align-items:center;min-height:57px;background:transparent;border:0;color:#FFFFFF}.ds-food-text{flex:1;gap:12px;padding:12px 0 12px 17px;font-size:15px;font-weight:500;text-align:left}.ds-food-text span{flex:1}.ds-food-text>svg{flex-shrink:0}.ds-food-mic{width:57px;justify-content:center;flex-shrink:0}.ds-food-text:active,.ds-food-mic:active{opacity:.8} .ds-food-text:hover{cursor:pointer} .ds-food-text:focus-visible{outline:auto;outline-color:#2449D8} .ds-food-mic:hover{cursor:pointer} .ds-food-mic:focus-visible{outline:auto;outline-color:#2449D8}"
+    },
+    {
+      "name": "Food ribbon row",
+      "kind": "custom",
+      "refersTo": "open-section",
+      "description": "DayRibbonTimeline geometry with illustrative content; actual screens render stored records only.",
+      "html": "<button class=\"ds-ribbon-row\" type=\"button\"><time class=\"ds-ribbon-time\">08:40</time><span class=\"ds-ribbon-node-column\"><span class=\"ds-ribbon-node\"></span></span><span class=\"ds-ribbon-body\"><span class=\"ds-ribbon-title\">Завтрак</span></span><span class=\"ds-ribbon-amount\"><span class=\"ds-ribbon-number\">—</span><span class=\"ds-ribbon-unit\">ккал</span></span></button>",
+      "css": ".ds-ribbon-row{font-family:'Golos Text',sans-serif;display:flex;align-items:flex-start;gap:10px;width:100%;padding:18px 0;border:0;background:transparent;color:#17302A;text-align:left}.ds-ribbon-time{width:44px;flex-shrink:0;font-size:12px;line-height:22px;font-weight:400;color:#59685E;font-variant-numeric:tabular-nums}.ds-ribbon-node-column{display:flex;justify-content:center;width:12px;padding-top:8px;flex-shrink:0}.ds-ribbon-node{width:6px;height:6px;border-radius:3px;background:#2449D8}.ds-ribbon-body{flex:1;min-width:0}.ds-ribbon-title{font-size:16px;line-height:22px;font-weight:500}.ds-ribbon-amount{display:flex;flex-direction:column;align-items:flex-end;min-width:48px;max-width:90px}.ds-ribbon-number{font-size:18px;line-height:24px;font-weight:500;font-variant-numeric:tabular-nums}.ds-ribbon-unit{font-size:11px;line-height:16px;font-weight:400;color:#59685E}.ds-ribbon-row:active{opacity:.6} .ds-ribbon-row:hover{cursor:pointer} .ds-ribbon-row:focus-visible{outline:auto;outline-color:#2449D8}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Лента дня",
+    "overview": "**Selected direction: «Лента дня» (Day Ribbon).** This records the implemented native interface and the direction already chosen by the owner. Use it when extending existing screens; retain their routes, controls, defaults, data states and product copy.\n\nThe interface places daily records on one flat canvas. Large day figures, thin rules and open rows establish hierarchy; blue marks actions, selection and food timeline nodes. Golos Text carries both Russian text and figures. Routine actions stay directly available, including the separate inline add controls and the shared food composer.",
+    "keyCharacteristics": [
+      "One light or dark canvas across ordinary page sections.",
+      "Large daily figures followed by compact labels and real records.",
+      "Open list rows, thin separators and restrained corner radii.",
+      "Blue actions and selections with scheme-specific foreground colors.",
+      "Existing native navigation, input behavior and accessibility scaling."
+    ],
+    "rules": [],
+    "dos": [
+      "Do use the matching light or dark theme roles for every surface and action foreground.",
+      "Do preserve existing routes, direct controls, inline plus handlers and the single shared food composer.",
+      "Do build ordinary sections from open rows, real content and thin rules.",
+      "Do retain contained consent, error, recovery and protected-focus boundaries where the existing flow requires them.",
+      "Do preserve system text scaling, large-type reflow, keyboard clearance and safe-area dock placement.",
+      "Do check native rendering and interactions on the target platform before claiming native QA."
+    ],
+    "donts": [
+      "Don't reduce this direction to a palette and font replacement; retain the implemented day composition and chronological ribbon.",
+      "Don't add slogans, motivational filler, invented events or replacement product copy.",
+      "Don't turn routine actions into dropdown forms or separate the food capture methods into unrelated composers.",
+      "Don't add decorative card stacks, icon tiles, shadows, glow or unequal gradient stops to ordinary day sections.",
+      "Don't suppress system font scaling to make a dense row fit.",
+      "Don't treat browser previews or a successful iOS export as native iOS visual verification."
+    ]
+  }
+}
