@@ -396,7 +396,7 @@ const styles = StyleSheet.create({
   saveIssue: { fontSize: 13, marginTop: 8, textAlign: 'center' },
   deleteBtn: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 999,
+    borderRadius: 6,
     paddingVertical: 12,
     alignItems: 'center',
     marginTop: 10,

@@ -24,7 +24,7 @@ export default function MoreScreen() {
 
   const coralTile = theme.primarySoft;
   const amberTile = theme.accentSoft;
-  const neutralTile = theme.scheme === 'light' ? '#EFE6E0' : '#2C2622';
+  const neutralTile = theme.fill;
 
   // Section 1 — the two things you WRITE that Home has no room for. СМЭР used
   // to be reachable only from inside the mood screen (swipe + one more tap),
@@ -111,7 +111,7 @@ export default function MoreScreen() {
     {
       key: 'settings',
       icon: 'settings-outline',
-      tint: theme.isIOS ? '#8E8E93' : theme.subtle,
+      tint: theme.icon,
       iconBg: neutralTile,
       title: t('more.sections.settings'),
       subtitle: t('more.subtitles.settings'),

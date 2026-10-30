@@ -76,7 +76,7 @@ export function SwipeCoach({ onSwiped, onLater }: { onSwiped: () => void; onLate
         StyleSheet.absoluteFill,
         styles.scrim,
         {
-          backgroundColor: theme.scheme === 'light' ? 'rgba(31,22,16,0.45)' : 'rgba(0,0,0,0.6)',
+          backgroundColor: theme.scheme === 'light' ? 'rgba(23,48,42,0.45)' : 'rgba(0,0,0,0.6)',
           opacity: enter,
         },
       ]}
@@ -118,7 +118,7 @@ export function SwipeCoach({ onSwiped, onLater }: { onSwiped: () => void; onLate
 const styles = StyleSheet.create({
   scrim: { justifyContent: 'center', paddingHorizontal: 26, zIndex: 10 },
   card: {
-    borderRadius: 20,
+    borderRadius: 10,
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 22,
     paddingVertical: 26,
@@ -127,7 +127,7 @@ const styles = StyleSheet.create({
   iconTile: {
     width: 56,
     height: 56,
-    borderRadius: 18,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
@@ -138,7 +138,7 @@ const styles = StyleSheet.create({
     marginTop: 20,
     height: 44,
     alignSelf: 'stretch',
-    borderRadius: 22,
+    borderRadius: 6,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

@@ -3,9 +3,8 @@ import { type StyleProp, StyleSheet, TextInput, type TextStyle } from 'react-nat
 
 import { useTheme } from '@/lib/theme/theme';
 
-/// A themed text input. Android draws a warm-bordered white field (radius 10);
-/// iOS draws a flat grouped-card field (radius 18, no border). Both use 17px
-/// system/Manrope body text, matching the Ember handoff.
+/// The existing native input in the shared paper/ink treatment. Font size,
+/// multiline behavior and platform insets remain unchanged.
 export function TextField({
   style,
   multiline,
@@ -20,8 +19,8 @@ export function TextField({
         theme.isIOS ? styles.ios : styles.android,
         {
           color: theme.text,
-          backgroundColor: theme.card,
-          borderColor: theme.cardBorder,
+          backgroundColor: theme.fill,
+          borderColor: theme.separator,
         },
         theme.font.body,
         multiline && styles.multiline,
@@ -35,13 +34,13 @@ export function TextField({
 const styles = StyleSheet.create({
   android: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 10,
+    borderRadius: 6,
     paddingHorizontal: 12,
     paddingVertical: 12,
     fontSize: 17,
   },
   ios: {
-    borderRadius: 18,
+    borderRadius: 6,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 17,

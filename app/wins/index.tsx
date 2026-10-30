@@ -260,7 +260,7 @@ const styles = StyleSheet.create({
   emptyHero: { fontSize: 15, lineHeight: 21, marginTop: 8, marginBottom: 16 },
 
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
-  chip: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 999, paddingVertical: 7, paddingHorizontal: 14 },
+  chip: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 6, paddingVertical: 7, paddingHorizontal: 14 },
   chipText: { fontSize: 14 },
 
   input: { marginBottom: 12 },

@@ -25,11 +25,12 @@ export function DayTitleLink({ label }: { label: string }) {
     >
       <Text
         numberOfLines={1}
-        style={
+        style={[
           theme.isIOS
-            ? { color: theme.text, fontSize: 17, fontWeight: '600' }
-            : { color: theme.text, fontSize: 20, fontFamily: 'GolosText_600SemiBold' }
-        }
+            ? { color: theme.text, fontSize: 17 }
+            : { color: theme.text, fontSize: 20 },
+          theme.font.heading,
+        ]}
       >
         {label}
       </Text>

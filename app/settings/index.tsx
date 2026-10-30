@@ -249,7 +249,7 @@ export default function SettingsScreen() {
   const encrypted = db != null && getDbDriver() === 'op-sqlite';
   const coralTile = theme.primarySoft;
   const amberTile = theme.accentSoft;
-  const neutralTile = theme.scheme === 'light' ? '#EFE6E0' : '#2C2622';
+  const neutralTile = theme.fill;
 
   // «Данные и приватность» — the scattered legal / storage / backup rows folded
   // into one grouped list on the shared ListGroup (same workhorse as «Ещё»).
@@ -601,7 +601,7 @@ const styles = StyleSheet.create({
   timeText: { fontSize: 15 },
   timeAddRow: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   timeInput: { flex: 1 },
-  timeAddBtn: { borderWidth: 1.5, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 12 },
+  timeAddBtn: { borderWidth: 1.5, borderRadius: 6, paddingHorizontal: 18, paddingVertical: 12 },
   timeAddText: { fontSize: 14 },
   note: { fontSize: 11, fontStyle: 'italic', marginTop: 8, lineHeight: 16, marginHorizontal: 4 },
   toggleRow: {
@@ -614,7 +614,7 @@ const styles = StyleSheet.create({
   },
   toggleLabel: { fontSize: 14, flex: 1, paddingRight: 12 },
   segment: { flexDirection: 'row', gap: 8 },
-  segmentBtn: { flex: 1, borderWidth: 1.5, borderRadius: 12, paddingVertical: 11, alignItems: 'center' },
+  segmentBtn: { flex: 1, borderWidth: 1.5, borderRadius: 6, paddingVertical: 11, alignItems: 'center' },
   segmentText: { fontSize: 14 },
   save: { marginTop: 20 },
   buildInfo: { fontSize: 11, textAlign: 'center', marginTop: 14, marginBottom: 4 },

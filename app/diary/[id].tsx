@@ -188,7 +188,7 @@ function formatDate(d: Date): string {
 const styles = StyleSheet.create({
   date: { fontSize: 12, marginTop: 4, marginBottom: 12, marginHorizontal: 4 },
   edit: { marginTop: 16 },
-  deleteBtn: { borderWidth: 1.5, borderRadius: 999, paddingVertical: 12, alignItems: 'center', marginTop: 10 },
+  deleteBtn: { borderWidth: 1.5, borderRadius: 6, paddingVertical: 12, alignItems: 'center', marginTop: 10 },
   deleteText: { fontSize: 15 },
   shiftHero: { alignItems: 'center', paddingBottom: 16, marginBottom: 4, borderBottomWidth: StyleSheet.hairlineWidth },
   shiftRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },

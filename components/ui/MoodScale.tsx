@@ -6,8 +6,8 @@ import { DUR, EASE_OUT, useReducedMotion } from '@/lib/theme/motion';
 import { type Theme, useTheme } from '@/lib/theme/theme';
 
 /// The 0–10 mood picker. Android draws a tight space-between row of small cool
-/// pills with the selected value enlarged into a red disc; iOS draws a wrapped
-/// grid of 40px neutral-fill pills with the selected one red. Tapping a value
+/// pills with the selected value enlarged into a blue disc; iOS draws a wrapped
+/// grid of 40px neutral-fill pills with the selected one blue. Tapping a value
 /// calls `onPick`. When `selected` is set it stays highlighted (Home shows the
 /// latest check-in; the Mood screen re-highlights after a tap).
 ///
@@ -32,7 +32,7 @@ export function MoodScale({
   disabled?: boolean;
   /// 'compact' — the inline row on Home (small circles, space-between).
   /// 'grid' — the dedicated Mood screen (44px wrapped tiles; Android squares
-  /// with a red glow when active, iOS filled circles).
+  /// with a blue fill when active, iOS filled tiles).
   variant?: 'compact' | 'grid';
 }) {
   const theme = useTheme();
@@ -140,10 +140,8 @@ function MoodPill({
         style={[
           base,
           grid && !theme.isIOS && !active && { borderWidth: 1, borderColor: theme.separator },
-          active && grid && !theme.isIOS && glow,
           {
             backgroundColor: active ? theme.primary : inactiveBg,
-            shadowColor: theme.primary,
             transform: [{ scale: Animated.multiply(press, grow) }],
           },
         ]}
@@ -162,13 +160,6 @@ function MoodPill({
   );
 }
 
-const glow = {
-  shadowOpacity: 0.4,
-  shadowRadius: 14,
-  shadowOffset: { width: 0, height: 6 },
-  elevation: 3,
-};
-
 const styles = StyleSheet.create({
   androidRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   androidPill: { width: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
@@ -180,7 +171,7 @@ const styles = StyleSheet.create({
   iosLabel: { fontSize: 17 },
 
   gridRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  gridSquare: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  gridCircle: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  gridSquare: { width: 44, height: 44, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
+  gridCircle: { width: 44, height: 44, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
   gridLabel: { fontSize: 16 },
 });

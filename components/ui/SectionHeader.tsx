@@ -2,9 +2,7 @@ import { StyleSheet, Text } from 'react-native';
 
 import { useTheme } from '@/lib/theme/theme';
 
-/// A section eyebrow above a group of cards/rows. Android renders it as a warm
-/// `labelCaps` Manrope-bold caps label (UI_HANDOFF §2/§8); iOS as a grouped-list
-/// header (uppercase secondaryLabel, indented to the card inset).
+/// Existing section labels, with restrained tracking and shared secondary ink.
 export function SectionHeader({ children }: { children: string }) {
   const theme = useTheme();
   return (
@@ -23,7 +21,7 @@ export function SectionHeader({ children }: { children: string }) {
 const styles = StyleSheet.create({
   android: {
     fontSize: 12,
-    letterSpacing: 1.44,
+    letterSpacing: 0.6,
     marginTop: 18,
     marginBottom: 10,
   },

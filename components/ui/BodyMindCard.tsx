@@ -8,8 +8,7 @@ import { type Theme, useTheme } from '@/lib/theme/theme';
 import { Sparkline } from './Sparkline';
 
 /// The editorial Body↔Mind hero — the product's bridge motif, living on the
-/// Mind pane (/mood). Android paints it on a soft blueprint gradient; iOS uses
-/// a flat grouped card.
+/// Mind pane (/mood). Both platforms use the flat shared paper surface.
 ///
 /// PRESENTATIONAL ONLY — the caller resolves the BodyMindResult into localized
 /// strings. When `accent` is present (a real finding) the body/mind columns and
@@ -156,17 +155,17 @@ function Column({
 }
 
 const styles = StyleSheet.create({
-  androidCard: { borderRadius: 26, padding: 20, borderWidth: 1 },
-  iosCard: { borderRadius: 18, padding: 18 },
+  androidCard: { borderRadius: 12, padding: 20, borderWidth: 1 },
+  iosCard: { borderRadius: 12, padding: 18 },
 
   eyebrow: { fontSize: 12 },
-  eyebrowAndroid: { letterSpacing: 1.7, textAlign: 'center' },
+  eyebrowAndroid: { letterSpacing: 0.6, textAlign: 'center' },
   eyebrowIOS: { letterSpacing: -0.08, fontWeight: '400' },
 
   columns: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 6, marginTop: 18 },
   column: { width: 78, alignItems: 'center' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 18 },
-  tile: { width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  tile: { width: 52, height: 52, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   colLabel: { fontSize: 11, marginTop: 8 },
   colValue: { fontSize: 16, marginTop: 2 },
   accent: { fontSize: 32, lineHeight: 33, letterSpacing: -0.6 },

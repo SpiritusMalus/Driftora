@@ -144,7 +144,7 @@ export function Onboarding({ children }: { children: ReactNode }) {
 const styles = StyleSheet.create({
   fill: { flex: 1, paddingHorizontal: 26, justifyContent: 'space-between' },
   body: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  iconTile: { width: 72, height: 72, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginBottom: 28 },
+  iconTile: { width: 72, height: 72, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginBottom: 28 },
   title: { fontSize: 25, lineHeight: 31, textAlign: 'center', marginBottom: 14 },
   lead: { fontSize: 16, lineHeight: 24, textAlign: 'center' },
   footer: { gap: 18, alignItems: 'center' },

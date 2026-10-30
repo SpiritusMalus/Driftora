@@ -723,7 +723,7 @@ const styles = StyleSheet.create({
   skip: { fontSize: 14, marginTop: 14, textAlign: 'center', paddingVertical: 4 },
   option: {
     borderWidth: 1.5,
-    borderRadius: 14,
+    borderRadius: 10,
     paddingHorizontal: 14,
     paddingVertical: 12,
     marginBottom: 8,
@@ -739,7 +739,7 @@ const styles = StyleSheet.create({
   heroKcal: { fontSize: 40, lineHeight: 44 },
   heroUnit: { fontSize: 14 },
   macroRow: { flexDirection: 'row', gap: 8, marginTop: 16 },
-  macroTile: { flex: 1, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 4, alignItems: 'center' },
+  macroTile: { flex: 1, borderRadius: 6, paddingVertical: 8, paddingHorizontal: 4, alignItems: 'center' },
   macroLabel: { fontSize: 11 },
   macroValue: { fontSize: 15, marginTop: 2 },
   appliedLine: { fontSize: 13, marginTop: 12 },

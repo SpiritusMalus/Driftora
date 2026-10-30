@@ -11,8 +11,7 @@ export interface RowSpec {
   /// Optional — icon-less rows (e.g. a date→value history line) drop the tile
   /// and inset their separator to the row edge.
   icon?: IoniconName;
-  /// Brand color for the glyph. On Android it tints the glyph inside a soft
-  /// tile; on iOS it fills a small rounded square with a white glyph.
+  /// Brand color for the glyph on a quiet neutral tile.
   tint?: string;
   /// Android tile background. Defaults to the theme's soft cream tint.
   iconBg?: string;
@@ -24,7 +23,7 @@ export interface RowSpec {
 }
 
 /// A list of icon rows. iOS renders one inset grouped card with 0.5px hairline
-/// separators; Android renders each row as its own softly-shadowed card. This is
+/// separators; Android keeps its stacked rows with a flat lower rule. This is
 /// the workhorse for the Home feeders, the "More" menu, and settings groups.
 export function ListGroup({ rows }: { rows: RowSpec[] }) {
   const theme = useTheme();
@@ -59,8 +58,8 @@ function Row({ spec, theme, last }: { spec: RowSpec; theme: Theme; last: boolean
   const inner = theme.isIOS ? (
     <>
       {spec.icon ? (
-        <View style={[styles.iosIcon, { backgroundColor: tint }]}>
-          <Ionicons name={spec.icon} size={17} color="#FFFFFF" />
+        <View style={[styles.iosIcon, { backgroundColor: spec.iconBg ?? theme.iconBg }]}>
+          <Ionicons name={spec.icon} size={17} color={tint} />
         </View>
       ) : null}
       <View style={styles.body}>
@@ -104,7 +103,7 @@ function Row({ spec, theme, last }: { spec: RowSpec; theme: Theme; last: boolean
 
   const rowStyle = theme.isIOS
     ? styles.iosRow
-    : [styles.androidRow, { backgroundColor: theme.card }, shadow];
+    : [styles.androidRow, { backgroundColor: theme.card, borderColor: theme.separator }];
 
   if (spec.onPress) {
     return (
@@ -119,27 +118,19 @@ function Row({ spec, theme, last }: { spec: RowSpec; theme: Theme; last: boolean
   return <View style={rowStyle}>{inner}</View>;
 }
 
-const shadow = {
-  shadowColor: '#14212E',
-  shadowOpacity: 0.05,
-  shadowRadius: 16,
-  shadowOffset: { width: 0, height: 6 },
-  elevation: 1,
-};
-
 const styles = StyleSheet.create({
   // iOS grouped card.
-  iosCard: { borderRadius: 18, overflow: 'hidden', marginHorizontal: 0 },
+  iosCard: { borderRadius: 10, overflow: 'hidden', marginHorizontal: 0 },
   iosRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 13, position: 'relative' },
-  iosIcon: { width: 30, height: 30, borderRadius: 7, alignItems: 'center', justifyContent: 'center' },
+  iosIcon: { width: 30, height: 30, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
   iosTitle: { fontSize: 17 },
   iosSubtitle: { fontSize: 13, marginTop: 1 },
   iosSeparator: { position: 'absolute', left: 58, right: 0, bottom: 0, height: StyleSheet.hairlineWidth },
 
-  // Android floating cards.
+  // Android keeps the same stacked row layout.
   androidStack: { gap: 10 },
-  androidRow: { flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14 },
-  androidIcon: { width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  androidRow: { flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 10, borderBottomWidth: StyleSheet.hairlineWidth, paddingHorizontal: 16, paddingVertical: 14 },
+  androidIcon: { width: 42, height: 42, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   androidTitle: { fontSize: 15 },
   androidSubtitle: { fontSize: 13, marginTop: 1, lineHeight: 18 },
 

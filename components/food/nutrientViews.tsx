@@ -152,7 +152,7 @@ function fmtMicro(row: MicroRow, v: number): string {
 }
 
 const styles = StyleSheet.create({
-  badge: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
+  badge: { borderWidth: 1, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 },
   badgeText: { fontSize: 11 },
   altWrap: { marginTop: 8 },
   altToggle: { fontSize: 13 },

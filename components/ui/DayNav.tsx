@@ -10,7 +10,7 @@ import { useTheme } from '@/lib/theme/theme';
 /// range keeps the arrows from reading as an infinite archive.
 export const DAY_NAV_BACK_DAYS = 30;
 
-/// «‹ Сегодня ›» — the day a screen is showing AND writing to. One steel track
+/// «‹ Сегодня ›» — the day a screen is showing AND writing to. One quiet track
 /// with the two arrows inside, matching the workout card's mode switcher rather
 /// than inventing a third control shape.
 ///
@@ -79,8 +79,8 @@ export function DayNav({
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', borderRadius: 12, padding: 3 },
-  arrow: { width: 40, height: 34, alignItems: 'center', justifyContent: 'center', borderRadius: 9 },
+  row: { flexDirection: 'row', alignItems: 'center', borderRadius: 6, padding: 3 },
+  arrow: { width: 40, height: 34, alignItems: 'center', justifyContent: 'center', borderRadius: 6 },
   label: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 7 },
   labelText: { fontSize: 14 },
 });

@@ -7,8 +7,8 @@ import { useTheme } from '@/lib/theme/theme';
 
 /// The pinned "tell or type what you ate" bar at the bottom of Home — a pencil
 /// glyph, a muted placeholder, and a circular mic. Tapping the bar opens the
-/// food log for typing; tapping the mic opens it primed for voice. Android gives
-/// the mic a coral gradient and glow; iOS uses a flat coral disc.
+/// food log for typing; tapping the mic opens it primed for voice. Both keep
+/// the same circular microphone with the flat blue action fill.
 export function FoodBar({
   placeholder,
   onPressText,
@@ -20,8 +20,7 @@ export function FoodBar({
 }) {
   const theme = useTheme();
   const { t } = useTranslation();
-  // Icon sits on the coral disc/gradient — same surface as PrimaryButton, so it
-  // takes the same on-primary token (dark ink on the lighter dark-mode coral).
+  // The microphone takes the same readable on-primary ink as PrimaryButton.
   const mic = (
     <Ionicons name="mic-outline" size={22} color={theme.onPrimary} />
   );
@@ -37,7 +36,6 @@ export function FoodBar({
           borderColor: theme.cardBorder,
           opacity: pressed ? 0.9 : 1,
         },
-        !theme.isIOS && { shadowColor: '#14212E' },
       ]}
     >
       <Ionicons name="create-outline" size={18} color={theme.tertiary} />
@@ -58,7 +56,7 @@ export function FoodBar({
             colors={theme.primaryGradient}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
-            style={[styles.micAndroid, { shadowColor: theme.primary }]}
+            style={styles.micAndroid}
           >
             {mic}
           </LinearGradient>
@@ -78,19 +76,11 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   barAndroid: {
-    borderRadius: 20,
+    borderRadius: 10,
     borderWidth: StyleSheet.hairlineWidth,
-    shadowOpacity: 0.16,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 6,
   },
   barIOS: {
-    borderRadius: 22,
-    shadowOpacity: 0.12,
-    shadowColor: '#14212E',
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 10 },
+    borderRadius: 10,
   },
   placeholder: { flex: 1, fontSize: 14 },
   micAndroid: {
@@ -99,10 +89,6 @@ const styles = StyleSheet.create({
     borderRadius: 23,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 4,
   },
   micIOS: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
 });

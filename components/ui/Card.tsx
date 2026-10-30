@@ -3,8 +3,8 @@ import { Pressable, type StyleProp, StyleSheet, View, type ViewStyle } from 'rea
 
 import { useTheme } from '@/lib/theme/theme';
 
-/// A plain white content card. Android gets a warm hairline border and a soft
-/// elevation; iOS gets a flat grouped-list card (no border, no shadow). Used for
+/// A flat content surface. Android keeps a paper hairline border; iOS keeps
+/// its grouped-list surface (no border). Used for
 /// inputs, list items, and any standalone surface that isn't a ListGroup row.
 /// Pass `onPress` to make the whole card a tap target.
 export function Card({
@@ -26,7 +26,6 @@ export function Card({
       backgroundColor: theme.card,
       borderColor: theme.cardBorder,
     },
-    !theme.isIOS && shadow,
     style,
   ];
 
@@ -40,16 +39,8 @@ export function Card({
   return <View style={cardStyle}>{children}</View>;
 }
 
-const shadow = {
-  shadowColor: '#14212E',
-  shadowOpacity: 0.05,
-  shadowRadius: 16,
-  shadowOffset: { width: 0, height: 6 },
-  elevation: 1,
-};
-
 const styles = StyleSheet.create({
-  android: { borderRadius: 20, borderWidth: StyleSheet.hairlineWidth },
-  ios: { borderRadius: 18 },
+  android: { borderRadius: 10, borderWidth: StyleSheet.hairlineWidth },
+  ios: { borderRadius: 10 },
   padded: { padding: 16 },
 });

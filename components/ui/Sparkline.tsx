@@ -7,8 +7,8 @@ const AnimatedPath = Animated.createAnimatedComponent(Path);
 const DASH = 160;
 
 /// The upward arc bridging Body→Mind in the hero — the semantic centre of the
-/// product, not decoration (UI_HANDOFF §4.2/§8, HERO_BRIDGE_SPEC). A coral→amber
-/// gradient curve rises from a coral dot (body) to an amber dot (mind), exact V2
+/// product, not decoration (UI_HANDOFF §4.2/§8, HERO_BRIDGE_SPEC). A flat action
+/// ink curve links the body and mind dots, preserving the exact V2
 /// geometry, and draws itself in left-to-right once over ~1.6s on mount.
 export function Sparkline({ coral, amber }: { coral: string; amber: string }) {
   const progress = useRef(new Animated.Value(0)).current;
@@ -33,7 +33,7 @@ export function Sparkline({ coral, amber }: { coral: string; amber: string }) {
       <Defs>
         <LinearGradient id="bridge" x1="0" y1="0" x2="132" y2="0" gradientUnits="userSpaceOnUse">
           <Stop offset="0" stopColor={coral} />
-          <Stop offset="1" stopColor={amber} />
+          <Stop offset="1" stopColor={coral} />
         </LinearGradient>
       </Defs>
       <AnimatedPath

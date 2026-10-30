@@ -638,6 +638,6 @@ const styles = StyleSheet.create({
   setupCard: { marginTop: 12 },
   pauseTitle: { fontSize: 16 },
   pauseBody: { fontSize: 13, marginTop: 6, lineHeight: 18 },
-  pauseBtn: { alignSelf: 'flex-start', borderRadius: 999, paddingHorizontal: 18, paddingVertical: 10, marginTop: 12 },
+  pauseBtn: { alignSelf: 'flex-start', borderRadius: 6, paddingHorizontal: 18, paddingVertical: 10, marginTop: 12 },
   pauseBtnText: { fontSize: 14 },
 });

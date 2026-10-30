@@ -1868,9 +1868,9 @@ const styles = StyleSheet.create({
   // Capture-method segmented control (mirrors the workout screen). One method
   // visible at a time; inactive segments on `iconBg` so they read on dark.
   segments: { flexDirection: 'row', gap: 6, marginBottom: 12 },
-  segment: { flex: 1, paddingVertical: 9, borderRadius: 10, borderWidth: 1, alignItems: 'center' },
+  segment: { flex: 1, paddingVertical: 9, borderRadius: 6, borderWidth: 1, alignItems: 'center' },
   segmentText: { fontSize: 13 },
-  micButton: { borderRadius: 999, borderWidth: 1.5, paddingVertical: 12, alignItems: 'center', marginBottom: 8 },
+  micButton: { borderRadius: 6, borderWidth: 1.5, paddingVertical: 12, alignItems: 'center', marginBottom: 8 },
   photoRow: { flexDirection: 'row', gap: 8 },
   photoButton: { flex: 1, paddingHorizontal: 12 },
   micText: { fontSize: 15 },
@@ -1911,11 +1911,11 @@ const styles = StyleSheet.create({
   quickGroup: { marginBottom: 14 },
   quickLabel: { fontSize: 12, letterSpacing: 1.44, marginBottom: 8 },
   quickWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 9 },
+  chip: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 6, paddingHorizontal: 14, paddingVertical: 9 },
   chipText: { fontSize: 14, maxWidth: 240 },
   chipMacro: { fontSize: 11, marginTop: 2 },
   baseToggle: { fontSize: 14, marginBottom: 8 },
   baseRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
   baseInput: { flex: 1 },
-  baseBtn: { borderWidth: 1, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 14 },
+  baseBtn: { borderWidth: 1, borderRadius: 6, paddingVertical: 10, paddingHorizontal: 14 },
 });

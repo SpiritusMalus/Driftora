@@ -140,7 +140,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 16,
-    borderRadius: 14,
+    borderRadius: 10,
     borderWidth: StyleSheet.hairlineWidth,
   },
   docLabel: { fontSize: 15, flex: 1, paddingRight: 12 },

@@ -214,7 +214,7 @@ export default function MoodScreen() {
           key: 'sleep',
           icon: 'moon-outline',
           tint: theme.primary,
-          iconBg: theme.scheme === 'light' ? '#E9E2FA' : '#272138',
+          iconBg: theme.primarySoft,
           title: t('home.feeders.sleep'),
           subtitle: `${sleepHours(sleepMin)} ${t('units.h')} — ${t(`home.sleep.meaning.${sleepBand(sleepMin)}`)}`,
         }
