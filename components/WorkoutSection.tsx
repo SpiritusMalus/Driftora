@@ -49,6 +49,7 @@ import { deleteTempFile } from '@/lib/core/services/tempFiles';
 import {
   getWorkoutParser,
   isWorkoutParserConfigured,
+  WorkoutParseError,
   type ParsedWorkout,
 } from '@/lib/core/services/workoutParser';
 import { formatDayTitle, localDayKey, parseDayKey } from '@/lib/i18n/formatDay';
@@ -431,9 +432,15 @@ export function WorkoutSection({
     try {
       const parser = getWorkoutParser(consentNow);
       await saveParsed(parser ? await parser.parse(text) : []);
+    } catch (error) {
+      showParseFailure(error);
     } finally {
       setParsing(false);
     }
+  }
+
+  function showParseFailure(error: unknown) {
+    setParseNote(t(error instanceof WorkoutParseError ? `workouts.parseErrors.${error.reason}` : 'workouts.saveFailed'));
   }
 
   async function onDescribe() {
@@ -487,6 +494,8 @@ export function WorkoutSection({
     try {
       const parser = getWorkoutParser(consentNow);
       await saveParsed(parser ? await parser.parseAudio(clip) : []);
+    } catch (error) {
+      showParseFailure(error);
     } finally {
       setParsing(false);
       // The recorded m4a was only ever needed for the upload — clean it up on
@@ -553,6 +562,8 @@ export function WorkoutSection({
         return;
       }
       await saveParsed(parsed.workouts);
+    } catch (error) {
+      showParseFailure(error);
     } finally {
       setParsing(false);
       // Same cleanup as the voice path, for the downscaled screenshot JPEG.

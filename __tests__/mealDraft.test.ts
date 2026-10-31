@@ -2,6 +2,7 @@ import { describe, expect, it } from '@jest/globals';
 
 import type { MealDraft, NutritionItem, Per100 } from '@/lib/core/services/foodParser';
 import {
+  canSaveMealDraft,
   recomputeDraft,
   removeDraftItem,
   scaleToGrams,
@@ -27,6 +28,16 @@ function item(over: Partial<NutritionItem> = {}): NutritionItem {
 }
 
 describe('mealDraft', () => {
+  it('requires a nonempty draft with known nutrition for every listed item before saving', () => {
+    const known = recomputeDraft('US', [item()]);
+    const miss = item({ per100: { ...chicken, source: 'estimate' } });
+    expect(canSaveMealDraft(null)).toBe(false);
+    expect(canSaveMealDraft(recomputeDraft('US', []))).toBe(false);
+    expect(canSaveMealDraft(recomputeDraft('US', [miss]))).toBe(false);
+    expect(canSaveMealDraft(recomputeDraft('US', [item(), miss]))).toBe(false);
+    expect(canSaveMealDraft(known)).toBe(true);
+  });
+
   it('scaleToGrams scales per-100g and rounds minerals to mg', () => {
     const s = scaleToGrams(chicken, 150);
     expect(s.kcal).toBe(248);

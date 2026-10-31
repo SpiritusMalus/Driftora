@@ -474,9 +474,11 @@ export default function FoodDayScreen() {
                   <Text style={[styles.mealName, { color: theme.text }, theme.font.bodySemiBold]}>
                     {t(`food.meal.${group.type}`)}
                   </Text>
-                  <Text style={[styles.mealSum, { color: theme.subtle }, theme.font.body]}>
-                    {mealKcal} {t('units.kcal')}
-                  </Text>
+                  {!hideCalories ? (
+                    <Text style={[styles.mealSum, { color: theme.subtle }, theme.font.body]}>
+                      {mealKcal} {t('units.kcal')}
+                    </Text>
+                  ) : null}
                 </View>
                 <Text style={[styles.mealMacros, { color: theme.subtle }, theme.font.body]}>
                   {t('macros.protShort')} {mealProt} · {t('macros.fatShort')} {mealFat} ·{' '}
@@ -552,10 +554,12 @@ export default function FoodDayScreen() {
                           : shortMealTitle(e.rawText)
                         : t('food.untitled')}
                     </Text>
-                    <View style={[styles.rowEnergy, fontScale > 1.5 && styles.rowEnergyLarge]}>
-                      <Text style={[styles.rowKcal, { color: theme.text }, theme.font.bodyMedium]}>{Math.round(e.kcal)}</Text>
-                      <Text style={[styles.rowKcalUnit, { color: theme.subtle }, theme.font.body]}>{t('units.kcal')}</Text>
-                    </View>
+                    {!hideCalories ? (
+                      <View style={[styles.rowEnergy, fontScale > 1.5 && styles.rowEnergyLarge]}>
+                        <Text style={[styles.rowKcal, { color: theme.text }, theme.font.bodyMedium]}>{Math.round(e.kcal)}</Text>
+                        <Text style={[styles.rowKcalUnit, { color: theme.subtle }, theme.font.body]}>{t('units.kcal')}</Text>
+                      </View>
+                    ) : null}
                   </View>
                   <View style={styles.rowMacrosLine}>
                     <Text style={[styles.rowMacros, { color: theme.subtle }, theme.font.body]}>
@@ -604,7 +608,7 @@ export default function FoodDayScreen() {
                     </Pressable>
                   </View>
                   <Collapsible open={openIds.has(e.id)}>
-                    <EntryItems items={itemsByEntry.get(e.id) ?? []} theme={theme} />
+                    <EntryItems items={itemsByEntry.get(e.id) ?? []} theme={theme} hideCalories={hideCalories} />
                   </Collapsible>
                     </View>
                   </View>
@@ -810,7 +814,7 @@ function DayProgress({
 /// logged as a single figure says so instead of rendering an empty hole.
 /// Editing lives on the row header's always-visible pencil — a link down here
 /// proved easy to miss (device feedback 2026-08-17, second pass).
-function EntryItems({ items, theme }: { items: FoodItem[]; theme: Theme }) {
+function EntryItems({ items, theme, hideCalories }: { items: FoodItem[]; theme: Theme; hideCalories: boolean }) {
   const { t } = useTranslation();
   return (
     <View style={[styles.itemsBody, { borderTopColor: theme.separator }]}>
@@ -831,7 +835,8 @@ function EntryItems({ items, theme }: { items: FoodItem[]; theme: Theme }) {
               ) : null}
             </Text>
             <Text style={[styles.itemMacros, { color: theme.subtle }, theme.font.body]}>
-              {Math.round(it.kcal)} {t('units.kcal')} · {t('macros.protShort')} {Math.round(it.proteinG)} ·{' '}
+              {!hideCalories ? `${Math.round(it.kcal)} ${t('units.kcal')} · ` : null}
+              {t('macros.protShort')} {Math.round(it.proteinG)} ·{' '}
               {t('macros.fatShort')} {Math.round(it.fatG)} · {t('macros.carbShort')} {Math.round(it.carbG)}{' '}
               {t('units.g')}
             </Text>

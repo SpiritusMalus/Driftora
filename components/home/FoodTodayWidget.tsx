@@ -8,7 +8,7 @@ import { formatInt } from '@/lib/core/format';
 import { DUR, EASE_OUT, useReducedMotion } from '@/lib/theme/motion';
 import { useTheme } from '@/lib/theme/theme';
 
-/// Home widget: today's food at a glance — kcal vs target + a compact КБЖУ row —
+/// Home widget: today's food at a glance — kcal (or protein) vs target + macros —
 /// tapping opens the full food day («Еда за сегодня»). This is the food entry
 /// point among the Home widgets (previously food was only reachable via the
 /// bottom bar); the bar stays for quick voice/text logging.
@@ -20,6 +20,7 @@ export function FoodTodayWidget({
   targetKcal,
   targetApprox = false,
   movementHint,
+  hideCalories = false,
   prot,
   targetProt,
   fat,
@@ -37,6 +38,7 @@ export function FoodTodayWidget({
   /// movement is logged yet, so the resting number never reads as the day's
   /// ceiling (device feedback 2026-07-10). Null hides it.
   movementHint?: string | null;
+  hideCalories?: boolean;
   prot: number;
   targetProt: number;
   fat: number;
@@ -52,7 +54,8 @@ export function FoodTodayWidget({
 
   // «Печать» нового значения: fade the figure back in when the rounded total
   // actually changes (skip the mount and Reduce Motion — value lands instantly).
-  const shown = Math.round(kcal);
+  const shown = Math.round(hideCalories ? prot : kcal);
+  const shownTarget = hideCalories ? targetProt : targetKcal;
   const prevShown = useRef(shown);
   const fade = useRef(new Animated.Value(1)).current;
   useEffect(() => {
@@ -93,25 +96,28 @@ export function FoodTodayWidget({
           {formatInt(shown)}
         </Animated.Text>
         <View style={styles.budgetUnit}>
-          <Text style={[styles.kcalUnit, { color: theme.text }, theme.font.body]}>{t('units.kcal')}</Text>
+          <Text style={[styles.kcalUnit, { color: theme.text }, theme.font.body]}>
+            {hideCalories ? t('macros.protein') : t('units.kcal')}
+          </Text>
           <Text style={[styles.kcalTarget, { color: theme.subtle }, theme.font.body]}>
-            / {targetKcal > 0 ? (targetApprox ? '≈' : '') + formatInt(targetKcal) : '—'}
+            / {shownTarget > 0 ? (!hideCalories && targetApprox ? '≈' : '') + formatInt(shownTarget) : '—'}
+            {hideCalories ? ` ${t('units.g')}` : ''}
           </Text>
         </View>
         <View style={styles.openDay}>
           <Ionicons name="arrow-up-outline" size={22} color={theme.text} style={styles.openDayArrow} />
         </View>
       </View>
-      {targetKcal > 0 ? (
+      {shownTarget > 0 ? (
         <View style={styles.kcalBar}>
-          {/* Goal scale: the day budget filled = the bar filled. The old
+          {/* Goal scale: the selected nutrient target filled = the bar filled. The old
               headroom scale (a micro-nutrient idiom) left ~40% of track past
               the tick, so a fully eaten day read as unfinished (device
               feedback 2026-08-17: «заполнил всё, а шкалы не адаптивные»). */}
-          <FillBar value={kcal} min={targetKcal} scale="goal" thickness={5} />
+          <FillBar value={hideCalories ? prot : kcal} min={shownTarget} scale="goal" thickness={5} />
         </View>
       ) : null}
-      {movementHint ? (
+      {!hideCalories && movementHint ? (
         <Text style={[styles.movementHint, { color: theme.subtle }, theme.font.body]}>{movementHint}</Text>
       ) : null}
 

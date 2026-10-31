@@ -72,6 +72,7 @@ export type ActivationFailure =
   | 'invalid_key' // the server does not recognise it — a typo, or someone else's
   | 'not_selling' // this deployment has no shop configured
   | 'no_install_id' // nothing to bind the purchase to yet (first seconds of a launch)
+  | 'unauthorized' // the server rejected the app's access, not the licence key
   | 'unreachable'; // network, timeout, or the store could not be reached
 
 export type ActivationResult = { ok: true; status: BillingStatus } | { ok: false; reason: ActivationFailure };
@@ -192,6 +193,7 @@ export async function activateLicense(db: AnyDb, rawKey: string): Promise<Activa
     body: JSON.stringify({ purchaseToken: key, productId: 'ai_subscription' }),
   });
   if (!res) return { ok: false, reason: 'unreachable' };
+  if (res.status === 401 || res.status === 403) return { ok: false, reason: 'unauthorized' };
   if (res.status === 402) return { ok: false, reason: 'invalid_key' };
   if (res.status === 503) {
     // Both "this deployment sells nothing" and "the store was unreachable" come
@@ -312,7 +314,7 @@ export async function fetchPlans(db: AnyDb): Promise<PlanList | null> {
   }
 }
 
-export type CheckoutFailure = 'unreachable' | 'not_selling' | 'email_required' | 'unknown_plan';
+export type CheckoutFailure = 'unreachable' | 'unauthorized' | 'not_selling' | 'email_required' | 'unknown_plan';
 
 export type CheckoutStart =
   | { ok: true; paymentId: string; confirmationUrl: string }
@@ -333,6 +335,7 @@ export async function startCheckout(
     }),
   });
   if (!res) return { ok: false, reason: 'unreachable' };
+  if (res.status === 401 || res.status === 403) return { ok: false, reason: 'unauthorized' };
 
   let body: Record<string, unknown> = {};
   try {

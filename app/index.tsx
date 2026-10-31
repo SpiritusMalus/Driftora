@@ -487,7 +487,7 @@ export default function HomeScreen() {
   // «шаги +N» already shows it there, so this would just duplicate it). Needs
   // steps above the resting baseline, so [stepsEarnedKcal] > 0 gates it.
   const stepsEstimateKcal =
-    !hasGoal && weightRow != null
+    !settings?.hideCalories && !hasGoal && weightRow != null
       ? stepsEarnedKcal(stepsOutsideWorkouts(steps ?? 0, workoutSteps), weightRow.weightKg)
       : 0;
   const stepsEstimateLine =
@@ -578,6 +578,7 @@ export default function HomeScreen() {
           targetKcal={foodTargetKcal}
           targetApprox={foodTargetApprox}
           movementHint={movementHint}
+          hideCalories={settings?.hideCalories ?? false}
           prot={totals.proteinG}
           targetProt={dayMacroTargets?.prot ?? 0}
           fat={totals.fatG}

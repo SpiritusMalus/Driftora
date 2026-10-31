@@ -5,6 +5,34 @@ import { StubFoodParser } from '@/lib/core/services/stubFoodParser';
 const parser = new StubFoodParser();
 
 describe('StubFoodParser', () => {
+  it.each([
+    ['banana 100 g', 100],
+    ['банан 100 г', 100],
+    ['100 grams banana', 100],
+    ['банан 125 граммов', 125],
+    ['banana 0.25 kg', 250],
+    ['банан 0,25 кг', 250],
+  ])('keeps the explicit mass in %s instead of treating it as a count', async (text, grams) => {
+    const draft = await parser.parse(text, 'RU');
+    expect(draft.items).toHaveLength(1);
+    expect(draft.items[0].grams).toBe(grams);
+    expect(draft.items[0].grams_source).toBe('confirmed');
+    expect(draft.items[0].name_ru).not.toContain('×');
+  });
+
+  it('retains explicit mass for unknown foods without inventing nutrition', async () => {
+    const draft = await parser.parse('dragonfruit 250 g', 'US');
+    expect(draft.items[0].grams).toBe(250);
+    expect(draft.items[0].per100.source).toBe('estimate');
+    expect(draft.totals.kcal).toBe(0);
+  });
+
+  it('still estimates portions for actual piece counts and ignores percentage numbers', async () => {
+    expect((await parser.parse('2 bananas', 'US')).items[0].grams).toBe(240);
+    expect((await parser.parse('три яйца', 'RU')).items[0].grams).toBe(150);
+    expect((await parser.parse('milk 2%', 'US')).items[0].grams).toBe(200);
+  });
+
   it('parses the canonical example into items with per-100g + scaled per item', async () => {
     const r = await parser.parse('омлет из трёх яиц и кофе с молоком', 'RU');
     expect(r.items.length).toBeGreaterThanOrEqual(2);

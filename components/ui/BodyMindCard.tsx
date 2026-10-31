@@ -1,6 +1,6 @@
 import type { Ionicons } from '@expo/vector-icons';
 import { type ComponentProps } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { type Theme, useTheme } from '@/lib/theme/theme';
 
@@ -38,6 +38,10 @@ export function BodyMindCard({
   compact?: boolean;
 }) {
   const theme = useTheme();
+  const { width, fontScale } = useWindowDimensions();
+  // Give each label/value pair a full row when scaled text would be squeezed
+  // into half a phone width. Keep the system font size and the complete values.
+  const stackColumns = width / Math.max(1, fontScale) < 300;
 
   const content = (
     <>
@@ -55,9 +59,9 @@ export function BodyMindCard({
       {caption && !compact ? (
         <Text style={[styles.caption, { color: theme.subtle }, theme.font.body]}>{caption}</Text>
       ) : null}
-      <View style={styles.columns}>
-        <Column theme={theme} label={bodyLabel} value={bodyValue} />
-        <Column theme={theme} label={mindLabel} value={mindValue} />
+      <View style={[styles.columns, stackColumns && styles.columnsStacked]}>
+        <Column theme={theme} label={bodyLabel} value={bodyValue} stacked={stackColumns} />
+        <Column theme={theme} label={mindLabel} value={mindValue} stacked={stackColumns} />
       </View>
     </>
   );
@@ -73,13 +77,15 @@ function Column({
   theme,
   label,
   value,
+  stacked,
 }: {
   theme: Theme;
   label: string;
   value: string;
+  stacked: boolean;
 }) {
   return (
-    <View style={[styles.column, { borderColor: theme.separator }]}>
+    <View style={[styles.column, stacked && styles.columnStacked, { borderColor: theme.separator }]}>
       <Text style={[styles.colLabel, { color: theme.subtle }, theme.font.body]}>{label}</Text>
       <Text
         style={[
@@ -101,7 +107,9 @@ const styles = StyleSheet.create({
   eyebrow: { flex: 1, fontSize: 18, lineHeight: 24, letterSpacing: -0.25 },
 
   columns: { flexDirection: 'row', gap: 16, marginTop: 16 },
+  columnsStacked: { flexDirection: 'column', gap: 0 },
   column: { flex: 1, minHeight: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth },
+  columnStacked: { flex: 0, width: '100%' },
   colLabel: { fontSize: 12, lineHeight: 17, flex: 1 },
   colValue: { fontSize: 17, lineHeight: 23, fontVariant: ['tabular-nums'] },
   accent: { fontSize: 20, lineHeight: 26, letterSpacing: -0.4, fontVariant: ['tabular-nums'] },

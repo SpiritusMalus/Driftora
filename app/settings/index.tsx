@@ -59,6 +59,7 @@ export default function SettingsScreen() {
   const [stepsGoal, setStepsGoal] = useState('7000');
   const [reminders, setReminders] = useState<string[]>([]);
   const [newTime, setNewTime] = useState('');
+  const [timeError, setTimeError] = useState(false);
   const [hideCalories, setHideCalories] = useState(false);
   const [llmDiaryAssist, setLlmDiaryAssist] = useState(false);
   const [paused, setPaused] = useState(false);
@@ -127,7 +128,12 @@ export default function SettingsScreen() {
 
   function addTime() {
     const v = newTime.trim();
-    if (!TIME_RE.test(v) || reminders.includes(v)) return;
+    if (!TIME_RE.test(v)) {
+      setTimeError(true);
+      return;
+    }
+    setTimeError(false);
+    if (reminders.includes(v)) return;
     setReminders([...reminders, v].sort());
     setNewTime('');
     dirty();
@@ -350,16 +356,21 @@ export default function SettingsScreen() {
       <View style={styles.timeAddRow}>
         <TextField
           value={newTime}
-          onChangeText={setNewTime}
+          onChangeText={(value) => { setNewTime(value); setTimeError(false); }}
           placeholder={t('settings.reminderAdd')}
           style={styles.timeInput}
         />
-        <Pressable onPress={addTime} style={({ pressed }) => [styles.timeAddBtn, { borderColor: theme.primary, opacity: pressed ? 0.6 : 1 }]}>
+        <Pressable onPress={addTime} accessibilityRole="button" accessibilityLabel={t('settings.reminderAddBtn')} style={({ pressed }) => [styles.timeAddBtn, { borderColor: theme.primary, opacity: pressed ? 0.6 : 1 }]}>
           <Text style={[styles.timeAddText, { color: theme.primary }, theme.font.bodySemiBold]}>
             {t('settings.reminderAddBtn')}
           </Text>
         </Pressable>
       </View>
+      {timeError ? (
+        <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={[styles.fieldError, { color: theme.accent }, theme.font.body]}>
+          {t('settings.reminderInvalid')}
+        </Text>
+      ) : null}
       <Note theme={theme}>{t('settings.remindersNote')}</Note>
       {notifDenied ? (
         <Pressable onPress={() => void Linking.openSettings()} hitSlop={6} accessibilityRole="button">
@@ -587,6 +598,7 @@ const styles = StyleSheet.create({
   heroLine: { fontSize: 20, lineHeight: 27 },
   field: { marginBottom: 12 },
   fieldLabel: { fontSize: 13, marginBottom: 6 },
+  fieldError: { fontSize: 13, lineHeight: 18, marginTop: 6 },
   groupLabel: { fontSize: 14, marginTop: 18, marginBottom: 8 },
   chipRow: { marginBottom: 4 },
   nextHint: { fontSize: 12, marginTop: 8, marginHorizontal: 4 },

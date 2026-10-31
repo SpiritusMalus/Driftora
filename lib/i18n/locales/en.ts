@@ -1,4 +1,5 @@
 export const en = {
+  common: { cancel: 'Cancel' },
   // Shown by the top-level crash net when a screen throws during render.
   errorBoundary: {
     title: 'Something went wrong',
@@ -459,7 +460,7 @@ export const en = {
     setsPlaceholder: 'e.g. 12',
     setsUnit: 'sets',
     setsCount: '{{count}} sets',
-    setsHint: 'No timing needed: we assume ≈3 min per set (work + rest) and add ≈10% — the body keeps burning after the effort too.',
+    setsHint: 'No timing needed: we assume ≈3 min per set (work + rest). Effort refines the estimate; there is no afterburn bonus.',
     // Strength effort → MET (light 3.5 · moderate 5.0 · heavy 6.0). The flat 3.5
     // undershot heavy lifting (device feedback).
     intensity: {
@@ -517,6 +518,12 @@ export const en = {
     parsing: 'Parsing…',
     parseAdded: 'Entries added: {{count}}. Check the time and burn.',
     parseNone: 'Couldn’t parse that. Refine it, or use the buttons above.',
+    parseErrors: {
+      network: 'Could not reach the parsing service. Check your connection and try again. You can use the buttons above.',
+      unauthorized: 'Parsing is unavailable in this app version. Update the app or contact support@family-pie.ru. The buttons above work without AI.',
+      service: 'The parsing service is unavailable right now. Try later or use the buttons above.',
+    },
+    saveFailed: 'Could not save the workout. Check the entry list before trying again.',
     parseDeclined: 'Free-text needs AI consent. The buttons above work offline.',
     // Voice note & fitness-tracker screenshot.
     voiceStart: 'Dictate the workout',
@@ -546,7 +553,7 @@ export const en = {
     noteToggle: 'How we count',
     // The eat-back line lives in `noteShort`, which stays visible above this — no
     // point repeating it word for word one line lower.
-    note: 'Burn is an estimate from type and duration; strength — from sets. Strength and interval work get ≈10% more: the body keeps burning above rest for a while after. A tracker number is saved as-is (“from tracker”). Details — in “How it works”.',
+    note: 'Burn is an estimate from type and duration; strength — from sets and effort. There is no afterburn bonus. A tracker number is saved as-is (“from tracker”). The budget takes 72% of the burn. Details — in “How it works”.',
     type: {
       walk: 'Walking',
       run: 'Running',
@@ -663,7 +670,7 @@ export const en = {
         mifflin: 'computed with the Mifflin–St Jeor formula',
         measured: 'computed from your own data: weight trend and log',
       },
-      maintenanceLine: 'Maintenance ≈ {{maintenance}} kcal — what it takes to hold your current weight. Not your target.',
+      maintenanceLine: 'Maintenance ≈ {{maintenance}} kcal — what it takes to hold your current weight.',
       deltaLine: {
         lose: 'Your target {{kcal}} kcal is {{pct}}% below maintenance: a calm deficit to lose without stress.',
         gain: 'Your target {{kcal}} kcal is {{pct}}% above maintenance: a small surplus to gain.',
@@ -743,7 +750,9 @@ export const en = {
     },
     targets: {
       savedTick: 'Saved ✓',
-      note: 'Saves itself. These targets show up on Food; hidden while you are on a break.',
+      note: 'Saves itself. These targets show up on Food; hidden while you are on a break. 0 kcal turns off the daily goal; your entries stay.',
+      saveFailed: 'Could not save your changes. Try again.',
+      retry: 'Retry saving',
     },
     formula: {
       sex: 'Sex',
@@ -922,6 +931,7 @@ export const en = {
     dbUnavailable: 'Mood is available in a device dev build.',
   },
   food: {
+    completeNutritionBeforeSave: 'Add nutrition for every food or remove unresolved foods before saving.',
     // Unified with the home input bar (home.foodBar.placeholder) and the
     // add button — everywhere "Log food".
     title: 'Log food',
@@ -1355,6 +1365,7 @@ export const en = {
     },
     emotion: {
       name: 'Emotion',
+      nameRequired: 'Enter an emotion, then tap Add.',
       intensityLabel: 'Intensity',
       low: 'Mild',
       mid: 'Medium',
@@ -1431,6 +1442,7 @@ export const en = {
     reminders: 'Reminders',
     reminderAdd: 'Time (HH:mm)',
     reminderAddBtn: 'Add',
+    reminderInvalid: 'Enter a time from 00:00 to 23:59 in HH:mm format.',
     reminderRemove: 'Remove reminder {{time}}',
     // Honesty: no OS permission → the promised «Next reminder» will never fire.
     notifDenied: 'Notifications for Driftora are off in the system — reminders will not arrive. Tap to open settings.',
@@ -1618,6 +1630,7 @@ export const en = {
       unknown_plan: 'That plan is no longer sold. Reopen the screen.',
       not_selling: 'Subscriptions cannot be bought right now. Everything in the app keeps working for free.',
       no_install_id: 'The app is still starting up. Try again in a couple of seconds.',
+      unauthorized: 'This app version was not granted access to the subscription server. Update the app or contact support@family-pie.ru. Your key has not changed.',
       unreachable: 'Could not reach the server. Try again — no money is taken when this happens.',
       settle: 'We cannot see the payment yet. If you were charged, reopen this screen in a minute and it will switch on by itself.',
     },

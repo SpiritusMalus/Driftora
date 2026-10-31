@@ -1,7 +1,7 @@
 import { currentLocale } from '@/lib/i18n';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { useTranslation } from 'react-i18next';
 
@@ -67,6 +67,7 @@ import type { AudioInput, MealDraft, NutritionAlternative, NutritionItem, PhotoI
 import type { Sex } from '@/lib/core/insights/bodyMetrics';
 import { getFoodParser, resolveRegion } from '@/lib/core/services/foodParserProvider';
 import {
+  canSaveMealDraft,
   itemFromQuickMeal,
   type ManualMacroInput,
   recomputeDraft,
@@ -104,6 +105,8 @@ export default function FoodLogScreen() {
   const theme = useTheme();
   const router = useRouter();
   const db = useDatabase();
+  const { width, fontScale } = useWindowDimensions();
+  const modeColumns = width / fontScale < 180 ? 1 : width / fontScale < 360 ? 2 : 4;
   // The Home mic FAB deep-links here with ?voice=1 to start dictation at once;
   // the day list passes ?day=YYYY-MM-DD when its DayNav is on a past day, so
   // «добавить в тот день» opens this screen already aimed at it.
@@ -113,10 +116,22 @@ export default function FoodLogScreen() {
   const [regionSetting, setRegionSetting] = useState<'auto' | 'RU' | 'US'>('auto');
   const region: Region = resolveRegion(regionSetting);
 
-  const [text, setText] = useState('');
+  // A capture may outlive recording, consent and the model request. Any edit
+  // made in that interval wins over its late result, even if text is changed
+  // and then changed back to the same value.
+  const captureRevisionRef = useRef(0);
+  const [text, setTextState] = useState('');
+  function setText(next: Parameters<typeof setTextState>[0]) {
+    captureRevisionRef.current++;
+    setTextState(next);
+  }
   const [parsing, setParsing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [draft, setDraft] = useState<MealDraft | null>(null);
+  const [draft, setDraftState] = useState<MealDraft | null>(null);
+  function setDraft(next: Parameters<typeof setDraftState>[0]) {
+    captureRevisionRef.current++;
+    setDraftState(next);
+  }
   // Latest committed draft for async consumers: a text parse can run up to
   // ~25 s, and merging against the `draft` captured at tap time would revert
   // every gram edit / removal / alternative pick made while it was in flight.
@@ -268,6 +283,7 @@ export default function FoodLogScreen() {
   const pendingAudioRef = useRef<AudioInput | null>(null);
   pendingAudioRef.current = pendingAudio;
   const [listening, setListening] = useState(false);
+  const speechSessionRef = useRef(0);
   // Why on-device recognition last failed (localized) — shown under the mic so a
   // dropped session explains itself instead of silently resetting. Cleared on a
   // new attempt and whenever the user edits the text.
@@ -277,6 +293,7 @@ export default function FoodLogScreen() {
   const [recordingAvailable, setRecordingAvailable] = useState(false);
   const [recording, setRecording] = useState(false);
   const recRef = useRef<ActiveRecording | null>(null);
+  const voiceAttemptRevisionRef = useRef<number | null>(null);
   // Rolling buffer of recent mic amplitudes (0..1) feeding the live waveform.
   // Empty in Expo Go / no metering → the waveform renders a flat baseline.
   const [meterLevels, setMeterLevels] = useState<number[]>([]);
@@ -351,6 +368,7 @@ export default function FoodLogScreen() {
     setRecordingAvailable(isAudioRecordingAvailable());
     return () => {
       active = false;
+      speechSessionRef.current++;
       void speech.stop();
       void recRef.current?.cancel();
       if (exitTimerRef.current != null) clearTimeout(exitTimerRef.current);
@@ -389,28 +407,42 @@ export default function FoodLogScreen() {
   async function toggleListening() {
     const speech = getSpeechService();
     if (listening) {
+      speechSessionRef.current++;
       await speech.stop();
       setListening(false);
       return;
     }
-    setFreshDraft(null);
     setVoiceError(null);
-    setSource('voice');
     // Deep-link (?voice=1) starts dictation without a segment tap — reveal the
     // voice controls so the mic isn't live behind a hidden segment.
     setInputMode('voice');
     setListening(true);
+    const session = ++speechSessionRef.current;
+    let expectedRevision = captureRevisionRef.current;
+    let receivedTranscript = false;
     await speech.listen(
       (transcript, isFinal) => {
+        if (session !== speechSessionRef.current || expectedRevision !== captureRevisionRef.current) return;
+        if (!transcript.trim()) {
+          if (isFinal) setListening(false);
+          return;
+        }
+        // A denied/silent recognizer must not erase a previously built meal.
+        // Replace it only once this attempt actually delivers usable words.
+        if (!receivedTranscript) setFreshDraft(null);
+        receivedTranscript = true;
+        setSource('voice');
         setText(transcript);
+        expectedRevision = captureRevisionRef.current;
         if (isFinal) setListening(false);
       },
       // Session ended: always reset the listening UI. On a failure, explain why
       // instead of silently resetting — and we deliberately DON'T clear `text`,
       // so any words already transcribed survive for the user to edit + Parse.
       (reason) => {
+        if (session !== speechSessionRef.current) return;
         setListening(false);
-        if (reason) setVoiceError(t(`food.voiceError.${reason.code}`));
+        if (reason && expectedRevision === captureRevisionRef.current) setVoiceError(t(`food.voiceError.${reason.code}`));
       },
     );
   }
@@ -540,24 +572,25 @@ export default function FoodLogScreen() {
   /// per outcome: photo/voice can't be parsed offline at all, and an empty
   /// offline text parse explains itself — the generic «не удалось распознать»
   /// hint stays out of the way then (it used to stack contradictorily).
-  function acceptDraft(parsed: MealDraft, consentNow: boolean, kind: 'text' | 'photo' | 'audio') {
+  function acceptDraft(parsed: MealDraft, consentNow: boolean, kind: 'text' | 'photo' | 'audio', preserveOnEmpty = false) {
     // `setFreshDraft` also clears any hand-typed name: the parse consumed the
     // field as input, so it goes back to being derived. The title itself is set
     // by the effect watching `draft` — including the «борщ, хлеб, сметана» echo
     // that makes a voice/photo parse visible up top, which used to be written
     // here and only when the field happened to be empty.
-    setFreshDraft(parsed);
+    const replace = !preserveOnEmpty || parsed.items.length > 0;
+    if (replace) setFreshDraft(parsed);
     // Nothing was recognised, but the person still said something. On the voice-
     // note path their words only exist in `heard` — the clip was understood on
     // the server — so this is the last chance to put them back on screen. With
     // items present the derived title says the same thing better, and the effect
     // above owns the field.
     const heard = parsed.heard?.trim() ?? '';
-    if (parsed.items.length === 0 && heard.length > 0) setText(heard);
+    if (replace && parsed.items.length === 0 && heard.length > 0) setText(heard);
     const offline = AI_CONFIGURED && consentNow && parsed.flags.offline_fallback;
     setParseIssue(
       !offline
-        ? null
+        ? (replace ? null : 'failed')
         : // The per-install AI budget is spent (429) — «нет интернета» would be
           // a lie the user can see through; the remedy is the manual/chip paths,
           // not hunting for signal. WHICH budget decides the sentence: the paid
@@ -691,16 +724,25 @@ export default function FoodLogScreen() {
   }
 
   async function runAudioParse(audio: AudioInput, consentNow: boolean) {
+    const revision = voiceAttemptRevisionRef.current ?? captureRevisionRef.current;
     setParsing(true);
     setParseIssue(null);
     try {
-      acceptDraft(await applyMemory(await getFoodParser(consentNow).parseAudio(audio, region)), consentNow, 'audio');
+      const parsed = await applyMemory(await getFoodParser(consentNow).parseAudio(audio, region));
+      if (captureRevisionRef.current !== revision) return;
+      // Recording and failed/empty recognition leave the current meal intact.
+      // With no previous work, retain the original heard-text fallback so an
+      // understood but unresolved sentence can still be corrected manually.
+      const hasPreviousInput = text.trim().length > 0 || (draftRef.current?.items.length ?? 0) > 0;
+      if (parsed.items.length > 0 || (!hasPreviousInput && parsed.heard?.trim())) setSource('voice');
+      acceptDraft(parsed, consentNow, 'audio', hasPreviousInput);
     } catch {
-      setParseIssue('failed');
+      if (captureRevisionRef.current === revision) setParseIssue('failed');
     } finally {
       setParsing(false);
       // Same cleanup as the photo path, for the recorded m4a clip.
       deleteTempFile(audio.uri);
+      if (voiceAttemptRevisionRef.current === revision) voiceAttemptRevisionRef.current = null;
     }
   }
 
@@ -735,8 +777,8 @@ export default function FoodLogScreen() {
       }
       return false;
     }
-    setFreshDraft(null);
     setVoiceError(null);
+    voiceAttemptRevisionRef.current = captureRevisionRef.current;
     const started = await startRecording();
     if (started.error) {
       // A mic tap that silently does nothing reads as "сломано" — and denied
@@ -748,10 +790,8 @@ export default function FoodLogScreen() {
       return false;
     }
     const rec = started.recording;
-    // The clip replaces whatever was being described before — clear the input
-    // (photo-echo or stale text) so the parse echoes THIS note's foods. Done
-    // only once recording actually started; a denied mic loses nothing.
-    setText('');
+    // Keep the shared text, draft, title and origin until usable recognition
+    // arrives. Denied/silent/cancelled/failed attempts then need no rollback.
     setParseIssue(null);
     recRef.current = rec;
     setMeterLevels([]);
@@ -760,7 +800,6 @@ export default function FoodLogScreen() {
     meterUnsubRef.current = rec.onMeter((level) => {
       setMeterLevels((prev) => pushLevel(prev, level, 24));
     });
-    setSource('voice');
     // Same as dictation: a ?voice=1 deep-link records without a segment tap, so
     // surface the voice controls (waveform + stop button).
     setInputMode('voice');
@@ -769,7 +808,6 @@ export default function FoodLogScreen() {
   }
 
   async function onAudio(audio: AudioInput) {
-    setSource('voice');
     if (AI_CONFIGURED && needsAiConsent({ aiFoodParseConsent: aiConsent, aiFoodParseConsentVersion: aiConsentVersion })) {
       setPendingAudio(audio);
       setConsentPrompt('audio');
@@ -1061,7 +1099,7 @@ export default function FoodLogScreen() {
   })();
 
   async function onSave() {
-    if (!draft || !db) return;
+    if (!draft || !db || !canSaveMealDraft(draft) || saving || parsing || recording || listening) return;
     setSaving(true);
     setSaveIssue(false);
     try {
@@ -1408,6 +1446,8 @@ export default function FoodLogScreen() {
                 accessibilityState={{ selected: active }}
                 style={({ pressed }) => [
                   styles.segment,
+                  modeColumns < 4 && styles.segmentWrapped,
+                  modeColumns === 1 && styles.segmentSingle,
                   {
                     // Inactive segments sit on `iconBg`, a step off the card, so
                     // they don't melt into it on the dark «ember» theme.
@@ -1417,14 +1457,8 @@ export default function FoodLogScreen() {
                   },
                 ]}
               >
-                {/* РАВНЫЕ ДОЛИ РЯДА — ФИКСИРОВАННАЯ ШИРИНА, и слово в ней должно
-                    ужиматься, а не рваться: при 130% шрифта «Штрихкод» ломался
-                    посреди слова («Штрихко/д»). Одна строка + подгонка кегля
-                    держит подпись целой на любом масштабе. */}
+                {/* Large text gets additional rows, not a smaller barcode label. */}
                 <Text
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.8}
                   style={[styles.segmentText, { color: active ? theme.onPrimary : theme.text }, theme.font.body]}
                 >
                   {t(`food.inputMode.${key}`)}
@@ -1753,14 +1787,19 @@ export default function FoodLogScreen() {
           <PrimaryButton
             label={saving ? t('food.saving') : t('food.save')}
             onPress={onSave}
-            disabled={saving || db == null}
+            disabled={saving || parsing || recording || listening || db == null || !canSaveMealDraft(draft)}
           />
+          {!canSaveMealDraft(draft) ? (
+            <Text style={[styles.parseIssue, { color: theme.subtle }, theme.font.body]}>
+              {t('food.completeNutritionBeforeSave')}
+            </Text>
+          ) : null}
           {saveIssue ? (
             <Text style={[styles.parseIssue, { color: theme.primary }, theme.font.bodyMedium]}>
               {t('food.saveFailed')}
             </Text>
           ) : null}
-          <Pressable onPress={onClearDraft} disabled={saving} hitSlop={8} style={styles.clearBtn}>
+          <Pressable onPress={onClearDraft} disabled={saving || parsing || recording || listening} hitSlop={8} style={styles.clearBtn}>
             <Text style={[styles.clearText, { color: theme.subtle }, theme.font.body]}>{t('food.clear')}</Text>
           </Pressable>
           {db == null ? (
@@ -1867,9 +1906,11 @@ const styles = StyleSheet.create({
   dayHint: { fontSize: 12, lineHeight: 17, marginTop: -4, marginBottom: 10 },
   // Capture-method segmented control (mirrors the workout screen). One method
   // visible at a time; inactive segments on `iconBg` so they read on dark.
-  segments: { flexDirection: 'row', gap: 6, marginBottom: 12 },
-  segment: { flex: 1, paddingVertical: 9, borderRadius: 6, borderWidth: 1, alignItems: 'center' },
-  segmentText: { fontSize: 13 },
+  segments: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
+  segment: { flex: 1, minHeight: 44, paddingHorizontal: 8, paddingVertical: 9, borderRadius: 6, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  segmentWrapped: { flexBasis: '45%' },
+  segmentSingle: { flexBasis: '100%' },
+  segmentText: { fontSize: 13, textAlign: 'center' },
   micButton: { borderRadius: 6, borderWidth: 1.5, paddingVertical: 12, alignItems: 'center', marginBottom: 8 },
   photoRow: { flexDirection: 'row', gap: 8 },
   photoButton: { flex: 1, paddingHorizontal: 12 },

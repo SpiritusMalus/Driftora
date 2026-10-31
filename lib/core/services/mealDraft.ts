@@ -140,6 +140,13 @@ export function recomputeDraft(region: Region, items: NutritionItem[]): MealDraf
   };
 }
 
+/// Unknown nutrition is not a measured zero. A confirmed meal must retain every
+/// listed item, so resolve or remove misses before persisting the whole meal.
+/// Explicit zero-nutrient foods (for example water) remain valid real data.
+export function canSaveMealDraft(draft: MealDraft | null | undefined): boolean {
+  return !!draft && draft.items.length > 0 && draft.items.every((item) => item.per100.source !== 'estimate');
+}
+
 /// What the user types per 100 g. CALORIES ARE NOT AN INDEPENDENT INPUT: whenever
 /// any macro is given, kcal is DERIVED from the macros by the one formula
 /// (`energy.ts`) and the typed `kcal` is ignored — so the card can never show a

@@ -359,6 +359,7 @@ function EmotionsEditor({
 }) {
   const { t } = useTranslation();
   const [name, setName] = useState('');
+  const [nameError, setNameError] = useState(false);
   // Intensity is picked from four buckets instead of typed — a tap beats the
   // numeric keyboard. Stored value stays 0–100 for compatibility with old records.
   const [intensity, setIntensity] = useState(50);
@@ -371,7 +372,11 @@ function EmotionsEditor({
 
   function add() {
     const nm = name.trim();
-    if (nm.length === 0) return;
+    if (nm.length === 0) {
+      setNameError(true);
+      return;
+    }
+    setNameError(false);
     onChange([...emotions, { name: nm, intensity }]);
     setName('');
     setIntensity(50);
@@ -394,7 +399,16 @@ function EmotionsEditor({
           </Pressable>
         </View>
       ))}
-      <TextField value={name} onChangeText={setName} placeholder={t('diary.emotion.name')} />
+      <TextField
+        value={name}
+        onChangeText={(value) => { setName(value); setNameError(false); }}
+        placeholder={t('diary.emotion.name')}
+      />
+      {nameError ? (
+        <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={[styles.fieldError, { color: theme.accent }, theme.font.body]}>
+          {t('diary.emotion.nameRequired')}
+        </Text>
+      ) : null}
       <Text style={[styles.fieldLabel, styles.intensityLabel, { color: theme.subtle }, theme.font.bodyMedium]}>
         {t('diary.emotion.intensityLabel')}
       </Text>
@@ -414,7 +428,7 @@ function EmotionsEditor({
           );
         })}
       </View>
-      <Pressable onPress={add} style={({ pressed }) => [styles.emotionAdd, { borderColor: theme.primary, opacity: pressed ? 0.6 : 1 }]}>
+      <Pressable onPress={add} accessibilityRole="button" accessibilityLabel={t('diary.emotion.add')} style={({ pressed }) => [styles.emotionAdd, { borderColor: theme.primary, opacity: pressed ? 0.6 : 1 }]}>
         <Text style={[styles.emotionAddText, { color: theme.primary }, theme.font.bodySemiBold]}>
           {t('diary.emotion.add')}
         </Text>
@@ -482,6 +496,7 @@ const styles = StyleSheet.create({
   fields: { marginVertical: 24 },
   field: { marginBottom: 18 },
   fieldLabel: { fontSize: 14, marginBottom: 8 },
+  fieldError: { fontSize: 13, lineHeight: 18, marginTop: 6 },
   nav: { flexDirection: 'row', gap: 12, marginTop: 4 },
   navBtn: { flex: 1 },
   navBack: { borderWidth: 1.5, borderRadius: 6, paddingVertical: 15, alignItems: 'center', justifyContent: 'center' },

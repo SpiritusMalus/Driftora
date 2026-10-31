@@ -105,6 +105,15 @@ describe('activating a key', () => {
     sqlite.close();
   });
 
+  it.each([401, 403])('distinguishes app authorization %s from a bad key or a dead network', async (status) => {
+    const { sqlite, db } = await makeDb();
+    globalThis.fetch = jest.fn(async () => jsonResponse(status, {})) as unknown as typeof fetch;
+
+    expect(await activateLicense(db, 'ABCD-EFGH-JKLM-NPQR')).toEqual({ ok: false, reason: 'unauthorized' });
+    expect(await storedLicenseKey(db)).toBeNull();
+    sqlite.close();
+  });
+
   it('separates "we sell nothing" from "the store could not be reached"', async () => {
     const { sqlite, db } = await makeDb();
 
@@ -187,6 +196,18 @@ describe('collecting the licence a payment bought', () => {
 });
 
 describe('starting a checkout', () => {
+  it('explains refused app access even when the error response is not JSON', async () => {
+    const { sqlite, db } = await makeDb();
+    globalThis.fetch = jest.fn(async () => ({
+      ok: false,
+      status: 401,
+      json: async () => { throw new Error('not JSON'); },
+    })) as unknown as typeof fetch;
+
+    expect(await startCheckout(db, { plan: 'monthly' })).toEqual({ ok: false, reason: 'unauthorized' });
+    sqlite.close();
+  });
+
   it('hands back where to pay', async () => {
     const { sqlite, db } = await makeDb();
     globalThis.fetch = jest.fn(async () =>
