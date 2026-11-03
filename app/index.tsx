@@ -39,7 +39,6 @@ import {
 import { personalBaseline, type PersonalBaseline } from '@/lib/core/insights/baseline';
 import { daySummary, daysSince, type DaySummary } from '@/lib/core/insights/daySummary';
 import { dayOfYear, pickVariant } from '@/lib/core/insights/variant';
-import { stepInsight } from '@/lib/core/insights/stepInsight';
 import { useAppActiveEffect } from '@/lib/core/services/appActive';
 import { runningParseEntryIds, subscribeBackgroundParses } from '@/lib/core/services/backgroundParses';
 import { pluralKey } from '@/lib/i18n/plural';
@@ -111,7 +110,6 @@ export default function HomeScreen() {
   // today's steps exist («как обычно у вас»). Never shown in the steps widget
   // itself: that one is the FACT/input, the forecast only feeds the budget.
   const [usualSteps, setUsualSteps] = useState<number | null>(null);
-  const [stepsMeaning, setStepsMeaning] = useState<string | null>(null);
   // Today's steps vs the user's OWN recent normal (personal baseline). null/
   // 'forming' while we don't have enough days to make an honest high/low claim.
   const [stepsBaselineKind, setStepsBaselineKind] =
@@ -252,13 +250,6 @@ export default function HomeScreen() {
         setSteps(stepCount);
         setWorkoutSteps(health.workoutSteps);
         setUsualSteps(usualStepCount);
-        // A break promises «цели выключены» — feed an unreachable goal so the
-        // insight can never say «личная цель достигнута» under the pause banner.
-        setStepsMeaning(
-          stepCount == null
-            ? null
-            : stepInsight(stepCount, settingsRow.paused ? Number.MAX_SAFE_INTEGER : settingsRow.stepsGoal),
-        );
         setStepsBaselineKind(stepsBaseline ? stepsBaseline.kind : null);
         setTotals({ kcal: tot.kcal, proteinG: tot.proteinG, fatG: tot.fatG, carbG: tot.carbG });
         setFoodEntries(loggedFood);
@@ -341,23 +332,21 @@ export default function HomeScreen() {
     }
   }
 
-  // Personalize the steps line once there's enough history: speak to the user's
-  // OWN normal ("above/typical/quieter than usual") instead of the generic
-  // evidence line. While still 'forming' (or with no baseline yet) keep the
-  // honest generic meaning — never a high/low claim we can't back.
+  // Compare with the user's own history only when enough of it exists.
+  // Before then the row shows the count, without a generic coaching sentence.
   const stepsMeaningLine =
     stepsBaselineKind != null && stepsBaselineKind !== 'forming'
       ? t(`home.baseline.${stepsBaselineKind}`)
-      : stepsMeaning != null
-        ? t(stepsMeaning)
-        : null;
+      : null;
   // No steps yet is an INVITATION, not a locked feature — the input unfolds via
   // [+], so the old «Скоро» placeholder read as "doesn't work" (device
   // feedback 2026-07-10).
   const stepsSubtitle =
-    steps == null || stepsMeaningLine == null
+    steps == null
       ? t('home.steps.noneYet')
-      : `${formatSteps(steps)} — ${stepsMeaningLine}`;
+      : stepsMeaningLine != null
+        ? `${formatSteps(steps)} — ${stepsMeaningLine}`
+        : formatSteps(steps);
 
   // «92.4 кг — 3 дн. назад» or a gentle weekly-cadence CTA before the first log.
   const weightSubtitle = (() => {
