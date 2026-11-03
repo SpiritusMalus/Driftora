@@ -54,13 +54,12 @@ export const en = {
       noneYet: 'nothing logged yet',
       earnedEstimate: '≈ {{kcal}} kcal above resting from steps',
     },
-    // Compare today to the user's own normal (personal step baseline). Tone is
-    // curious and supportive — never a target, never "you're behind".
+    // A short comparison to the personal step baseline, without rating the day.
     baseline: {
-      above: 'Above your usual today',
-      typical: 'A typical day for you',
-      below: 'Quieter than usual today — and that’s okay',
-      forming: 'Still learning your rhythm',
+      above: 'Above usual',
+      typical: 'As usual',
+      below: 'Below usual',
+      forming: 'Not enough data to compare',
     },
     bodyMind: { basis: 'Based on {{days}} days with mood + {{signal}}' },
     hero: {
@@ -86,17 +85,17 @@ export const en = {
     },
     daySummary: {
       empty: 'A new day. Check in your mood or take a few steps, and a summary shows up here.',
-      steps: '{{steps}} {{stepsWord}} already today. A good start.',
-      mood: 'Mood today — {{mood}}/10. Thanks for checking in.',
-      win: 'There’s already a small win today — that counts.',
-      stepsMood: '{{steps}} {{stepsWord}} and a mood of {{mood}}/10 today.',
-      stepsWin: '{{steps}} {{stepsWord}} today — and already a win.',
-      moodWin: 'Mood {{mood}}/10 and a win in the bag. Good day.',
-      stepsMoodWin: '{{steps}} {{stepsWord}}, mood {{mood}}/10 — and already a win today.',
-      returning1: 'Good to see you back. Returning is itself a kind of care.',
-      returning2: 'Welcome back. Any day is a good day to pick this up again.',
-      returning3: 'You’re here again — and that’s the habit. Start small whenever you’re ready.',
-      returning4: 'Back together. No need to catch up — just note how you are right now.',
+      steps: 'Steps recorded.',
+      mood: 'Mood: {{mood}}/10.',
+      win: 'Entry logged in Wins.',
+      stepsMood: 'Mood: {{mood}}/10.',
+      stepsWin: 'Entry logged in Wins.',
+      moodWin: 'Mood: {{mood}}/10 · entry in Wins.',
+      stepsMoodWin: 'Mood: {{mood}}/10 · entry in Wins.',
+      returning1: 'Welcome back.',
+      returning2: 'Welcome back.',
+      returning3: 'Welcome back.',
+      returning4: 'Welcome back.',
     },
     feeders: {
       steps: 'Steps today',
@@ -127,6 +126,7 @@ export const en = {
       later: 'Later',
     },
     swipeHint: 'Mood & diary — swipe left',
+    paneLink: 'Mood & diary',
     // Mirror gesture on the Mind screen: a right swipe returns to body/food.
     // Serves as the page-dots accessibility label there.
     swipeHintBack: 'Food & activity — swipe right',
@@ -146,7 +146,7 @@ export const en = {
       save: 'Save',
       saving: 'Saving…',
     },
-    northStar: 'Streak: {{weeks}} {{weeksWord}} running.',
+    northStar: 'Logging streak: {{weeks}} {{weeksWord}}',
     paused: {
       title: 'You are on a break',
       body: 'Goals and auto-wins are off. Your data is safe — pick it back up whenever you are ready.',
@@ -952,7 +952,7 @@ export const en = {
       empty: 'No breakdown saved — this meal was logged as a single figure.',
       edit: 'Edit breakdown',
     },
-    emptyDay: 'Nothing logged today yet. Add something whenever you are ready.',
+    emptyDay: 'No food entries today yet.',
     repeat: 'Log again',
     repeatNow: 'Log again now',
     repeated: 'Logged again ✓',

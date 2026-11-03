@@ -30,9 +30,12 @@ export function FoodBar({
           {placeholder}
         </Text>
       </Pressable>
+      <View
+        pointerEvents="none"
+        style={[styles.divider, { backgroundColor: theme.onPrimary }]}
+      />
       <Pressable
         onPress={onPressMic}
-        hitSlop={8}
         accessibilityRole="button"
         accessibilityLabel={t('food.voice')}
         style={({ pressed }) => [styles.micButton, { opacity: pressed ? 0.8 : 1 }]}
@@ -48,7 +51,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     minHeight: 57,
-    borderRadius: 3,
+    borderRadius: 16,
+    overflow: 'hidden',
   },
   textButton: {
     flex: 1,
@@ -57,12 +61,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
     paddingLeft: 17,
+    paddingRight: 12,
     paddingVertical: 12,
   },
   placeholder: { flex: 1, fontSize: 15 },
+  divider: { width: 1, height: 24, opacity: 0.28 },
   micButton: {
     width: 57,
     minHeight: 57,
+    alignSelf: 'stretch',
     alignItems: 'center',
     justifyContent: 'center',
   },

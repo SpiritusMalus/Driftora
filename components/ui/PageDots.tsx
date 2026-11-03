@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { useTheme } from '@/lib/theme/theme';
 
@@ -10,6 +11,8 @@ interface Props {
   /// Optional tap fallback for readers who see the dots but miss the gesture.
   onPress?: () => void;
   accessibilityLabel?: string;
+  /// Visible destination for the tap fallback, when the dots need context.
+  label?: string;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -20,7 +23,7 @@ interface Props {
 /// the header «Разделы» link (device feedback 2026-07-18: «я думала я в разделы
 /// перейду»). The active pane is a filled primary pill, the other a muted dot;
 /// the whole strip is tappable as a fallback path.
-export function PageDots({ index, count = 2, onPress, accessibilityLabel, style }: Props) {
+export function PageDots({ index, count = 2, onPress, accessibilityLabel, label, style }: Props) {
   const theme = useTheme();
   const dots = (
     <View style={styles.row}>
@@ -43,19 +46,27 @@ export function PageDots({ index, count = 2, onPress, accessibilityLabel, style 
   return (
     <Pressable
       onPress={onPress}
-      hitSlop={10}
+      hitSlop={label != null ? 0 : 10}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
-      style={({ pressed }) => [styles.wrap, { opacity: pressed ? 0.5 : 1 }, style]}
+      style={({ pressed }) => [styles.wrap, label != null && styles.labelled, { opacity: pressed ? 0.5 : 1 }, style]}
     >
       {dots}
+      {label != null ? (
+        <>
+          <Text style={[styles.label, { color: theme.subtle }, theme.font.body]}>{label}</Text>
+          <Ionicons name="chevron-forward" size={14} color={theme.subtle} />
+        </>
+      ) : null}
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   wrap: { alignItems: 'center', justifyContent: 'center', paddingVertical: 8 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  labelled: { flexDirection: 'row', gap: 10, minHeight: 44 },
+  label: { flexShrink: 1, fontSize: 12, lineHeight: 18 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
   dot: { width: 6, height: 6, borderRadius: 3 },
   // The active pane stretches into a pill — legible as "you are here".
   active: { width: 18, borderRadius: 3 },

@@ -603,40 +603,43 @@ export default function HomeScreen() {
           countedKcal={Math.round(Math.max(0, workoutRawKcal) * EATBACK_FRACTION)}
           hideCalories={settings?.hideCalories ?? false}
         />
-        {/* Persistent page indicator for the two day panes (body ● ○ mind). It
-            signposts the left swipe for good — tappable too, so anyone who reads
-            the dots but misses the gesture still reaches the mind pane. */}
+        {/* Steps already have their own row. Keep only the additional day facts
+            and the recording streak together, above the day-pane navigation. */}
+        <View style={styles.dayDetails}>
+          {summary && summary.key !== 'empty' && summary.key !== 'steps' ? (
+            <Text style={[styles.daySummary, { color: theme.subtle }, theme.font.body]}>
+              {t(`home.daySummary.${summary.key}`, {
+                steps: summary.steps != null ? formatSteps(summary.steps) : '',
+                stepsWord: summary.steps != null ? t(pluralKey('steps.unit', summary.steps)) : '',
+                mood: summary.mood ?? '',
+              })}
+            </Text>
+          ) : null}
+
+          {/* The streak is the ONE number Home shows that lives on another
+            screen — «Итоги недели» is where it is explained and can be reset.
+            It was plain text until 2026-08-22, i.e. a dead end pointing at a
+            screen reachable only through «Разделы». */}
+          {streakWeeks > 0 ? (
+            <Pressable onPress={() => router.push('/review')} style={styles.weekLink} accessibilityRole="link">
+              <Text style={[styles.northStar, { color: theme.accent }, theme.font.bodyMedium]}>
+                {t('home.northStar', {
+                  weeks: streakWeeks,
+                  weeksWord: t(pluralKey('week.unit', streakWeeks)),
+                })}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
+
+        {/* This switches the whole day pane, rather than any metric carousel. */}
         <PageDots
           index={0}
           onPress={() => router.push('/mood')}
           accessibilityLabel={t('home.swipeHint')}
+          label={t('home.paneLink')}
           style={styles.pageDots}
         />
-
-        {summary && summary.key !== 'empty' ? (
-          <Text style={[styles.daySummary, { color: theme.subtle }, theme.font.body]}>
-            {t(`home.daySummary.${summary.key}`, {
-              steps: summary.steps != null ? formatSteps(summary.steps) : '',
-              stepsWord: summary.steps != null ? t(pluralKey('steps.unit', summary.steps)) : '',
-              mood: summary.mood ?? '',
-            })}
-          </Text>
-        ) : null}
-
-        {/* The streak is the ONE number Home shows that lives on another
-            screen — «Итоги недели» is where it is explained and can be reset.
-            It was plain text until 2026-08-22, i.e. a dead end pointing at a
-            screen reachable only through «Разделы». */}
-        {streakWeeks > 0 ? (
-          <Pressable onPress={() => router.push('/review')} hitSlop={8} accessibilityRole="link">
-            <Text style={[styles.northStar, { color: theme.accent }, theme.font.bodyMedium]}>
-              {t('home.northStar', {
-                weeks: streakWeeks,
-                weeksWord: t(pluralKey('week.unit', streakWeeks)),
-              })}
-            </Text>
-          </Pressable>
-        ) : null}
       </ScrollView>
 
       <View
@@ -703,9 +706,11 @@ const styles = StyleSheet.create({
   brand: { fontSize: 20, letterSpacing: -0.6 },
   dayHeading: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between', columnGap: 12, rowGap: 4, marginTop: 12, marginBottom: 14 },
   date: { fontSize: 12, lineHeight: 18, paddingBottom: 4 },
-  daySummary: { fontSize: 13, lineHeight: 19, marginTop: 18, marginBottom: 10 },
-  pageDots: { marginTop: 14 },
-  northStar: { fontSize: 12, textAlign: 'center', marginTop: 22 },
+  dayDetails: { marginTop: 10, gap: 2 },
+  daySummary: { fontSize: 13, lineHeight: 19 },
+  weekLink: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center' },
+  pageDots: { marginTop: 4 },
+  northStar: { fontSize: 12, lineHeight: 18 },
   footer: { flexShrink: 0 },
   footerAndroid: { paddingHorizontal: 24, paddingTop: 10 },
   footerIOS: { paddingHorizontal: 22, paddingTop: 10 },

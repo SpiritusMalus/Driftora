@@ -48,7 +48,7 @@ typography:
     fontWeight: 600
 rounded:
   section: "0px"
-  food-dock: "3px"
+  food-dock: "16px"
   inline-add: "4px"
   control: "6px"
   contained: "10px"
