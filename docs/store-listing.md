@@ -211,10 +211,18 @@ Google Sign-In появляется только при активной под�
 - **Store settings:** категория Health & Fitness, e-mail
   tihonenkoeugene@gmail.com, сайт `https://family-pie.ru/` (страницы
   `/driftora` без хвоста нет — 404).
-- **Скриншоты витрины:** `docs/store/screenshots/*.png` (1080×1920, рамка с
-  подписью, экран эмулятора 1080×2400 внутри). Генератор —
-  `xcrun swift docs/store/screenshots/compose.swift <папка с 01_main.png …>`;
-  подписи и порядок в нём же.
+- **Скриншоты витрины (обновление 04.11.2026):** шесть настоящих снимков
+  Android-интерфейса 136 (1.0.0), русский язык, 1080×1920, 24-bit PNG без
+  alpha. Порядок: `01-home.png`, `02-food-entry.png`, `03-food-day.png`,
+  `04-mood.png`, `05-weight.png`, `06-sections.png` в
+  `docs/store/screenshots/`. Хеши, порядок, alt-тексты и происхождение —
+  `docs/store/screenshots/assets.json`. Данные демонстрационные; состояния
+  экранов сняты отдельно. APK для снимков получен из AAB 136 и подписан
+  локальным debug-сертификатом; это не распространяемый Google Play APK.
+  Преобразование PNG сохранило RGB-пиксели, рамки и рекламных наложений нет.
+  `compose.swift` сохранён как исторический генератор прежнего оформления;
+  для текущего набора он не используется. Сохранение ассетов не меняет код
+  приложения; статус загрузки и публикации проверяется отдельно в Console.
 - **Треки:** internal — opt-in
   `https://play.google.com/apps/internaltest/4700659331729457931`; closed
   «Alpha» — `https://play.google.com/apps/testing/com.driftora.app`; список

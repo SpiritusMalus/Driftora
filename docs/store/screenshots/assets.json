@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "captured_on": "2026-11-04",
+  "locale": "ru-RU",
+  "device_type": "phone",
+  "source": {
+    "package": "com.driftora.app",
+    "version_code": 136,
+    "version_name": "1.0.0",
+    "source_commit": "ffd09050494a9404cbe7c9b3fd9ee86162c16ea1",
+    "aab_sha256": "c0069cfd8cc2b8372bf8caa26505815fd1492b47cb0d6b553f8f92748aa6b260",
+    "capture_install": "APK generated from the release AAB with bundletool 1.18.3 and signed with a local Android Debug certificate for screenshots only. It is not the Play-distributed APK.",
+    "data": "Synthetic data entered through the native app UI. Screenshots show distinct actual demo states."
+  },
+  "processing": "Opaque RGBA to 24-bit RGB PNG conversion only; decoded RGB pixels are identical to the native captures. No composited device frame or marketing overlay.",
+  "images": [
+    {
+      "name": "01-home.png",
+      "width": 1080,
+      "height": 1920,
+      "bits": 24,
+      "alpha": false,
+      "bytes": 73237,
+      "sha256": "060c9769d60eb2cfcb7a9aa7467dee29d7ca69d28dc623e39e6e09b01def8d08",
+      "native_rgb_pixels_identical": true,
+      "rgb_sha256": "be905a447b08cd9b02a7bfd690e5a2e5866931671fc94f14cacd30bfdf1cdc52",
+      "order": 1,
+      "alt_text": "Главный экран Driftora: бюджет дня, шаги, вес, настроение и способы добавить еду."
+    },
+    {
+      "name": "02-food-entry.png",
+      "width": 1080,
+      "height": 1920,
+      "bits": 24,
+      "alpha": false,
+      "bytes": 65211,
+      "sha256": "0733b0101926b06c1ba8921cacbf4faf53802b6534278c165fde141f5404c8e3",
+      "native_rgb_pixels_identical": true,
+      "rgb_sha256": "8ba5053b35da3d44b6832048119e4afb3efe8e5aa986ab198ed2f77d38731c64",
+      "order": 2,
+      "alt_text": "Добавление еды текстом, голосом, фотографией или штрихкодом."
+    },
+    {
+      "name": "03-food-day.png",
+      "width": 1080,
+      "height": 1920,
+      "bits": 24,
+      "alpha": false,
+      "bytes": 84735,
+      "sha256": "98217e6e2c8d9d55f8ae83de8a0bc343ade077acfcbd0bd96f230e0b91e6ff91",
+      "native_rgb_pixels_identical": true,
+      "rgb_sha256": "fe57668ec834d8c3851816604292cfc0ff17456fcab80164564b4fbaa325b0ec",
+      "order": 3,
+      "alt_text": "Дневник еды за день с примером блюда, калориями и составом."
+    },
+    {
+      "name": "04-mood.png",
+      "width": 1080,
+      "height": 1920,
+      "bits": 24,
+      "alpha": false,
+      "bytes": 84155,
+      "sha256": "5d405ca3f06b51057471a6c1fc8940ce95b0517bd973078b0e71520e2ef1315b",
+      "native_rgb_pixels_identical": true,
+      "rgb_sha256": "ff95943a9abfa25433d79b24860092358c35ebaec96cacdabd3c0592676bf202",
+      "order": 4,
+      "alt_text": "Экран настроения с оценкой состояния, записью в дневник и историей."
+    },
+    {
+      "name": "05-weight.png",
+      "width": 1080,
+      "height": 1920,
+      "bits": 24,
+      "alpha": false,
+      "bytes": 95005,
+      "sha256": "95a3f3d4d233f260544a78d31271731d1d108dd20adc6a3e9faf79b5c7325e9b",
+      "native_rgb_pixels_identical": true,
+      "rgb_sha256": "f90999b2a70a248f73d7831c8201097ce7e1cb89b2f66fd5bbd68ef15ad1467f",
+      "order": 5,
+      "alt_text": "Экран веса с демонстрационным измерением, историей и подключением весов."
+    },
+    {
+      "name": "06-sections.png",
+      "width": 1080,
+      "height": 1920,
+      "bits": 24,
+      "alpha": false,
+      "bytes": 120787,
+      "sha256": "943246e62c2236bbd3394260e4049c1e7e5975289fa04d1981e505886ba32997",
+      "native_rgb_pixels_identical": true,
+      "rgb_sha256": "8f4052c0b1bcff2562f67ca4801a710c0ec2ba27d46bfa7ae174bc5ef8314e35",
+      "order": 6,
+      "alt_text": "Разделы Driftora: дневник СМЭР, история дней, победы, итоги недели и настройки."
+    }
+  ]
+}
