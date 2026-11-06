@@ -1,6 +1,6 @@
 {
-  "schema_version": 1,
-  "captured_on": "2026-11-04",
+  "schema_version": 2,
+  "created_on": "2026-11-05",
   "locale": "ru-RU",
   "device_type": "phone",
   "source": {
@@ -9,88 +9,171 @@
     "version_name": "1.0.0",
     "source_commit": "ffd09050494a9404cbe7c9b3fd9ee86162c16ea1",
     "aab_sha256": "c0069cfd8cc2b8372bf8caa26505815fd1492b47cb0d6b553f8f92748aa6b260",
-    "capture_install": "APK generated from the release AAB with bundletool 1.18.3 and signed with a local Android Debug certificate for screenshots only. It is not the Play-distributed APK.",
-    "data": "Synthetic data entered through the native app UI. Screenshots show distinct actual demo states."
+    "capture_install": "Existing release AAB payload converted to a local capture APK with bundletool 1.18.3, signed with an Android Debug certificate for emulator installation. Not the Play-distributed APK.",
+    "data": "Synthetic fixture data entered through the native UI. Home and food-day recaptured with a real saved demonstration dinner; remaining screens retain distinct actual demonstration states.",
+    "new_capture_files": [
+      "native/01-home.png",
+      "native/03-food-day.png"
+    ],
+    "previous_capture_files": [
+      "native/02-food-entry.png",
+      "native/04-mood.png",
+      "native/05-weight.png",
+      "native/06-sections.png"
+    ]
   },
-  "processing": "Opaque RGBA to 24-bit RGB PNG conversion only; decoded RGB pixels are identical to the native captures. No composited device frame or marketing overlay.",
+  "processing": {
+    "composition": "AI-assisted code-authored AppKit layout: Manrope ExtraBold benefit headlines, peach/cream/cobalt backgrounds, neutral rounded frame and soft offset shadow. The native UI is uniformly scaled, with only the rounded boundary clipped. No internal UI content or nutrition values retouched.",
+    "output": "Final composed RGBA raster encoded as opaque RGB24 PNG; decoded final RGB bytes identical to composed raster, all PNG chunk CRC verified.",
+    "native_full_size_pixel_identity": false,
+    "caption_region_height_fraction": 0.15729166666666666,
+    "native_ui_area_fraction": 0.6049382716049383,
+    "reproducible_compositor": "compose.swift",
+    "rgb_encoder": "export-png24.py",
+    "font_dependency": "@expo-google-fonts/manrope 0.4.2 (Manrope_800ExtraBold.ttf)"
+  },
   "images": [
     {
-      "name": "01-home.png",
+      "name": "01-promo-home.png",
       "width": 1080,
       "height": 1920,
       "bits": 24,
       "alpha": false,
-      "bytes": 73237,
-      "sha256": "060c9769d60eb2cfcb7a9aa7467dee29d7ca69d28dc623e39e6e09b01def8d08",
-      "native_rgb_pixels_identical": true,
-      "rgb_sha256": "be905a447b08cd9b02a7bfd690e5a2e5866931671fc94f14cacd30bfdf1cdc52",
+      "bytes": 295007,
+      "sha256": "61ee6802a73e5fd15ef41cdb5e2ac42af65c01d3dd8e7d97db7003cecf482db4",
+      "composition_raster_rgb_identical": true,
+      "rgb_sha256": "28e688a0b9d7a48e4d67c0ebe5403cad463d2976436dd9f07b1b8061eb5a39ff",
       "order": 1,
-      "alt_text": "Главный экран Driftora: бюджет дня, шаги, вес, настроение и способы добавить еду."
+      "alt_text": "Промокарточка Driftora: еда, вес и настроение рядом; настоящий главный экран с демонстрационной записью еды.",
+      "headline_lines": [
+        "Еда, вес",
+        "и настроение.",
+        "Всё рядом."
+      ],
+      "native_source": "native/01-home.png",
+      "native_sha256": "2bf9fbdbea3a449c2f7c62c485bf1ef83a631e678707478790b111671beb9a5a",
+      "native_capture_date_local": "2026-11-05",
+      "uniform_scale": 0.7777777777777778,
+      "native_ui_content_edited": false,
+      "ai_assisted_composition": true
     },
     {
-      "name": "02-food-entry.png",
+      "name": "02-promo-food-entry.png",
       "width": 1080,
       "height": 1920,
       "bits": 24,
       "alpha": false,
-      "bytes": 65211,
-      "sha256": "0733b0101926b06c1ba8921cacbf4faf53802b6534278c165fde141f5404c8e3",
-      "native_rgb_pixels_identical": true,
-      "rgb_sha256": "8ba5053b35da3d44b6832048119e4afb3efe8e5aa986ab198ed2f77d38731c64",
+      "bytes": 268553,
+      "sha256": "d5fdd1390f16038804960aa873bfc125784cef6ae13ca99f3205066a65a58fa9",
+      "composition_raster_rgb_identical": true,
+      "rgb_sha256": "5ec2d5e314c2e42b7a13710f6999eedfa2b8222fa4bed709edba5d05ad726beb",
       "order": 2,
-      "alt_text": "Добавление еды текстом, голосом, фотографией или штрихкодом."
+      "alt_text": "Добавление еды текстом, голосом, фотографией или штрихкодом в актуальном интерфейсе Driftora.",
+      "headline_lines": [
+        "Еда — текстом,",
+        "голосом",
+        "или фото."
+      ],
+      "native_source": "native/02-food-entry.png",
+      "native_sha256": "deae2e3b8a132896a37c365a9590ff4a900f56caeabaebab1c3a8fd925e6f448",
+      "native_capture_date_local": "2026-11-04",
+      "uniform_scale": 0.7777777777777778,
+      "native_ui_content_edited": false,
+      "ai_assisted_composition": true
     },
     {
-      "name": "03-food-day.png",
+      "name": "03-promo-food-day.png",
       "width": 1080,
       "height": 1920,
       "bits": 24,
       "alpha": false,
-      "bytes": 84735,
-      "sha256": "98217e6e2c8d9d55f8ae83de8a0bc343ade077acfcbd0bd96f230e0b91e6ff91",
-      "native_rgb_pixels_identical": true,
-      "rgb_sha256": "fe57668ec834d8c3851816604292cfc0ff17456fcab80164564b4fbaa325b0ec",
+      "bytes": 275648,
+      "sha256": "7e67d23cf41a1825e2517880e72b186cd5fb235bef1aae1e09bea96d9ec3f48c",
+      "composition_raster_rgb_identical": true,
+      "rgb_sha256": "6380a40539e9d2816f900c86971b68ce4767e896c62846ead94c428d6792ca3d",
       "order": 3,
-      "alt_text": "Дневник еды за день с примером блюда, калориями и составом."
+      "alt_text": "Калории и БЖУ в дневнике еды; демонстрационный ужин «Молоко и банан».",
+      "headline_lines": [
+        "Калории и БЖУ",
+        "перед глазами."
+      ],
+      "native_source": "native/03-food-day.png",
+      "native_sha256": "87a5bcf2a864121c186be41069f14a46f85af83dd5d27e46ebab1577d068861c",
+      "native_capture_date_local": "2026-11-05",
+      "uniform_scale": 0.7777777777777778,
+      "native_ui_content_edited": false,
+      "ai_assisted_composition": true
     },
     {
-      "name": "04-mood.png",
+      "name": "04-promo-mood.png",
       "width": 1080,
       "height": 1920,
       "bits": 24,
       "alpha": false,
-      "bytes": 84155,
-      "sha256": "5d405ca3f06b51057471a6c1fc8940ce95b0517bd973078b0e71520e2ef1315b",
-      "native_rgb_pixels_identical": true,
-      "rgb_sha256": "ff95943a9abfa25433d79b24860092358c35ebaec96cacdabd3c0592676bf202",
+      "bytes": 299901,
+      "sha256": "05f303b4f19cd3e4b6f2520575e04169a9994a2d3de0d20431b60822324d5b05",
+      "composition_raster_rgb_identical": true,
+      "rgb_sha256": "116473f4d5fee23c290625454291b94f2c2f4aec29109645b6e509f0f98cd72d",
       "order": 4,
-      "alt_text": "Экран настроения с оценкой состояния, записью в дневник и историей."
+      "alt_text": "Настроение и дневник мыслей в актуальном интерфейсе Driftora.",
+      "headline_lines": [
+        "Настроение",
+        "и мысли —",
+        "рядом."
+      ],
+      "native_source": "native/04-mood.png",
+      "native_sha256": "091ace793c32dc331f04c968c04b548477e796816d47da4a3b1906df4f5042a6",
+      "native_capture_date_local": "2026-11-04",
+      "uniform_scale": 0.7777777777777778,
+      "native_ui_content_edited": false,
+      "ai_assisted_composition": true
     },
     {
-      "name": "05-weight.png",
+      "name": "05-promo-weight.png",
       "width": 1080,
       "height": 1920,
       "bits": 24,
       "alpha": false,
-      "bytes": 95005,
-      "sha256": "95a3f3d4d233f260544a78d31271731d1d108dd20adc6a3e9faf79b5c7325e9b",
-      "native_rgb_pixels_identical": true,
-      "rgb_sha256": "f90999b2a70a248f73d7831c8201097ce7e1cb89b2f66fd5bbd68ef15ad1467f",
+      "bytes": 311492,
+      "sha256": "e7b9e655c9d84e6341534b3073215b0d9b7391976eb0aa366e1e48e2b0cd02f0",
+      "composition_raster_rgb_identical": true,
+      "rgb_sha256": "3dc8a4eb25610738d632b534c75d622c74548fa37c8350a1f50a05a1708c619f",
       "order": 5,
-      "alt_text": "Экран веса с демонстрационным измерением, историей и подключением весов."
+      "alt_text": "Вес, история измерений и настройки подключения весов.",
+      "headline_lines": [
+        "История веса.",
+        "В вашем темпе."
+      ],
+      "native_source": "native/05-weight.png",
+      "native_sha256": "64f914e07a53af310c9752fd9dfa28d139779fd37ce7e36a815d19a74df794bd",
+      "native_capture_date_local": "2026-11-04",
+      "uniform_scale": 0.7777777777777778,
+      "native_ui_content_edited": false,
+      "ai_assisted_composition": true
     },
     {
-      "name": "06-sections.png",
+      "name": "06-promo-sections.png",
       "width": 1080,
       "height": 1920,
       "bits": 24,
       "alpha": false,
-      "bytes": 120787,
-      "sha256": "943246e62c2236bbd3394260e4049c1e7e5975289fa04d1981e505886ba32997",
-      "native_rgb_pixels_identical": true,
-      "rgb_sha256": "8f4052c0b1bcff2562f67ca4801a710c0ec2ba27d46bfa7ae174bc5ef8314e35",
+      "bytes": 359789,
+      "sha256": "342cdb218e8d0b82c87c12f7ebfb657a8ccfe27075e980b91d6c2d825c3dee5f",
+      "composition_raster_rgb_identical": true,
+      "rgb_sha256": "dbc29a6495e551bc4952c51c5407f5c2eab444eb47725577f548f60051b4d354",
       "order": 6,
-      "alt_text": "Разделы Driftora: дневник СМЭР, история дней, победы, итоги недели и настройки."
+      "alt_text": "Разделы Driftora: дневник, история дней, победы, итоги недели и настройки.",
+      "headline_lines": [
+        "Ваш дневник.",
+        "Всё нужное",
+        "под рукой."
+      ],
+      "native_source": "native/06-sections.png",
+      "native_sha256": "310ededd6b9f7887ffa0710585fee1cb57ca44c535c442e1cf05365607b411f5",
+      "native_capture_date_local": "2026-11-04",
+      "uniform_scale": 0.7777777777777778,
+      "native_ui_content_edited": false,
+      "ai_assisted_composition": true
     }
   ]
 }
