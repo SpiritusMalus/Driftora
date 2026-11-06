@@ -337,9 +337,9 @@ const styles = StyleSheet.create({
   dayField: { marginTop: 14 },
   update: { marginTop: 16 },
   saveIssue: { fontSize: 13, marginTop: 8, textAlign: 'center' },
-  repeatBtn: { borderWidth: 1.5, borderRadius: 999, paddingVertical: 12, alignItems: 'center', marginTop: 10 },
+  repeatBtn: { borderWidth: 1.5, borderRadius: 6, paddingVertical: 12, alignItems: 'center', marginTop: 10 },
   repeatText: { fontSize: 15 },
-  deleteBtn: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 999, paddingVertical: 12, alignItems: 'center', marginTop: 10 },
+  deleteBtn: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 6, paddingVertical: 12, alignItems: 'center', marginTop: 10 },
   deleteText: { fontSize: 14 },
   hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
 });

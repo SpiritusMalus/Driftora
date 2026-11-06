@@ -231,7 +231,7 @@ export default function SubscriptionScreen() {
       <Hero theme={theme} lines={[t('subscription.hero'), t('subscription.heroLead')]} />
 
       {/* Where the user stands right now — the first question this screen answers. */}
-      <Card>
+      <Card variant="section">
         <Text style={[styles.state, { color: active ? theme.primary : theme.text }, theme.font.heading]}>
           {active ? t('subscription.stateActive') : t('subscription.stateFree')}
         </Text>

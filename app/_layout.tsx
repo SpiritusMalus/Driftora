@@ -13,21 +13,16 @@ import { DatabaseProvider } from '@/lib/core/db/DatabaseProvider';
 import { resolveTheme } from '@/lib/theme/theme';
 import { fontAssets } from '@/lib/theme/typography';
 
-/// Two platform looks from the Ember handoff:
-///   • iOS — native large titles on a liquid-glass (blurred) header, SF system
-///     type. The grouped screens scroll under the translucent bar.
-///   • Android — a flat Material app bar tinted to the warm Ember cream, with a
-///     left-aligned Unbounded title and no shadow.
-/// Both keep the native header so back navigation comes for free.
+/// Day Ribbon colors and Golos type on the existing native headers. The iOS
+/// large-title/blur treatment and Android app bar keep their original behavior.
 export default function RootLayout() {
   const { t } = useTranslation();
   const scheme = useColorScheme() === 'dark' ? 'dark' : 'light';
   const theme = resolveTheme(scheme);
   const [fontsLoaded, fontError] = useFonts(fontAssets);
 
-  // Hold the first frame until the Ember fonts are ready so Android headers and
-  // the hero don't flash in the system face before swapping. (iOS uses SF, so
-  // this only matters for Android, but a single gate keeps it simple.) A FAILED
+  // Hold the first frame until the shared fonts are ready so headers and the
+  // hero don't flash in the system face before swapping. A FAILED
   // load must release the gate too — the system face beats a forever-blank app.
   if (!fontsLoaded && !fontError) return null;
 
@@ -42,15 +37,15 @@ export default function RootLayout() {
           headerLargeTitleShadowVisible: false,
           headerShadowVisible: false,
           headerTintColor: theme.primary,
-          headerLargeTitleStyle: { color: theme.text },
-          headerTitleStyle: { color: theme.text },
+          headerLargeTitleStyle: { fontFamily: theme.font.heading.fontFamily, color: theme.text },
+          headerTitleStyle: { fontFamily: theme.font.heading.fontFamily, color: theme.text },
           contentStyle: { backgroundColor: theme.background },
         }
       : {
           headerStyle: { backgroundColor: theme.background },
           headerTintColor: theme.text,
           headerShadowVisible: false,
-          headerTitleStyle: { fontFamily: 'GolosText_600SemiBold', fontSize: 20, color: theme.text },
+          headerTitleStyle: { fontFamily: theme.font.heading.fontFamily, fontSize: 20, color: theme.text },
           contentStyle: { backgroundColor: theme.background },
         };
 

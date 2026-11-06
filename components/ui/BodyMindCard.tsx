@@ -1,20 +1,15 @@
-import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
-import { type ReactNode } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import type { Ionicons } from '@expo/vector-icons';
+import { type ComponentProps } from 'react';
+import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { type Theme, useTheme } from '@/lib/theme/theme';
 
-import { Sparkline } from './Sparkline';
-
-/// The editorial Body↔Mind hero — the product's bridge motif, living on the
-/// Mind pane (/mood). Android paints it on a soft blueprint gradient; iOS uses
-/// a flat grouped card.
+/// The Body↔Mind insight, followed by the two observed signal/value pairs.
+/// Both platforms use the approved open text-and-metrics composition.
 ///
 /// PRESENTATIONAL ONLY — the caller resolves the BodyMindResult into localized
-/// strings. When `accent` is present (a real finding) the body/mind columns and
-/// the linking sparkline are shown; for the building-up / no-link states only
-/// the eyebrow, headline and caption render, so every honesty state is intact.
+/// strings. Findings, building-up and no-link states keep the caller's exact
+/// headline, basis, accent and metric values; no chart implies extra data.
 export function BodyMindCard({
   eyebrow,
   accent,
@@ -23,7 +18,6 @@ export function BodyMindCard({
   caption,
   bodyLabel,
   bodyValue,
-  bodyIcon = 'walk-outline',
   mindLabel,
   mindValue,
   compact = false,
@@ -35,63 +29,25 @@ export function BodyMindCard({
   caption?: string;
   bodyLabel: string;
   bodyValue: string;
-  /// The body-column glyph — adapts to the signal the hero speaks about
-  /// (steps → walk, sleep → moon, protein → nutrition). Defaults to steps.
-  bodyIcon?: React.ComponentProps<typeof Ionicons>['name'];
+  /// Retained for caller compatibility; the metric pair now uses text only.
+  bodyIcon?: ComponentProps<typeof Ionicons>['name'];
   mindLabel: string;
   mindValue: string;
   /// Compact recap for the Mind pane (/mood), where the check-in is the hero:
   /// only the "association, not cause" caption drops so the card stays short.
-  /// The arc is NOT dropped — /mood is the card's only home now, so hiding it
-  /// there erased the bridge from the whole app (device feedback 2026-07-21:
-  /// «мост между шагами и настроением пропал»). Defaults to false.
   compact?: boolean;
 }) {
   const theme = useTheme();
+  const { width, fontScale } = useWindowDimensions();
+  // Give each label/value pair a full row when scaled text would be squeezed
+  // into half a phone width. Keep the system font size and the complete values.
+  const stackColumns = width / Math.max(1, fontScale) < 300;
 
   const content = (
     <>
-      <Text
-        style={[
-          styles.eyebrow,
-          { color: theme.isIOS ? theme.subtle : theme.bodyMindEyebrow },
-          theme.font.bodyBold,
-          theme.isIOS ? styles.eyebrowIOS : styles.eyebrowAndroid,
-        ]}
-      >
-        {eyebrow.toUpperCase()}
-      </Text>
-
-      {/* The Body↔Mind bridge is the product's core motif and is ALWAYS on
-          screen (UI_HANDOFF §8: "не декор — ядро идеи"). The "+gap" figure above
-          the arc only appears once there's a real finding; until then the arc
-          still draws, with the slot reserved so it doesn't jump. */}
-      <View style={styles.columns}>
-        <Column
-          theme={theme}
-          icon={bodyIcon}
-          tint={theme.primary}
-          tile={theme.primarySoft}
-          label={bodyLabel}
-          value={bodyValue}
-        />
-        <View style={styles.center}>
-          <Text style={[styles.accent, { color: theme.heroAccent }, theme.font.displayHeavy]}>
-            {accent ?? ' '}
-          </Text>
-          {/* The arc carries no data, but it IS the bridge motif («не декор —
-              ядро идеи») — it draws in every variant; compact trims only the
-              caption below. */}
-          <Sparkline coral={theme.primary} amber={theme.accent} />
-        </View>
-        <Column
-          theme={theme}
-          icon="happy-outline"
-          tint={theme.accent}
-          tile={theme.accentSoft}
-          label={mindLabel}
-          value={mindValue}
-        />
+      <View style={styles.head}>
+        <Text style={[styles.eyebrow, { color: theme.text }, theme.font.heading]}>{eyebrow}</Text>
+        <Text style={[styles.accent, { color: theme.heroAccent }, theme.font.bodyMedium]}>{accent ?? ' '}</Text>
       </View>
 
       <Text style={[styles.headline, { color: theme.heroText }, theme.font.bodySemiBold]}>
@@ -103,50 +59,39 @@ export function BodyMindCard({
       {caption && !compact ? (
         <Text style={[styles.caption, { color: theme.subtle }, theme.font.body]}>{caption}</Text>
       ) : null}
+      <View style={[styles.columns, stackColumns && styles.columnsStacked]}>
+        <Column theme={theme} label={bodyLabel} value={bodyValue} stacked={stackColumns} />
+        <Column theme={theme} label={mindLabel} value={mindValue} stacked={stackColumns} />
+      </View>
     </>
   );
 
-  if (theme.isIOS) {
-    return <View style={[styles.iosCard, { backgroundColor: theme.card }]}>{content}</View>;
-  }
   return (
-    <LinearGradient
-      colors={theme.bodyMindGradient as [string, string, ...string[]]}
-      start={{ x: 0.1, y: 0 }}
-      end={{ x: 0.9, y: 1 }}
-      style={[styles.androidCard, { borderColor: theme.bodyMindBorder }]}
-    >
+    <View style={[styles.section, { borderColor: theme.separator }]}>
       {content}
-    </LinearGradient>
+    </View>
   );
 }
 
 function Column({
   theme,
-  icon,
-  tint,
-  tile,
   label,
   value,
+  stacked,
 }: {
   theme: Theme;
-  icon: ReactNode | React.ComponentProps<typeof Ionicons>['name'];
-  tint: string;
-  tile: string;
   label: string;
   value: string;
+  stacked: boolean;
 }) {
   return (
-    <View style={styles.column}>
-      <View style={[styles.tile, { backgroundColor: tile }]}>
-        <Ionicons name={icon as never} size={25} color={tint} />
-      </View>
+    <View style={[styles.column, stacked && styles.columnStacked, { borderColor: theme.separator }]}>
       <Text style={[styles.colLabel, { color: theme.subtle }, theme.font.body]}>{label}</Text>
       <Text
         style={[
           styles.colValue,
           { color: theme.heroText },
-          theme.isIOS ? theme.font.bodyBold : theme.font.display,
+          theme.font.bodyMedium,
         ]}
       >
         {value}
@@ -156,22 +101,20 @@ function Column({
 }
 
 const styles = StyleSheet.create({
-  androidCard: { borderRadius: 26, padding: 20, borderWidth: 1 },
-  iosCard: { borderRadius: 18, padding: 18 },
+  section: { paddingVertical: 20 },
 
-  eyebrow: { fontSize: 12 },
-  eyebrowAndroid: { letterSpacing: 1.7, textAlign: 'center' },
-  eyebrowIOS: { letterSpacing: -0.08, fontWeight: '400' },
+  head: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 },
+  eyebrow: { flex: 1, fontSize: 18, lineHeight: 24, letterSpacing: -0.25 },
 
-  columns: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', gap: 6, marginTop: 18 },
-  column: { width: 78, alignItems: 'center' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 18 },
-  tile: { width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
-  colLabel: { fontSize: 11, marginTop: 8 },
-  colValue: { fontSize: 16, marginTop: 2 },
-  accent: { fontSize: 32, lineHeight: 33, letterSpacing: -0.6 },
+  columns: { flexDirection: 'row', gap: 16, marginTop: 16 },
+  columnsStacked: { flexDirection: 'column', gap: 0 },
+  column: { flex: 1, minHeight: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth },
+  columnStacked: { flex: 0, width: '100%' },
+  colLabel: { fontSize: 12, lineHeight: 17, flex: 1 },
+  colValue: { fontSize: 17, lineHeight: 23, fontVariant: ['tabular-nums'] },
+  accent: { fontSize: 20, lineHeight: 26, letterSpacing: -0.4, fontVariant: ['tabular-nums'] },
 
-  headline: { fontSize: 19, lineHeight: 26, letterSpacing: -0.19, marginTop: 22 },
-  basis: { fontSize: 13, marginTop: 14 },
+  headline: { fontSize: 14, lineHeight: 21, marginTop: 10 },
+  basis: { fontSize: 13, lineHeight: 19, marginTop: 8 },
   caption: { fontSize: 13, marginTop: 6, lineHeight: 19 },
 });

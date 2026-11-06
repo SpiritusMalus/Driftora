@@ -42,12 +42,22 @@ const NUM_WORDS: Record<string, number> = {
 };
 
 function quantityIn(chunk: string): number {
-  const digit = chunk.match(/\d+/);
-  if (digit) return Math.max(1, parseInt(digit[0], 10));
+  // Label percentages and volume units aren't counts of whole foods. Only an
+  // explicit mass below can replace the estimated portion in those cases.
+  const countText = chunk.replace(/\d+(?:[.,]\d+)?\s*(?:%|мл|ml|литр(?:а|ов)?|lit(?:er|re)s?)(?=$|[^a-zа-яё])/gu, ' ');
+  const digit = countText.match(/\d+(?:[.,]\d+)?/);
+  if (digit) return Math.max(1, Number(digit[0].replace(',', '.')));
   for (const [word, n] of Object.entries(NUM_WORDS)) {
-    if (chunk.includes(word)) return n;
+    if (new RegExp(`(?:^|[^a-zа-яё])${word}(?=$|[^a-zа-яё])`, 'u').test(countText)) return n;
   }
   return 1;
+}
+
+function gramsIn(chunk: string): number | null {
+  const mass = chunk.match(/(\d+(?:[.,]\d+)?)\s*(kg|kilograms?|кг|килограмм(?:а|ов)?|grams?|g|грамм(?:а|ов)?|гр\.?|г)(?=$|[\s,;.)])/u);
+  if (!mass) return null;
+  const grams = Number(mass[1].replace(',', '.')) * (/^(?:k|к)/u.test(mass[2]) ? 1000 : 1);
+  return Number.isFinite(grams) && grams > 0 ? grams : null;
 }
 
 /** Coarse default per-100g for an unrecognized food — clearly an estimate. */
@@ -57,6 +67,8 @@ export class StubFoodParser implements FoodParser {
   async parse(text: string, region: Region): Promise<MealDraft> {
     const chunks = text
       .toLowerCase()
+      // Decimal commas belong to the amount, not the meal's item separator.
+      .replace(/(\d),(\d)/g, '$1.$2')
       .split(/[,;]|\sи\s|\sс\s|\sand\s|\swith\s|\+/)
       .map((c) => c.trim())
       .filter((c) => c.length > 0);
@@ -64,30 +76,31 @@ export class StubFoodParser implements FoodParser {
     const items: NutritionItem[] = [];
     for (const chunk of chunks) {
       const match = FOODS.find((f) => f.keywords.some((k) => chunk.includes(k)));
-      const qty = quantityIn(chunk);
+      const explicitGrams = gramsIn(chunk);
+      const qty = explicitGrams == null ? quantityIn(chunk) : 1;
       if (match) {
-        const grams = match.def.defGrams * qty;
+        const grams = explicitGrams ?? match.def.defGrams * qty;
         const per100: Per100 = { source: 'estimate', ...match.def.per100 };
         items.push({
           name_ru: qty > 1 ? `${match.def.name_ru} ×${qty}` : match.def.name_ru,
           name_en: qty > 1 ? `${match.def.name_en} ×${qty}` : match.def.name_en,
           grams,
-          grams_source: 'estimated',
+          grams_source: explicitGrams == null ? 'estimated' : 'confirmed',
           confidence: 0.4,
           per100,
           scaled: scaleToGrams(per100, grams),
-          approximate: true,
+          approximate: explicitGrams == null,
         });
       } else {
         items.push({
           name_ru: chunk,
           name_en: chunk,
-          grams: 100,
-          grams_source: 'estimated',
+          grams: explicitGrams ?? 100,
+          grams_source: explicitGrams == null ? 'estimated' : 'confirmed',
           confidence: 0.2,
           per100: UNKNOWN_PER100,
-          scaled: scaleToGrams(UNKNOWN_PER100, 100),
-          approximate: true,
+          scaled: scaleToGrams(UNKNOWN_PER100, explicitGrams ?? 100),
+          approximate: explicitGrams == null,
         });
       }
     }

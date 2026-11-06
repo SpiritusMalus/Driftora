@@ -1,29 +1,26 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Animated, StyleSheet, Text, View } from 'react-native';
+import { Animated, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
-import { Card } from '@/components/ui/Card';
 import { FillBar } from '@/components/ui/FillBar';
-import { GridPaper } from '@/components/ui/GridPaper';
+import { formatInt } from '@/lib/core/format';
 import { DUR, EASE_OUT, useReducedMotion } from '@/lib/theme/motion';
 import { useTheme } from '@/lib/theme/theme';
 
-/// Home widget: today's food at a glance — kcal vs target + a compact КБЖУ row —
+/// Home widget: today's food at a glance — kcal (or protein) vs target + macros —
 /// tapping opens the full food day («Еда за сегодня»). This is the food entry
 /// point among the Home widgets (previously food was only reachable via the
 /// bottom bar); the bar stays for quick voice/text logging.
 ///
-/// «Миллиметровка»: this hero card carries the graph-paper grid (Android — the
-/// brand world; iOS stays native-clean), the kcal figure is set in the mono
-/// instrument face, and a new total «prints» in with a 180ms fade instead of
-/// teleporting (animation pass 2026-07-20). No count-up rolling — the value is
-/// data being read, not a show.
+/// The unboxed day summary keeps one budget rule and three label/value columns.
+/// A changed total fades in without animating the amount being reported.
 export function FoodTodayWidget({
   kcal,
   targetKcal,
   targetApprox = false,
   movementHint,
+  hideCalories = false,
   prot,
   targetProt,
   fat,
@@ -41,6 +38,7 @@ export function FoodTodayWidget({
   /// movement is logged yet, so the resting number never reads as the day's
   /// ceiling (device feedback 2026-07-10). Null hides it.
   movementHint?: string | null;
+  hideCalories?: boolean;
   prot: number;
   targetProt: number;
   fat: number;
@@ -51,11 +49,13 @@ export function FoodTodayWidget({
 }) {
   const { t } = useTranslation();
   const theme = useTheme();
+  const { fontScale } = useWindowDimensions();
   const reduced = useReducedMotion();
 
   // «Печать» нового значения: fade the figure back in when the rounded total
   // actually changes (skip the mount and Reduce Motion — value lands instantly).
-  const shown = Math.round(kcal);
+  const shown = Math.round(hideCalories ? prot : kcal);
+  const shownTarget = hideCalories ? targetProt : targetKcal;
   const prevShown = useRef(shown);
   const fade = useRef(new Animated.Value(1)).current;
   useEffect(() => {
@@ -80,60 +80,84 @@ export function FoodTodayWidget({
   ];
 
   return (
-    <Card style={styles.card} onPress={onPress}>
-      {theme.isIOS ? null : <GridPaper radius={20} />}
-      <View style={styles.head}>
-        <View style={styles.headMain}>
-          <Ionicons name="nutrition-outline" size={18} color={theme.primary} />
-          <Text style={[styles.title, { color: theme.text }, theme.font.bodySemiBold]}>{t('home.food.title')}</Text>
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      style={({ pressed }) => [styles.summary, { borderColor: theme.separator, opacity: pressed ? 0.8 : 1 }]}
+    >
+      <Text style={[styles.title, { color: theme.text }, theme.font.bodyMedium]}>{t('home.food.title')}</Text>
+      <View style={styles.budget}>
+        <Animated.Text
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.75}
+          style={[styles.kcal, { color: theme.text, opacity: fade }, theme.font.display]}
+        >
+          {formatInt(shown)}
+        </Animated.Text>
+        <View style={styles.budgetUnit}>
+          <Text style={[styles.kcalUnit, { color: theme.text }, theme.font.body]}>
+            {hideCalories ? t('macros.protein') : t('units.kcal')}
+          </Text>
+          <Text style={[styles.kcalTarget, { color: theme.subtle }, theme.font.body]}>
+            / {shownTarget > 0 ? (!hideCalories && targetApprox ? '≈' : '') + formatInt(shownTarget) : '—'}
+            {hideCalories ? ` ${t('units.g')}` : ''}
+          </Text>
         </View>
-        <Ionicons name="chevron-forward" size={16} color={theme.tertiary} />
+        <View style={styles.openDay}>
+          <Ionicons name="arrow-up-outline" size={22} color={theme.text} style={styles.openDayArrow} />
+        </View>
       </View>
-
-      <Animated.Text style={[styles.kcal, { color: theme.heroAccent, opacity: fade }, theme.font.display]}>
-        {shown}
-        <Text style={[styles.kcalRest, { color: theme.subtle }, theme.font.body]}>
-          {' '}
-          / {targetKcal > 0 ? (targetApprox ? '≈' : '') + Math.round(targetKcal) : '—'} {t('units.kcal')}
-        </Text>
-      </Animated.Text>
-      {targetKcal > 0 ? (
+      {shownTarget > 0 ? (
         <View style={styles.kcalBar}>
-          {/* Goal scale: the day budget filled = the bar filled. The old
+          {/* Goal scale: the selected nutrient target filled = the bar filled. The old
               headroom scale (a micro-nutrient idiom) left ~40% of track past
               the tick, so a fully eaten day read as unfinished (device
               feedback 2026-08-17: «заполнил всё, а шкалы не адаптивные»). */}
-          <FillBar value={kcal} min={targetKcal} scale="goal" thickness={8} />
+          <FillBar value={hideCalories ? prot : kcal} min={shownTarget} scale="goal" thickness={5} />
         </View>
       ) : null}
-      {movementHint ? (
+      {!hideCalories && movementHint ? (
         <Text style={[styles.movementHint, { color: theme.subtle }, theme.font.body]}>{movementHint}</Text>
       ) : null}
 
-      <View style={styles.macros}>
+      <View style={[styles.macros, fontScale > 1.5 && styles.macrosLarge]}>
         {macros.map((m) => (
-          <View key={m.key} style={styles.macro}>
-            <Text style={[styles.macroLabel, { color: theme.subtle }, theme.font.body]} numberOfLines={1}>
-              {t(`macros.${m.key}`)} {Math.round(m.value)}/{m.target > 0 ? Math.round(m.target) : '—'}
+          <View key={m.key} style={[styles.macro, fontScale > 1.5 && styles.macroLarge]}>
+            <Text style={[styles.macroLabel, { color: theme.subtle }, theme.font.body]}>
+              {t(`macros.${m.key}`)}
             </Text>
-            {m.target > 0 ? <FillBar value={m.value} min={m.target} scale="goal" thickness={6} /> : null}
+            <Text style={[styles.macroValue, fontScale > 1.5 && styles.macroValueLarge, { color: theme.text }, theme.font.bodyMedium]}>
+              {formatInt(m.value)}
+              <Text style={[styles.macroTarget, { color: theme.subtle }, theme.font.body]}>
+                /{m.target > 0 ? formatInt(m.target) : '—'} {t('units.g')}
+              </Text>
+            </Text>
           </View>
         ))}
       </View>
-    </Card>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { marginBottom: 12 },
-  head: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  headMain: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  title: { fontSize: 15 },
-  kcal: { fontSize: 26, marginTop: 8, letterSpacing: -0.5 },
-  kcalRest: { fontSize: 14, letterSpacing: 0 },
-  kcalBar: { marginTop: 8 },
-  movementHint: { fontSize: 12, marginTop: 6, lineHeight: 17 },
-  macros: { flexDirection: 'row', gap: 12, marginTop: 12 },
-  macro: { flex: 1, gap: 6 },
+  summary: { paddingBottom: 23, borderBottomWidth: 1, borderStyle: 'dashed' },
+  title: { fontSize: 15, marginBottom: 8 },
+  budget: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  kcal: { fontSize: 49, lineHeight: 54, letterSpacing: -1.8, flexShrink: 1 },
+  budgetUnit: { gap: 1, flexShrink: 0 },
+  kcalUnit: { fontSize: 11, lineHeight: 17 },
+  kcalTarget: { fontSize: 11, lineHeight: 17 },
+  openDay: { width: 44, height: 44, marginLeft: 'auto', alignItems: 'center', justifyContent: 'center' },
+  openDayArrow: { transform: [{ rotate: '45deg' }] },
+  kcalBar: { marginTop: 17 },
+  movementHint: { fontSize: 12, marginTop: 10, lineHeight: 17 },
+  macros: { flexDirection: 'row', justifyContent: 'space-between', gap: 9, marginTop: 15 },
+  macrosLarge: { flexDirection: 'column', gap: 12 },
+  macro: { flex: 1, gap: 2 },
+  macroLarge: { flex: 0, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between', columnGap: 12, rowGap: 2 },
   macroLabel: { fontSize: 11 },
+  macroValue: { fontSize: 15, lineHeight: 21 },
+  macroValueLarge: { flexShrink: 1, maxWidth: '100%', textAlign: 'right' },
+  macroTarget: { fontSize: 11, lineHeight: 17 },
 });

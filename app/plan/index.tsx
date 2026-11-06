@@ -1,9 +1,10 @@
 import { formatDecimal, formatInt } from '@/lib/core/format';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { usePreventRemove, type NavigationAction } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card } from '@/components/ui/Card';
 import { Chip, ChipRow } from '@/components/ui/Chip';
@@ -16,6 +17,12 @@ import { ensureSettings, updateSettings, type SettingsPatch } from '@/lib/core/d
 import { dayKey, listStepsDays, typicalSteps } from '@/lib/core/db/steps';
 import { latestDeviceBodyFat, listWeights } from '@/lib/core/db/weight';
 import { todayWorkoutKcal } from '@/lib/core/db/workouts';
+import {
+  createPlanSettingsSaver,
+  manualTargetPatch,
+  type ManualTargetKey,
+  type PlanSaveState,
+} from '@/lib/core/services/planSettingsSaver';
 import {
   ADAPTIVE_WINDOW_DAYS,
   averageEarnedKcal,
@@ -57,6 +64,7 @@ export default function PlanScreen() {
   const { t } = useTranslation();
   const theme = useTheme();
   const router = useRouter();
+  const navigation = useNavigation();
   const db = useDatabase();
 
   const [latestKg, setLatestKg] = useState(0);
@@ -88,10 +96,25 @@ export default function PlanScreen() {
   const [protein, setProtein] = useState('120');
   const [fat, setFat] = useState('70');
   const [carb, setCarb] = useState('200');
+  const manualValues = useRef({ targetKcal: '2000', targetProteinG: '120', targetFatG: '70', targetCarbG: '200' });
+  const mounted = useRef(true);
+  const leaving = useRef(false);
+  const [leavingScreen, setLeavingScreen] = useState(false);
+  const [saveState, setSaveState] = useState<PlanSaveState>({ pending: false, saving: false, failed: false });
+  const saver = useMemo(
+    () => createPlanSettingsSaver(async (patch) => {
+      if (!db) throw new Error('Database unavailable');
+      await updateSettings(db, patch);
+    }, (state) => {
+      if (mounted.current) setSaveState(state);
+    }),
+    [db],
+  );
   // Transient «Сохранено ✓» after any auto-save, shown WHERE the edit happened.
   // 'burn' is the measured-expenditure card's own address: routing its ticks
   // through 'plan' lit the plan card's header too — two ✓ for one tap.
   const [ack, setAck] = useState<{ where: 'plan' | 'manual' | 'burn'; text: string } | null>(null);
+  const visibleAck = !saveState.pending && !saveState.failed ? ack : null;
   const ackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [openBody, setOpenBody] = useState(false);
@@ -100,18 +123,63 @@ export default function PlanScreen() {
   // 2026-07-07: «текста очень много серым»); numbers + one action stay visible.
   const [openPlanWhy, setOpenPlanWhy] = useState(false);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
       if (ackTimer.current) clearTimeout(ackTimer.current);
-    },
-    [],
-  );
+    };
+  }, []);
+
+  const flushEdits = useCallback(async (ackText = t('weight.targets.savedTick'), where: 'plan' | 'manual' | 'burn' = 'manual') => {
+    const hadEdits = saver.state().pending;
+    await saver.flush();
+    if (!mounted.current || !hadEdits) return;
+    setAck({ where, text: ackText });
+    if (ackTimer.current) clearTimeout(ackTimer.current);
+    ackTimer.current = setTimeout(() => setAck(null), 2500);
+  }, [saver, t]);
+
+  const saveBeforeLeaving = useCallback((action: NavigationAction) => {
+    if (leaving.current) return;
+    leaving.current = true;
+    setLeavingScreen(true);
+    void flushEdits().then(() => {
+      // Replay the original usePreventRemove action, as the other guarded
+      // editors do. React Navigation marks this route as already visited.
+      navigation.dispatch(action);
+    }).catch(() => {
+      leaving.current = false;
+      setLeavingScreen(false);
+      Alert.alert(t('weight.targets.saveFailed'), undefined, [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('weight.targets.retry'), onPress: () => saveBeforeLeaving(action) },
+      ]);
+    });
+  }, [flushEdits, navigation, t]);
+
+  usePreventRemove(saveState.pending, ({ data }) => saveBeforeLeaving(data.action));
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') void flushEdits().catch(() => {});
+    });
+    return () => subscription.remove();
+  }, [flushEdits]);
 
   useFocusEffect(
     useCallback(() => {
       let active = true;
       void (async () => {
         if (!db) return;
+        // A tab/focus change may race the completion of the last field. Read
+        // settings only after its queued write, rather than restoring old text.
+        try {
+          await saver.flush();
+        } catch {
+          return;
+        }
+        const readVersion = saver.revision();
         const s = await ensureSettings(db);
         if (!active) return;
         // Weigh-ins are SYNCED on «Весе» (that screen owns the scale import);
@@ -131,6 +199,7 @@ export default function PlanScreen() {
         setExpenditure(measuredExpenditure(intake, weightPts));
         setUsualSteps(await typicalSteps(db));
         if (!active) return;
+        if (!saver.canHydrate(readVersion)) return;
         // Settings re-read on EVERY focus: body facts are edited in the
         // body-setup wizard, so returning from it must show the fresh save.
         setHeightText(s.heightCm > 0 ? String(s.heightCm) : '');
@@ -142,6 +211,10 @@ export default function PlanScreen() {
         setBodyFatText(s.bodyFatPct > 0 ? String(s.bodyFatPct) : '');
         setWaistCm(s.waistCm);
         setBmrFactor(s.bmrFactor);
+        manualValues.current = {
+          targetKcal: String(s.targetKcal), targetProteinG: String(s.targetProteinG),
+          targetFatG: String(s.targetFatG), targetCarbG: String(s.targetCarbG),
+        };
         setKcal(String(s.targetKcal));
         setProtein(String(s.targetProteinG));
         setFat(String(s.targetFatG));
@@ -149,17 +222,28 @@ export default function PlanScreen() {
       })();
       return () => {
         active = false;
+        // Also covers focus loss without removal (e.g. opening a body field),
+        // and unmounts not represented by a back action.
+        void flushEdits().catch(() => {});
       };
-    }, [db]),
+    }, [db, saver, flushEdits]),
   );
 
   /// Persist a settings patch immediately and flash the «✓» tick at `where`.
   async function persist(patch: SettingsPatch, ackText: string, where: 'plan' | 'manual' | 'burn') {
-    if (!db) return;
-    await updateSettings(db, patch);
-    setAck({ where, text: ackText });
-    if (ackTimer.current) clearTimeout(ackTimer.current);
-    ackTimer.current = setTimeout(() => setAck(null), 2500);
+    saver.stage(patch);
+    try {
+      await flushEdits(ackText, where);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function changeManualTarget(key: ManualTargetKey, value: string, setValue: (value: string) => void) {
+    manualValues.current[key] = value;
+    setValue(value);
+    saver.stage(manualTargetPatch(key, toNumber(value), toNumber(manualValues.current.targetKcal)));
   }
 
   /// «Использовать мой обмен»: turn the measured expenditure into a stored BMR
@@ -206,8 +290,7 @@ export default function PlanScreen() {
     const avgEarned = averageEarnedKcal(earned, latestKg);
     const factor = bmrFactorFromMeasured(expenditure.kcalPerDay, avgEarned, formula.bmrKcal);
     if (factor == null) return;
-    await persist({ bmrFactor: factor }, t('weight.burn.appliedTick'), 'burn');
-    setBmrFactor(factor);
+    if (await persist({ bmrFactor: factor }, t('weight.burn.appliedTick'), 'burn')) setBmrFactor(factor);
   }
 
   const heightCm = toNumber(heightText);
@@ -273,6 +356,14 @@ export default function PlanScreen() {
 
   return (
     <Screen>
+      {saveState.failed ? (
+        <View style={styles.saveError} accessibilityRole="alert">
+          <Text style={[styles.note, { color: theme.primary }, theme.font.body]}>{t('weight.targets.saveFailed')}</Text>
+          <Pressable onPress={() => void flushEdits().catch(() => {})} style={styles.whyToggle}>
+            <Text style={[styles.whyToggleText, { color: theme.primary }, theme.font.bodyMedium]}>{t('weight.targets.retry')}</Text>
+          </Pressable>
+        </View>
+      ) : null}
       {/* Where the plan stands: the weight it is computed from, one tap back to
           the screen that owns that number. The two screens are one loop —
           взвесился → план пересчитался. */}
@@ -291,13 +382,13 @@ export default function PlanScreen() {
         <>
           {/* ── 1. What I want → what that gives. One tap makes it the food
                  diary's goal. ── */}
-          <Card style={styles.card}>
+          <Card variant="section" style={styles.card}>
             <View style={styles.titleRow}>
-              <Text style={[styles.cardTitle, { color: theme.text }, theme.font.bodySemiBold]}>
+              <Text style={[styles.cardTitle, { color: theme.text }, theme.font.bodyMedium]}>
                 {t('weight.plan.title')}
               </Text>
-              {ack?.where === 'plan' ? (
-                <Text style={[styles.ackTick, { color: theme.accent }, theme.font.bodyMedium]}>{ack.text}</Text>
+              {visibleAck?.where === 'plan' ? (
+                <Text style={[styles.ackTick, { color: theme.accent }, theme.font.bodyMedium]}>{visibleAck.text}</Text>
               ) : null}
             </View>
             <ChipRow>
@@ -350,10 +441,12 @@ export default function PlanScreen() {
                 </Text>
                 <TextField
                   value={goalWeightText}
-                  onChangeText={setGoalWeightText}
-                  onEndEditing={() =>
-                    void persist({ goalWeightKg: toNumber(goalWeightText) }, t('weight.targets.savedTick'), 'plan')
-                  }
+                  onChangeText={(value) => {
+                    setGoalWeightText(value);
+                    saver.stage({ goalWeightKg: toNumber(value) });
+                  }}
+                  onEndEditing={() => void flushEdits(t('weight.targets.savedTick'), 'plan').catch(() => {})}
+                  editable={!leavingScreen}
                   keyboardType="numeric"
                   style={styles.heightInput}
                 />
@@ -369,10 +462,15 @@ export default function PlanScreen() {
                     pace: formatDecimal(plan.paceKgPerWeek, 1),
                   })}
                 </Text>
-                <Text style={[styles.planKcal, { color: theme.heroAccent }, theme.font.heading]}>
+                <Text
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.75}
+                  style={[styles.planKcal, { color: theme.heroAccent }, theme.font.heading]}
+                >
                   {t('weight.plan.kcalPerDay', { kcal: plan.kcal })}
                 </Text>
-                <View style={styles.macroRow}>
+                <View style={[styles.macroRow, { borderColor: theme.separator }]}>
                   {(
                     [
                       [t('macros.protein'), plan.prot],
@@ -380,9 +478,9 @@ export default function PlanScreen() {
                       [t('macros.carbs'), plan.carb],
                     ] as const
                   ).map(([label, grams]) => (
-                    <View key={label} style={[styles.macroTile, { backgroundColor: theme.fill }]}>
+                    <View key={label} style={styles.macroTile}>
                       <Text style={[styles.macroLabel, { color: theme.subtle }, theme.font.body]}>{label}</Text>
-                      <Text style={[styles.macroValue, { color: theme.text }, theme.font.bodySemiBold]}>
+                      <Text style={[styles.macroValue, { color: theme.text }, theme.font.bodyMedium]}>
                         {grams} {t('units.g')}
                       </Text>
                     </View>
@@ -443,6 +541,10 @@ export default function PlanScreen() {
                 ) : (
                   <Pressable
                     onPress={() => {
+                      manualValues.current = {
+                        targetKcal: String(plan.kcal), targetProteinG: String(plan.prot),
+                        targetFatG: String(plan.fat), targetCarbG: String(plan.carb),
+                      };
                       setKcal(String(plan.kcal));
                       setProtein(String(plan.prot));
                       setFat(String(plan.fat));
@@ -548,19 +650,24 @@ export default function PlanScreen() {
                  instead of a formula. Shown only once the data is dense enough
                  (measuredExpenditure gates it). ── */}
           {expenditure != null ? (
-            <Card style={styles.card}>
+            <Card variant="section" style={styles.card}>
               <View style={styles.burnTitleRow}>
-                <Text style={[styles.burnLabel, { color: theme.labelCaps }, theme.font.bodyBold]}>
-                  {t('weight.burn.title', { days: ADAPTIVE_WINDOW_DAYS }).toUpperCase()}
+                <Text style={[styles.burnLabel, { color: theme.text }, theme.font.bodyMedium]}>
+                  {t('weight.burn.title', { days: ADAPTIVE_WINDOW_DAYS })}
                 </Text>
                 {/* The tick lives in THIS card's header for apply and reset both
                     — the branch below changes with bmrFactor, so an in-branch
                     tick would vanish with the state it acknowledges. */}
-                {ack?.where === 'burn' ? (
-                  <Text style={[styles.ackTick, { color: theme.accent }, theme.font.bodyMedium]}>{ack.text}</Text>
+                {visibleAck?.where === 'burn' ? (
+                  <Text style={[styles.ackTick, { color: theme.accent }, theme.font.bodyMedium]}>{visibleAck.text}</Text>
                 ) : null}
               </View>
-              <Text style={[styles.planKcal, { color: theme.heroAccent }, theme.font.heading]}>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
+                style={[styles.planKcal, { color: theme.heroAccent }, theme.font.heading]}
+              >
                 {t('weight.burn.value', { kcal: expenditure.kcalPerDay })}
               </Text>
               <Text style={[styles.burnSub, { color: theme.subtle }, theme.font.body]}>
@@ -593,7 +700,9 @@ export default function PlanScreen() {
                   </Text>
                   <Pressable
                     onPress={() =>
-                      void persist({ bmrFactor: 0 }, t('weight.burn.resetTick'), 'burn').then(() => setBmrFactor(0))
+                      void persist({ bmrFactor: 0 }, t('weight.burn.resetTick'), 'burn').then((saved) => {
+                        if (saved) setBmrFactor(0);
+                      })
                     }
                     hitSlop={6}
                     style={styles.whyToggle}
@@ -712,47 +821,39 @@ export default function PlanScreen() {
             summary={manualSummary}
             open={openManual}
             onToggle={() => setOpenManual((v) => !v)}
-            ack={ack?.where === 'manual' ? ack.text : null}
+            ack={visibleAck?.where === 'manual' ? visibleAck.text : null}
             theme={theme}
           >
             <Field
               label={t('settings.targetKcal')}
               value={kcal}
-              onChange={setKcal}
-              onDone={() =>
-                void persist({ targetKcal: toNumber(kcal), targetsSetAt: Date.now() }, t('weight.targets.savedTick'), 'manual')
-              }
+              onChange={(value) => changeManualTarget('targetKcal', value, setKcal)}
+              onDone={() => void flushEdits().catch(() => {})}
+              editable={!leavingScreen}
               theme={theme}
             />
             <Field
               label={t('settings.targetProtein')}
               value={protein}
-              onChange={setProtein}
-              onDone={() =>
-                void persist(
-                  { targetProteinG: toNumber(protein), targetsSetAt: Date.now() },
-                  t('weight.targets.savedTick'),
-                  'manual',
-                )
-              }
+              onChange={(value) => changeManualTarget('targetProteinG', value, setProtein)}
+              onDone={() => void flushEdits().catch(() => {})}
+              editable={!leavingScreen}
               theme={theme}
             />
             <Field
               label={t('settings.targetFat')}
               value={fat}
-              onChange={setFat}
-              onDone={() =>
-                void persist({ targetFatG: toNumber(fat), targetsSetAt: Date.now() }, t('weight.targets.savedTick'), 'manual')
-              }
+              onChange={(value) => changeManualTarget('targetFatG', value, setFat)}
+              onDone={() => void flushEdits().catch(() => {})}
+              editable={!leavingScreen}
               theme={theme}
             />
             <Field
               label={t('settings.targetCarb')}
               value={carb}
-              onChange={setCarb}
-              onDone={() =>
-                void persist({ targetCarbG: toNumber(carb), targetsSetAt: Date.now() }, t('weight.targets.savedTick'), 'manual')
-              }
+              onChange={(value) => changeManualTarget('targetCarbG', value, setCarb)}
+              onDone={() => void flushEdits().catch(() => {})}
+              editable={!leavingScreen}
               theme={theme}
             />
             <Text style={[styles.note, { color: theme.subtle }, theme.font.body]}>{t('weight.targets.note')}</Text>
@@ -784,9 +885,9 @@ function Section({
   theme: Theme;
 }) {
   return (
-    <Card style={styles.sectionCard}>
+    <Card variant="section" style={styles.sectionCard}>
       <Pressable onPress={onToggle} style={styles.sectionHeader} hitSlop={6}>
-        <Text style={[styles.sectionTitle, { color: theme.text }, theme.font.bodySemiBold]}>{title}</Text>
+        <Text style={[styles.sectionTitle, { color: theme.text }, theme.font.bodyMedium]}>{title}</Text>
         <Text
           numberOfLines={1}
           style={[styles.sectionSummary, { color: ack ? theme.accent : theme.subtle }, theme.font.body]}
@@ -805,18 +906,20 @@ function Field({
   value,
   onChange,
   onDone,
+  editable = true,
   theme,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   onDone: () => void;
+  editable?: boolean;
   theme: Theme;
 }) {
   return (
     <View style={styles.field}>
       <Text style={[styles.fieldLabel, { color: theme.subtle }, theme.font.body]}>{label}</Text>
-      <TextField value={value} onChangeText={onChange} onEndEditing={onDone} keyboardType="numeric" />
+      <TextField value={value} onChangeText={onChange} onEndEditing={onDone} editable={editable} keyboardType="numeric" />
     </View>
   );
 }
@@ -872,25 +975,26 @@ function formatStepCount(n: number): string {
 }
 
 const styles = StyleSheet.create({
+  saveError: { marginBottom: 16 },
   fromRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4, marginBottom: 14, alignSelf: 'flex-start' },
   fromText: { fontSize: 13 },
-  card: { marginBottom: 16 },
+  card: { marginBottom: 6 },
   note: { fontSize: 12, marginTop: 6, lineHeight: 17 },
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 },
-  cardTitle: { fontSize: 16 },
+  cardTitle: { fontSize: 18 },
   ackTick: { fontSize: 13 },
   planIntro: { fontSize: 14, lineHeight: 20, marginTop: 4 },
   assumedAge: { fontSize: 12, lineHeight: 17, marginTop: 8 },
-  planKcal: { fontSize: 28, lineHeight: 32, marginTop: 8, marginBottom: 10 },
-  burnLabel: { fontSize: 12, letterSpacing: 1.44, marginBottom: 2 },
+  planKcal: { fontSize: 36, lineHeight: 42, letterSpacing: -1, marginTop: 12, marginBottom: 10 },
+  burnLabel: { fontSize: 18, flexShrink: 1, marginBottom: 2 },
   // No extra bottom margin (unlike titleRow): the caps label keeps its own
   // tight 2px gap to the hero number below.
   burnTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   burnSub: { fontSize: 13, lineHeight: 18, marginTop: -4, marginBottom: 8 },
-  macroRow: { flexDirection: 'row', gap: 8 },
-  macroTile: { flex: 1, borderRadius: 12, paddingVertical: 8, paddingHorizontal: 4, alignItems: 'center' },
+  macroRow: { flexDirection: 'row', gap: 10, borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: 17, marginVertical: 18 },
+  macroTile: { flex: 1, gap: 3 },
   macroLabel: { fontSize: 11 },
-  macroValue: { fontSize: 15, marginTop: 2 },
+  macroValue: { fontSize: 15, marginTop: 2, fontVariant: ['tabular-nums'] },
   appliedLine: { fontSize: 14, marginTop: 12 },
   heightRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8, marginTop: 2 },
   heightInput: { flex: 1 },
@@ -898,18 +1002,18 @@ const styles = StyleSheet.create({
   disclaimer: { fontSize: 11, fontStyle: 'italic', marginTop: 8, lineHeight: 16 },
   field: { marginBottom: 10 },
   fieldLabel: { fontSize: 12, marginBottom: 5, marginTop: 4 },
-  applyBtn: { borderWidth: 1.5, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 10, alignSelf: 'flex-start', marginTop: 12 },
+  applyBtn: { borderWidth: 1.5, borderRadius: 6, paddingHorizontal: 18, paddingVertical: 10, alignSelf: 'flex-start', marginTop: 12 },
   applyText: { fontSize: 14 },
   hint: { fontSize: 13, textAlign: 'center', marginTop: 8, marginBottom: 16 },
   whyToggle: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 12, alignSelf: 'flex-start' },
   whyToggleText: { fontSize: 13 },
   whyBody: { marginTop: 2 },
-  line: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 6, borderBottomWidth: StyleSheet.hairlineWidth },
+  line: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', minHeight: 52, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth },
   lineName: { fontSize: 13, flexShrink: 1, paddingRight: 12 },
   lineValue: { fontSize: 13, textAlign: 'right' },
-  sectionCard: { marginBottom: 12 },
+  sectionCard: { marginBottom: 6 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  sectionTitle: { fontSize: 15 },
+  sectionTitle: { fontSize: 18, flexShrink: 1 },
   sectionSummary: { fontSize: 13, flex: 1, textAlign: 'right' },
   sectionBody: { marginTop: 12 },
 });

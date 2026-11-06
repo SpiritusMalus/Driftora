@@ -12,7 +12,7 @@ import type {
   Vitamins,
 } from '../services/foodParser';
 import { displayItemName } from '../services/foodChoice';
-import { recomputeDraft } from '../services/mealDraft';
+import { canSaveMealDraft, recomputeDraft } from '../services/mealDraft';
 import { mealTypeForEntry, type MealType } from '../insights/mealType';
 import type { MicroRow } from '../insights/microNutrients';
 import { foodEntries, foodItems, type FoodEntry, type FoodItem } from './schema';
@@ -145,6 +145,7 @@ export async function saveParsedEntry(
 ): Promise<number> {
   const ts = opts.ts ?? new Date();
   const d = opts.draft;
+  if (!canSaveMealDraft(d)) throw new Error('Food nutrition is incomplete');
   return withTx(db, async () => {
     const inserted = await db
       .insert(foodEntries)

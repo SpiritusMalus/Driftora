@@ -27,11 +27,11 @@ describe('theme contrast (WCAG 2.1 AA)', () => {
     ] as const;
 
     for (const { name, tokens } of schemes) {
-      // Both surfaces: the grouped background shows through inset cards, and
-      // secondary text sits on each of them at different points in the app.
+      // Input wells and inactive icon/control tiles carry secondary text too.
       const surfaces = [
         { label: 'card', value: tokens.card },
         { label: 'background', value: tokens.background },
+        { label: 'fill', value: tokens.fill },
       ];
 
       for (const surface of surfaces) {
@@ -63,6 +63,7 @@ describe('theme contrast (WCAG 2.1 AA)', () => {
       const surfaces = [
         { label: 'card', value: tokens.card },
         { label: 'background', value: tokens.background },
+        { label: 'fill', value: tokens.iconBg },
       ];
 
       for (const surface of surfaces) {
@@ -81,17 +82,18 @@ describe('theme contrast (WCAG 2.1 AA)', () => {
         it(`${name}: icon glyphs on ${surface.label} meet the non-text floor`, () => {
           expect(contrastRatio(tokens.icon, surface.value)).toBeGreaterThanOrEqual(AA_NON_TEXT);
         });
+
+        it(`${name}: small action text on ${surface.label} is readable`, () => {
+          expect(contrastRatio(tokens.primary, surface.value)).toBeGreaterThanOrEqual(AA_TEXT);
+        });
       }
 
       // `heroAccent` is a HERO-ONLY token: every one of its 13 call sites pairs
       // it with `font.heading`/`display`/`displayHeavy` at 20px and up, which is
       // WCAG "large text" (≥18.66px bold) and so carries the 3:1 floor.
       //
-      // It is held to that floor and no lower ON PURPOSE, because the dark red
-      // is at 4.2:1 — comfortable for a 40px figure, short of the 4.5:1 body
-      // threshold. Painting a caption or a 13px note with this token is
-      // therefore a real regression that no assertion here can see. If one is
-      // ever needed, lighten the dark `heroAccent` rather than relaxing this.
+      // Keep the existing large-display contract. Small action text now has
+      // its own stricter check on every surface above.
       it(`${name}: hero accent meets the large-text floor on the background`, () => {
         expect(contrastRatio(tokens.heroAccent, tokens.background)).toBeGreaterThanOrEqual(
           AA_LARGE_TEXT,

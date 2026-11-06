@@ -70,7 +70,7 @@ export default function DiaryEntryScreen() {
   return (
     <Screen>
       <Text style={[styles.date, { color: theme.subtle }, theme.font.body]}>{formatDate(entry.ts)}</Text>
-      <Card>
+      <Card variant="section">
         {hasShift ? (
           <View style={[styles.shiftHero, { borderBottomColor: theme.separator }]}>
             <View style={styles.shiftRow}>
@@ -144,7 +144,7 @@ export default function DiaryEntryScreen() {
 function Block({ label, theme, children, first }: { label: string; theme: Theme; children: React.ReactNode; first?: boolean }) {
   return (
     <View style={[styles.section, first && styles.sectionFirst]}>
-      <Text style={[styles.label, { color: theme.subtle }, theme.font.body]}>{label}</Text>
+      <Text style={[styles.label, { color: theme.text }, theme.font.bodyMedium]}>{label}</Text>
       {children}
     </View>
   );
@@ -186,18 +186,18 @@ function formatDate(d: Date): string {
 }
 
 const styles = StyleSheet.create({
-  date: { fontSize: 12, marginTop: 4, marginBottom: 12, marginHorizontal: 4 },
+  date: { fontSize: 12, marginTop: 4, marginBottom: 6 },
   edit: { marginTop: 16 },
-  deleteBtn: { borderWidth: 1.5, borderRadius: 999, paddingVertical: 12, alignItems: 'center', marginTop: 10 },
+  deleteBtn: { borderWidth: 1.5, borderRadius: 6, paddingVertical: 12, alignItems: 'center', marginTop: 10 },
   deleteText: { fontSize: 15 },
-  shiftHero: { alignItems: 'center', paddingBottom: 16, marginBottom: 4, borderBottomWidth: StyleSheet.hairlineWidth },
+  shiftHero: { alignItems: 'flex-start', paddingBottom: 18, marginBottom: 4, borderBottomWidth: StyleSheet.hairlineWidth },
   shiftRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  shiftNum: { fontSize: 40, lineHeight: 44 },
+  shiftNum: { fontSize: 36, lineHeight: 42, fontVariant: ['tabular-nums'] },
   shiftArrow: { fontSize: 24 },
   shiftCaption: { fontSize: 12, marginTop: 4 },
-  section: { marginTop: 16 },
+  section: { marginTop: 24 },
   sectionFirst: { marginTop: 0 },
-  label: { fontSize: 12, marginBottom: 4 },
+  label: { fontSize: 18, marginBottom: 10 },
   value: { fontSize: 15, lineHeight: 22 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 },
 });

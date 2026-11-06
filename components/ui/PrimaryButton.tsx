@@ -3,9 +3,8 @@ import { Pressable, type StyleProp, StyleSheet, Text, View, type ViewStyle } fro
 
 import { useTheme } from '@/lib/theme/theme';
 
-/// The primary call-to-action. Android fills it with the coral gradient and a
-/// soft coral glow; iOS uses a flat coral fill (no gradient/shadow), matching
-/// the native handoff. Disabled state dims to 40%.
+/// The existing primary action, with a flat blue fill on both platforms.
+/// Disabled state dims to 40%; the component geometry and press behavior stay.
 export function PrimaryButton({
   label,
   onPress,
@@ -28,7 +27,7 @@ export function PrimaryButton({
       disabled={disabled}
       style={({ pressed }) => [
         styles.wrap,
-        theme.isIOS ? { backgroundColor: theme.primary } : [styles.glow, { shadowColor: theme.primary }],
+        { backgroundColor: theme.primary },
         { opacity: disabled ? 0.4 : pressed ? 0.85 : 1 },
         style,
       ]}
@@ -50,15 +49,9 @@ export function PrimaryButton({
 }
 
 const styles = StyleSheet.create({
-  wrap: { borderRadius: 16 },
-  glow: {
-    shadowOpacity: 0.28,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 3,
-  },
+  wrap: { borderRadius: 6 },
   inner: {
-    borderRadius: 16,
+    borderRadius: 6,
     overflow: 'hidden',
     paddingVertical: 15,
     alignItems: 'center',

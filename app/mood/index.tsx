@@ -214,7 +214,7 @@ export default function MoodScreen() {
           key: 'sleep',
           icon: 'moon-outline',
           tint: theme.primary,
-          iconBg: theme.scheme === 'light' ? '#E9E2FA' : '#272138',
+          iconBg: theme.primarySoft,
           title: t('home.feeders.sleep'),
           subtitle: `${sleepHours(sleepMin)} ${t('units.h')} — ${t(`home.sleep.meaning.${sleepBand(sleepMin)}`)}`,
         }
@@ -341,7 +341,7 @@ export default function MoodScreen() {
         />
       </View>
 
-      <Text style={[styles.prompt, { color: theme.text }, theme.font.bodySemiBold]}>
+      <Text style={[styles.prompt, { color: theme.text }, theme.font.bodyMedium]}>
         {t('mood.prompt')}
       </Text>
       <View style={styles.scaleWrap}>
@@ -365,7 +365,7 @@ export default function MoodScreen() {
 
       {nightRows.length > 0 ? (
         <View style={styles.rows}>
-          <Text style={[styles.nightTitle, { color: theme.subtle }, theme.font.bodySemiBold]}>
+          <Text style={[styles.nightTitle, { color: theme.text }, theme.font.bodyMedium]}>
             {t('night.title')}
           </Text>
           <ListGroup rows={nightRows} />
@@ -454,17 +454,17 @@ const SIGNAL_ICON: Record<BodyMindSignal, 'walk-outline' | 'moon-outline' | 'nut
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  prompt: { fontSize: 17, marginTop: 22 },
+  prompt: { fontSize: 18, marginTop: 24 },
   scaleWrap: { marginTop: 14 },
   anchors: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 },
   anchor: { fontSize: 12 },
   ack: { fontSize: 13, marginTop: 12, lineHeight: 18 },
   hero: { marginTop: 4 },
-  rows: { marginTop: 16 },
-  nightTitle: { fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8, marginLeft: 4 },
-  nightNote: { fontSize: 11, lineHeight: 15, marginTop: 8, marginLeft: 4, fontStyle: 'italic' },
+  rows: { marginTop: 24 },
+  nightTitle: { fontSize: 18, marginBottom: 14 },
+  nightNote: { fontSize: 11, lineHeight: 15, marginTop: 8, fontStyle: 'italic' },
   hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
-  history: { marginTop: 16 },
+  history: { marginTop: 24 },
   pageDots: { marginTop: 20 },
   value: { fontSize: 16 },
   dayRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },

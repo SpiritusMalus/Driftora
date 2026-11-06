@@ -3,30 +3,32 @@ import { Pressable, type StyleProp, StyleSheet, View, type ViewStyle } from 'rea
 
 import { useTheme } from '@/lib/theme/theme';
 
-/// A plain white content card. Android gets a warm hairline border and a soft
-/// elevation; iOS gets a flat grouped-list card (no border, no shadow). Used for
+/// A flat content surface. Android keeps a paper hairline border; iOS keeps
+/// its grouped-list surface (no border). Used for
 /// inputs, list items, and any standalone surface that isn't a ListGroup row.
 /// Pass `onPress` to make the whole card a tap target.
 export function Card({
   children,
   style,
   padded = true,
+  variant = 'card',
   onPress,
 }: {
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
   padded?: boolean;
+  /// Open page section; the default remains a contained surface for prompts.
+  variant?: 'card' | 'section';
   onPress?: () => void;
 }) {
   const theme = useTheme();
   const cardStyle = [
-    theme.isIOS ? styles.ios : styles.android,
-    padded && styles.padded,
+    variant === 'section' ? styles.section : theme.isIOS ? styles.ios : styles.android,
+    padded && (variant === 'section' ? styles.sectionPadded : styles.padded),
     {
-      backgroundColor: theme.card,
-      borderColor: theme.cardBorder,
+      backgroundColor: variant === 'section' ? 'transparent' : theme.card,
+      borderColor: variant === 'section' ? theme.separator : theme.cardBorder,
     },
-    !theme.isIOS && shadow,
     style,
   ];
 
@@ -40,16 +42,10 @@ export function Card({
   return <View style={cardStyle}>{children}</View>;
 }
 
-const shadow = {
-  shadowColor: '#14212E',
-  shadowOpacity: 0.05,
-  shadowRadius: 16,
-  shadowOffset: { width: 0, height: 6 },
-  elevation: 1,
-};
-
 const styles = StyleSheet.create({
-  android: { borderRadius: 20, borderWidth: StyleSheet.hairlineWidth },
-  ios: { borderRadius: 18 },
+  android: { borderRadius: 10, borderWidth: StyleSheet.hairlineWidth },
+  ios: { borderRadius: 10 },
   padded: { padding: 16 },
+  section: { borderRadius: 0, borderWidth: 0, borderBottomWidth: StyleSheet.hairlineWidth },
+  sectionPadded: { paddingVertical: 18 },
 });

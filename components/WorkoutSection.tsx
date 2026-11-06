@@ -49,6 +49,7 @@ import { deleteTempFile } from '@/lib/core/services/tempFiles';
 import {
   getWorkoutParser,
   isWorkoutParserConfigured,
+  WorkoutParseError,
   type ParsedWorkout,
 } from '@/lib/core/services/workoutParser';
 import { formatDayTitle, localDayKey, parseDayKey } from '@/lib/i18n/formatDay';
@@ -431,9 +432,15 @@ export function WorkoutSection({
     try {
       const parser = getWorkoutParser(consentNow);
       await saveParsed(parser ? await parser.parse(text) : []);
+    } catch (error) {
+      showParseFailure(error);
     } finally {
       setParsing(false);
     }
+  }
+
+  function showParseFailure(error: unknown) {
+    setParseNote(t(error instanceof WorkoutParseError ? `workouts.parseErrors.${error.reason}` : 'workouts.saveFailed'));
   }
 
   async function onDescribe() {
@@ -487,6 +494,8 @@ export function WorkoutSection({
     try {
       const parser = getWorkoutParser(consentNow);
       await saveParsed(parser ? await parser.parseAudio(clip) : []);
+    } catch (error) {
+      showParseFailure(error);
     } finally {
       setParsing(false);
       // The recorded m4a was only ever needed for the upload — clean it up on
@@ -553,6 +562,8 @@ export function WorkoutSection({
         return;
       }
       await saveParsed(parsed.workouts);
+    } catch (error) {
+      showParseFailure(error);
     } finally {
       setParsing(false);
       // Same cleanup as the voice path, for the downscaled screenshot JPEG.
@@ -602,13 +613,13 @@ export function WorkoutSection({
     : Number(minutes.replace(',', '.')) > 0;
 
   return (
-    <Card style={styles.card}>
+    <Card variant="section" style={styles.card}>
       <Pressable onPress={() => setOpen((v) => !v)} style={styles.head} hitSlop={6}>
         {/* The title says WHICH day is on screen — «Тренировки сегодня» would
             otherwise sit above yesterday's list once the arrows are used. */}
         <Text
           numberOfLines={1}
-          style={[styles.title, { color: theme.text }, theme.font.bodySemiBold]}
+          style={[styles.title, { color: theme.text }, theme.font.bodyMedium]}
         >
           {isToday ? t('workouts.title') : t('workouts.titleForDay', { day: formatDayTitle(day, t) })}
         </Text>
@@ -642,8 +653,8 @@ export function WorkoutSection({
               reading as a third row of the chips/segments below. */}
           {quick.length > 0 ? (
             <View style={styles.repeat}>
-              <Text style={[styles.repeatLabel, { color: theme.labelCaps }, theme.font.bodyBold]}>
-                {t('workouts.repeat.label').toUpperCase()}
+              <Text style={[styles.repeatLabel, { color: theme.text }, theme.font.bodyMedium]}>
+                {t('workouts.repeat.label')}
               </Text>
               <View style={styles.repeatWrap}>
                 {quick.map((q, i) => {
@@ -983,7 +994,7 @@ export function WorkoutSection({
           {rows.length > 0 ? (
             <View style={styles.list}>
               {rows.map((r) => (
-                <View key={r.id}>
+                <View key={r.id} style={[styles.entry, { borderColor: theme.separator }]}>
                   {/* The whole row opens the edit screen, with an always-visible
                       pencil saying so — a logged session could only be DELETED
                       before, so «30 минут вместо 40» meant deleting and typing
@@ -1056,26 +1067,26 @@ export function WorkoutSection({
 }
 
 const styles = StyleSheet.create({
-  card: { marginBottom: 16 },
+  card: { marginBottom: 16, paddingTop: 0 },
   head: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  segments: { flexDirection: 'row', gap: 3, padding: 3, borderRadius: 12 },
-  segment: { flex: 1, paddingVertical: 8, borderRadius: 9, alignItems: 'center' },
+  segments: { flexDirection: 'row', gap: 3, padding: 3, borderRadius: 6 },
+  segment: { flex: 1, paddingVertical: 8, borderRadius: 6, alignItems: 'center' },
   segmentText: { fontSize: 13 },
   modeSection: { marginTop: 14 },
-  exactAddBtn: { marginTop: 14, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
+  exactAddBtn: { marginTop: 14, paddingVertical: 12, borderRadius: 6, alignItems: 'center' },
   noteHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12 },
   noteShort: { fontSize: 12, lineHeight: 17, flex: 1 },
   noteToggle: { fontSize: 12 },
-  title: { fontSize: 15, flexShrink: 1 },
+  title: { fontSize: 18, flexShrink: 1 },
   summary: { fontSize: 13, flex: 1, textAlign: 'right' },
-  body: { marginTop: 12 },
+  body: { marginTop: 24 },
   dayNav: { marginBottom: 10 },
   dayHint: { fontSize: 12, lineHeight: 16, marginBottom: 10 },
   budgetAck: { fontSize: 13, lineHeight: 18, marginBottom: 10 },
   repeat: { marginBottom: 14 },
-  repeatLabel: { fontSize: 12, letterSpacing: 1.44, marginBottom: 8 },
+  repeatLabel: { fontSize: 14, marginBottom: 8 },
   repeatWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  repeatChip: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 9 },
+  repeatChip: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 6, paddingHorizontal: 14, paddingVertical: 9 },
   repeatChipText: { fontSize: 14, maxWidth: 240 },
   repeatChipKcal: { fontSize: 11, marginTop: 2 },
   // Closes the fast-path group off from the form below it.
@@ -1089,17 +1100,18 @@ const styles = StyleSheet.create({
   trackerHead: { fontSize: 13, lineHeight: 18 },
   unit: { fontSize: 13 },
   speedOptional: { fontSize: 12, flex: 1, lineHeight: 16 },
-  addBtn: { marginLeft: 'auto', paddingVertical: 9, paddingHorizontal: 16, borderRadius: 12 },
+  addBtn: { marginLeft: 'auto', paddingVertical: 9, paddingHorizontal: 16, borderRadius: 6 },
   addBtnText: { fontSize: 14 },
   describeInput: { minHeight: 64 },
   describeActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  describeBtn: { alignSelf: 'flex-start', paddingVertical: 9, paddingHorizontal: 16, borderRadius: 12 },
-  iconBtn: { width: 38, height: 38, borderRadius: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  describeBtn: { alignSelf: 'flex-start', paddingVertical: 9, paddingHorizontal: 16, borderRadius: 6 },
+  iconBtn: { width: 38, height: 38, borderRadius: 8, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   parseNote: { fontSize: 12, lineHeight: 17 },
-  list: { marginTop: 12, gap: 8 },
+  list: { marginTop: 24 },
+  entry: { borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: 12 },
   item: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  itemName: { fontSize: 13, flex: 1 },
-  itemKcal: { fontSize: 13 },
+  itemName: { fontSize: 14, flex: 1 },
+  itemKcal: { fontSize: 14, fontVariant: ['tabular-nums'] },
   itemSub: { fontSize: 11, lineHeight: 15, marginTop: 2 },
   note: { fontSize: 12, marginTop: 12, lineHeight: 17 },
 });

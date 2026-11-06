@@ -2,7 +2,7 @@ import { Pressable, type StyleProp, StyleSheet, Text, View, type ViewStyle } fro
 
 import { useTheme } from '@/lib/theme/theme';
 
-/// A selectable pill — the app's most-repeated control. Meal of day, workout
+/// A selectable chip — the app's most-repeated control. Meal of day, workout
 /// type, step goal, sex, activity level: five screens had hand-rolled the same
 /// Pressable + Text + «filled when active, outlined when not» colour logic,
 /// which is how three of them ended up with no accessibility state at all. A
@@ -96,7 +96,7 @@ function chipFont(theme: ReturnType<typeof useTheme>, size: ChipSize) {
 }
 
 const styles = StyleSheet.create({
-  base: { borderRadius: 999 },
+  base: { borderRadius: 6 },
   wrapRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   blockRow: { flexDirection: 'row', gap: 8 },
 });

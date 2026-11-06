@@ -579,12 +579,12 @@ const styles = StyleSheet.create({
   gramsGuessText: { fontSize: 12, lineHeight: 17 },
   // Piece counter (eggs & friends): stepper + count + the visible unit weight.
   pieceRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, flexWrap: 'wrap' },
-  pieceBtn: { borderWidth: 1, borderRadius: 10, width: 40, paddingVertical: 6, alignItems: 'center' },
+  pieceBtn: { borderWidth: 1, borderRadius: 6, width: 40, paddingVertical: 6, alignItems: 'center' },
   pieceBtnText: { fontSize: 16, lineHeight: 18 },
   pieceInput: { width: 56, paddingVertical: 8, fontSize: 14, textAlign: 'center' },
   // Quick-set weight chips.
   portionRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, flexWrap: 'wrap' },
-  portionChip: { borderWidth: 1, borderRadius: 10, paddingVertical: 6, paddingHorizontal: 12 },
+  portionChip: { borderWidth: 1, borderRadius: 6, paddingVertical: 6, paddingHorizontal: 12 },
   portionChipText: { fontSize: 13 },
   dryBasisNote: { marginTop: 8, borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },
   basisTitle: { fontSize: 13, lineHeight: 18, marginBottom: 2 },
@@ -608,7 +608,7 @@ const styles = StyleSheet.create({
   editToggle: { fontSize: 13, marginTop: 4 },
   gramsInput: { width: 64, paddingVertical: 8, fontSize: 14, textAlign: 'center' },
   gramsUnit: { fontSize: 12 },
-  badge: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 8, paddingVertical: 2 },
+  badge: { borderWidth: 1, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 },
   badgeText: { fontSize: 11 },
   altWrap: { marginTop: 8 },
   altToggle: { fontSize: 13 },
@@ -616,10 +616,10 @@ const styles = StyleSheet.create({
   // Name on its own line, macros beneath — a side-by-side row let the long
   // «… ккал · Белок … · по базе FatSecret» string squeeze the name down to
   // «Rice C…» (device report 2026-07-18). Stacked, the name gets the full width.
-  altRow: { gap: 2, borderWidth: 1, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 10 },
+  altRow: { gap: 2, borderWidth: 1, borderRadius: 6, paddingVertical: 8, paddingHorizontal: 10 },
   altName: { fontSize: 13 },
   altMacros: { fontSize: 12 },
   searchRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   searchInput: { flex: 1 },
-  searchBtn: { borderWidth: 1, borderRadius: 10, paddingVertical: 10, paddingHorizontal: 14 },
+  searchBtn: { borderWidth: 1, borderRadius: 6, paddingVertical: 10, paddingHorizontal: 14 },
 });

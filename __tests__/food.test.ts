@@ -34,6 +34,30 @@ function fillMacros(draft: MealDraft): MealDraft {
 }
 
 describe('food logging (parse → save → totals)', () => {
+  it('refuses an entirely unknown draft before creating any stored entry', async () => {
+    const { sqlite, db } = makeDb();
+    await applySchema((stmt) => sqlite.exec(stmt));
+    const draft = await new StubFoodParser().parse('rice 100 g', 'US');
+    await expect(saveParsedEntry(db, { rawText: 'rice 100 g', source: 'text', draft })).rejects.toThrow('Food nutrition is incomplete');
+    expect(await listEntriesForDay(db)).toHaveLength(0);
+    expect(await todayMacroTotals(db)).toEqual({ kcal: 0, proteinG: 0, fatG: 0, carbG: 0 });
+    sqlite.close();
+  });
+
+  it('can save explicitly known zero nutrition without confusing it with a missing composition', async () => {
+    const { sqlite, db } = makeDb();
+    await applySchema((stmt) => sqlite.exec(stmt));
+    const parsed = await new StubFoodParser().parse('water 100 g', 'US');
+    const draft = withItemManualMacros(parsed, 0, { prot: 0, fat: 0, carb: 0, kcal: 0 });
+    const id = await saveParsedEntry(db, { rawText: 'water 100 g', source: 'text', draft });
+    const detail = await getFoodEntry(db, id);
+    expect(detail!.entry.confirmed).toBe(true);
+    expect(detail!.items).toHaveLength(1);
+    expect(detail!.items[0].qtyG).toBe(100);
+    expect(detail!.items[0].source).toBe('manual');
+    sqlite.close();
+  });
+
   it('saves a parsed meal and reflects it in today totals', async () => {
     const { sqlite, db } = makeDb();
     await applySchema((stmt) => sqlite.exec(stmt));
@@ -60,7 +84,7 @@ describe('food logging (parse → save → totals)', () => {
     sqlite.close();
   });
 
-  it('does not persist an unfilled DB miss (no phantom calories on reload)', async () => {
+  it('rejects unresolved meals without saving confirmed zeros or dropping their items', async () => {
     const { sqlite, db } = makeDb();
     await applySchema((stmt) => sqlite.exec(stmt));
 
@@ -71,14 +95,20 @@ describe('food logging (parse → save → totals)', () => {
     // Total reflects only the filled banana; the unfilled пончик is excluded.
     expect(draft.totals.kcal).toBeGreaterThan(0);
 
-    const id = await saveParsedEntry(db, { rawText: 'банан, пончик', source: 'text', draft });
+    await expect(saveParsedEntry(db, { rawText: 'банан, пончик', source: 'text', draft })).rejects.toThrow('Food nutrition is incomplete');
+    expect(await listEntriesForDay(db)).toHaveLength(0);
+    expect(draft.items).toHaveLength(2);
+    expect(draft.items[1].per100.source).toBe('estimate');
 
-    // Only the filled item was stored — the miss left no phantom row.
+    // Once the unresolved item is filled, both components survive saving.
+    const resolved = withItemManualMacros(draft, 1, { prot: 5, fat: 8, carb: 30 });
+    const id = await saveParsedEntry(db, { rawText: 'банан, пончик', source: 'text', draft: resolved });
+
     const detail = await getFoodEntry(db, id);
-    expect(detail!.items).toHaveLength(1);
+    expect(detail!.items).toHaveLength(2);
     expect(detail!.items[0].name).toContain('Банан');
     const totals = await todayMacroTotals(db);
-    expect(totals.kcal).toBeCloseTo(draft.totals.kcal, 1);
+    expect(totals.kcal).toBeCloseTo(resolved.totals.kcal, 1);
 
     sqlite.close();
   });
@@ -87,15 +117,17 @@ describe('food logging (parse → save → totals)', () => {
     const { sqlite, db } = makeDb();
     await applySchema((stmt) => sqlite.exec(stmt));
 
-    // Two meals with stored items, plus one «single figure» meal whose only
-    // item is an unfilled miss (never persisted) — the day list's unfold shows
-    // the first two and says «состав не записан» for the third.
+    // Two complete meals and one legacy entry without an item breakdown.
+    // Old rows remain readable; new unresolved meals cannot create them.
     const first = fillMacros(await new StubFoodParser().parse('банан, кофе', 'RU'));
     const second = fillMacros(await new StubFoodParser().parse('омлет', 'RU'));
-    const bare = await new StubFoodParser().parse('пончик', 'RU'); // miss stays unfilled
     const firstId = await saveParsedEntry(db, { rawText: 'банан, кофе', source: 'text', draft: first });
     const secondId = await saveParsedEntry(db, { rawText: 'омлет', source: 'text', draft: second });
-    const bareId = await saveParsedEntry(db, { rawText: 'пончик', source: 'text', draft: bare });
+    const [legacy] = await db.insert(schema.foodEntries).values({
+      ts: new Date(), rawText: 'legacy', source: 'text', kcal: 120,
+      proteinG: 0, fatG: 0, carbG: 0, confirmed: true,
+    }).returning({ id: schema.foodEntries.id });
+    const bareId = legacy.id;
 
     const byEntry = await listItemsForEntries(db, [firstId, secondId, bareId]);
     expect(byEntry.get(firstId)).toHaveLength(2);

@@ -67,14 +67,14 @@ describe('addParsedWorkout (LLM parse path → on-device kcal)', () => {
     expect(kcal).toBe(0);
   });
 
-  it('a strength entry keeps the set count (shown in подходы); kcal carries the afterburn', async () => {
+  it('a strength entry keeps the set count (shown in подходы) and uses the shared burn formula', async () => {
     const db = await makeDb();
     const kcal = await addParsedWorkout(
       db,
       { type: 'strength', name_ru: 'жим лёжа', minutes: 12, sets: 4 },
       80,
     );
-    // The model's minutes stay the duration basis; +10% EPOC rides on top.
+    // The model's minutes stay the duration basis; there is no afterburn bonus.
     expect(kcal).toBe(workoutKcal('strength', 12, 80));
     const [row] = await listWorkoutsForDay(db);
     expect(row.sets).toBe(4);
@@ -89,7 +89,7 @@ describe('addParsedWorkout (LLM parse path → on-device kcal)', () => {
       { type: 'strength', name_ru: 'тяжёлый присед', minutes: 36, sets: 12, intensity: 'heavy' },
       80,
     );
-    // Exactly what the form's «тяжёлая» chip produces (6.0 MET + afterburn) —
+    // Exactly what the form's «тяжёлая» chip produces (6.0 MET, no afterburn) —
     // this path used to drop the lever and bill it as a light 3.5 session.
     expect(kcal).toBe(workoutKcal('strength', 36, 80, null, 'heavy'));
     expect(kcal).toBeGreaterThan(workoutKcal('strength', 36, 80));

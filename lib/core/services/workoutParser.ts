@@ -8,9 +8,9 @@
  * tracker's own printed total (`device_kcal`), which is the device's
  * measurement transcribed, not model arithmetic.
  *
- * Fail-safe like the food client: any failure — network, timeout, non-2xx, or a
- * response that doesn't match the contract — resolves to an EMPTY result, never
- * a throw, so the caller just shows "не удалось разобрать" and the chip path stays.
+ * Empty results mean a successful request found no activities. Transport and
+ * service failures are typed separately so the UI can explain a retry without
+ * asking the user to rewrite a valid description.
  *
  * HARD CONSENT GATE (mirrors foodParserProvider): the online parser is built only
  * when BOTH `EXPO_PUBLIC_FOOD_API_URL` is set AND the user holds the cross-border
@@ -55,6 +55,15 @@ const DEFAULT_TIMEOUT_MS = 12_000;
 /** Uploads (screenshot / voice clip) get longer — mirrors the food client. */
 const UPLOAD_TIMEOUT_MS = 25_000;
 
+export type WorkoutParseFailure = 'network' | 'unauthorized' | 'service';
+
+export class WorkoutParseError extends Error {
+  constructor(readonly reason: WorkoutParseFailure) {
+    super(`Workout parsing failed: ${reason}`);
+    this.name = 'WorkoutParseError';
+  }
+}
+
 /** Whether an online workout parser is even configured for this build. */
 export function isWorkoutParserConfigured(): boolean {
   return !!process.env.EXPO_PUBLIC_FOOD_API_URL;
@@ -79,19 +88,19 @@ function isParsedWorkout(v: unknown): v is ParsedWorkout {
 /** Pull the validated activity list out of any `{ workouts: [...] }` response. */
 function workoutsOf(data: unknown): ParsedWorkout[] {
   const workouts = (data as { workouts?: unknown })?.workouts;
-  if (!Array.isArray(workouts)) return [];
+  if (!Array.isArray(workouts)) throw new WorkoutParseError('service');
   return workouts.filter(isParsedWorkout);
 }
 
 export interface WorkoutParser {
   parse(text: string): Promise<ParsedWorkout[]>;
-  /** Spoken workout → activities. Empty list on any failure. */
+  /** Spoken workout → activities. Failures throw WorkoutParseError. */
   parseAudio(audio: AudioInput): Promise<ParsedWorkout[]>;
   /** Tracker screenshot → activities + the tracker's printed totals. */
   parsePhoto(photo: PhotoInput): Promise<ParsedWorkoutPhoto>;
 }
 
-class HttpWorkoutParser implements WorkoutParser {
+export class HttpWorkoutParser implements WorkoutParser {
   private readonly textEndpoint: string;
   private readonly audioEndpoint: string;
   private readonly photoEndpoint: string;
@@ -148,7 +157,7 @@ class HttpWorkoutParser implements WorkoutParser {
     return out;
   }
 
-  /** One fail-safe POST: JSON or multipart in, parsed JSON out, null on ANY failure. */
+  /** Preserve the difference between an empty parse and an unavailable service. */
   private async post(
     endpoint: string,
     input: { json?: object; form?: FormData; timeoutMs: number },
@@ -164,10 +173,16 @@ class HttpWorkoutParser implements WorkoutParser {
         body: input.json ? JSON.stringify(input.json) : input.form,
         signal: controller.signal,
       });
-      if (!res.ok) return null;
-      return (await res.json()) as unknown;
-    } catch {
-      return null; // network error / timeout → nothing parsed, chip path still works
+      if (res.status === 401 || res.status === 403) throw new WorkoutParseError('unauthorized');
+      if (!res.ok) throw new WorkoutParseError('service');
+      try {
+        return (await res.json()) as unknown;
+      } catch {
+        throw new WorkoutParseError('service');
+      }
+    } catch (error) {
+      if (error instanceof WorkoutParseError) throw error;
+      throw new WorkoutParseError('network');
     } finally {
       clearTimeout(timer);
     }

@@ -134,8 +134,8 @@ export default function DiaryListScreen() {
       ) : null}
 
       {trap && !(suggestion && !assistDismissed) ? (
-        <Card style={[styles.trapCard, { backgroundColor: theme.iconBg, borderColor: theme.cardBorder }]}>
-          <Text style={[styles.trapTitle, { color: theme.text }, theme.font.bodySemiBold]}>
+        <Card variant="section" style={styles.trapCard}>
+          <Text style={[styles.trapTitle, { color: theme.text }, theme.font.bodyMedium]}>
             {t('diary.trap.title')}
           </Text>
           <Text style={[styles.trapBody, { color: theme.subtle }, theme.font.body]}>
@@ -151,16 +151,16 @@ export default function DiaryListScreen() {
       ) : (
         <View style={styles.list}>
           {entries.map((e) => (
-            <Card key={e.id} style={styles.row} onPress={() => router.push(`/diary/${e.id}`)}>
+            <Card variant="section" key={e.id} style={styles.row} onPress={() => router.push(`/diary/${e.id}`)}>
               <View style={styles.rowHead}>
                 <Text style={[styles.rowDate, { color: theme.subtle }, theme.font.body]}>{formatDate(e.ts)}</Text>
-                {e.mood != null ? (
-                  <Text style={[styles.rowMood, { color: theme.subtle }, theme.font.bodyMedium]}>{e.mood}/10</Text>
-                ) : null}
+                <Text style={[styles.rowText, { color: theme.text }, theme.font.body]} numberOfLines={2}>
+                  {snippet(e, t('diary.emptyValue'))}
+                </Text>
               </View>
-              <Text style={[styles.rowText, { color: theme.text }, theme.font.body]} numberOfLines={2}>
-                {snippet(e, t('diary.emptyValue'))}
-              </Text>
+              {e.mood != null ? (
+                <Text style={[styles.rowMood, { color: theme.text }, theme.font.bodyMedium]}>{e.mood}/10</Text>
+              ) : null}
             </Card>
           ))}
         </View>
@@ -189,13 +189,13 @@ const styles = StyleSheet.create({
   assistDismiss: { fontSize: 13 },
   assistBody: { fontSize: 13, marginTop: 4, lineHeight: 19 },
   trapCard: { marginBottom: 16 },
-  trapTitle: { fontSize: 14 },
+  trapTitle: { fontSize: 18 },
   trapBody: { fontSize: 13, marginTop: 4, lineHeight: 18 },
   hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
-  list: { gap: 10 },
-  row: {},
-  rowHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  list: { gap: 0 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  rowHead: { flex: 1, gap: 5 },
   rowDate: { fontSize: 12 },
   rowText: { fontSize: 15, lineHeight: 21 },
-  rowMood: { fontSize: 12 },
+  rowMood: { fontSize: 16, fontVariant: ['tabular-nums'] },
 });

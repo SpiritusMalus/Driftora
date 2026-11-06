@@ -1,14 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useTheme } from '@/lib/theme/theme';
 
-/// The pinned "tell or type what you ate" bar at the bottom of Home — a pencil
-/// glyph, a muted placeholder, and a circular mic. Tapping the bar opens the
-/// food log for typing; tapping the mic opens it primed for voice. Android gives
-/// the mic a coral gradient and glow; iOS uses a flat coral disc.
+/// Two direct entry points share the pinned blue action bar: text opens the
+/// existing food composer, and the microphone opens that composer for voice.
 export function FoodBar({
   placeholder,
   onPressText,
@@ -20,51 +17,32 @@ export function FoodBar({
 }) {
   const theme = useTheme();
   const { t } = useTranslation();
-  // Icon sits on the coral disc/gradient — same surface as PrimaryButton, so it
-  // takes the same on-primary token (dark ink on the lighter dark-mode coral).
-  const mic = (
-    <Ionicons name="mic-outline" size={22} color={theme.onPrimary} />
-  );
-
   return (
-    <Pressable
-      onPress={onPressText}
-      style={({ pressed }) => [
-        styles.bar,
-        theme.isIOS ? styles.barIOS : styles.barAndroid,
-        {
-          backgroundColor: theme.card,
-          borderColor: theme.cardBorder,
-          opacity: pressed ? 0.9 : 1,
-        },
-        !theme.isIOS && { shadowColor: '#14212E' },
-      ]}
-    >
-      <Ionicons name="create-outline" size={18} color={theme.tertiary} />
-      <Text numberOfLines={1} style={[styles.placeholder, { color: theme.subtle }, theme.font.body]}>
-        {placeholder}
-      </Text>
+    <View style={[styles.bar, { backgroundColor: theme.primary }]}>
+      <Pressable
+        onPress={onPressText}
+        accessibilityRole="button"
+        accessibilityLabel={placeholder}
+        style={({ pressed }) => [styles.textButton, { opacity: pressed ? 0.8 : 1 }]}
+      >
+        <Ionicons name="create-outline" size={20} color={theme.onPrimary} />
+        <Text style={[styles.placeholder, { color: theme.onPrimary }, theme.font.bodyMedium]}>
+          {placeholder}
+        </Text>
+      </Pressable>
+      <View
+        pointerEvents="none"
+        style={[styles.divider, { backgroundColor: theme.onPrimary }]}
+      />
       <Pressable
         onPress={onPressMic}
-        hitSlop={8}
         accessibilityRole="button"
         accessibilityLabel={t('food.voice')}
-        style={({ pressed }) => [{ opacity: pressed ? 0.85 : 1 }]}
+        style={({ pressed }) => [styles.micButton, { opacity: pressed ? 0.8 : 1 }]}
       >
-        {theme.isIOS ? (
-          <View style={[styles.micIOS, { backgroundColor: theme.primary }]}>{mic}</View>
-        ) : (
-          <LinearGradient
-            colors={theme.primaryGradient}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[styles.micAndroid, { shadowColor: theme.primary }]}
-          >
-            {mic}
-          </LinearGradient>
-        )}
+        <Ionicons name="mic-outline" size={22} color={theme.onPrimary} />
       </Pressable>
-    </Pressable>
+    </View>
   );
 }
 
@@ -72,37 +50,27 @@ const styles = StyleSheet.create({
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingLeft: 16,
-    paddingRight: 8,
-    paddingVertical: 8,
+    minHeight: 57,
+    borderRadius: 16,
+    overflow: 'hidden',
   },
-  barAndroid: {
-    borderRadius: 20,
-    borderWidth: StyleSheet.hairlineWidth,
-    shadowOpacity: 0.16,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 12 },
-    elevation: 6,
+  textButton: {
+    flex: 1,
+    minHeight: 57,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingLeft: 17,
+    paddingRight: 12,
+    paddingVertical: 12,
   },
-  barIOS: {
-    borderRadius: 22,
-    shadowOpacity: 0.12,
-    shadowColor: '#14212E',
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: 10 },
-  },
-  placeholder: { flex: 1, fontSize: 14 },
-  micAndroid: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+  placeholder: { flex: 1, fontSize: 15 },
+  divider: { width: 1, height: 24, opacity: 0.28 },
+  micButton: {
+    width: 57,
+    minHeight: 57,
+    alignSelf: 'stretch',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 4,
   },
-  micIOS: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
 });

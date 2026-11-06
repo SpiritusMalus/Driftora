@@ -8,7 +8,7 @@ import { useTheme } from '@/lib/theme/theme';
 /// The header-right «Разделы ›» link into the /more hub. Shared by the two
 /// peer day panes — Home (body) and Mood (mind) — so switching focus by swipe
 /// never loses the way into the rest of the app.
-export function HeaderSectionsLink() {
+export function HeaderSectionsLink({ compact = false }: { compact?: boolean }) {
   const { t } = useTranslation();
   const theme = useTheme();
   const router = useRouter();
@@ -17,16 +17,22 @@ export function HeaderSectionsLink() {
       onPress={() => router.push('/more')}
       hitSlop={8}
       accessibilityRole="button"
+      accessibilityLabel={t('home.moreLink')}
       style={({ pressed }) => ({
         opacity: pressed ? 0.5 : 1,
         flexDirection: 'row',
         alignItems: 'center',
+        minWidth: compact ? 44 : undefined,
+        minHeight: compact ? 44 : undefined,
+        justifyContent: compact ? 'center' : undefined,
       })}
     >
-      <Text style={[{ color: theme.primary, fontSize: 16, marginRight: 2 }, theme.font.bodySemiBold]}>
-        {t('home.moreLink')}
-      </Text>
-      <Ionicons name="chevron-forward" size={16} color={theme.primary} />
+      {compact ? null : (
+        <Text style={[{ color: theme.primary, fontSize: 16, marginRight: 2 }, theme.font.bodySemiBold]}>
+          {t('home.moreLink')}
+        </Text>
+      )}
+      <Ionicons name={compact ? 'menu-outline' : 'chevron-forward'} size={compact ? 23 : 16} color={compact ? theme.text : theme.primary} />
     </Pressable>
   );
 }

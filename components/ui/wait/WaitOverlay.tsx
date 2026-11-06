@@ -33,7 +33,7 @@ export function WaitOverlay({ label }: { label: string }) {
       accessibilityLabel={label}
     >
       <View style={[styles.card, { backgroundColor: theme.background, borderColor: theme.separator }]}>
-        {/* WaitScene уже несёт кадр на миллиметровке + спиннер и подпись. */}
+        {/* WaitScene уже несёт сцену, спиннер и подпись. */}
         <WaitScene label={label} />
       </View>
     </Animated.View>
@@ -48,7 +48,7 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     maxWidth: 420,
-    borderRadius: 16,
+    borderRadius: 10,
     borderWidth: 1,
     paddingHorizontal: 14,
     paddingTop: 4,
