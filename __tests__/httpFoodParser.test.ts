@@ -203,6 +203,65 @@ describe('HttpFoodParser', () => {
     expect(fallback.calls).toBe(1);
   });
 
+  it.each(['fetch', 'body', 'quota body'] as const)('finishes voice parsing when %s ignores abort', async (stage) => {
+    jest.useFakeTimers();
+    let signal: AbortSignal | undefined;
+    mockFetch(async (...args: unknown[]) => {
+      signal = (args[1] as RequestInit).signal ?? undefined;
+      if (stage === 'fetch') return new Promise(() => {});
+      return { ok: stage === 'body', status: stage === 'body' ? 200 : 429,
+        json: () => new Promise(() => {}) };
+    });
+    const fallback = new SpyFallback();
+    const parser = new HttpFoodParser(ENDPOINT, fallback, 50, { uploadTimeoutMs: 80 });
+    let result: MealDraft | undefined;
+    void parser.parseAudio({ uri: 'file:///voice.m4a', mimeType: 'audio/m4a' }, 'US')
+      .then((draft) => { result = draft; });
+    await jest.advanceTimersByTimeAsync(81);
+    expect(result).toEqual(OFFLINE_SENTINEL);
+    expect(signal?.aborted).toBe(true);
+    expect(fallback.audioCalls).toBe(1);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it('does not send an expired voice request after install identity eventually becomes available', async () => {
+    jest.useFakeTimers();
+    let releaseId!: (id: string) => void;
+    const installId = new Promise<string>((resolve) => { releaseId = resolve; });
+    const fetchSpy = jest.fn(async () => ({ ok: true, json: async () => VALID }));
+    globalThis.fetch = fetchSpy as unknown as typeof fetch;
+    let result: MealDraft | undefined;
+    void new HttpFoodParser(ENDPOINT, new SpyFallback(), 50, {
+      uploadTimeoutMs: 80, installId: () => installId,
+    }).parseAudio({ uri: 'file:///voice.m4a', mimeType: 'audio/m4a' }, 'US')
+      .then((draft) => { result = draft; });
+    await jest.advanceTimersByTimeAsync(81);
+    expect(result).toEqual(OFFLINE_SENTINEL);
+    releaseId('late-id');
+    await jest.advanceTimersByTimeAsync(0);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it.each(['text', 'photo', 'search', 'barcode', 'contribute'] as const)('also bounds %s requests when fetch ignores abort', async (route) => {
+    jest.useFakeTimers();
+    mockFetch(() => new Promise(() => {}));
+    const parser = new HttpFoodParser(ENDPOINT, new SpyFallback(), 50, { uploadTimeoutMs: 80 });
+    const pending = route === 'text' ? parser.parse('banana', 'US')
+      : route === 'photo' ? parser.parsePhoto(PHOTO, 'US')
+        : route === 'search' ? parser.searchFoods('banana', 'US')
+          : route === 'barcode' ? parser.lookupBarcode('123', 'US')
+            : parser.contributeFood({ name: 'banana', per100: VALID.items[0].per100 }, 'US');
+    let settled = false;
+    let result: unknown;
+    void pending.then((value) => { settled = true; result = value; });
+    await jest.advanceTimersByTimeAsync(81);
+    expect(settled).toBe(true);
+    expect(result).toEqual(route === 'text' || route === 'photo' ? OFFLINE_SENTINEL
+      : route === 'search' ? [] : route === 'barcode' ? { item: null } : undefined);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
   it('sends Authorization: Bearer on every route when a token is configured', async () => {
     const headers: unknown[] = [];
     mockFetch(async (...args: unknown[]) => {

@@ -15,9 +15,20 @@ jest.mock('expo-router', () => ({ useLocalSearchParams: () => ({}), useRouter: (
 jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 jest.mock('@/lib/i18n', () => ({ currentLocale: () => 'ru' }));
 jest.mock('@/lib/theme/theme', () => ({ useTheme: () => ({ font: {} }) }));
-jest.mock('@/lib/core/db/DatabaseProvider', () => ({ useDatabase: () => null }));
+jest.mock('@/lib/core/db/DatabaseProvider', () => ({ useDatabase: () => mockDatabase }));
+jest.mock('@/lib/core/db/settings', () => ({
+  ensureSettings: async () => ({ region: 'RU', targetProteinG: 0, aiFoodParseConsent: true }),
+}));
+jest.mock('@/lib/core/db/food', () => ({
+  ...jest.requireActual<typeof import('@/lib/core/db/food')>('@/lib/core/db/food'),
+  todayMacroTotals: async () => ({ proteinG: 0 }),
+  quickMeals: async () => ({ yesterday: [], favorites: [], recents: [] }), distinctFoodItemsToday: async () => 0,
+}));
+jest.mock('@/lib/core/db/foodChoices', () => ({
+  listFoodChoices: async () => [], loadRememberedChoices: () => mockLoadChoices(),
+}));
 jest.mock('@/lib/core/consent/consent', () => ({ needsAiConsent: () => false, AI_CONSENT_VERSION: 'test' }));
-jest.mock('@/lib/core/services/backgroundParses', () => ({ isAdopted: () => false }));
+jest.mock('@/lib/core/services/backgroundParses', () => ({ isAdopted: () => false, adoptOnUnmount: () => {} }));
 jest.mock('@/lib/core/services/tempFiles', () => ({ deleteTempFile: jest.fn() }));
 jest.mock('@/lib/core/services/photoProvider', () => ({ isPhotoCaptureAvailable: async () => true }));
 jest.mock('@/lib/core/services/speechProvider', () => ({ getSpeechService: () => ({ initialize: async () => true, stop: async () => {}, listen: mockSpeechListen }) }));
@@ -70,11 +81,13 @@ const previous = draft('Previous meal');
 const replacement = draft('New voice meal');
 const mockParse = jest.fn<() => Promise<MealDraft>>();
 const mockParseAudio = jest.fn<() => Promise<MealDraft>>();
+let mockDatabase: object | null = null;
+const mockLoadChoices = jest.fn<() => Promise<Map<string, never>>>();
 const mockRecording = {
   stop: async () => ({ uri: 'file:///test-audio.m4a', mime: 'audio/mp4' }),
   peakLevel: () => 0,
   onMeter: () => () => {},
-  cancel: async () => {},
+  cancel: jest.fn(async () => {}),
 };
 let mockSilent = true;
 let mockAudioAvailable = true;
@@ -111,6 +124,8 @@ function expectPreviousMeal() {
 }
 
 beforeEach(() => {
+  mockDatabase = null;
+  mockLoadChoices.mockResolvedValue(new Map<string, never>());
   mockSilent = true;
   mockAudioAvailable = true;
   mockParse.mockResolvedValue(previous);
@@ -122,6 +137,7 @@ afterEach(async () => {
   if (screen) await act(async () => { screen.unmount(); });
   screen = null;
   jest.clearAllMocks();
+  jest.useRealTimers();
 });
 
 describe('replacing a food draft with a voice recording', () => {
@@ -194,6 +210,74 @@ describe('replacing a food draft with a voice recording', () => {
     await act(async () => { finish(replacement); await stop; });
     expect(input().props.value).toBe('My newer edit wins');
     expect(screen.root.findByType('ItemCard').props.item).toEqual(previous.items[0]);
+  });
+
+  it('can cancel a stalled voice parse, retry, and ignore the old result without unlocking the new parse', async () => {
+    mockSilent = false;
+    let finishOld!: (value: MealDraft) => void;
+    let finishNew!: (value: MealDraft) => void;
+    mockParseAudio.mockImplementationOnce(() => new Promise((resolve) => { finishOld = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { finishNew = resolve; }));
+    await seedPreviousMeal();
+    await act(async () => { await button('food.voiceNote').props.onPress(); });
+    let oldStop!: Promise<boolean>;
+    await act(async () => { oldStop = button('food.voiceRecording').props.onPress(); });
+    const overlay = screen.root.findByType('WaitOverlay');
+    expect(overlay.props.label).toBe('food.voiceProcessing');
+    await act(async () => { overlay.props.onCancel(); });
+    expect(screen.root.findAllByType('WaitOverlay')).toHaveLength(0);
+    expectPreviousMeal();
+    await act(async () => { await button('food.voiceNote').props.onPress(); });
+    let newStop!: Promise<boolean>;
+    await act(async () => { newStop = button('food.voiceRecording').props.onPress(); });
+    await act(async () => { finishOld(draft('Obsolete result')); await oldStop; });
+    expectPreviousMeal();
+    expect(screen.root.findAllByType('WaitOverlay')).toHaveLength(1);
+    await act(async () => { finishNew(replacement); await newStop; });
+    expect(screen.root.findAllByType('WaitOverlay')).toHaveLength(0);
+    expect(screen.root.findByType('ItemCard').props.item).toEqual(replacement.items[0]);
+  });
+
+  it('starts only one recorder while permission/start is pending', async () => {
+    let finish!: (value: { recording: typeof mockRecording }) => void;
+    mockStartRecording.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    await seedPreviousMeal();
+    let starting!: Promise<boolean>;
+    await act(async () => { starting = button('food.voiceNote').props.onPress(); });
+    await act(async () => { await button('food.voiceNote').props.onPress(); });
+    expect(mockStartRecording).toHaveBeenCalledTimes(1);
+    await act(async () => { finish({ recording: mockRecording }); await starting; });
+    expectPreviousMeal();
+    expect(button('food.voiceRecording')).toBeDefined();
+  });
+
+  it('shows a recognised voice meal even if remembered corrections never load', async () => {
+    jest.useFakeTimers();
+    mockDatabase = {};
+    mockSilent = false;
+    await seedPreviousMeal();
+    mockLoadChoices.mockImplementation(() => new Promise(() => {}));
+    await act(async () => { await button('food.voiceNote').props.onPress(); });
+    let stopping!: Promise<boolean>;
+    await act(async () => { stopping = button('food.voiceRecording').props.onPress(); });
+    expect(screen.root.findAllByType('WaitOverlay')).toHaveLength(1);
+    await act(async () => { await jest.advanceTimersByTimeAsync(2_001); await stopping; });
+    expect(screen.root.findAllByType('WaitOverlay')).toHaveLength(0);
+    expect(screen.root.findByType('ItemCard').props.item).toEqual(replacement.items[0]);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it('cancels a recorder that finishes starting after the screen has closed', async () => {
+    let finish!: (value: { recording: typeof mockRecording }) => void;
+    mockStartRecording.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    await seedPreviousMeal();
+    let starting!: Promise<boolean>;
+    await act(async () => { starting = button('food.voiceNote').props.onPress(); });
+    await act(async () => { screen.unmount(); });
+    screen = null;
+    await act(async () => { finish({ recording: mockRecording }); await starting; });
+    expect(mockRecording.cancel).toHaveBeenCalledTimes(1);
+    expect(mockParseAudio).not.toHaveBeenCalled();
   });
 
   it('keeps a draft when on-device dictation fails before delivering words', async () => {

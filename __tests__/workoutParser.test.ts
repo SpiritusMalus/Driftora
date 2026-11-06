@@ -47,6 +47,26 @@ describe('workout parsing failures', () => {
     expect(jest.getTimerCount()).toBe(0);
   });
 
+  it.each(['fetch', 'body', 'identity'] as const)('recovers when workout %s never settles despite abort', async (stage) => {
+    jest.useFakeTimers();
+    const never = new Promise<never>(() => {});
+    const fetchMock = jest.fn(async () => stage === 'fetch' ? never
+      : { ok: true, status: 200, json: () => never } as unknown as Response);
+    globalThis.fetch = fetchMock as typeof fetch;
+    let identityReady = false;
+    const service = new HttpWorkoutParser('https://food.example/food/parse', undefined,
+      stage === 'identity' ? () => identityReady ? null : never : undefined, 100);
+    let failure: unknown;
+    void service.parse('walk 25 minutes').catch((error) => { failure = error; });
+    await jest.advanceTimersByTimeAsync(101);
+    expect(failure).toMatchObject({ reason: 'network' });
+    if (stage === 'identity') expect(fetchMock).not.toHaveBeenCalled();
+    expect(jest.getTimerCount()).toBe(0);
+    identityReady = true;
+    globalThis.fetch = jest.fn(async () => response(200, { workouts: [] })) as typeof fetch;
+    await expect(service.parse('retry')).resolves.toEqual([]);
+  });
+
   it('still returns valid activities and makes no request for blank text', async () => {
     const workout = { type: 'walk', name_ru: 'walk', minutes: 25, confidence: 0.9 };
     const fetchMock = jest.fn(async () => response(200, { workouts: [workout] }));
