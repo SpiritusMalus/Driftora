@@ -1162,6 +1162,33 @@ export function createApp(
     return lang?.startsWith('en') ? 'en' : lang?.startsWith('ru') ? 'ru' : undefined;
   }
 
+  // Required stages share ONE response deadline. Unlike optional translation,
+  // a timed-out identification/resolution is unavailable, not an empty meal.
+  // Keep errors as values inside withinBudget so its best-effort catch does not
+  // turn a real internal/provider error into a timeout. Only the caller writes
+  // a response: late work cannot continue the route or send a second reply.
+  async function withinProcessingBudget<T>(
+    startedAt: number,
+    budgetMs: number,
+    work: () => Promise<T>,
+  ): Promise<T> {
+    const result = await withinBudget<{ value: T } | { error: unknown } | null>(
+      startedAt,
+      budgetMs,
+      async () => {
+        try {
+          return { value: await work() };
+        } catch (error) {
+          return { error };
+        }
+      },
+      null,
+    );
+    if (result === null) throw new VisionUnavailableError('Parsing exceeded its response budget', 'timeout');
+    if ('error' in result) throw result.error;
+    return result.value;
+  }
+
   // Shared tail for both inputs: identified items → resolved MealDraft, with the
   // same error mapping + aggregate metrics. Never leaks the input or a stack trace.
   async function respondWithDraft(
@@ -1173,8 +1200,9 @@ export function createApp(
     locale?: 'ru' | 'en',
   ): Promise<void> {
     const startedAt = Date.now();
+    const budgetMs = route === 'text' ? RESPONSE_BUDGET_MS.text : RESPONSE_BUDGET_MS.upload;
     try {
-      const answer = await identify();
+      const answer = await withinProcessingBudget(startedAt, budgetMs, identify);
       const identified = Array.isArray(answer) ? answer : answer.items;
       const heard = Array.isArray(answer) ? undefined : answer.heard;
       // Stage split: everything up to here is model work (identification and,
@@ -1183,7 +1211,9 @@ export function createApp(
       metrics.recordStage(`identify_${route}`, Date.now() - startedAt);
       const resolveStart = Date.now();
       const draft: MealDraft =
-        identified.length === 0 ? emptyMealDraft(region) : await buildMealDraft(resolver, identified, region);
+        identified.length === 0 ? emptyMealDraft(region) : await withinProcessingBudget(
+          startedAt, budgetMs, () => buildMealDraft(resolver, identified, region),
+        );
       metrics.recordStage('resolve', Date.now() - resolveStart);
       // Display-only: localize English DB row labels to Russian for RU (behind
       // the TRANSLATE_DB_LABELS flag; a no-op / English fallback otherwise).
@@ -1194,7 +1224,7 @@ export function createApp(
       // английскими ярлыками, но УЕЗЖАЕТ. Раньше он мог опоздать вместе с ним.
       const localized = await withinBudget(
         startedAt,
-        route === 'text' ? RESPONSE_BUDGET_MS.text : RESPONSE_BUDGET_MS.upload,
+        budgetMs,
         () => localizeDraft(draft, region, locale),
         draft,
       );
@@ -1499,7 +1529,8 @@ export function createApp(
     const format = audioFormat(file.mimetype, file.originalname);
     const startedAt = Date.now();
     try {
-      const workouts = await parseWorkoutFromAudio(file.buffer.toString('base64'), format, displayLocale(req) ?? 'ru');
+      const workouts = await withinProcessingBudget(startedAt, RESPONSE_BUDGET_MS.upload,
+        () => parseWorkoutFromAudio(file.buffer.toString('base64'), format, displayLocale(req) ?? 'ru'));
       metrics.recordWorkoutParse('workout_audio', workouts.length === 0, Date.now() - startedAt);
       res.json({ workouts });
     } catch (err) {

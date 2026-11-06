@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Animated, StyleSheet, View } from 'react-native';
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useReducedMotion } from '@/lib/theme/motion';
 import { useTheme } from '@/lib/theme/theme';
@@ -12,7 +12,11 @@ import { WaitScene } from './WaitScene';
 /// (absoluteFill у родителя), перехватывает касания: во время разбора все
 /// кнопки и так выключены, а тап по полупустому фону во время ожидания только
 /// путал бы.
-export function WaitOverlay({ label }: { label: string }) {
+export function WaitOverlay({ label, onCancel, cancelLabel }: {
+  label: string;
+  onCancel?: () => void;
+  cancelLabel?: string;
+}) {
   const theme = useTheme();
   const reduced = useReducedMotion();
   const opacity = useRef(new Animated.Value(0)).current;
@@ -35,12 +39,18 @@ export function WaitOverlay({ label }: { label: string }) {
       <View style={[styles.card, { backgroundColor: theme.background, borderColor: theme.separator }]}>
         {/* WaitScene уже несёт сцену, спиннер и подпись. */}
         <WaitScene label={label} />
+        {onCancel && cancelLabel ? (
+          <Pressable onPress={onCancel} accessibilityRole="button" style={styles.cancel}>
+            <Text style={[theme.font.bodySemiBold, { color: theme.primary }]}>{cancelLabel}</Text>
+          </Pressable>
+        ) : null}
       </View>
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
+  cancel: { minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   // Один и тот же чёрный полупрозрачный скрим в обеих темах: на светлой он
   // затемняет, на тёмной — притапливает; карточка на theme.background
   // контрастна и там и там.

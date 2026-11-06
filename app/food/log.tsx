@@ -49,6 +49,7 @@ import {
   registerInFlight,
 } from '@/lib/core/services/backgroundParses';
 import { deleteTempFile } from '@/lib/core/services/tempFiles';
+import { requestDeadline } from '@/lib/core/services/requestDeadline';
 import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
 
 import { daysAgo, formatDayTitle, localDayKey, parseDayKey, tsOnDay } from '@/lib/i18n/formatDay';
@@ -293,6 +294,10 @@ export default function FoodLogScreen() {
   const [recordingAvailable, setRecordingAvailable] = useState(false);
   const [recording, setRecording] = useState(false);
   const recRef = useRef<ActiveRecording | null>(null);
+  const recordingTransitionRef = useRef<object | null>(null);
+  const mountedRef = useRef(true);
+  const voiceParseAttemptRef = useRef(0);
+  const [voiceProcessing, setVoiceProcessing] = useState(false);
   const voiceAttemptRevisionRef = useRef<number | null>(null);
   // Rolling buffer of recent mic amplitudes (0..1) feeding the live waveform.
   // Empty in Expo Go / no metering → the waveform renders a flat baseline.
@@ -355,6 +360,7 @@ export default function FoodLogScreen() {
   // mic button never shows (text entry is the fallback). Stop on unmount.
   useEffect(() => {
     let active = true;
+    mountedRef.current = true;
     const speech = getSpeechService();
     void speech.initialize().then((ok) => {
       if (active) {
@@ -368,6 +374,9 @@ export default function FoodLogScreen() {
     setRecordingAvailable(isAudioRecordingAvailable());
     return () => {
       active = false;
+      mountedRef.current = false;
+      captureRevisionRef.current++;
+      voiceParseAttemptRef.current++;
       speechSessionRef.current++;
       void speech.stop();
       void recRef.current?.cancel();
@@ -557,12 +566,18 @@ export default function FoodLogScreen() {
   // to a freshly parsed draft, so a fix made once sticks on the next log.
   async function applyMemory(draft: MealDraft): Promise<MealDraft> {
     if (!db) return draft;
-    const choices = await loadRememberedChoices(db, region, draft);
-    const applied = applyRememberedChoices(draft, region, choices);
-    // `recomputeDraft` inside rebuilds the draft FROM ITS ITEMS, so anything not
-    // derived from items has to be carried across by hand — and losing `heard`
-    // here would silently undo the whole point of the server sending it.
-    return draft.heard && !applied.heard ? { ...applied, heard: draft.heard } : applied;
+    const deadline = requestDeadline(2_000);
+    try {
+      const choices = await deadline.wait(loadRememberedChoices(db, region, draft));
+      const applied = applyRememberedChoices(draft, region, choices);
+      // Remembered corrections are optional: a busy DB must not hide a
+      // successfully recognised meal or its original spoken words.
+      return draft.heard && !applied.heard ? { ...applied, heard: draft.heard } : applied;
+    } catch {
+      return draft;
+    } finally {
+      deadline.dispose();
+    }
   }
 
   /// After any parse: surface HOW the draft was produced. `offline_fallback`
@@ -725,11 +740,15 @@ export default function FoodLogScreen() {
 
   async function runAudioParse(audio: AudioInput, consentNow: boolean) {
     const revision = voiceAttemptRevisionRef.current ?? captureRevisionRef.current;
+    const attempt = ++voiceParseAttemptRef.current;
+    setVoiceProcessing(true);
     setParsing(true);
     setParseIssue(null);
     try {
-      const parsed = await applyMemory(await getFoodParser(consentNow).parseAudio(audio, region));
-      if (captureRevisionRef.current !== revision) return;
+      const response = await getFoodParser(consentNow).parseAudio(audio, region);
+      if (voiceParseAttemptRef.current !== attempt) return;
+      const parsed = await applyMemory(response);
+      if (voiceParseAttemptRef.current !== attempt || captureRevisionRef.current !== revision) return;
       // Recording and failed/empty recognition leave the current meal intact.
       // With no previous work, retain the original heard-text fallback so an
       // understood but unresolved sentence can still be corrected manually.
@@ -737,9 +756,12 @@ export default function FoodLogScreen() {
       if (parsed.items.length > 0 || (!hasPreviousInput && parsed.heard?.trim())) setSource('voice');
       acceptDraft(parsed, consentNow, 'audio', hasPreviousInput);
     } catch {
-      if (captureRevisionRef.current === revision) setParseIssue('failed');
+      if (voiceParseAttemptRef.current === attempt && captureRevisionRef.current === revision) setParseIssue('failed');
     } finally {
-      setParsing(false);
+      if (voiceParseAttemptRef.current === attempt) {
+        setVoiceProcessing(false);
+        setParsing(false);
+      }
       // Same cleanup as the photo path, for the recorded m4a clip.
       deleteTempFile(audio.uri);
       if (voiceAttemptRevisionRef.current === revision) voiceAttemptRevisionRef.current = null;
@@ -754,57 +776,74 @@ export default function FoodLogScreen() {
   /// existing one, was blocked, or failed to start) — the deep-link auto-start
   /// uses this to fall back to dictation if the recorder couldn't come up.
   async function toggleRecording(): Promise<boolean> {
-    if (parsing || listening) return false;
-    if (recording) {
-      const rec = recRef.current;
-      recRef.current = null;
-      meterUnsubRef.current?.();
-      meterUnsubRef.current = null;
-      setRecording(false);
-      setMeterLevels([]);
-      const audio = rec ? await rec.stop() : null;
-      if (audio) {
-        // A whole-clip peak at digital silence = the mic delivered nothing
-        // (system privacy mute / held by another app). Say so instead of
-        // sending silence to the model and answering «не удалось распознать»
-        // («разрешил доступ, но звук не ловился», device feedback 2026-07-12).
-        if (rec != null && isSilentRecording(rec.peakLevel())) {
-          deleteTempFile(audio.uri);
-          setVoiceError(t('food.voiceError.silent'));
-        } else {
-          await onAudio(audio);
+    if (parsing || listening || recordingTransitionRef.current) return false;
+    const transition = {};
+    recordingTransitionRef.current = transition;
+    try {
+      if (recording) {
+        const rec = recRef.current;
+        recRef.current = null;
+        meterUnsubRef.current?.();
+        meterUnsubRef.current = null;
+        setRecording(false);
+        setMeterLevels([]);
+        const audio = rec ? await rec.stop() : null;
+        if (!mountedRef.current) {
+          if (audio) deleteTempFile(audio.uri);
+          return false;
         }
+        if (audio) {
+          // A whole-clip peak at digital silence = the mic delivered nothing
+          // (system privacy mute / held by another app). Say so instead of
+          // sending silence to the model and answering «не удалось распознать»
+          // («разрешил доступ, но звук не ловился», device feedback 2026-07-12).
+          if (rec != null && isSilentRecording(rec.peakLevel())) {
+            deleteTempFile(audio.uri);
+            setVoiceError(t('food.voiceError.silent'));
+          } else {
+            await onAudio(audio);
+          }
+        } else setVoiceError(t('food.voiceError.mic-failed'));
+        return false;
       }
+      setVoiceError(null);
+      voiceAttemptRevisionRef.current = captureRevisionRef.current;
+      const started = await startRecording();
+      if (!mountedRef.current) {
+        if (started.recording) await started.recording.cancel();
+        return false;
+      }
+      if (started.error) {
+        // A mic tap that silently does nothing reads as "сломано" — and denied
+        // vs "granted but wouldn't start" are DIFFERENT problems: the old single
+        // «нет доступа» message blamed permissions for a busy mic.
+        setVoiceError(
+          t(started.error === 'denied' ? 'food.voiceError.not-allowed' : 'food.voiceError.mic-failed'),
+        );
+        return false;
+      }
+      const rec = started.recording;
+      // Keep the shared text, draft, title and origin until usable recognition
+      // arrives. Denied/silent/cancelled/failed attempts then need no rollback.
+      setParseIssue(null);
+      recRef.current = rec;
+      setMeterLevels([]);
+      // Live amplitude → rolling buffer for the waveform. No-op when the build has
+      // no metering (Expo Go), so the bars just stay at their idle baseline.
+      meterUnsubRef.current = rec.onMeter((level) => {
+        setMeterLevels((prev) => pushLevel(prev, level, 24));
+      });
+      // Same as dictation: a ?voice=1 deep-link records without a segment tap, so
+      // surface the voice controls (waveform + stop button).
+      setInputMode('voice');
+      setRecording(true);
+      return true;
+    } catch {
+      if (mountedRef.current) setVoiceError(t('food.voiceError.mic-failed'));
       return false;
+    } finally {
+      if (recordingTransitionRef.current === transition) recordingTransitionRef.current = null;
     }
-    setVoiceError(null);
-    voiceAttemptRevisionRef.current = captureRevisionRef.current;
-    const started = await startRecording();
-    if (started.error) {
-      // A mic tap that silently does nothing reads as "сломано" — and denied
-      // vs "granted but wouldn't start" are DIFFERENT problems: the old single
-      // «нет доступа» message blamed permissions for a busy mic.
-      setVoiceError(
-        t(started.error === 'denied' ? 'food.voiceError.not-allowed' : 'food.voiceError.mic-failed'),
-      );
-      return false;
-    }
-    const rec = started.recording;
-    // Keep the shared text, draft, title and origin until usable recognition
-    // arrives. Denied/silent/cancelled/failed attempts then need no rollback.
-    setParseIssue(null);
-    recRef.current = rec;
-    setMeterLevels([]);
-    // Live amplitude → rolling buffer for the waveform. No-op when the build has
-    // no metering (Expo Go), so the bars just stay at their idle baseline.
-    meterUnsubRef.current = rec.onMeter((level) => {
-      setMeterLevels((prev) => pushLevel(prev, level, 24));
-    });
-    // Same as dictation: a ?voice=1 deep-link records without a segment tap, so
-    // surface the voice controls (waveform + stop button).
-    setInputMode('voice');
-    setRecording(true);
-    return true;
   }
 
   async function onAudio(audio: AudioInput) {
@@ -1842,8 +1881,17 @@ export default function FoodLogScreen() {
         next one parses stays undimmed. */}
     {parsing ? (
       <WaitOverlay
+        onCancel={voiceProcessing ? () => {
+          voiceParseAttemptRef.current++;
+          captureRevisionRef.current++;
+          voiceAttemptRevisionRef.current = null;
+          recordingTransitionRef.current = null;
+          setVoiceProcessing(false);
+          setParsing(false);
+        } : undefined}
+        cancelLabel={t('common.cancel')}
         label={
-          source === 'photo'
+          voiceProcessing ? t('food.voiceProcessing') : source === 'photo'
             ? t('food.photoProcessing')
             : source === 'voice'
               ? t('food.voiceProcessing')

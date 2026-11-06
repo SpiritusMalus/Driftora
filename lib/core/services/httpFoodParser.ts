@@ -16,6 +16,7 @@ import type {
 
 import { setAiQuotaRemaining, setAiQuotaScope, type AiQuotaScope } from './aiQuota';
 import { setCommunityBaseAvailable, setSearchSourcesDown } from './communityBase';
+import { requestDeadline } from './requestDeadline';
 
 const SOURCES: readonly NutritionSource[] = ['usda', 'skurikhin', 'openfoodfacts', 'apininjas', 'fatsecret', 'label', 'ai_estimate', 'estimate', 'community'];
 /** Text/search: a typed query is answered in 3–6 s and the user is actively
@@ -273,18 +274,17 @@ export class HttpFoodParser implements FoodParser {
    */
   async searchFoods(query: string, region: Region): Promise<NutritionAlternative[]> {
     if (query.trim().length === 0) return [];
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    const deadline = requestDeadline(this.timeoutMs);
     try {
-      const res = await fetch(this.searchEndpoint, {
+      const res = await deadline.wait(fetch(this.searchEndpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(await this.headers()) },
+        headers: { 'Content-Type': 'application/json', ...(await deadline.wait(this.headers())) },
         // `ai: true` — reaching THIS (online) parser already means AI consent was
         // granted (getFoodParser returns the offline stub otherwise), so the
         // server may add an ai_estimate row when the DBs come up empty.
         body: JSON.stringify({ query, region, ai: true }),
-        signal: controller.signal,
-      });
+        signal: deadline.signal,
+      }));
       if (!res.ok) {
         setSearchSourcesDown(true);
         return this.fallback.searchFoods(query, region);
@@ -297,7 +297,7 @@ export class HttpFoodParser implements FoodParser {
       const community =
         typeof res.headers?.get === 'function' ? res.headers.get('X-Community-Base') : null;
       if (community != null) setCommunityBaseAvailable(community === '1');
-      const data: unknown = await res.json();
+      const data: unknown = await deadline.wait(res.json());
       const candidates = (data as { candidates?: unknown })?.candidates;
       if (!Array.isArray(candidates)) return this.fallback.searchFoods(query, region);
       // Second honesty marker: an empty list because a source was unreachable
@@ -310,7 +310,7 @@ export class HttpFoodParser implements FoodParser {
       setSearchSourcesDown(true);
       return this.fallback.searchFoods(query, region);
     } finally {
-      clearTimeout(timer);
+      deadline.dispose();
     }
   }
 
@@ -326,20 +326,19 @@ export class HttpFoodParser implements FoodParser {
   async lookupBarcode(code: string, region: Region): Promise<BarcodeLookup> {
     const trimmed = code.trim();
     if (trimmed.length === 0) return { item: null };
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    const deadline = requestDeadline(this.timeoutMs);
     try {
-      const res = await fetch(this.barcodeEndpoint, {
+      const res = await deadline.wait(fetch(this.barcodeEndpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(await this.headers()) },
+        headers: { 'Content-Type': 'application/json', ...(await deadline.wait(this.headers())) },
         body: JSON.stringify({ code: trimmed, region }),
-        signal: controller.signal,
-      });
+        signal: deadline.signal,
+      }));
       if (!res.ok) {
         setSearchSourcesDown(true);
         return { item: null };
       }
-      const data = (await res.json()) as { item?: unknown; sources_down?: unknown; identified_name?: unknown };
+      const data = (await deadline.wait(res.json())) as { item?: unknown; sources_down?: unknown; identified_name?: unknown };
       setSearchSourcesDown(data.sources_down === true);
       const name = typeof data.identified_name === 'string' ? data.identified_name : undefined;
       return { item: isItem(data.item) ? data.item : null, ...(name ? { name } : {}) };
@@ -347,7 +346,7 @@ export class HttpFoodParser implements FoodParser {
       setSearchSourcesDown(true);
       return { item: null };
     } finally {
-      clearTimeout(timer);
+      deadline.dispose();
     }
   }
 
@@ -367,10 +366,9 @@ export class HttpFoodParser implements FoodParser {
    * to see.
    */
   async contributeFood(food: NutritionAlternative, region: Region): Promise<void> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    const deadline = requestDeadline(this.timeoutMs);
     try {
-      await fetch(this.contributeEndpoint, {
+      await deadline.wait(fetch(this.contributeEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...this.authHeaders },
         body: JSON.stringify({
@@ -390,27 +388,26 @@ export class HttpFoodParser implements FoodParser {
             ...(food.per100.satFat === undefined ? {} : { satFat: food.per100.satFat }),
           },
         }),
-        signal: controller.signal,
-      });
+        signal: deadline.signal,
+      }));
     } catch {
       // Nothing to report and nobody to report it to — see the doc comment.
     } finally {
-      clearTimeout(timer);
+      deadline.dispose();
     }
   }
 
   async parse(text: string, region: Region): Promise<MealDraft> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    const deadline = requestDeadline(this.timeoutMs);
     try {
-      const res = await fetch(this.endpoint, {
+      const res = await deadline.wait(fetch(this.endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(await this.headers()) },
+        headers: { 'Content-Type': 'application/json', ...(await deadline.wait(this.headers())) },
         body: JSON.stringify({ text, region }),
-        signal: controller.signal,
-      });
+        signal: deadline.signal,
+      }));
       if (!res.ok) {
-        if (await isQuotaExceeded(res)) {
+        if (await deadline.wait(isQuotaExceeded(res))) {
           setAiQuotaRemaining(0);
           captureQuotaScope(res);
           return asQuotaFallback(await this.fallback.parse(text, region));
@@ -419,14 +416,14 @@ export class HttpFoodParser implements FoodParser {
         return asServerFallback(await this.fallback.parse(text, region));
       }
       captureQuotaRemaining(res);
-      const data: unknown = await res.json();
+      const data: unknown = await deadline.wait(res.json());
       if (!isMealDraft(data)) return asOfflineFallback(await this.fallback.parse(text, region));
       return data;
     } catch {
       // Network error or timeout — stay usable offline.
       return asOfflineFallback(await this.fallback.parse(text, region));
     } finally {
-      clearTimeout(timer);
+      deadline.dispose();
     }
   }
 
@@ -436,8 +433,7 @@ export class HttpFoodParser implements FoodParser {
    * falls back to the offline parser (which, for photos, yields an empty draft).
    */
   async parsePhoto(photo: PhotoInput, region: Region): Promise<MealDraft> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.uploadTimeoutMs);
+    const deadline = requestDeadline(this.uploadTimeoutMs);
     try {
       const form = new FormData();
       form.append('region', region);
@@ -448,14 +444,14 @@ export class HttpFoodParser implements FoodParser {
         type: photo.mimeType,
       } as unknown as Blob);
 
-      const res = await fetch(this.photoEndpoint, {
+      const res = await deadline.wait(fetch(this.photoEndpoint, {
         method: 'POST',
-        headers: await this.headers(),
+        headers: await deadline.wait(this.headers()),
         body: form,
-        signal: controller.signal,
-      });
+        signal: deadline.signal,
+      }));
       if (!res.ok) {
-        if (await isQuotaExceeded(res)) {
+        if (await deadline.wait(isQuotaExceeded(res))) {
           setAiQuotaRemaining(0);
           captureQuotaScope(res);
           return asQuotaFallback(await this.fallback.parsePhoto(photo, region));
@@ -464,13 +460,13 @@ export class HttpFoodParser implements FoodParser {
         return asServerFallback(await this.fallback.parsePhoto(photo, region));
       }
       captureQuotaRemaining(res);
-      const data: unknown = await res.json();
+      const data: unknown = await deadline.wait(res.json());
       if (!isMealDraft(data)) return asOfflineFallback(await this.fallback.parsePhoto(photo, region));
       return data;
     } catch {
       return asOfflineFallback(await this.fallback.parsePhoto(photo, region));
     } finally {
-      clearTimeout(timer);
+      deadline.dispose();
     }
   }
 
@@ -480,8 +476,7 @@ export class HttpFoodParser implements FoodParser {
    * parser (which, for voice, yields an empty draft → the "add detail" hint).
    */
   async parseAudio(audio: AudioInput, region: Region): Promise<MealDraft> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.uploadTimeoutMs);
+    const deadline = requestDeadline(this.uploadTimeoutMs);
     try {
       const form = new FormData();
       form.append('region', region);
@@ -492,14 +487,14 @@ export class HttpFoodParser implements FoodParser {
         type: audio.mimeType,
       } as unknown as Blob);
 
-      const res = await fetch(this.audioEndpoint, {
+      const res = await deadline.wait(fetch(this.audioEndpoint, {
         method: 'POST',
-        headers: await this.headers(),
+        headers: await deadline.wait(this.headers()),
         body: form,
-        signal: controller.signal,
-      });
+        signal: deadline.signal,
+      }));
       if (!res.ok) {
-        if (await isQuotaExceeded(res)) {
+        if (await deadline.wait(isQuotaExceeded(res))) {
           setAiQuotaRemaining(0);
           captureQuotaScope(res);
           return asQuotaFallback(await this.fallback.parseAudio(audio, region));
@@ -508,13 +503,13 @@ export class HttpFoodParser implements FoodParser {
         return asServerFallback(await this.fallback.parseAudio(audio, region));
       }
       captureQuotaRemaining(res);
-      const data: unknown = await res.json();
+      const data: unknown = await deadline.wait(res.json());
       if (!isMealDraft(data)) return asOfflineFallback(await this.fallback.parseAudio(audio, region));
       return data;
     } catch {
       return asOfflineFallback(await this.fallback.parseAudio(audio, region));
     } finally {
-      clearTimeout(timer);
+      deadline.dispose();
     }
   }
 }
