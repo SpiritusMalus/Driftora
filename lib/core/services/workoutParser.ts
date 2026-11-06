@@ -24,6 +24,7 @@ import type { AudioInput, PhotoInput } from './foodParser';
 import { currentLocale } from '@/lib/i18n';
 
 import { whenInstallId } from './installId';
+import { requestDeadline } from './requestDeadline';
 
 /** One activity parsed from a free-text description — mirrors server ParsedWorkout. */
 export interface ParsedWorkout {
@@ -53,7 +54,7 @@ export interface ParsedWorkoutPhoto {
 
 const DEFAULT_TIMEOUT_MS = 12_000;
 /** Uploads (screenshot / voice clip) get longer — mirrors the food client. */
-const UPLOAD_TIMEOUT_MS = 25_000;
+const UPLOAD_TIMEOUT_MS = 50_000;
 
 /** Whether an online workout parser is even configured for this build. */
 export function isWorkoutParserConfigured(): boolean {
@@ -91,7 +92,7 @@ export interface WorkoutParser {
   parsePhoto(photo: PhotoInput): Promise<ParsedWorkoutPhoto>;
 }
 
-class HttpWorkoutParser implements WorkoutParser {
+export class HttpWorkoutParser implements WorkoutParser {
   private readonly textEndpoint: string;
   private readonly audioEndpoint: string;
   private readonly photoEndpoint: string;
@@ -153,23 +154,22 @@ class HttpWorkoutParser implements WorkoutParser {
     endpoint: string,
     input: { json?: object; form?: FormData; timeoutMs: number },
   ): Promise<unknown> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), input.timeoutMs);
+    const deadline = requestDeadline(input.timeoutMs);
     try {
-      const res = await fetch(endpoint, {
+      const res = await deadline.wait(fetch(endpoint, {
         method: 'POST',
         headers: input.json
-          ? { 'Content-Type': 'application/json', ...(await this.headers()) }
-          : await this.headers(),
+          ? { 'Content-Type': 'application/json', ...(await deadline.wait(this.headers())) }
+          : await deadline.wait(this.headers()),
         body: input.json ? JSON.stringify(input.json) : input.form,
-        signal: controller.signal,
-      });
+        signal: deadline.signal,
+      }));
       if (!res.ok) return null;
-      return (await res.json()) as unknown;
+      return (await deadline.wait(res.json())) as unknown;
     } catch {
       return null; // network error / timeout → nothing parsed, chip path still works
     } finally {
-      clearTimeout(timer);
+      deadline.dispose();
     }
   }
 }
