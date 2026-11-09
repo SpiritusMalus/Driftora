@@ -105,11 +105,10 @@ it('rejects an invalid reminder visibly, keeps the input, and saves the correcte
   expect(mockSchedule).toHaveBeenCalledWith(expect.objectContaining({ hour: 12, minute: 34 }));
 });
 
-it('explains an empty emotion, then adds a trimmed name without losing the selected intensity', async () => {
+it('explains an empty emotion, then adds a trimmed name without losing the typed intensity', async () => {
   await renderer.act(async () => { tree = renderer.create(<DiaryNewScreen />); });
   await renderer.act(async () => { tree.root.findByType('PrimaryButton').props.onPress(); });
-  const intensity = tree.root.findAllByType('Pressable').find((n: any) => textContent(n) === i18n.t('diary.emotion.high'));
-  await renderer.act(async () => { intensity.props.onPress(); });
+  await renderer.act(async () => { field('0–100').props.onChangeText('37'); });
   await renderer.act(async () => { field(i18n.t('diary.emotion.name')).props.onChangeText('   '); });
   await renderer.act(async () => { action(i18n.t('diary.emotion.add')).props.onPress(); });
   expect(visibleText()).toContain(i18n.t('diary.emotion.nameRequired'));
@@ -118,9 +117,53 @@ it('explains an empty emotion, then adds a trimmed name without losing the selec
   expect(visibleText()).not.toContain(i18n.t('diary.emotion.nameRequired'));
   await renderer.act(async () => { action(i18n.t('diary.emotion.add')).props.onPress(); });
   expect(action(i18n.t('diary.emotion.remove', { name: 'Спокойствие' }))).toBeDefined();
-  expect(visibleText()).toContain('Спокойствие · 75');
+  expect(visibleText()).toContain('Спокойствие · 37/100');
   expect(visibleText()).not.toContain('Спокойствие  ');
   expect(field(i18n.t('diary.emotion.name')).props.value).toBe('');
+});
+
+it('guides meanings one at a time and saves a pending emotion and every answer', async () => {
+  const next = async () => { await renderer.act(async () => { await tree.root.findByType('PrimaryButton').props.onPress(); }); };
+  const write = async (placeholder: string, value: string) => {
+    await renderer.act(async () => { field(placeholder).props.onChangeText(value); });
+  };
+  await renderer.act(async () => { tree = renderer.create(<DiaryNewScreen />); });
+  await write(i18n.t('diary.steps.situation.placeholder'), 'Snow');
+  await next();
+  await write(i18n.t('diary.emotion.name'), 'Joy');
+  await write('0–100', '101');
+  await next();
+  expect(visibleText()).toContain(i18n.t('diary.steps.emotions.title'));
+  expect(field('0–100').props.value).toBe('101');
+  await write('0–100', '37');
+  await next(); // no Add tap required
+  await next(); // reaction
+  await write(i18n.t('diary.steps.thoughts.placeholder'), 'I will enjoy the snow');
+  await next();
+  await write('0–100', '100');
+  await next();
+  await write(i18n.t('diary.steps.meaning.placeholder'), 'A chance to feel joy');
+  await next();
+  expect(visibleText()).toContain('A chance to feel joy');
+  await write(i18n.t('diary.steps.meaning.deeperPlaceholder'), 'Feeling carefree');
+  const deepen = tree.root.findAllByType('Pressable').find((n: any) => textContent(n) === i18n.t('diary.meaning.deepen'));
+  await renderer.act(async () => { deepen.props.onPress(); });
+  await write(i18n.t('diary.steps.meaning.deeperPlaceholder'), 'I can rest');
+  const back = tree.root.findAllByType('Pressable').find((n: any) => textContent(n) === i18n.t('diary.back'));
+  await renderer.act(async () => { back.props.onPress(); });
+  expect(field(i18n.t('diary.steps.meaning.deeperPlaceholder')).props.value).toBe('Feeling carefree');
+  await next();
+  expect(field(i18n.t('diary.steps.meaning.deeperPlaceholder')).props.value).toBe('I can rest');
+  await next();
+  await write(i18n.t('diary.steps.coreBelief.placeholder'), 'I can enjoy small things');
+  await next(); // evidence
+  await next(); // reframe
+  await next(); // save
+  const rows = await mockDb.select().from(schema.diaryEntries);
+  expect(rows).toHaveLength(1);
+  expect(rows[0]).toMatchObject({ thoughtBelief: 100, coreBelief: 'I can enjoy small things' });
+  expect(JSON.parse(rows[0].emotions)).toEqual([{ name: 'Joy', intensity: 37 }]);
+  expect(JSON.parse(rows[0].meanings)).toEqual(['A chance to feel joy', 'Feeling carefree', 'I can rest']);
 });
 
 it('uses protein progress in the Home food widget when calories are hidden and restores calorie mode', async () => {

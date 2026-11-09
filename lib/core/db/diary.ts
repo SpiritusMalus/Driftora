@@ -20,6 +20,9 @@ export interface Emotion {
 export interface DiaryDraft {
   situation: string;
   thoughts: string;
+  thoughtBelief?: number | null; // 0–100, confidence in this thought (optional)
+  meanings?: string[]; // successive answers to "what does this mean to me?"
+  coreBelief?: string; // the user's own answer about themselves
   emotions: Emotion[];
   reactionBody: string;
   reactionBehavior: string;
@@ -31,11 +34,25 @@ export interface DiaryDraft {
   distortions?: DistortionKey[]; // tagged cognitive distortions (optional)
 }
 
-/// A stored entry with `emotions` and `distortions` parsed from their JSON columns.
-export type DiaryEntryView = Omit<DiaryEntry, 'emotions' | 'distortions'> & {
+/// A stored entry with the three JSON arrays parsed from their columns.
+export type DiaryEntryView = Omit<DiaryEntry, 'emotions' | 'distortions' | 'meanings'> & {
   emotions: Emotion[];
   distortions: DistortionKey[];
+  meanings: string[];
 };
+
+function parseMeanings(json: string): string[] {
+  try {
+    const value: unknown = JSON.parse(json);
+    return Array.isArray(value) ? value.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function isBeliefRating(value: number): boolean {
+  return Number.isInteger(value) && value >= 0 && value <= 100;
+}
 
 function parseDistortions(json: string): DistortionKey[] {
   try {
@@ -62,9 +79,11 @@ function parseEmotions(json: string): Emotion[] {
 }
 
 function toView(row: DiaryEntry): DiaryEntryView {
-  const { emotions, distortions, ...rest } = row;
+  const { emotions, distortions, meanings, ...rest } = row;
   return {
     ...rest,
+    thoughtBelief: row.thoughtBelief != null && isBeliefRating(row.thoughtBelief) ? row.thoughtBelief : null,
+    meanings: parseMeanings(meanings),
     emotions: parseEmotions(emotions),
     distortions: parseDistortions(distortions),
   };
@@ -74,9 +93,15 @@ function toView(row: DiaryEntry): DiaryEntryView {
 /// `distortions`). Shared by save + update so the two paths can't drift apart.
 /// `ts` is omitted so the caller decides whether to set/preserve it.
 function draftToColumns(draft: DiaryDraft) {
+  if (draft.thoughtBelief != null && !isBeliefRating(draft.thoughtBelief)) {
+    throw new RangeError('diary: thoughtBelief must be an integer from 0 to 100');
+  }
   return {
     situation: draft.situation,
     thoughts: draft.thoughts,
+    thoughtBelief: draft.thoughtBelief ?? null,
+    meanings: JSON.stringify(draft.meanings ?? []),
+    coreBelief: draft.coreBelief ?? '',
     emotions: JSON.stringify(draft.emotions ?? []),
     reactionBody: draft.reactionBody,
     reactionBehavior: draft.reactionBehavior,
