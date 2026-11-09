@@ -86,6 +86,9 @@ async function seed(db: ReturnType<typeof makeDb>['db']) {
   await saveDiaryEntry(db, {
     situation: 'TOPSECRET-SITUATION-MARKER',
     thoughts: 'I failed',
+    thoughtBelief: 37,
+    meanings: ['TOPSECRET-MEANING-MARKER', 'I want to learn'],
+    coreBelief: 'TOPSECRET-CORE-BELIEF-MARKER',
     emotions: [{ name: 'anxiety', intensity: 70 }],
     reactionBody: 'tense',
     reactionBehavior: 'left',
@@ -307,6 +310,8 @@ describe('sync client (Phase 3 — server-backed E2E sync)', () => {
     // ciphertext; the only public key sent for registration carries no health data).
     expect(allText.includes('TOPSECRET-WIN-MARKER')).toBe(false);
     expect(allText.includes('TOPSECRET-SITUATION-MARKER')).toBe(false);
+    expect(allText.includes('TOPSECRET-MEANING-MARKER')).toBe(false);
+    expect(allText.includes('TOPSECRET-CORE-BELIEF-MARKER')).toBe(false);
     expect(allText.includes('омлет из трёх яиц')).toBe(false);
 
     a.sqlite.close();

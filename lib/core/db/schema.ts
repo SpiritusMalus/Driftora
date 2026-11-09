@@ -192,6 +192,9 @@ export const diaryEntries = sqliteTable('diary_entries', {
   ts: integer('ts', { mode: 'timestamp' }).notNull(),
   situation: text('situation').notNull().default(''),
   thoughts: text('thoughts').notNull().default(''),
+  thoughtBelief: integer('thought_belief'), // 0..100; null = not rated
+  meanings: text('meanings').notNull().default('[]'), // ordered personal meanings
+  coreBelief: text('core_belief').notNull().default(''),
   emotions: text('emotions').notNull().default('[]'),
   reactionBody: text('reaction_body').notNull().default(''),
   reactionBehavior: text('reaction_behavior').notNull().default(''),
