@@ -7,6 +7,9 @@ const labels: DiaryExportLabels = {
   title: 'Summary',
   situation: 'Situation',
   thoughts: 'Thoughts',
+  thoughtBelief: 'Confidence',
+  meaning: 'Meaning',
+  coreBelief: 'About me',
   distortions: 'Distortions',
   emotions: 'Emotions',
   reaction: 'Reaction',
@@ -25,6 +28,9 @@ function entry(over: Partial<DiaryEntryView> = {}): DiaryEntryView {
     ts: new Date(2026, 5, 17, 10),
     situation: '',
     thoughts: '',
+    thoughtBelief: null,
+    meanings: [],
+    coreBelief: '',
     reactionBody: '',
     reactionBehavior: '',
     evidenceFor: '',
@@ -73,6 +79,21 @@ describe('buildDiaryExport', () => {
     expect(text).not.toContain('Situation');
     expect(text).not.toContain('Mood');
     expect(text).not.toContain('Distortions');
+    expect(text).not.toContain('Confidence');
+    expect(text).not.toContain('Meaning');
+    expect(text).not.toContain('About me');
+  });
+
+  it('exports confidence including zero and preserves the ordered personal meaning chain', () => {
+    const text = buildDiaryExport([entry({
+      thoughts: 'I can enjoy the snow',
+      thoughtBelief: 0,
+      meanings: ['A chance for joy', 'Childhood and calm'],
+      coreBelief: 'I can enjoy small things',
+    })], labels);
+    expect(text).toContain('- Confidence: 0%');
+    expect(text).toContain('- Meaning 1: A chance for joy\n- Meaning 2: Childhood and calm\n- About me: I can enjoy small things');
+    expect(buildDiaryExport([entry({ thoughtBelief: 100 })], labels)).toContain('- Confidence: 100%');
   });
 
   it('returns the empty label when there are no entries', () => {

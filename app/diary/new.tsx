@@ -11,13 +11,13 @@ import { TextField } from '@/components/ui/TextField';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { getDiaryEntry, saveDiaryEntry, updateDiaryEntry, type Emotion } from '@/lib/core/db/diary';
 import { DISTORTION_KEYS, type DistortionKey } from '@/lib/core/insights/distortions';
+import { diarySteps, parseDiaryRating } from '@/lib/core/insights/diaryPattern';
 import { type Theme, useTheme } from '@/lib/theme/theme';
 
 /// The thought record, one gentle step at a time. Order tuned from user feedback
 /// (2026-06-25): the automatic stuff first (situation, feeling, reaction), THEN
-/// name the thought, then weigh it. Mood is rated before (on `situation`) and
-/// after (on `reframe`) so the record shows the shift.
-const STEPS = ['situation', 'emotions', 'reaction', 'thoughts', 'evidence', 'reframe'] as const;
+/// name the thought, rate belief, explore its personal meaning and self-belief,
+/// then weigh it. Mood is rated before and after the record.
 
 /// Serialized form state for the exit guard — one stable shape shared by the
 /// blank baseline, the loaded-record baseline and the current values.
@@ -33,6 +33,11 @@ function snapshot(v: {
   moodBefore: number | null;
   mood: number | null;
   distortions: DistortionKey[];
+  thoughtBelief: string;
+  meanings: string[];
+  coreBelief: string;
+  emotionName: string;
+  emotionIntensity: string;
 }): string {
   return JSON.stringify(v);
 }
@@ -50,6 +55,11 @@ function blankSnapshot(): string {
     moodBefore: null,
     mood: null,
     distortions: [],
+    thoughtBelief: '',
+    meanings: ['', ''],
+    coreBelief: '',
+    emotionName: '',
+    emotionIntensity: '',
   });
 }
 
@@ -76,6 +86,14 @@ export default function DiaryNewScreen() {
   const [moodBefore, setMoodBefore] = useState<number | null>(null);
   const [mood, setMood] = useState<number | null>(null);
   const [distortions, setDistortions] = useState<DistortionKey[]>([]);
+  const [thoughtBelief, setThoughtBelief] = useState('');
+  const [meanings, setMeanings] = useState<string[]>(['', '']);
+  const [coreBelief, setCoreBelief] = useState('');
+  const [emotionName, setEmotionName] = useState('');
+  const [emotionIntensity, setEmotionIntensity] = useState('');
+  const [emotionError, setEmotionError] = useState(false);
+  const [beliefError, setBeliefError] = useState(false);
+  const [saveError, setSaveError] = useState(false);
   const [saving, setSaving] = useState(false);
   // Set on successful save; navigation happens in an effect AFTER the re-render
   // so the exit guard below sees the form as clean and lets the back through.
@@ -104,6 +122,11 @@ export default function DiaryNewScreen() {
       setMoodBefore(e.moodBefore ?? null);
       setMood(e.mood);
       setDistortions(e.distortions);
+      const loadedMeanings = [...e.meanings];
+      while (loadedMeanings.length < 2) loadedMeanings.push('');
+      setThoughtBelief(e.thoughtBelief == null ? '' : String(e.thoughtBelief));
+      setMeanings(loadedMeanings);
+      setCoreBelief(e.coreBelief);
       setBaseline(
         snapshot({
           situation: e.situation,
@@ -117,6 +140,11 @@ export default function DiaryNewScreen() {
           moodBefore: e.moodBefore ?? null,
           mood: e.mood,
           distortions: e.distortions,
+          thoughtBelief: e.thoughtBelief == null ? '' : String(e.thoughtBelief),
+          meanings: loadedMeanings,
+          coreBelief: e.coreBelief,
+          emotionName: '',
+          emotionIntensity: '',
         }),
       );
     })();
@@ -125,12 +153,15 @@ export default function DiaryNewScreen() {
     };
   }, [db, editId]);
 
-  const key = STEPS[step];
-  const isLast = step === STEPS.length - 1;
+  const steps = diarySteps(meanings.length);
+  const { key, meaningIndex = 0 } = steps[step];
+  const isLast = step === steps.length - 1;
   // Don't force every field, but avoid saving an entirely empty record.
   const canSave =
     db != null &&
-    (situation.trim().length > 0 || thoughts.trim().length > 0 || reframe.trim().length > 0);
+    ([situation, thoughts, reframe, reactionBody, reactionBehavior, evidenceFor, evidenceAgainst].some((value) => value.trim().length > 0) ||
+      emotions.length > 0 || emotionName.trim().length > 0 || thoughtBelief.trim().length > 0 ||
+      meanings.some((answer) => answer.trim().length > 0) || coreBelief.trim().length > 0);
 
   const navigation = useNavigation();
   const current = snapshot({
@@ -145,6 +176,11 @@ export default function DiaryNewScreen() {
     moodBefore,
     mood,
     distortions,
+    thoughtBelief,
+    meanings,
+    coreBelief,
+    emotionName,
+    emotionIntensity,
   });
   // Guard system back / header back while there is unsaved typed-in work.
   usePreventRemove(baseline != null && current !== baseline && !savedOk, ({ data }) => {
@@ -175,14 +211,50 @@ export default function DiaryNewScreen() {
     else router.replace('/');
   }, [savedOk, router]);
 
+  // Pending emotion fields belong to the form so Back and the exit guard keep
+  // them. Next/Save commits a complete emotion even without a separate Add tap.
+  function commitEmotion(): Emotion[] | null {
+    if (!emotionName.trim() && !emotionIntensity.trim()) return emotions;
+    const intensity = parseDiaryRating(emotionIntensity);
+    if (!emotionName.trim() || intensity == null) {
+      setEmotionError(true);
+      setStep(steps.findIndex((item) => item.key === 'emotions'));
+      return null;
+    }
+    const next = [...emotions, { name: emotionName.trim(), intensity }];
+    setEmotions(next);
+    setEmotionName('');
+    setEmotionIntensity('');
+    setEmotionError(false);
+    return next;
+  }
+
+  function validateBelief(): boolean {
+    if (thoughtBelief.trim() && parseDiaryRating(thoughtBelief) == null) {
+      setBeliefError(true);
+      setStep(steps.findIndex((item) => item.key === 'belief'));
+      return false;
+    }
+    return true;
+  }
+
+  function onNext() {
+    if (key === 'emotions' && commitEmotion() == null) return;
+    if (key === 'belief' && !validateBelief()) return;
+    setStep(step + 1);
+  }
+
   async function onSave() {
-    if (!db) return;
+    if (!db || saving) return;
+    const savedEmotions = commitEmotion();
+    if (savedEmotions == null || !validateBelief()) return;
+    setSaveError(false);
     setSaving(true);
     try {
       const draft = {
         situation,
         thoughts,
-        emotions,
+        emotions: savedEmotions,
         reactionBody,
         reactionBehavior,
         evidenceFor,
@@ -191,6 +263,9 @@ export default function DiaryNewScreen() {
         moodBefore,
         mood,
         distortions,
+        thoughtBelief: parseDiaryRating(thoughtBelief),
+        meanings,
+        coreBelief,
       };
       // Editing preserves the original ts (no ts arg); a new record gets now().
       if (editId != null) {
@@ -201,6 +276,8 @@ export default function DiaryNewScreen() {
       // Leave via the savedOk effect (not directly): the exit guard must first
       // re-render as clean, or it would challenge our own post-save back.
       setSavedOk(true);
+    } catch {
+      setSaveError(true);
     } finally {
       setSaving(false);
     }
@@ -211,14 +288,14 @@ export default function DiaryNewScreen() {
       <View
         style={styles.dots}
         accessibilityRole="progressbar"
-        accessibilityLabel={t('diary.progress', { current: step + 1, total: STEPS.length })}
+        accessibilityLabel={t('diary.progress', { current: step + 1, total: steps.length })}
       >
         <Text style={[styles.progress, { color: theme.subtle }, theme.font.body]}>
-          {t('diary.progress', { current: step + 1, total: STEPS.length })}
+          {t('diary.progress', { current: step + 1, total: steps.length })}
         </Text>
       </View>
       <Text style={[styles.title, { color: theme.text }, theme.font.heading]}>
-        {t(`diary.steps.${key}.title`)}
+        {t(key === 'meaning' && meaningIndex > 0 ? 'diary.steps.meaning.deeperTitle' : `diary.steps.${key}.title`)}
       </Text>
       <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>
         {t(`diary.steps.${key}.hint`)}
@@ -242,7 +319,41 @@ export default function DiaryNewScreen() {
             <DistortionPicker selected={distortions} onChange={setDistortions} theme={theme} />
           </>
         )}
-        {key === 'emotions' && <EmotionsEditor emotions={emotions} onChange={setEmotions} theme={theme} />}
+        {key === 'emotions' && (
+          <EmotionsEditor emotions={emotions} onChange={setEmotions} name={emotionName}
+            onNameChange={(value) => { setEmotionName(value); setEmotionError(false); }}
+            intensity={emotionIntensity} onIntensityChange={(value) => { setEmotionIntensity(value); setEmotionError(false); }}
+            error={emotionError} onAdd={() => {
+              if (!emotionName.trim() && !emotionIntensity.trim()) setEmotionError(true);
+              else commitEmotion();
+            }} theme={theme} />
+        )}
+        {key === 'belief' && (
+          <>
+            <Recall value={thoughts} label={t('diary.evidence.thoughtRecall')} theme={theme} />
+            <RatingField value={thoughtBelief} onChange={(value) => { setThoughtBelief(value); setBeliefError(false); }}
+              label={t('diary.steps.belief.title')} unit="%" error={beliefError} theme={theme} />
+          </>
+        )}
+        {key === 'meaning' && (
+          <>
+            <Recall value={meaningIndex === 0 ? thoughts : meanings[meaningIndex - 1]}
+              label={t(meaningIndex === 0 ? 'diary.evidence.thoughtRecall' : 'diary.meaning.previous')} theme={theme} />
+            <Field value={meanings[meaningIndex]} onChange={(value) => setMeanings(meanings.map((answer, index) => index === meaningIndex ? value : answer))}
+              placeholder={t(meaningIndex === 0 ? 'diary.steps.meaning.placeholder' : 'diary.steps.meaning.deeperPlaceholder')} theme={theme} />
+            {meaningIndex === meanings.length - 1 && meanings[meaningIndex].trim() ? (
+              <Pressable accessibilityRole="button" onPress={() => { setMeanings([...meanings, '']); setStep(step + 1); }} style={styles.deepen}>
+                <Text style={[{ color: theme.primary }, theme.font.bodySemiBold]}>{t('diary.meaning.deepen')}</Text>
+              </Pressable>
+            ) : null}
+          </>
+        )}
+        {key === 'coreBelief' && (
+          <>
+            <Recall value={[...meanings].reverse().find((answer) => answer.trim()) ?? thoughts} label={t('diary.meaning.previous')} theme={theme} />
+            <Field value={coreBelief} onChange={setCoreBelief} placeholder={t('diary.steps.coreBelief.placeholder')} theme={theme} />
+          </>
+        )}
         {key === 'reaction' && (
           <>
             <Field label={t('diary.reaction.body')} value={reactionBody} onChange={setReactionBody} placeholder={t('diary.reaction.bodyPlaceholder')} theme={theme} />
@@ -304,9 +415,11 @@ export default function DiaryNewScreen() {
             style={styles.navBtn}
           />
         ) : (
-          <PrimaryButton label={t('diary.next')} onPress={() => setStep(step + 1)} style={styles.navBtn} />
+          <PrimaryButton label={t('diary.next')} onPress={onNext} disabled={saving} style={styles.navBtn} />
         )}
       </View>
+
+      {saveError ? <Text accessibilityRole="alert" style={[styles.fieldError, { color: theme.accent }, theme.font.body]}>{t('diary.saveError')}</Text> : null}
 
       {/* Escape hatch: once there's something worth keeping, let the record be
           saved from any step — no need to tap "Дальше" through to the end. */}
@@ -348,90 +461,68 @@ function Field({
   );
 }
 
-function EmotionsEditor({
-  emotions,
-  onChange,
-  theme,
-}: {
-  emotions: Emotion[];
-  onChange: (e: Emotion[]) => void;
-  theme: Theme;
+function Recall({ value, label, theme }: { value: string; label: string; theme: Theme }) {
+  if (!value.trim()) return null;
+  return (
+    <View style={[styles.thoughtRecall, { borderColor: theme.separator }]}>
+      <Text style={[styles.thoughtRecallLabel, { color: theme.subtle }, theme.font.bodyMedium]}>{label}</Text>
+      <Text style={[styles.thoughtRecallText, { color: theme.text }, theme.font.body]}>{value}</Text>
+    </View>
+  );
+}
+
+function RatingField({ value, onChange, label, unit, error, theme }: {
+  value: string; onChange: (value: string) => void; label: string;
+  unit: string; error: boolean; theme: Theme;
 }) {
   const { t } = useTranslation();
-  const [name, setName] = useState('');
-  const [nameError, setNameError] = useState(false);
-  // Intensity is picked from four buckets instead of typed — a tap beats the
-  // numeric keyboard. Stored value stays 0–100 for compatibility with old records.
-  const [intensity, setIntensity] = useState(50);
-  const levels: { value: number; label: string }[] = [
-    { value: 25, label: t('diary.emotion.low') },
-    { value: 50, label: t('diary.emotion.mid') },
-    { value: 75, label: t('diary.emotion.high') },
-    { value: 100, label: t('diary.emotion.max') },
-  ];
+  return (
+    <View style={styles.field}>
+      <Text style={[styles.fieldLabel, { color: theme.subtle }, theme.font.bodyMedium]}>{label}</Text>
+      <View style={styles.ratingRow}>
+        <TextField value={value} onChangeText={onChange} keyboardType="number-pad" inputMode="numeric"
+          accessibilityLabel={label} placeholder="0–100" style={styles.ratingInput} />
+        <Text style={[{ color: theme.text }, theme.font.body]}>{unit}</Text>
+      </View>
+      <Text style={[styles.ratingHint, { color: error ? theme.accent : theme.subtle }, theme.font.body]}
+        accessibilityRole={error ? 'alert' : undefined} accessibilityLiveRegion="polite">
+        {t('diary.ratingRange')}
+      </Text>
+    </View>
+  );
+}
 
-  function add() {
-    const nm = name.trim();
-    if (nm.length === 0) {
-      setNameError(true);
-      return;
-    }
-    setNameError(false);
-    onChange([...emotions, { name: nm, intensity }]);
-    setName('');
-    setIntensity(50);
-  }
-
+function EmotionsEditor({ emotions, onChange, name, onNameChange, intensity, onIntensityChange, error, onAdd, theme }: {
+  emotions: Emotion[]; onChange: (emotions: Emotion[]) => void;
+  name: string; onNameChange: (name: string) => void;
+  intensity: string; onIntensityChange: (intensity: string) => void;
+  error: boolean; onAdd: () => void; theme: Theme;
+}) {
+  const { t } = useTranslation();
   return (
     <View>
-      {emotions.map((e, i) => (
-        <View key={i} style={[styles.emotionChip, { borderColor: theme.separator }]}>
+      {emotions.map((emotion, index) => (
+        <View key={index} style={[styles.emotionChip, { borderColor: theme.separator }]}>
           <Text style={[styles.emotionText, { color: theme.text }, theme.font.bodyMedium]}>
-            {e.name} · {e.intensity}
+            {emotion.name} · {emotion.intensity}/100
           </Text>
-          <Pressable
-            onPress={() => onChange(emotions.filter((_, idx) => idx !== i))}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel={t('diary.emotion.remove', { name: e.name })}
-          >
+          <Pressable onPress={() => onChange(emotions.filter((_, i) => i !== index))}
+            style={styles.emotionRemoveButton} accessibilityRole="button"
+            accessibilityLabel={t('diary.emotion.remove', { name: emotion.name })}>
             <Text style={[styles.emotionRemove, { color: theme.subtle }]}>✕</Text>
           </Pressable>
         </View>
       ))}
-      <TextField
-        value={name}
-        onChangeText={(value) => { setName(value); setNameError(false); }}
-        placeholder={t('diary.emotion.name')}
-      />
-      {nameError ? (
-        <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={[styles.fieldError, { color: theme.accent }, theme.font.body]}>
-          {t('diary.emotion.nameRequired')}
-        </Text>
-      ) : null}
-      <Text style={[styles.fieldLabel, styles.intensityLabel, { color: theme.subtle }, theme.font.bodyMedium]}>
-        {t('diary.emotion.intensityLabel')}
-      </Text>
-      <View style={styles.intensityChips}>
-        {levels.map((lv) => {
-          const on = intensity === lv.value;
-          return (
-            <Pressable
-              key={lv.value}
-              onPress={() => setIntensity(lv.value)}
-              style={[styles.intensityChip, { borderColor: on ? theme.primary : theme.separator, backgroundColor: on ? theme.iconBg : theme.card }]}
-            >
-              <Text style={[{ color: on ? theme.primary : theme.text, fontSize: 13 }, theme.font.bodyMedium]}>
-                {lv.label}
-              </Text>
-            </Pressable>
-          );
-        })}
+      <TextField value={name} onChangeText={onNameChange} placeholder={t('diary.emotion.name')}
+        accessibilityLabel={t('diary.emotion.name')} />
+      {error && !name.trim() ? <Text accessibilityRole="alert" style={[styles.fieldError, { color: theme.accent }, theme.font.body]}>{t('diary.emotion.nameRequired')}</Text> : null}
+      <View style={styles.intensityLabel}>
+        <RatingField value={intensity} onChange={onIntensityChange} label={t('diary.emotion.intensityLabel')}
+          unit="/100" error={error && parseDiaryRating(intensity) == null} theme={theme} />
       </View>
-      <Pressable onPress={add} accessibilityRole="button" accessibilityLabel={t('diary.emotion.add')} style={({ pressed }) => [styles.emotionAdd, { borderColor: theme.primary, opacity: pressed ? 0.6 : 1 }]}>
-        <Text style={[styles.emotionAddText, { color: theme.primary }, theme.font.bodySemiBold]}>
-          {t('diary.emotion.add')}
-        </Text>
+      <Pressable onPress={onAdd} accessibilityRole="button" accessibilityLabel={t('diary.emotion.add')}
+        style={({ pressed }) => [styles.emotionAdd, { borderColor: theme.primary, opacity: pressed ? 0.6 : 1 }]}>
+        <Text style={[styles.emotionAddText, { color: theme.primary }, theme.font.bodySemiBold]}>{t('diary.emotion.add')}</Text>
       </Pressable>
     </View>
   );
@@ -497,6 +588,10 @@ const styles = StyleSheet.create({
   field: { marginBottom: 18 },
   fieldLabel: { fontSize: 14, marginBottom: 8 },
   fieldError: { fontSize: 13, lineHeight: 18, marginTop: 6 },
+  ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  ratingInput: { flex: 1, maxWidth: 160 },
+  ratingHint: { fontSize: 12, lineHeight: 18, marginTop: 6 },
+  deepen: { minHeight: 48, justifyContent: 'center', alignSelf: 'flex-start', paddingVertical: 12 },
   nav: { flexDirection: 'row', gap: 12, marginTop: 4 },
   navBtn: { flex: 1 },
   navBack: { borderWidth: 1.5, borderRadius: 6, paddingVertical: 15, alignItems: 'center', justifyContent: 'center' },
@@ -512,11 +607,10 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     marginBottom: 12,
   },
-  emotionText: { fontSize: 14 },
+  emotionText: { fontSize: 14, flex: 1, flexShrink: 1 },
+  emotionRemoveButton: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   emotionRemove: { fontSize: 14 },
   intensityLabel: { marginTop: 12 },
-  intensityChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
-  intensityChip: { borderWidth: 1.5, borderRadius: 6, paddingHorizontal: 16, paddingVertical: 9 },
   emotionAdd: { borderWidth: 1.5, borderRadius: 6, paddingHorizontal: 16, paddingVertical: 12, alignItems: 'center' },
   emotionAddText: { fontSize: 14 },
   moodWrap: { marginTop: 12 },

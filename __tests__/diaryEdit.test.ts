@@ -21,6 +21,9 @@ function makeDb() {
 const original: DiaryDraft = {
   situation: 'дедлайн',
   thoughts: 'я не успею',
+  thoughtBelief: 80,
+  meanings: ['Меня подведёт результат', 'Для меня важно справиться'],
+  coreBelief: 'Я ответственный',
   emotions: [{ name: 'тревога', intensity: 80 }],
   reactionBody: 'сжатие в груди',
   reactionBehavior: 'откладывал',
@@ -35,6 +38,9 @@ const original: DiaryDraft = {
 const edited: DiaryDraft = {
   situation: 'дедлайн (правка)',
   thoughts: 'успею, если начну',
+  thoughtBelief: 37,
+  meanings: ['Я могу начать с малого', 'У меня есть выбор', 'Я могу попросить помощи'],
+  coreBelief: 'Я могу учиться',
   emotions: [
     { name: 'тревога', intensity: 40 },
     { name: 'решимость', intensity: 70 },
@@ -61,6 +67,9 @@ describe('diary entry edit/delete', () => {
     expect(after).not.toBeNull();
     expect(after!.situation).toBe('дедлайн (правка)');
     expect(after!.thoughts).toBe('успею, если начну');
+    expect(after!.thoughtBelief).toBe(37);
+    expect(after!.meanings).toEqual(edited.meanings);
+    expect(after!.coreBelief).toBe('Я могу учиться');
     expect(after!.reactionBody).toBe('спокойнее');
     expect(after!.evidenceFor).toBe('');
     expect(after!.evidenceAgainst).toBe('план готов');
@@ -69,6 +78,19 @@ describe('diary entry edit/delete', () => {
     expect(after!.mood).toBe(8);
     expect(after!.emotions).toEqual(edited.emotions);
     expect(after!.distortions).toEqual(['mind_reading', 'all_or_nothing']);
+    sqlite.close();
+  });
+
+  it('can deliberately clear the rating, meaning chain and self-description', async () => {
+    const { sqlite, db } = makeDb();
+    await applySchema((stmt) => sqlite.exec(stmt));
+    const id = await saveDiaryEntry(db, original);
+    await updateDiaryEntry(db, id, { ...original, thoughtBelief: null, meanings: [], coreBelief: '' });
+    const after = await getDiaryEntry(db, id);
+    expect(after!.thoughtBelief).toBeNull();
+    expect(after!.meanings).toEqual([]);
+    expect(after!.coreBelief).toBe('');
+    expect(after!.thoughts).toBe(original.thoughts);
     sqlite.close();
   });
 

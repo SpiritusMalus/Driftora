@@ -104,6 +104,16 @@ export default function DiaryEntryScreen() {
         ) : null}
 
         <Section label={t('diary.steps.thoughts.title')} value={entry.thoughts} dash={dash} theme={theme} />
+        {entry.thoughtBelief != null ? (
+          <Section label={t('diary.steps.belief.title')} value={`${entry.thoughtBelief}%`} dash={dash} theme={theme} />
+        ) : null}
+        {entry.meanings.map((answer, index) => answer.trim() ? (
+          <Section key={index} label={t(index === 0 ? 'diary.steps.meaning.title' : 'diary.steps.meaning.deeperTitle')}
+            value={answer} dash={dash} theme={theme} />
+        ) : null)}
+        {entry.coreBelief.trim() ? (
+          <Section label={t('diary.steps.coreBelief.title')} value={entry.coreBelief} dash={dash} theme={theme} />
+        ) : null}
         {entry.distortions.length > 0 ? (
           <Block label={t('diary.distortions.label')} theme={theme}>
             <Text style={[styles.value, { color: theme.text }, theme.font.body]}>
