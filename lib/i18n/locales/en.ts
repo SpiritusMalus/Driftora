@@ -1310,6 +1310,12 @@ export const en = {
     discardStay: 'Stay',
     discardLeave: 'Leave without saving',
     saving: 'Saving…',
+    saveError: 'Could not save the entry. Your answers are still here — please try again.',
+    ratingRange: 'Enter a whole number from 0 to 100.',
+    meaning: {
+      previous: 'Previous answer',
+      deepen: 'Explore one level deeper',
+    },
     progress: 'Step {{current}} of {{total}}',
     moodShort: 'Mood',
     moodShiftCaption: 'mood: before → after',
@@ -1355,11 +1361,8 @@ export const en = {
     },
     emotion: {
       name: 'Emotion',
-      intensityLabel: 'Intensity',
-      low: 'Mild',
-      mid: 'Medium',
-      high: 'Strong',
-      max: 'Intense',
+      intensityLabel: 'Emotion intensity',
+      nameRequired: 'Enter the name of the emotion.',
       add: 'Add',
       remove: 'Remove emotion {{name}}',
     },
@@ -1397,9 +1400,25 @@ export const en = {
         title: 'Reaction',
         hint: 'What did you feel in your body, and how did you act?',
       },
+      belief: {
+        title: 'How believable is this thought?',
+        hint: 'How much do you believe this thought right now? Enter your own percentage, or skip.',
+      },
+      meaning: {
+        title: 'What does this mean to me?',
+        deeperTitle: 'And what does that mean to me, deeper down?',
+        hint: 'Start from your previous answer. What matters to you personally here? You can skip.',
+        placeholder: 'e.g. everything will be covered in snow, and I will enjoy looking at it',
+        deeperPlaceholder: 'e.g. a chance to feel joy, revisit childhood and feel carefree',
+      },
+      coreBelief: {
+        title: 'What does this say about me?',
+        hint: 'What does this meaning say about how you see yourself? Use your own words, or skip.',
+        placeholder: 'I am…',
+      },
       evidence: {
         title: 'Evidence',
-        hint: 'Facts for and against the anxious thought.',
+        hint: 'Which facts support the thought, and which help you see it differently?',
       },
       reframe: {
         title: 'Balanced view',

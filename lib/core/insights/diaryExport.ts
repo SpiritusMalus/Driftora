@@ -14,6 +14,9 @@ export interface DiaryExportLabels {
   title: string;
   situation: string;
   thoughts: string;
+  thoughtBelief: string;
+  meaning: string;
+  coreBelief: string;
   distortions: string;
   emotions: string;
   reaction: string;
@@ -34,6 +37,9 @@ function entryBlock(e: DiaryEntryView, L: DiaryExportLabels): string {
 
   add(L.situation, e.situation);
   add(L.thoughts, e.thoughts);
+  if (e.thoughtBelief != null) add(L.thoughtBelief, `${e.thoughtBelief}%`);
+  e.meanings.forEach((answer, index) => add(`${L.meaning} ${index + 1}`, answer));
+  add(L.coreBelief, e.coreBelief);
   if (e.distortions.length > 0) {
     add(L.distortions, e.distortions.map(L.distortionName).join(' · '));
   }

@@ -97,6 +97,9 @@ CREATE TABLE IF NOT EXISTS diary_entries (
   ts INTEGER NOT NULL,
   situation TEXT NOT NULL DEFAULT '',
   thoughts TEXT NOT NULL DEFAULT '',
+  thought_belief INTEGER,
+  meanings TEXT NOT NULL DEFAULT '[]',
+  core_belief TEXT NOT NULL DEFAULT '',
   emotions TEXT NOT NULL DEFAULT '[]',
   reaction_body TEXT NOT NULL DEFAULT '',
   reaction_behavior TEXT NOT NULL DEFAULT '',
@@ -306,6 +309,11 @@ export const MIGRATIONS: string[] = [
   // buttons — each glows until tapped once, the tap explains instead of firing.
   `ALTER TABLE app_settings ADD COLUMN workout_voice_coach_seen INTEGER NOT NULL DEFAULT 0`,
   `ALTER TABLE app_settings ADD COLUMN workout_shot_coach_seen INTEGER NOT NULL DEFAULT 0`,
+  // 2026-11-09: belief rating and the user's ordered personal-meaning chain.
+  // Existing records remain unrated and keep all their original text.
+  `ALTER TABLE diary_entries ADD COLUMN thought_belief INTEGER`,
+  `ALTER TABLE diary_entries ADD COLUMN meanings TEXT NOT NULL DEFAULT '[]'`,
+  `ALTER TABLE diary_entries ADD COLUMN core_belief TEXT NOT NULL DEFAULT ''`,
 ];
 
 /// Runs each CREATE statement through [run], then the idempotent [MIGRATIONS].

@@ -10,7 +10,7 @@ import {
   importAllTables,
   type BackupDocument,
 } from '@/lib/core/db/backup';
-import { saveDiaryEntry } from '@/lib/core/db/diary';
+import { getDiaryEntry, saveDiaryEntry } from '@/lib/core/db/diary';
 import { logMood } from '@/lib/core/db/mood';
 import { applySchema } from '@/lib/core/db/init';
 import * as schema from '@/lib/core/db/schema';
@@ -78,6 +78,9 @@ async function seed(db: ReturnType<typeof makeDb>['db']) {
   await saveDiaryEntry(db, {
     situation: 'meeting',
     thoughts: 'I failed',
+    thoughtBelief: 37,
+    meanings: ['My work matters', 'I want to learn'],
+    coreBelief: 'I am learning',
     emotions: [{ name: 'anxiety', intensity: 70 }],
     reactionBody: 'tense',
     reactionBehavior: 'left',
@@ -145,6 +148,27 @@ describe('DB backup (exportAllTables / importAllTables)', () => {
     const twice = dumpAll(b.sqlite);
     expect(twice).toEqual(once);
 
+    a.sqlite.close();
+    b.sqlite.close();
+  });
+
+  it('restores old diary backups that omit the new personal meaning columns', async () => {
+    const a = makeDb();
+    await applySchema((stmt) => a.sqlite.exec(stmt));
+    await seed(a.db);
+    const doc = await exportAllTables(a.db);
+    for (const row of doc.tables.diary_entries) {
+      delete row.thought_belief;
+      delete row.meanings;
+      delete row.core_belief;
+    }
+    const b = makeDb();
+    await applySchema((stmt) => b.sqlite.exec(stmt));
+    await importAllTables(b.db, doc);
+    const [row] = b.sqlite.prepare('SELECT id FROM diary_entries').all() as { id: number }[];
+    expect(await getDiaryEntry(b.db, row.id)).toMatchObject({
+      thoughts: 'I failed', thoughtBelief: null, meanings: [], coreBelief: '',
+    });
     a.sqlite.close();
     b.sqlite.close();
   });

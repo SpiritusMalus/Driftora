@@ -3,6 +3,7 @@ import BetterSqlite3 from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 
 import { applySchema } from '@/lib/core/db/init';
+import { getDiaryEntry, updateDiaryEntry } from '@/lib/core/db/diary';
 import * as schema from '@/lib/core/db/schema';
 import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
 
@@ -26,6 +27,39 @@ CREATE TABLE app_settings (
 );`;
 
 describe('schema migrations (existing install)', () => {
+  it('upgrades existing diary records without changing their text or ratings', async () => {
+    const sqlite = new BetterSqlite3(':memory:');
+    sqlite.exec(`CREATE TABLE diary_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ts INTEGER NOT NULL,
+      situation TEXT NOT NULL DEFAULT '',
+      thoughts TEXT NOT NULL DEFAULT '',
+      emotions TEXT NOT NULL DEFAULT '[]',
+      reaction_body TEXT NOT NULL DEFAULT '',
+      reaction_behavior TEXT NOT NULL DEFAULT '',
+      evidence_for TEXT NOT NULL DEFAULT '',
+      evidence_against TEXT NOT NULL DEFAULT '',
+      reframe TEXT NOT NULL DEFAULT '',
+      mood_before INTEGER,
+      mood INTEGER,
+      distortions TEXT NOT NULL DEFAULT '[]'
+    );`);
+    sqlite.prepare('INSERT INTO diary_entries (ts, situation, thoughts, emotions, mood_before) VALUES (?, ?, ?, ?, ?)')
+      .run(123, 'Снег', 'Буду любоваться', JSON.stringify([{ name: 'радость', intensity: 75 }]), 6);
+    await applySchema((s) => sqlite.exec(s));
+    await applySchema((s) => sqlite.exec(s));
+    const db = drizzle(sqlite, { schema });
+    const old = await getDiaryEntry(db, 1);
+    expect(old).toMatchObject({
+      situation: 'Снег', thoughts: 'Буду любоваться',
+      emotions: [{ name: 'радость', intensity: 75 }], moodBefore: 6,
+      thoughtBelief: null, meanings: [], coreBelief: '',
+    });
+    await updateDiaryEntry(db, 1, { ...old!, thoughtBelief: 100, meanings: ['Радость'], coreBelief: 'Я живой' });
+    expect(await getDiaryEntry(db, 1)).toMatchObject({ thoughtBelief: 100, meanings: ['Радость'], coreBelief: 'Я живой' });
+    expect((await getDiaryEntry(db, 1))!.ts.getTime()).toBe(123000);
+    sqlite.close();
+  });
   it('adds app_settings.region to a pre-region database, defaulting to auto', async () => {
     const sqlite = new BetterSqlite3(':memory:');
     // Simulate an old install: app_settings WITHOUT region, with a saved row.

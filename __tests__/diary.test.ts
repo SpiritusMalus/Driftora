@@ -1,6 +1,9 @@
 import { describe, expect, it } from '@jest/globals';
 import BetterSqlite3 from 'better-sqlite3';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 import {
   countDiaryEntries,
@@ -47,7 +50,79 @@ describe('diary (СМЭР thought records)', () => {
     expect(e!.evidenceAgainst).toBe('остальное сделал хорошо');
     expect(e!.reframe).toBe('одна неудача не отменяет мою работу');
     expect(e!.mood).toBe(6);
+    expect(e!.thoughtBelief).toBeNull();
+    expect(e!.meanings).toEqual([]);
+    expect(e!.coreBelief).toBe('');
 
+    sqlite.close();
+  });
+
+  it('keeps a positive thought, exact emotion rating and every meaning after reopening the database', async () => {
+    const folder = mkdtempSync(join(tmpdir(), 'driftora-diary-'));
+    const filename = join(folder, 'diary.sqlite');
+    let sqlite = new BetterSqlite3(filename);
+    try {
+      await applySchema((s) => sqlite.exec(s));
+      const meanings = ['Всё будет в снегу, и я буду любоваться', 'Радость и возвращение в детство', 'Безмятежность и отсутствие тревоги'];
+      const id = await saveDiaryEntry(drizzle(sqlite, { schema }), draft({
+        thoughts: 'Я получу удовольствие от снега',
+        thoughtBelief: 100,
+        meanings,
+        coreBelief: 'Я умею радоваться',
+        emotions: [{ name: 'радость', intensity: 37 }],
+      }));
+      sqlite.close();
+      sqlite = new BetterSqlite3(filename);
+      await applySchema((s) => sqlite.exec(s));
+      const saved = await getDiaryEntry(drizzle(sqlite, { schema }), id);
+      expect(saved).toMatchObject({
+        thoughts: 'Я получу удовольствие от снега',
+        thoughtBelief: 100,
+        meanings,
+        coreBelief: 'Я умею радоваться',
+        emotions: [{ name: 'радость', intensity: 37 }],
+      });
+    } finally {
+      if (sqlite.open) sqlite.close();
+      rmSync(folder, { recursive: true, force: true });
+    }
+  });
+
+  it('stores zero confidence as a rating, distinct from an unanswered question', async () => {
+    const { sqlite, db } = makeDb();
+    await applySchema((s) => sqlite.exec(s));
+    const id = await saveDiaryEntry(db, draft({ thoughtBelief: 0 }));
+    expect((await getDiaryEntry(db, id))!.thoughtBelief).toBe(0);
+    sqlite.close();
+  });
+
+  it.each([-1, 101, 3.5, NaN, Infinity])('rejects invalid confidence %s without saving a record', async (thoughtBelief) => {
+    const { sqlite, db } = makeDb();
+    await applySchema((s) => sqlite.exec(s));
+    await expect(saveDiaryEntry(db, draft({ thoughtBelief }))).rejects.toThrow(RangeError);
+    expect(await countDiaryEntries(db)).toBe(0);
+    sqlite.close();
+  });
+
+  it.each(['not-json', '{}', 'null'])('tolerates malformed meaning data %s on read', async (meanings) => {
+    const { sqlite, db } = makeDb();
+    await applySchema((s) => sqlite.exec(s));
+    await db.insert(schema.diaryEntries).values({ ts: new Date(), meanings });
+    expect((await listDiaryEntries(db))[0].meanings).toEqual([]);
+    sqlite.close();
+  });
+
+  it('ignores non-text meaning elements without changing the text or its order', async () => {
+    const { sqlite, db } = makeDb();
+    await applySchema((s) => sqlite.exec(s));
+    await db.insert(schema.diaryEntries).values({
+      ts: new Date(),
+      meanings: JSON.stringify(['  first\nanswer ', 42, null, 'second answer']),
+      thoughtBelief: 150,
+    });
+    const saved = (await listDiaryEntries(db))[0];
+    expect(saved.meanings).toEqual(['  first\nanswer ', 'second answer']);
+    expect(saved.thoughtBelief).toBeNull();
     sqlite.close();
   });
 
