@@ -27,6 +27,8 @@ export interface DiaryInsightEntry {
   situation: string;
   thoughts: string;
   emotions: { name: string; intensity: number }[];
+  evidenceFor?: string;
+  evidenceAgainst?: string;
   reframe: string;
   mood: number | null; // 0–10
   distortions: string[];
@@ -38,9 +40,9 @@ export type DiarySuggestion =
   | { kind: 'crisis_support' }
   /// One distortion shows up repeatedly — offer a balanced reframe of it.
   | { kind: 'recurring_distortion'; distortion: DistortionKey; count: number }
-  /// Several recent entries carry very intense emotions — a gentle reframe nudge.
+  /// Several recent entries carry very intense emotions — a neutral observation.
   | { kind: 'high_intensity_emotion' }
-  /// A logged situation/thoughts with no reframe yet — invite the reframe step.
+  /// The user recorded evidence and may choose to add a balanced view.
   | { kind: 'missing_reframe' };
 
 /// How many recent entries (newest-first) the engine considers.
@@ -86,8 +88,9 @@ function hasCrisisSignal(entry: DiaryInsightEntry): boolean {
   return CRISIS_PATTERNS.some((p) => haystack.includes(p));
 }
 
-function hasContent(entry: DiaryInsightEntry): boolean {
-  return entry.situation.trim().length > 0 || entry.thoughts.trim().length > 0;
+function hasEvidence(entry: DiaryInsightEntry): boolean {
+  return (entry.evidenceFor?.trim().length ?? 0) > 0 ||
+    (entry.evidenceAgainst?.trim().length ?? 0) > 0;
 }
 
 /// Computes the single most useful suggestion for the recent diary, or null when
@@ -117,7 +120,7 @@ export function diaryInsight(entries: DiaryInsightEntry[]): DiarySuggestion | nu
   }
   if (top) return { kind: 'recurring_distortion', distortion: top.distortion, count: top.count };
 
-  // 3. Repeated very-intense emotions — a gentle "a reframe can lower the heat".
+  // 3. Observe repeated very-intense emotions without judging their valence.
   const intenseEntries = recent.filter((e) =>
     e.emotions.some((em) => em.intensity >= HIGH_INTENSITY),
   ).length;
@@ -125,9 +128,11 @@ export function diaryInsight(entries: DiaryInsightEntry[]): DiarySuggestion | nu
     return { kind: 'high_intensity_emotion' };
   }
 
-  // 4. The newest entry has content but no reframe — invite the reframe step.
+  // 4. Only invite further thought work when the user actually recorded evidence.
+  // Basic monitoring, a confidence rating and personal meanings are complete
+  // records in their own right; none implies a need to reframe the thought.
   const newest = recent[0];
-  if (hasContent(newest) && newest.reframe.trim().length === 0) {
+  if (hasEvidence(newest) && newest.reframe.trim().length === 0) {
     return { kind: 'missing_reframe' };
   }
 

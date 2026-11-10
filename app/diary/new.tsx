@@ -11,13 +11,13 @@ import { TextField } from '@/components/ui/TextField';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { getDiaryEntry, saveDiaryEntry, updateDiaryEntry, type Emotion } from '@/lib/core/db/diary';
 import { DISTORTION_KEYS, type DistortionKey } from '@/lib/core/insights/distortions';
-import { diarySteps, parseDiaryRating } from '@/lib/core/insights/diaryPattern';
+import { diarySteps, parseDiaryRating, type DiaryMode } from '@/lib/core/insights/diaryPattern';
 import { type Theme, useTheme } from '@/lib/theme/theme';
 
 /// The thought record, one gentle step at a time. Order tuned from user feedback
 /// (2026-06-25): the automatic stuff first (situation, feeling, reaction), THEN
-/// name the thought, rate belief, explore its personal meaning and self-belief,
-/// then weigh it. Mood is rated before and after the record.
+/// name the thought. This completes a basic record; evidence/reframing and
+/// personal meanings are separate, explicitly chosen optional paths.
 
 /// Serialized form state for the exit guard — one stable shape shared by the
 /// blank baseline, the loaded-record baseline and the current values.
@@ -56,7 +56,7 @@ function blankSnapshot(): string {
     mood: null,
     distortions: [],
     thoughtBelief: '',
-    meanings: ['', ''],
+    meanings: [''],
     coreBelief: '',
     emotionName: '',
     emotionIntensity: '',
@@ -75,6 +75,8 @@ export default function DiaryNewScreen() {
   const editId = id != null && id !== '' ? Number(id) : null;
 
   const [step, setStep] = useState(0);
+  const [mode, setMode] = useState<DiaryMode>('basic');
+  const [includeSelf, setIncludeSelf] = useState(false);
   const [situation, setSituation] = useState('');
   const [thoughts, setThoughts] = useState('');
   const [emotions, setEmotions] = useState<Emotion[]>([]);
@@ -87,7 +89,7 @@ export default function DiaryNewScreen() {
   const [mood, setMood] = useState<number | null>(null);
   const [distortions, setDistortions] = useState<DistortionKey[]>([]);
   const [thoughtBelief, setThoughtBelief] = useState('');
-  const [meanings, setMeanings] = useState<string[]>(['', '']);
+  const [meanings, setMeanings] = useState<string[]>(['']);
   const [coreBelief, setCoreBelief] = useState('');
   const [emotionName, setEmotionName] = useState('');
   const [emotionIntensity, setEmotionIntensity] = useState('');
@@ -122,11 +124,11 @@ export default function DiaryNewScreen() {
       setMoodBefore(e.moodBefore ?? null);
       setMood(e.mood);
       setDistortions(e.distortions);
-      const loadedMeanings = [...e.meanings];
-      while (loadedMeanings.length < 2) loadedMeanings.push('');
+      const loadedMeanings = e.meanings.some((answer) => answer.trim()) ? [...e.meanings] : [''];
       setThoughtBelief(e.thoughtBelief == null ? '' : String(e.thoughtBelief));
       setMeanings(loadedMeanings);
       setCoreBelief(e.coreBelief);
+      setIncludeSelf(e.coreBelief.trim().length > 0);
       setBaseline(
         snapshot({
           situation: e.situation,
@@ -153,7 +155,7 @@ export default function DiaryNewScreen() {
     };
   }, [db, editId]);
 
-  const steps = diarySteps(meanings.length);
+  const steps = diarySteps(meanings.length, mode, includeSelf);
   const { key, meaningIndex = 0 } = steps[step];
   const isLast = step === steps.length - 1;
   // Don't force every field, but avoid saving an entirely empty record.
@@ -232,7 +234,8 @@ export default function DiaryNewScreen() {
   function validateBelief(): boolean {
     if (thoughtBelief.trim() && parseDiaryRating(thoughtBelief) == null) {
       setBeliefError(true);
-      setStep(steps.findIndex((item) => item.key === 'belief'));
+      setMode('basic');
+      setStep(steps.findIndex((item) => item.key === 'thoughts'));
       return false;
     }
     return true;
@@ -240,8 +243,20 @@ export default function DiaryNewScreen() {
 
   function onNext() {
     if (key === 'emotions' && commitEmotion() == null) return;
-    if (key === 'belief' && !validateBelief()) return;
+    if (key === 'thoughts' && !validateBelief()) return;
     setStep(step + 1);
+  }
+
+  function openMode(nextMode: Exclude<DiaryMode, 'basic'>) {
+    if (commitEmotion() == null || !validateBelief()) return;
+    setMode(nextMode);
+    setStep(diarySteps(meanings.length).length);
+  }
+
+  function onBack() {
+    // Returning from an optional path restores the basic Save action.
+    if (step === diarySteps(meanings.length).length) setMode('basic');
+    setStep(step - 1);
   }
 
   async function onSave() {
@@ -264,7 +279,7 @@ export default function DiaryNewScreen() {
         mood,
         distortions,
         thoughtBelief: parseDiaryRating(thoughtBelief),
-        meanings,
+        meanings: meanings.some((answer) => answer.trim()) ? meanings : [],
         coreBelief,
       };
       // Editing preserves the original ts (no ts arg); a new record gets now().
@@ -316,6 +331,8 @@ export default function DiaryNewScreen() {
         {key === 'thoughts' && (
           <>
             <Field value={thoughts} onChange={setThoughts} placeholder={t('diary.steps.thoughts.placeholder')} theme={theme} />
+            <RatingField value={thoughtBelief} onChange={(value) => { setThoughtBelief(value); setBeliefError(false); }}
+              label={t('diary.steps.belief.title')} unit="%" error={beliefError} theme={theme} />
             <DistortionPicker selected={distortions} onChange={setDistortions} theme={theme} />
           </>
         )}
@@ -328,13 +345,6 @@ export default function DiaryNewScreen() {
               else commitEmotion();
             }} theme={theme} />
         )}
-        {key === 'belief' && (
-          <>
-            <Recall value={thoughts} label={t('diary.evidence.thoughtRecall')} theme={theme} />
-            <RatingField value={thoughtBelief} onChange={(value) => { setThoughtBelief(value); setBeliefError(false); }}
-              label={t('diary.steps.belief.title')} unit="%" error={beliefError} theme={theme} />
-          </>
-        )}
         {key === 'meaning' && (
           <>
             <Recall value={meaningIndex === 0 ? thoughts : meanings[meaningIndex - 1]}
@@ -342,9 +352,18 @@ export default function DiaryNewScreen() {
             <Field value={meanings[meaningIndex]} onChange={(value) => setMeanings(meanings.map((answer, index) => index === meaningIndex ? value : answer))}
               placeholder={t(meaningIndex === 0 ? 'diary.steps.meaning.placeholder' : 'diary.steps.meaning.deeperPlaceholder')} theme={theme} />
             {meaningIndex === meanings.length - 1 && meanings[meaningIndex].trim() ? (
-              <Pressable accessibilityRole="button" onPress={() => { setMeanings([...meanings, '']); setStep(step + 1); }} style={styles.deepen}>
-                <Text style={[{ color: theme.primary }, theme.font.bodySemiBold]}>{t('diary.meaning.deepen')}</Text>
-              </Pressable>
+              <>
+                <Pressable accessibilityRole="button" accessibilityLabel={t('diary.meaning.deepen')}
+                  onPress={() => { setMeanings([...meanings, '']); setStep(step + 1); }} style={styles.deepen}>
+                  <Text style={[{ color: theme.primary }, theme.font.bodySemiBold]}>{t('diary.meaning.deepen')}</Text>
+                </Pressable>
+                {!includeSelf ? (
+                  <Pressable accessibilityRole="button" accessibilityLabel={t('diary.meaning.exploreSelf')}
+                    onPress={() => { setIncludeSelf(true); setStep(step + 1); }} style={styles.deepen}>
+                    <Text style={[{ color: theme.primary }, theme.font.bodySemiBold]}>{t('diary.meaning.exploreSelf')}</Text>
+                  </Pressable>
+                ) : null}
+              </>
             ) : null}
           </>
         )}
@@ -397,7 +416,7 @@ export default function DiaryNewScreen() {
       <View style={styles.nav}>
         {step > 0 ? (
           <Pressable
-            onPress={() => setStep(step - 1)}
+            onPress={onBack}
             style={({ pressed }) => [styles.navBtn, styles.navBack, { borderColor: theme.separator, opacity: pressed ? 0.7 : 1 }]}
           >
             <Text style={[styles.navBackText, { color: theme.text }, theme.font.bodySemiBold]}>
@@ -420,6 +439,30 @@ export default function DiaryNewScreen() {
       </View>
 
       {saveError ? <Text accessibilityRole="alert" style={[styles.fieldError, { color: theme.accent }, theme.font.body]}>{t('diary.saveError')}</Text> : null}
+
+      {isLast ? (
+        <View style={styles.optionalPaths}>
+          <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('diary.optional.hint')}</Text>
+          {mode !== 'review' ? (
+            <Pressable accessibilityRole="button" accessibilityLabel={t('diary.optional.review')}
+              onPress={() => openMode('review')} disabled={saving} style={styles.deepen}>
+              <Text style={[{ color: theme.primary }, theme.font.bodySemiBold]}>{t('diary.optional.review')}</Text>
+              {evidenceFor.trim() || evidenceAgainst.trim() || reframe.trim() ? (
+                <Text style={[styles.ratingHint, { color: theme.subtle }, theme.font.body]}>{t('diary.optional.saved')}</Text>
+              ) : null}
+            </Pressable>
+          ) : null}
+          {mode !== 'meaning' ? (
+            <Pressable accessibilityRole="button" accessibilityLabel={t('diary.optional.meaning')}
+              onPress={() => openMode('meaning')} disabled={saving} style={styles.deepen}>
+              <Text style={[{ color: theme.primary }, theme.font.bodySemiBold]}>{t('diary.optional.meaning')}</Text>
+              {meanings.some((answer) => answer.trim()) || coreBelief.trim() ? (
+                <Text style={[styles.ratingHint, { color: theme.subtle }, theme.font.body]}>{t('diary.optional.saved')}</Text>
+              ) : null}
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
 
       {/* Escape hatch: once there's something worth keeping, let the record be
           saved from any step — no need to tap "Дальше" through to the end. */}
@@ -592,6 +635,7 @@ const styles = StyleSheet.create({
   ratingInput: { flex: 1, maxWidth: 160 },
   ratingHint: { fontSize: 12, lineHeight: 18, marginTop: 6 },
   deepen: { minHeight: 48, justifyContent: 'center', alignSelf: 'flex-start', paddingVertical: 12 },
+  optionalPaths: { marginTop: 24 },
   nav: { flexDirection: 'row', gap: 12, marginTop: 4 },
   navBtn: { flex: 1 },
   navBack: { borderWidth: 1.5, borderRadius: 6, paddingVertical: 15, alignItems: 'center', justifyContent: 'center' },
