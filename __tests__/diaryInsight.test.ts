@@ -59,9 +59,47 @@ describe('diaryInsight', () => {
     expect(diaryInsight(entries)).toEqual({ kind: 'high_intensity_emotion' });
   });
 
-  it('invites a reframe when the newest entry has content but no reframe', () => {
+  it('does not treat a basic monitoring record without a reframe as unfinished', () => {
     const entries = [entry({ situation: 'Тяжёлый день', thoughts: 'Всё плохо', reframe: '' })];
+    expect(diaryInsight(entries)).toBeNull();
+  });
+
+  it.each([
+    { evidenceFor: 'Одна ошибка была' },
+    { evidenceAgainst: 'Остальное получилось' },
+  ])('offers further thought work after explicit evidence %j', (evidence) => {
+    const entries = [entry({ situation: 'Встреча', thoughts: 'Я всё провалил', ...evidence })];
     expect(diaryInsight(entries)).toEqual({ kind: 'missing_reframe' });
+  });
+
+  it('ignores blank evidence and a confidence rating alone', () => {
+    const confidenceOnly = {
+      ...entry({ situation: 'Снег', thoughts: 'Буду любоваться', evidenceFor: '  ', evidenceAgainst: '\n' }),
+      thoughtBelief: 100,
+    };
+    expect(diaryInsight([confidenceOnly])).toBeNull();
+  });
+
+  it('does not require a reframe after personal meanings and self-description', () => {
+    const meaningOnly = {
+      ...entry({ situation: 'Снег', thoughts: 'Буду любоваться' }),
+      meanings: ['Шанс испытать радость', 'Безмятежность'],
+      coreBelief: 'Я умею радоваться',
+    };
+    expect(diaryInsight([meaningOnly])).toBeNull();
+  });
+
+  it('does not carry an older evidence invitation into the newest basic record', () => {
+    expect(diaryInsight([
+      entry({ situation: 'Прогулка', thoughts: 'Свежий воздух' }),
+      entry({ situation: 'Встреча', evidenceFor: 'Одна ошибка была' }),
+    ])).toBeNull();
+  });
+
+  it('does not invite another reframe when the evidence already has a balanced view', () => {
+    expect(diaryInsight([entry({
+      situation: 'Встреча', evidenceFor: 'Одна ошибка была', reframe: 'Ошибка не отменяет сделанного',
+    })])).toBeNull();
   });
 
   // ---- crisis safety ------------------------------------------------------
