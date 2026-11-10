@@ -129,7 +129,9 @@ export default function DiaryEntryScreen() {
           <Section label={t('diary.evidence.against')} value={entry.evidenceAgainst} dash={dash} theme={theme} />
         ) : null}
 
-        <Section label={t('diary.steps.reframe.title')} value={entry.reframe} dash={dash} theme={theme} />
+        {entry.reframe.trim() ? (
+          <Section label={t('diary.steps.reframe.title')} value={entry.reframe} dash={dash} theme={theme} />
+        ) : null}
 
         {/* Only one mood recorded — no shift to show, so surface it as a plain row. */}
         {!hasShift && entry.moodBefore != null ? (

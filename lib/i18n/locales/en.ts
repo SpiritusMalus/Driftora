@@ -1314,6 +1314,12 @@ export const en = {
     next: 'Next',
     save: 'Save',
     saveExit: 'Save & exit',
+    optional: {
+      hint: 'A short record is enough. Extra questions open only when you choose them.',
+      review: 'Examine the thought',
+      meaning: 'Explore personal meaning',
+      saved: 'Saved answers available',
+    },
     // Exit guard for the stepper — typed-in work must not vanish on a stray back.
     discardTitle: 'Entry not saved',
     discardBody: 'If you leave now, what you typed will be lost.',
@@ -1325,6 +1331,7 @@ export const en = {
     meaning: {
       previous: 'Previous answer',
       deepen: 'Explore one level deeper',
+      exploreSelf: 'What does this say about me?',
     },
     progress: 'Step {{current}} of {{total}}',
     moodShort: 'Mood',
@@ -1359,9 +1366,9 @@ export const en = {
       recurringDistortion:
         '"{{name}}" has come up often this week ({{count}}). Want to try a balanced reframe of a thought like that?',
       highIntensity:
-        'A few entries carried very strong emotions. A calm look at the evidence for and against can take some of the heat out.',
+        'A few entries carried intense emotions. If you like, you can look at what those situations have in common.',
       missingReframe:
-        'Your latest entry has no reframe yet. One step — seeing the thought from the outside — often shifts how it feels.',
+        'This entry includes evidence. If you like, you can add another perspective on the situation.',
       crisis:
         'This looks like a really hard moment. You are not alone. If you can, reach out to someone you trust or a professional — that is okay, and it matters.',
     },
@@ -1411,7 +1418,7 @@ export const en = {
         hint: 'What did you feel in your body, and how did you act?',
       },
       belief: {
-        title: 'How believable is this thought?',
+        title: 'How much do I believe this thought? (optional)',
         hint: 'How much do you believe this thought right now? Enter your own percentage, or skip.',
       },
       meaning: {
