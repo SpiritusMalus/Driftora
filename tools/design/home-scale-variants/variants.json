@@ -1,0 +1,38 @@
+{
+  "source": "3e6726343c5320c205e1ab3420949d2bba52eca8",
+  "files": [
+    "components/home/FoodTodayWidget.tsx",
+    "components/home/WeightWidget.tsx",
+    "components/home/StepsWidget.tsx",
+    "components/home/WorkoutWidget.tsx",
+    "components/home/DayRibbonTimeline.tsx",
+    "components/ui/FoodBar.tsx",
+    "components/ui/PageDots.tsx",
+    "app/index.tsx"
+  ],
+  "purpose": "Four review alternatives. No variant is applied to the application until selected.",
+  "variants": [
+    {
+      "id": 1,
+      "name": "Спокойно крупнее"
+    },
+    {
+      "id": 2,
+      "name": "Калории в фокусе"
+    },
+    {
+      "id": 3,
+      "name": "БЖУ на виду"
+    },
+    {
+      "id": 4,
+      "name": "Свободная лента"
+    }
+  ],
+  "validation": {
+    "all_candidates_typecheck": "passed",
+    "shared_candidate_jest_suites": 109,
+    "shared_candidate_jest_tests": 1019,
+    "native_preview": "Android 14 / API 34, synthetic data, 390dp, dark and light; QA native payload plus candidate JS"
+  }
+}

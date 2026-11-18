@@ -1,0 +1,326 @@
+--- a/components/home/FoodTodayWidget.tsx
++++ b/components/home/FoodTodayWidget.tsx
+@@ -49,7 +49,8 @@
+ }) {
+   const { t } = useTranslation();
+   const theme = useTheme();
+-  const { fontScale } = useWindowDimensions();
++  const { width, fontScale } = useWindowDimensions();
++  const stackMacros = (width - 48) / fontScale < 290;
+   const reduced = useReducedMotion();
+ 
+   // «Печать» нового значения: fade the figure back in when the rounded total
+@@ -87,11 +88,12 @@
+     >
+       <Text style={[styles.title, { color: theme.text }, theme.font.bodyMedium]}>{t('home.food.title')}</Text>
+       <View style={styles.budget}>
++        <View style={styles.budgetMain}>
+         <Animated.Text
+           numberOfLines={1}
+           adjustsFontSizeToFit
+           minimumFontScale={0.75}
+-          style={[styles.kcal, { color: theme.text, opacity: fade }, theme.font.display]}
++          style={[styles.kcal, { color: theme.primary, opacity: fade }, theme.font.display]}
+         >
+           {formatInt(shown)}
+         </Animated.Text>
+@@ -104,8 +106,9 @@
+             {hideCalories ? ` ${t('units.g')}` : ''}
+           </Text>
+         </View>
++        </View>
+         <View style={styles.openDay}>
+-          <Ionicons name="arrow-up-outline" size={22} color={theme.text} style={styles.openDayArrow} />
++          <Ionicons name="arrow-up-outline" size={26} color={theme.text} style={styles.openDayArrow} />
+         </View>
+       </View>
+       {shownTarget > 0 ? (
+@@ -114,20 +117,20 @@
+               headroom scale (a micro-nutrient idiom) left ~40% of track past
+               the tick, so a fully eaten day read as unfinished (device
+               feedback 2026-08-17: «заполнил всё, а шкалы не адаптивные»). */}
+-          <FillBar value={hideCalories ? prot : kcal} min={shownTarget} scale="goal" thickness={5} />
++          <FillBar value={hideCalories ? prot : kcal} min={shownTarget} scale="goal" thickness={7} />
+         </View>
+       ) : null}
+       {!hideCalories && movementHint ? (
+         <Text style={[styles.movementHint, { color: theme.subtle }, theme.font.body]}>{movementHint}</Text>
+       ) : null}
+ 
+-      <View style={[styles.macros, fontScale > 1.5 && styles.macrosLarge]}>
++      <View style={[styles.macros, stackMacros && styles.macrosLarge]}>
+         {macros.map((m) => (
+-          <View key={m.key} style={[styles.macro, fontScale > 1.5 && styles.macroLarge]}>
++          <View key={m.key} style={[styles.macro, stackMacros && styles.macroLarge]}>
+             <Text style={[styles.macroLabel, { color: theme.subtle }, theme.font.body]}>
+               {t(`macros.${m.key}`)}
+             </Text>
+-            <Text style={[styles.macroValue, fontScale > 1.5 && styles.macroValueLarge, { color: theme.text }, theme.font.bodyMedium]}>
++            <Text style={[styles.macroValue, stackMacros && styles.macroValueLarge, { color: theme.text }, theme.font.bodyMedium]}>
+               {formatInt(m.value)}
+               <Text style={[styles.macroTarget, { color: theme.subtle }, theme.font.body]}>
+                 /{m.target > 0 ? formatInt(m.target) : '—'} {t('units.g')}
+@@ -142,22 +145,23 @@
+ 
+ const styles = StyleSheet.create({
+   summary: { paddingBottom: 23, borderBottomWidth: 1, borderStyle: 'dashed' },
+-  title: { fontSize: 15, marginBottom: 8 },
++  title: { fontSize: 20, lineHeight: 26, marginBottom: 12 },
+   budget: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+-  kcal: { fontSize: 49, lineHeight: 54, letterSpacing: -1.8, flexShrink: 1 },
+-  budgetUnit: { gap: 1, flexShrink: 0 },
+-  kcalUnit: { fontSize: 11, lineHeight: 17 },
+-  kcalTarget: { fontSize: 11, lineHeight: 17 },
++  kcal: { fontSize: 76, lineHeight: 84, letterSpacing: -1.8, flexShrink: 1 },
++  budgetMain: { flex: 1 },
++  budgetUnit: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 8, flexShrink: 1 },
++  kcalUnit: { fontSize: 15, lineHeight: 22 },
++  kcalTarget: { fontSize: 15, lineHeight: 22 },
+   openDay: { width: 44, height: 44, marginLeft: 'auto', alignItems: 'center', justifyContent: 'center' },
+   openDayArrow: { transform: [{ rotate: '45deg' }] },
+   kcalBar: { marginTop: 17 },
+-  movementHint: { fontSize: 12, marginTop: 10, lineHeight: 17 },
+-  macros: { flexDirection: 'row', justifyContent: 'space-between', gap: 9, marginTop: 15 },
++  movementHint: { fontSize: 14, marginTop: 12, lineHeight: 20 },
++  macros: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, marginTop: 20 },
+   macrosLarge: { flexDirection: 'column', gap: 12 },
+   macro: { flex: 1, gap: 2 },
+   macroLarge: { flex: 0, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between', columnGap: 12, rowGap: 2 },
+-  macroLabel: { fontSize: 11 },
+-  macroValue: { fontSize: 15, lineHeight: 21 },
++  macroLabel: { fontSize: 14, lineHeight: 21 },
++  macroValue: { fontSize: 22, lineHeight: 30 },
+   macroValueLarge: { flexShrink: 1, maxWidth: '100%', textAlign: 'right' },
+-  macroTarget: { fontSize: 11, lineHeight: 17 },
++  macroTarget: { fontSize: 14, lineHeight: 21 },
+ });
+--- a/components/home/WeightWidget.tsx
++++ b/components/home/WeightWidget.tsx
+@@ -60,11 +60,11 @@
+     <View style={[styles.row, { borderColor: theme.separator }]}>
+       <View style={styles.head}>
+         <Pressable onPress={() => router.push('/weight')} style={styles.headMain} hitSlop={4}>
+-          <Ionicons name="scale-outline" size={18} color={theme.accent} />
++          <Ionicons name="scale-outline" size={22} color={theme.accent} />
+           <View style={styles.headText}>
+             <Text style={[styles.title, { color: theme.text }, theme.font.bodyMedium]}>{t('home.feeders.weight')}</Text>
+             {/* Two lines — mirrors the other Home feeders' subtitles. */}
+-            <Text style={[styles.subtitle, { color: theme.subtle }, theme.font.body]} numberOfLines={2}>
++            <Text style={[styles.subtitle, { color: theme.subtle }, theme.font.body]} >
+               {subtitle}
+             </Text>
+           </View>
+@@ -79,10 +79,10 @@
+             { borderColor: theme.separator, opacity: pressed ? 0.6 : 1 },
+           ]}
+         >
+-          <Ionicons name={open ? 'remove' : 'add'} size={18} color={theme.icon} />
++          <Ionicons name={open ? 'remove' : 'add'} size={22} color={theme.icon} />
+         </Pressable>
+         <Pressable onPress={() => router.push('/weight')} hitSlop={8} style={styles.openButton}>
+-          <Ionicons name="chevron-forward" size={16} color={theme.tertiary} />
++          <Ionicons name="chevron-forward" size={20} color={theme.tertiary} />
+         </Pressable>
+       </View>
+ 
+@@ -123,15 +123,15 @@
+ }
+ 
+ const styles = StyleSheet.create({
+-  row: { paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
++  row: { paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth },
+   head: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44 },
+   headMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
+   headText: { flex: 1 },
+-  plusBtn: { width: 32, height: 32, borderRadius: 4, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
++  plusBtn: { width: 40, height: 40, borderRadius: 4, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+   openButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+   rangeHint: { fontSize: 12, marginTop: 6 },
+-  title: { fontSize: 15 },
+-  subtitle: { fontSize: 13, marginTop: 1 },
++  title: { fontSize: 18, lineHeight: 24 },
++  subtitle: { fontSize: 15, lineHeight: 22, marginTop: 2 },
+   inputRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 12 },
+   input: { flex: 1, minWidth: 112 },
+   unit: { fontSize: 14 },
+--- a/components/home/StepsWidget.tsx
++++ b/components/home/StepsWidget.tsx
+@@ -63,13 +63,13 @@
+     <View style={[styles.row, { borderColor: theme.separator }]}>
+       <View style={styles.head}>
+         <Pressable onPress={() => router.push('/activity')} style={styles.headMain} hitSlop={4}>
+-          <Ionicons name="walk-outline" size={18} color={theme.accent} />
++          <Ionicons name="walk-outline" size={22} color={theme.accent} />
+           <View style={styles.headText}>
+             <Text style={[styles.title, { color: theme.text }, theme.font.bodyMedium]}>{t('home.feeders.steps')}</Text>
+             {/* Two lines: the subtitle is a full insight sentence («14 000 —
+                 отличный объём ходьбы…») and one line cut it mid-thought
+                 (device screenshot 2026-08-17). */}
+-            <Text style={[styles.subtitle, { color: theme.subtle }, theme.font.body]} numberOfLines={2}>
++            <Text style={[styles.subtitle, { color: theme.subtle }, theme.font.body]} >
+               {subtitle}
+             </Text>
+           </View>
+@@ -84,10 +84,10 @@
+             { borderColor: theme.separator, opacity: pressed ? 0.6 : 1 },
+           ]}
+         >
+-          <Ionicons name={open ? 'remove' : 'add'} size={18} color={theme.icon} />
++          <Ionicons name={open ? 'remove' : 'add'} size={22} color={theme.icon} />
+         </Pressable>
+         <Pressable onPress={() => router.push('/activity')} hitSlop={8} style={styles.openButton}>
+-          <Ionicons name="chevron-forward" size={16} color={theme.tertiary} />
++          <Ionicons name="chevron-forward" size={20} color={theme.tertiary} />
+         </Pressable>
+       </View>
+ 
+@@ -127,14 +127,14 @@
+ }
+ 
+ const styles = StyleSheet.create({
+-  row: { paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
++  row: { paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth },
+   head: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44 },
+   headMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
+   headText: { flex: 1 },
+-  plusBtn: { width: 32, height: 32, borderRadius: 4, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
++  plusBtn: { width: 40, height: 40, borderRadius: 4, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+   openButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+-  title: { fontSize: 15 },
+-  subtitle: { fontSize: 13, marginTop: 1 },
++  title: { fontSize: 18, lineHeight: 24 },
++  subtitle: { fontSize: 15, lineHeight: 22, marginTop: 2 },
+   inputRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 12 },
+   estimate: { fontSize: 13, marginTop: 10, lineHeight: 18 },
+   input: { flex: 1, minWidth: 112 },
+--- a/components/home/WorkoutWidget.tsx
++++ b/components/home/WorkoutWidget.tsx
+@@ -35,19 +35,19 @@
+     <View style={[styles.row, { borderColor: theme.separator }]}>
+       <View style={styles.head}>
+         <Pressable onPress={() => router.push('/workout')} style={styles.headMain} hitSlop={4}>
+-          <Ionicons name="barbell-outline" size={18} color={theme.accent} />
++          <Ionicons name="barbell-outline" size={22} color={theme.accent} />
+           <View style={styles.headText}>
+             <Text style={[styles.title, { color: theme.text }, theme.font.bodyMedium]}>
+               {t('home.feeders.workouts')}
+             </Text>
+             {/* Two lines — same insight-sentence subtitle as the steps row. */}
+-            <Text style={[styles.subtitle, { color: theme.subtle }, theme.font.body]} numberOfLines={2}>
++            <Text style={[styles.subtitle, { color: theme.subtle }, theme.font.body]} >
+               {subtitle}
+             </Text>
+           </View>
+         </Pressable>
+         <Pressable onPress={() => router.push('/workout')} hitSlop={8} style={styles.openButton}>
+-          <Ionicons name="chevron-forward" size={16} color={theme.tertiary} />
++          <Ionicons name="chevron-forward" size={20} color={theme.tertiary} />
+         </Pressable>
+       </View>
+     </View>
+@@ -55,11 +55,11 @@
+ }
+ 
+ const styles = StyleSheet.create({
+-  row: { paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
++  row: { paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth },
+   head: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44 },
+   headMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
+   headText: { flex: 1 },
+   openButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+-  title: { fontSize: 15 },
+-  subtitle: { fontSize: 13, marginTop: 1 },
++  title: { fontSize: 18, lineHeight: 24 },
++  subtitle: { fontSize: 15, lineHeight: 22, marginTop: 2 },
+ });
+--- a/components/home/DayRibbonTimeline.tsx
++++ b/components/home/DayRibbonTimeline.tsx
+@@ -83,7 +83,7 @@
+ const styles = StyleSheet.create({
+   section: { marginTop: 14, paddingBottom: 12, borderBottomWidth: StyleSheet.hairlineWidth },
+   loading: { marginVertical: 24 },
+-  empty: { fontSize: 14, lineHeight: 21, paddingTop: 12, paddingBottom: 12 },
++  empty: { fontSize: 16, lineHeight: 24, paddingTop: 12, paddingBottom: 12 },
+   timeline: { position: 'relative' },
+   line: { position: 'absolute', width: 1, top: 24, bottom: 28 },
+   entry: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingTop: 18, paddingBottom: 18 },
+--- a/components/ui/FoodBar.tsx
++++ b/components/ui/FoodBar.tsx
+@@ -25,7 +25,7 @@
+         accessibilityLabel={placeholder}
+         style={({ pressed }) => [styles.textButton, { opacity: pressed ? 0.8 : 1 }]}
+       >
+-        <Ionicons name="create-outline" size={20} color={theme.onPrimary} />
++        <Ionicons name="create-outline" size={24} color={theme.onPrimary} />
+         <Text style={[styles.placeholder, { color: theme.onPrimary }, theme.font.bodyMedium]}>
+           {placeholder}
+         </Text>
+@@ -40,7 +40,7 @@
+         accessibilityLabel={t('food.voice')}
+         style={({ pressed }) => [styles.micButton, { opacity: pressed ? 0.8 : 1 }]}
+       >
+-        <Ionicons name="mic-outline" size={22} color={theme.onPrimary} />
++        <Ionicons name="mic-outline" size={26} color={theme.onPrimary} />
+       </Pressable>
+     </View>
+   );
+@@ -50,13 +50,13 @@
+   bar: {
+     flexDirection: 'row',
+     alignItems: 'center',
+-    minHeight: 57,
++    minHeight: 64,
+     borderRadius: 16,
+     overflow: 'hidden',
+   },
+   textButton: {
+     flex: 1,
+-    minHeight: 57,
++    minHeight: 64,
+     flexDirection: 'row',
+     alignItems: 'center',
+     gap: 12,
+@@ -64,11 +64,11 @@
+     paddingRight: 12,
+     paddingVertical: 12,
+   },
+-  placeholder: { flex: 1, fontSize: 15 },
++  placeholder: { flex: 1, fontSize: 17, lineHeight: 24 },
+   divider: { width: 1, height: 24, opacity: 0.28 },
+   micButton: {
+-    width: 57,
+-    minHeight: 57,
++    width: 64,
++    minHeight: 64,
+     alignSelf: 'stretch',
+     alignItems: 'center',
+     justifyContent: 'center',
+--- a/components/ui/PageDots.tsx
++++ b/components/ui/PageDots.tsx
+@@ -65,7 +65,7 @@
+ const styles = StyleSheet.create({
+   wrap: { alignItems: 'center', justifyContent: 'center', paddingVertical: 8 },
+   labelled: { flexDirection: 'row', gap: 10, minHeight: 44 },
+-  label: { flexShrink: 1, fontSize: 12, lineHeight: 18 },
++  label: { flexShrink: 1, fontSize: 14, lineHeight: 20 },
+   row: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
+   dot: { width: 6, height: 6, borderRadius: 3 },
+   // The active pane stretches into a pill — legible as "you are here".
+--- a/app/index.tsx
++++ b/app/index.tsx
+@@ -694,12 +694,12 @@
+   brandRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44 },
+   brand: { fontSize: 20, letterSpacing: -0.6 },
+   dayHeading: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between', columnGap: 12, rowGap: 4, marginTop: 12, marginBottom: 14 },
+-  date: { fontSize: 12, lineHeight: 18, paddingBottom: 4 },
++  date: { fontSize: 14, lineHeight: 20, paddingBottom: 4 },
+   dayDetails: { marginTop: 10, gap: 2 },
+-  daySummary: { fontSize: 13, lineHeight: 19 },
++  daySummary: { fontSize: 15, lineHeight: 22 },
+   weekLink: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center' },
+   pageDots: { marginTop: 4 },
+-  northStar: { fontSize: 12, lineHeight: 18 },
++  northStar: { fontSize: 14, lineHeight: 20 },
+   footer: { flexShrink: 0 },
+   footerAndroid: { paddingHorizontal: 24, paddingTop: 10 },
+   footerIOS: { paddingHorizontal: 22, paddingTop: 10 },
