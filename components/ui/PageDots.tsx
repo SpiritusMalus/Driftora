@@ -65,7 +65,7 @@ export function PageDots({ index, count = 2, onPress, accessibilityLabel, label,
 const styles = StyleSheet.create({
   wrap: { alignItems: 'center', justifyContent: 'center', paddingVertical: 8 },
   labelled: { flexDirection: 'row', gap: 10, minHeight: 44 },
-  label: { flexShrink: 1, fontSize: 12, lineHeight: 18 },
+  label: { flexShrink: 1, fontSize: 16, lineHeight: 24 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 },
   dot: { width: 6, height: 6, borderRadius: 3 },
   // The active pane stretches into a pill — legible as "you are here".

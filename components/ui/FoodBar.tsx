@@ -25,7 +25,7 @@ export function FoodBar({
         accessibilityLabel={placeholder}
         style={({ pressed }) => [styles.textButton, { opacity: pressed ? 0.8 : 1 }]}
       >
-        <Ionicons name="create-outline" size={20} color={theme.onPrimary} />
+        <Ionicons name="create-outline" size={24} color={theme.onPrimary} />
         <Text style={[styles.placeholder, { color: theme.onPrimary }, theme.font.bodyMedium]}>
           {placeholder}
         </Text>
@@ -40,7 +40,7 @@ export function FoodBar({
         accessibilityLabel={t('food.voice')}
         style={({ pressed }) => [styles.micButton, { opacity: pressed ? 0.8 : 1 }]}
       >
-        <Ionicons name="mic-outline" size={22} color={theme.onPrimary} />
+        <Ionicons name="mic-outline" size={26} color={theme.onPrimary} />
       </Pressable>
     </View>
   );
@@ -50,13 +50,13 @@ const styles = StyleSheet.create({
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 57,
+    minHeight: 72,
     borderRadius: 16,
     overflow: 'hidden',
   },
   textButton: {
     flex: 1,
-    minHeight: 57,
+    minHeight: 72,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
@@ -64,11 +64,11 @@ const styles = StyleSheet.create({
     paddingRight: 12,
     paddingVertical: 12,
   },
-  placeholder: { flex: 1, fontSize: 15 },
+  placeholder: { flex: 1, fontSize: 19, lineHeight: 26 },
   divider: { width: 1, height: 24, opacity: 0.28 },
   micButton: {
-    width: 57,
-    minHeight: 57,
+    width: 72,
+    minHeight: 72,
     alignSelf: 'stretch',
     alignItems: 'center',
     justifyContent: 'center',

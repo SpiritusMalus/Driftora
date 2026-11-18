@@ -35,19 +35,19 @@ export function WorkoutWidget({
     <View style={[styles.row, { borderColor: theme.separator }]}>
       <View style={styles.head}>
         <Pressable onPress={() => router.push('/workout')} style={styles.headMain} hitSlop={4}>
-          <Ionicons name="barbell-outline" size={18} color={theme.accent} />
+          <Ionicons name="barbell-outline" size={24} color={theme.accent} />
           <View style={styles.headText}>
             <Text style={[styles.title, { color: theme.text }, theme.font.bodyMedium]}>
               {t('home.feeders.workouts')}
             </Text>
             {/* Two lines — same insight-sentence subtitle as the steps row. */}
-            <Text style={[styles.subtitle, { color: theme.subtle }, theme.font.body]} numberOfLines={2}>
+            <Text style={[styles.subtitle, { color: theme.subtle }, theme.font.body]} >
               {subtitle}
             </Text>
           </View>
         </Pressable>
         <Pressable onPress={() => router.push('/workout')} hitSlop={8} style={styles.openButton}>
-          <Ionicons name="chevron-forward" size={16} color={theme.tertiary} />
+          <Ionicons name="chevron-forward" size={20} color={theme.tertiary} />
         </Pressable>
       </View>
     </View>
@@ -55,11 +55,11 @@ export function WorkoutWidget({
 }
 
 const styles = StyleSheet.create({
-  row: { paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
+  row: { paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth },
   head: { flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 44 },
   headMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
   headText: { flex: 1 },
   openButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: 15 },
-  subtitle: { fontSize: 13, marginTop: 1 },
+  title: { fontSize: 20, lineHeight: 28 },
+  subtitle: { fontSize: 16, lineHeight: 24, marginTop: 2 },
 });
