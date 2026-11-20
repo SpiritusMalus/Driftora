@@ -145,9 +145,9 @@ const styles = StyleSheet.create({
   budget: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   kcal: { fontSize: 84, lineHeight: 92, letterSpacing: -1.8, flexShrink: 1 },
   budgetMain: { flex: 1 },
-  budgetUnit: { flexDirection: 'row', flexWrap: 'wrap', columnGap: 8, flexShrink: 1 },
+  budgetUnit: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', columnGap: 8, flexShrink: 1 },
   kcalUnit: { fontSize: 17, lineHeight: 24 },
-  kcalTarget: { fontSize: 17, lineHeight: 24 },
+  kcalTarget: { fontSize: 26, lineHeight: 34 },
   kcalBar: { marginTop: 17 },
   movementHint: { fontSize: 16, marginTop: 12, lineHeight: 24 },
   macros: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, marginTop: 22 },
@@ -157,5 +157,5 @@ const styles = StyleSheet.create({
   macroLabel: { fontSize: 17, lineHeight: 24 },
   macroValue: { fontSize: 36, lineHeight: 44 },
   macroValueLarge: { flexShrink: 1, maxWidth: '100%', textAlign: 'right' },
-  macroTarget: { fontSize: 17, lineHeight: 24 },
+  macroTarget: { fontSize: 24, lineHeight: 32 },
 });
