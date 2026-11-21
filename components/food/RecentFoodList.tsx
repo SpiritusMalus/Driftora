@@ -47,15 +47,17 @@ export function RecentFoodList({
         <View style={styles.list}>
           {ordered.map((entry) => {
             const parsing = entry.parseStatus != null;
-            const open = expandedIds?.has(entry.id) ?? false;
+            const canOpen = !expandedIds || entry.parseStatus !== 'pending';
+            const open = !parsing && (expandedIds?.has(entry.id) ?? false);
             const meal = entry.meal ?? mealTypeForEntry(entry.rawText, entry.ts);
             const time = `${String(entry.ts.getHours()).padStart(2, '0')}:${String(entry.ts.getMinutes()).padStart(2, '0')}`;
             return (
               <View key={entry.id} style={[styles.card, { backgroundColor: theme.surface }]}>
                 <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={expandedIds ? { expanded: open } : undefined}
-                  onPress={() => onOpenEntry(entry)}
+                  accessibilityRole={canOpen ? 'button' : undefined}
+                  accessibilityState={expandedIds && !parsing ? { expanded: open } : undefined}
+                  disabled={!canOpen}
+                  onPress={canOpen ? () => onOpenEntry(entry) : undefined}
                   style={({ pressed }) => [styles.row, dense && styles.rowCompact, largeType && styles.rowLarge, { opacity: pressed ? 0.65 : 1 }]}
                 >
                   <FoodPhoto uri={photoUris[entry.id]} source={entry.source} large={largeType} compact={dense} />

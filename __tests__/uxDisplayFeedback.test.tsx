@@ -6,6 +6,8 @@ import { applySchema } from '@/lib/core/db/init';
 import { saveDiaryEntry, getDiaryEntry } from '@/lib/core/db/diary';
 import * as schema from '@/lib/core/db/schema';
 import { ensureSettings, parseReminderTimes, updateSettings } from '@/lib/core/db/settings';
+import { formatInt } from '@/lib/core/format';
+import { retryParse } from '@/lib/core/services/backgroundParses';
 import i18n from '@/lib/i18n';
 import { localDayKey } from '@/lib/i18n/formatDay';
 
@@ -17,7 +19,7 @@ const mockCancel = jest.fn(async () => {});
 jest.mock('react-native', () => ({
   Platform: { OS: 'android' },
   Alert: { alert: jest.fn() }, Linking: { openURL: jest.fn(), openSettings: jest.fn() },
-  Pressable: 'Pressable', Text: 'Text', View: 'View', Switch: 'Switch',
+  ActivityIndicator: 'ActivityIndicator', Pressable: 'Pressable', Text: 'Text', View: 'View', Switch: 'Switch',
   Animated: { Text: 'AnimatedText', Value: class { setValue() {} }, timing: () => ({ start() {}, stop() {} }) },
   useWindowDimensions: () => ({ width: 390, height: 844, fontScale: 1, scale: 3 }),
   useColorScheme: () => 'light',
@@ -72,6 +74,7 @@ const SettingsScreen = require('@/app/settings/index').default;
 const DiaryNewScreen = require('@/app/diary/new').default;
 const FoodDayScreen = require('@/app/food/index').default;
 const { FoodTodayWidget } = require('@/components/home/FoodTodayWidget');
+const { RecentFoodList } = require('@/components/food/RecentFoodList');
 let tree: any;
 let sqlite: BetterSqlite3.Database;
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
@@ -269,6 +272,61 @@ it('keeps the protein balance in the Home food widget when calories are hidden a
   expect(visibleText()).toContain('356');
   expect(visibleText()).toContain('ENERGY_BUDGET_HINT');
   expect(tree.root.findByType('FillBar').props).toMatchObject({ value: 356, min: 2223 });
+});
+
+it('displays a consistent calorie and macro balance for fractional meal totals', async () => {
+  const targets = { targetKcal: 2000, prot: 5.5, targetProt: 120, fat: 4, targetFat: 60, carb: 6, targetCarb: 250 };
+  await renderer.act(async () => { tree = renderer.create(<FoodTodayWidget {...targets} kcal={123.5} />); });
+  const labels = () => tree.root.findAllByType('Text').map(textContent);
+  expect(labels()).toContain('124');
+  expect(labels()).toContain(formatInt(2000 - 124));
+  expect(labels()).not.toContain(formatInt(1877));
+  const grams = i18n.t('units.g');
+  expect(labels()).toContain(`114 ${grams}`);
+  expect(labels()).not.toContain(`115 ${grams}`);
+
+  await renderer.act(async () => { tree.update(<FoodTodayWidget {...targets} kcal={2000.5} />); });
+  expect(labels()).toContain(formatInt(2001));
+  expect(labels()).toContain('0');
+  expect(labels()).toContain(i18n.t('home.food.aboveGoal', { value: '1', unit: i18n.t('units.kcal') }));
+});
+
+it('keeps parsing status readable and exposes only working pending and failed meal actions', async () => {
+  const now = new Date();
+  const [pending, failed] = await mockDb.insert(schema.foodEntries).values([
+    { ts: now, rawText: '', source: 'photo', parseStatus: 'pending' },
+    { ts: now, rawText: '', source: 'photo', parseStatus: 'failed' },
+  ]).returning();
+  const rowWithStatus = (status: 'pending' | 'failed') => tree.root.findAllByType('Pressable').find((row: any) =>
+    textContent(row).includes(i18n.t(status === 'pending' ? 'food.bg.parsing' : 'food.bg.failed')));
+  await renderer.act(async () => { tree = renderer.create(<FoodDayScreen />); });
+  expect(rowWithStatus('pending').props).toMatchObject({ disabled: true, accessibilityRole: undefined, onPress: undefined });
+  expect(rowWithStatus('failed').props).toMatchObject({ disabled: false, accessibilityRole: 'button', accessibilityState: undefined });
+  expect(tree.root.findAllByType('Pressable').filter((row: any) => row.props.accessibilityLabel === i18n.t('food.delete'))).toHaveLength(2);
+  await renderer.act(async () => { rowWithStatus('failed').props.onPress(); });
+  expect(retryParse).toHaveBeenCalledWith(mockDb, failed.id);
+
+  const openFromHome = jest.fn();
+  await renderer.act(async () => { tree.update(<RecentFoodList entries={[pending, failed]} hideCalories={false} onOpenEntry={openFromHome} />); });
+  expect(rowWithStatus('pending').props).toMatchObject({ disabled: false, accessibilityRole: 'button' });
+  await renderer.act(async () => { rowWithStatus('pending').props.onPress(); });
+  expect(openFromHome).toHaveBeenCalledWith(pending);
+});
+
+it('keeps past-day facts separate from today’s goal status', async () => {
+  await updateSettings(mockDb, { targetKcal: 2000, targetsSetAt: Date.now() });
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  await mockDb.insert(schema.foodEntries).values({
+    ts: yesterday, rawText: 'Вчерашний завтрак', source: 'text', kcal: 179, meal: 'breakfast',
+  });
+  await renderer.act(async () => { tree = renderer.create(<FoodDayScreen />); });
+  expect(visibleText()).toContain(i18n.t('home.food.dayGoal'));
+  await renderer.act(async () => { tree.root.findByType('DayNav').props.onChange(localDayKey(yesterday)); });
+  expect(visibleText()).toContain('Вчерашний завтрак');
+  expect(visibleText()).toContain('179');
+  expect(visibleText()).not.toContain(i18n.t('home.food.noGoal'));
+  expect(visibleText()).not.toContain(i18n.t('home.food.dayGoal'));
 });
 
 it('honors stored calorie privacy for meal headers, food cards, expanded ingredients, and a past day', async () => {

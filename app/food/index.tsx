@@ -418,6 +418,7 @@ export default function FoodDayScreen() {
       {(!isToday || goal == null) && totals != null ? (
         <FoodTodayWidget
           kcal={totals.kcal} targetKcal={0} hideCalories={hideCalories}
+          showNoGoalMessage={isToday}
           prot={totals.proteinG} targetProt={0}
           fat={totals.fatG} targetFat={0} carb={totals.carbG} targetCarb={0}
         />
