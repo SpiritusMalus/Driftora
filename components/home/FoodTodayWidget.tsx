@@ -8,7 +8,7 @@ import { useTheme } from '@/lib/theme/theme';
 /** Shared daily balance. Targets come from the existing budget engine. */
 export function FoodTodayWidget({
   kcal, targetKcal, targetApprox = false, movementHint, hideCalories = false,
-  prot, targetProt, fat, targetFat, carb, targetCarb, onPress, compact = false,
+  prot, targetProt, fat, targetFat, carb, targetCarb, onPress, compact = false, showNoGoalMessage = true,
 }: {
   kcal: number;
   targetKcal: number;
@@ -23,16 +23,18 @@ export function FoodTodayWidget({
   targetCarb: number;
   onPress?: () => void;
   compact?: boolean;
+  showNoGoalMessage?: boolean;
 }) {
   const { t } = useTranslation();
   const theme = useTheme();
   const { width, fontScale } = useWindowDimensions();
   const largeType = (width - 44) / fontScale < 235;
   const dense = compact && !largeType;
-  const hasTarget = targetKcal > 0;
+  const target = Math.round(targetKcal);
+  const hasTarget = target > 0;
   const eaten = Math.round(kcal);
-  const remaining = Math.max(0, Math.round(targetKcal - kcal));
-  const excess = Math.max(0, Math.round(kcal - targetKcal));
+  const remaining = Math.max(0, target - eaten);
+  const excess = Math.max(0, eaten - target);
   const macros = [
     { key: 'protein', value: prot, target: targetProt, color: theme.protein },
     { key: 'fat', value: fat, target: targetFat, color: theme.fat },
@@ -61,14 +63,16 @@ export function FoodTodayWidget({
               </View>
             ))}
           </View>
-          <View style={[styles.goalRow, dense && styles.goalRowCompact]}>
-            <Text style={[styles.goalText, dense && styles.goalTextCompact, theme.font.body, { color: theme.subtle }]}>
-              {hasTarget ? `${t('home.food.dayGoal')} ${targetApprox ? '≈' : ''}${formatInt(Math.round(targetKcal))} ${t('units.kcal')}` : t('home.food.noGoal')}
-            </Text>
-            {hasTarget ? <Text style={[styles.goalText, dense && styles.goalTextCompact, theme.font.body, { color: excess > 0 ? theme.primary : theme.subtle }]}>
-              {excess > 0 ? t('home.food.aboveGoal', { value: formatInt(excess), unit: t('units.kcal') }) : `${Math.round(kcal / targetKcal * 100)}%`}
-            </Text> : null}
-          </View>
+          {hasTarget || showNoGoalMessage ? (
+            <View style={[styles.goalRow, dense && styles.goalRowCompact]}>
+              <Text style={[styles.goalText, dense && styles.goalTextCompact, theme.font.body, { color: theme.subtle }]}>
+                {hasTarget ? `${t('home.food.dayGoal')} ${targetApprox ? '≈' : ''}${formatInt(target)} ${t('units.kcal')}` : t('home.food.noGoal')}
+              </Text>
+              {hasTarget ? <Text style={[styles.goalText, dense && styles.goalTextCompact, theme.font.body, { color: excess > 0 ? theme.primary : theme.subtle }]}>
+                {excess > 0 ? t('home.food.aboveGoal', { value: formatInt(excess), unit: t('units.kcal') }) : `${Math.round(kcal / targetKcal * 100)}%`}
+              </Text> : null}
+            </View>
+          ) : null}
           {hasTarget ? <FillBar value={kcal} min={targetKcal} scale="goal" thickness={5} /> : null}
         </View>
       ) : (
@@ -80,8 +84,10 @@ export function FoodTodayWidget({
         <Text style={[styles.valueColumn, styles.columnLabel, theme.font.body, { color: theme.subtle }]}>{t('home.food.remaining')}</Text>
       </View>
       {macros.map((macro) => {
-        const left = Math.round(macro.target - macro.value);
-        const targetKnown = macro.target > 0;
+        const value = Math.round(macro.value);
+        const targetValue = Math.round(macro.target);
+        const left = targetValue - value;
+        const targetKnown = targetValue > 0;
         return (
           <View key={macro.key} style={[styles.macroRow, dense && styles.macroRowCompact, largeType && styles.macroRowLarge, { borderColor: theme.separator }]}>
             <View style={[styles.macroName, styles.macroNameRow, largeType && styles.macroNameLarge]}>
@@ -89,7 +95,7 @@ export function FoodTodayWidget({
               <Text style={[styles.nutrientName, theme.font.body, { color: theme.text }]}>{t(`macros.${macro.key}`)}</Text>
             </View>
             <Text style={[styles.valueColumn, styles.macroValue, theme.font.bodyMedium, { color: theme.text }]}>
-              {formatInt(Math.round(macro.value))}<Text style={[styles.grams, theme.font.body, { color: theme.subtle }]}> {t('units.g')}</Text>
+              {formatInt(value)}<Text style={[styles.grams, theme.font.body, { color: theme.subtle }]}> {t('units.g')}</Text>
             </Text>
             <Text style={[styles.valueColumn, left < 0 && targetKnown ? styles.overValue : styles.macroValue, theme.font.body, { color: left < 0 && targetKnown ? theme.primary : theme.subtle }]}>
               {!targetKnown ? '—' : left < 0 ? t('home.food.aboveGoal', { value: formatInt(-left), unit: t('units.g') }) : <>{formatInt(left)}<Text style={styles.grams}> {t('units.g')}</Text></>}
