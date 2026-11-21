@@ -9,6 +9,7 @@ import { grantSyncConsent } from '@/lib/core/consent/consent';
 import { backupTableNames, exportAllTables } from '@/lib/core/db/backup';
 import { saveDiaryEntry } from '@/lib/core/db/diary';
 import { applySchema } from '@/lib/core/db/init';
+import { getFoodPhotoUri } from '@/lib/core/db/foodPhotos';
 import { getOrCreateMasterKeyPair } from '@/lib/core/db/keystore';
 import { logMood } from '@/lib/core/db/mood';
 import * as schema from '@/lib/core/db/schema';
@@ -364,6 +365,28 @@ describe('sync client (Phase 3 — server-backed E2E sync)', () => {
 
     a.sqlite.close();
     b.sqlite.close();
+  });
+
+  it('routine pull keeps this device’s unchanged meal photo and never transfers it to another device', async () => {
+    const a = makeDb();
+    await applySchema((stmt) => a.sqlite.exec(stmt));
+    await seed(a.db);
+    await grantSyncConsent(a.db);
+    const photo = '/9j/4AACAf/Z';
+    const { id } = a.sqlite.prepare('SELECT id FROM food_entries LIMIT 1').get() as { id: number };
+    a.sqlite.prepare('INSERT INTO food_entry_photos (entry_id, jpg_base64) VALUES (?, ?)').run(id, photo);
+    const master = await getOrCreateMasterKeyPair();
+    const server = makeFakeServer();
+    const cfg: SyncConfig = { baseUrl: 'http://sync.test', deviceId: 'device-a', master, fetchImpl: server.fetchImpl };
+    await pushSnapshot(a.db, cfg);
+    expect((await pullSnapshot(a.db, cfg)).kind).toBe('imported');
+    expect(await getFoodPhotoUri(a.db, id)).toBe(`data:image/jpeg;base64,${photo}`);
+    const b = makeDb();
+    await applySchema((stmt) => b.sqlite.exec(stmt));
+    await grantSyncConsent(b.db);
+    expect((await pullSnapshot(b.db, { ...cfg, deviceId: 'device-b' })).kind).toBe('imported');
+    expect(await getFoodPhotoUri(b.db, id)).toBeNull();
+    a.sqlite.close(); b.sqlite.close();
   });
 
   it('pull returns empty when the server has no snapshot (404)', async () => {

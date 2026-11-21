@@ -17,11 +17,14 @@ type AnyDb = BaseSQLiteDatabase<any, any, any>;
 export const BACKUP_FORMAT_VERSION = 1;
 const APP_ID = 'driftora';
 
-/// Every app table that holds user data, in FK-safe insert order (parents before
+/// Portable app data, in FK-safe insert order (parents before
 /// children: `food_items.entry_id` references `food_entries.id`). Logical export
 /// over the raw SQLCipher file — portable across devices and driver versions, and
 /// independent of the device-bound encryption key. Kept in sync with `schema.ts`
 /// / `init.ts`; `__tests__/backup.test.ts` asserts coverage against the live DDL.
+/// User meal thumbnails are deliberately DEVICE-ONLY and excluded from both
+/// portable backups and the sync snapshots built from this same document.
+const LOCAL_ONLY_TABLES = ['food_entry_photos'] as const;
 const EXPORT_TABLES = [
   'food_entries',
   'food_items',
@@ -96,21 +99,56 @@ export async function exportAllTables(db: AnyDb): Promise<BackupDocument> {
 /// Assumes the schema/tables already exist (the app applies the DDL on open; in
 /// tests call `applySchema` first). Rejects a document from a different app or an
 /// unknown format version.
-export async function importAllTables(db: AnyDb, doc: BackupDocument): Promise<void> {
+export async function importAllTables(
+  db: AnyDb,
+  doc: BackupDocument,
+  opts: { preserveUnchangedLocalFoodPhotos?: boolean } = {},
+): Promise<void> {
   validateDocument(doc);
 
   await withTx(
     db,
     async () => {
+      // Routine sync can return the very same meal. Keep its LOCAL thumbnail
+      // without ever loading image bytes into JS. Compare every raw parent
+      // field, not just a numeric id: another device/restore may reuse that id.
+      // Manual file restore omits this option and remains explicit replace-all.
+      const retainedIds = new Set<number>();
+      if (opts.preserveUnchangedLocalFoodPhotos) {
+        const incoming = new Map((doc.tables.food_entries ?? []).map((row) => [row.id, row]));
+        const attached = await db.all(sql`SELECT food_entries.* FROM food_entries
+          INNER JOIN food_entry_photos ON food_entry_photos.entry_id = food_entries.id`) as TableRows;
+        for (const row of attached) {
+          const id = row.id;
+          const replacement = incoming.get(id);
+          if (typeof id === 'number' && Number.isSafeInteger(id) && id > 0 && replacement &&
+            Object.keys(row).length === Object.keys(replacement).length &&
+            Object.keys(row).every((key) => row[key] === replacement[key])) retainedIds.add(id);
+        }
+      }
+      // These literals come exclusively from validated positive integer rowids,
+      // avoiding SQLite's parameter limit for a long device history.
+      const retainedSql = sql.raw([...retainedIds].join(','));
+      // A restore is replace-all. Explicitly erase device-only thumbnails too,
+      // even on a driver with FK cascading off; never attach old pixels to
+      // restored entries that happen to reuse an old numeric id.
+      for (const table of LOCAL_ONLY_TABLES) {
+        await db.run(retainedIds.size > 0
+          ? sql`DELETE FROM ${sql.identifier(table)} WHERE entry_id NOT IN (${retainedSql})`
+          : sql`DELETE FROM ${sql.identifier(table)}`);
+      }
       // Delete children before parents to respect the FK (reverse insert order),
       // then insert parents before children.
       for (let i = EXPORT_TABLES.length - 1; i >= 0; i--) {
         const table = EXPORT_TABLES[i];
-        await db.run(sql`DELETE FROM ${sql.identifier(table)}`);
+        await db.run(table === 'food_entries' && retainedIds.size > 0
+          ? sql`DELETE FROM food_entries WHERE id NOT IN (${retainedSql})`
+          : sql`DELETE FROM ${sql.identifier(table)}`);
       }
       for (const table of EXPORT_TABLES) {
         const rows = doc.tables[table] ?? [];
         for (const row of rows) {
+          if (table === 'food_entries' && typeof row.id === 'number' && retainedIds.has(row.id)) continue;
           await insertRow(db, table, row);
         }
       }
@@ -126,6 +164,10 @@ export async function importAllTables(db: AnyDb, doc: BackupDocument): Promise<v
 /// it covers exactly the app's data tables.
 export function backupTableNames(): readonly string[] {
   return EXPORT_TABLES;
+}
+
+export function localOnlyTableNames(): readonly string[] {
+  return LOCAL_ONLY_TABLES;
 }
 
 async function selectAll(db: AnyDb, table: TableName): Promise<TableRows> {

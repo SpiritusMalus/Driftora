@@ -45,6 +45,7 @@ import {
   type Sex,
 } from '@/lib/core/insights/bodyMetrics';
 import { type Theme, useTheme } from '@/lib/theme/theme';
+import { typeScale } from '@/lib/theme/typography';
 
 /// «План питания» — the CONFIGURATION half of what used to be the weight screen
 /// (2026-08-22: «прям нагромождено всё»). The rule the app now follows: a
@@ -993,17 +994,17 @@ const styles = StyleSheet.create({
   burnSub: { fontSize: 13, lineHeight: 18, marginTop: -4, marginBottom: 8 },
   macroRow: { flexDirection: 'row', gap: 10, borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: 17, marginVertical: 18 },
   macroTile: { flex: 1, gap: 3 },
-  macroLabel: { fontSize: 11 },
-  macroValue: { fontSize: 15, marginTop: 2, fontVariant: ['tabular-nums'] },
+  macroLabel: { fontSize: 14, lineHeight: 20 },
+  macroValue: { ...typeScale.macro, marginTop: 2 },
   appliedLine: { fontSize: 14, marginTop: 12 },
   heightRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8, marginTop: 2 },
   heightInput: { flex: 1 },
   unit: { fontSize: 15 },
   disclaimer: { fontSize: 11, fontStyle: 'italic', marginTop: 8, lineHeight: 16 },
   field: { marginBottom: 10 },
-  fieldLabel: { fontSize: 12, marginBottom: 5, marginTop: 4 },
-  applyBtn: { borderWidth: 1.5, borderRadius: 6, paddingHorizontal: 18, paddingVertical: 10, alignSelf: 'flex-start', marginTop: 12 },
-  applyText: { fontSize: 14 },
+  fieldLabel: { fontSize: 14, lineHeight: 20, marginBottom: 5, marginTop: 4 },
+  applyBtn: { borderWidth: 1, borderRadius: 13, minHeight: 48, justifyContent: 'center', paddingHorizontal: 18, paddingVertical: 10, alignSelf: 'flex-start', marginTop: 12 },
+  applyText: { fontSize: 16, lineHeight: 22 },
   hint: { fontSize: 13, textAlign: 'center', marginTop: 8, marginBottom: 16 },
   whyToggle: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 12, alignSelf: 'flex-start' },
   whyToggleText: { fontSize: 13 },

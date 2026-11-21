@@ -16,6 +16,7 @@ import type { Win } from '@/lib/core/db/schema';
 import { addWin, listWins } from '@/lib/core/db/settings';
 import { DUR, EASE_OUT, useReducedMotion } from '@/lib/theme/motion';
 import { useTheme } from '@/lib/theme/theme';
+import { typeScale } from '@/lib/theme/typography';
 
 type IoniconName = ComponentProps<typeof Ionicons>['name'];
 
@@ -254,14 +255,14 @@ const styles = StyleSheet.create({
   // Hero — total wins big (coral, the reward), streak riding under it.
   hero: { marginTop: 8, marginBottom: 20, paddingBottom: 20, borderBottomWidth: StyleSheet.hairlineWidth },
   heroLabel: { fontSize: 18, lineHeight: 24, letterSpacing: -0.25, marginBottom: 10 },
-  heroRow: { flexDirection: 'row', alignItems: 'baseline', gap: 10 },
-  heroNum: { fontSize: 49, lineHeight: 54, letterSpacing: -1.4, fontVariant: ['tabular-nums'] },
+  heroRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', gap: 10 },
+  heroNum: { ...typeScale.calorie },
   heroStreak: { fontSize: 14, lineHeight: 19 },
   emptyHero: { fontSize: 15, lineHeight: 21, marginTop: 8, marginBottom: 16 },
 
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
-  chip: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 6, paddingVertical: 7, paddingHorizontal: 14 },
-  chipText: { fontSize: 14 },
+  chip: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 12, minHeight: 48, justifyContent: 'center', paddingVertical: 7, paddingHorizontal: 14 },
+  chipText: { fontSize: 15, lineHeight: 21 },
 
   input: { marginBottom: 12 },
   add: { marginBottom: 16 },

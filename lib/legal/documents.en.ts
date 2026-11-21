@@ -20,7 +20,9 @@ Driftora is a self-care mobile app: a thought diary (CBT / situation–thoughts�
 
 Your diary, mood, weight and food records are stored on your device in an encrypted database (SQLCipher; the key is in your phone’s secure storage). The operator cannot access or read this database.
 
-**Backup (your choice).** You can export an **encrypted file** containing all your data and save it through the system Share dialog to **your own cloud** (iCloud, Google Drive or another destination you choose). You hold the encryption key; the operator is not involved and cannot read the file. A **recovery phrase** (or key file) lets you restore on a new device. **Only you** save and keep it; the operator never sees it. To simplify transfers within one ecosystem, the master key may be mirrored to **iCloud Keychain / Google Block Store** in your own Apple/Google account.
+When you save a meal with a photo, a reduced copy is kept in the encrypted database and deleted with the meal. Meal photos are excluded from backups and synchronization.
+
+**Backup (your choice).** You can export an **encrypted file** containing your records and save it through the system Share dialog to **your own cloud** (iCloud, Google Drive or another destination you choose). You hold the encryption key; the operator is not involved and cannot read the file. A **recovery phrase** (or key file) lets you restore on a new device. **Only you** save and keep it; the operator never sees it. To simplify transfers within one ecosystem, the master key may be mirrored to **iCloud Keychain / Google Block Store** in your own Apple/Google account.
 
 **Synchronization (optional, your choice).** You can enable **encrypted synchronization** between your devices. The operator’s server then stores only the backup’s **unreadable ciphertext** and operational metadata (see “What data is processed”). The operator has no decryption key. This feature is **off by default** and enabled only by you. Before it is enabled in production, the applicable-law checks must be completed; when synchronization is enabled, its server is in the Russian Federation.
 
@@ -72,7 +74,7 @@ Records remain on your device until you delete them or uninstall the app. You de
 
 ## Your rights
 
-You can access, correct and delete your records directly in the app; revoke AI recognition consent in Settings; disable synchronization; and delete backups. For **portability**, you do not need to contact the operator: you already hold a complete encrypted export in your backup file. Because the operator does not store your records in readable form, a separate content-access, correction or deletion request is unnecessary. With synchronization, stored ciphertext is removed by deleting the account/snapshot. For other questions: support@family-pie.ru.
+You can access, correct and delete your records directly in the app; revoke AI recognition consent in Settings; disable synchronization; and delete backups. For **portability**, you do not need to contact the operator: your backup file contains an encrypted export of your records. Because the operator does not store your records in readable form, a separate content-access, correction or deletion request is unnecessary. With synchronization, stored ciphertext is removed by deleting the account/snapshot. For other questions: support@family-pie.ru.
 
 ## Children
 

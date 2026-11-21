@@ -1,23 +1,23 @@
-/// iOS keeps its existing native navigation and grouping, with the same
-/// «Лента дня» paper/ink palette as Android. This module remains React Native
+/// iOS keeps native navigation and grouping, with Driftora's shared palette.
+/// This module remains React Native
 /// free so the shared contrast contract can verify it in Node.
 export const iosSurfaces = {
   light: {
-    background: '#F2F3EB',
-    card: '#F2F3EB',
-    separator: '#CDD5C8',
-    text: '#17302A',
-    subtle: '#59685E',
-    tertiary: '#59685E',
-    fill: '#E7EBDD',
+    background: '#F8F5ED',
+    card: '#EEEBE2',
+    separator: '#D6D7CE',
+    text: '#263336',
+    subtle: '#526165',
+    tertiary: '#526165',
+    fill: '#E3E0D7',
   },
   dark: {
-    background: '#19231F',
-    card: '#19231F',
-    separator: '#425246',
-    text: '#F0F1E7',
-    subtle: '#ADBBAE',
-    tertiary: '#ADBBAE',
-    fill: '#27392E',
+    background: '#151D20',
+    card: '#202A2E',
+    separator: '#354246',
+    text: '#F5F0E8',
+    subtle: '#B0BDBF',
+    tertiary: '#B0BDBF',
+    fill: '#2A363B',
   },
 };

@@ -26,6 +26,14 @@ export const foodEntries = sqliteTable('food_entries', {
   parseStatus: text('parse_status', { enum: ['pending', 'failed'] }),
 });
 
+/// Optional, device-only JPEG thumbnail of the user's own saved meal photo.
+/// Separate from food_entries so portable backups/sync and ordinary list reads
+/// never include pixels. The native database encrypts this at rest (SQLCipher).
+export const foodEntryPhotos = sqliteTable('food_entry_photos', {
+  entryId: integer('entry_id').primaryKey().references(() => foodEntries.id, { onDelete: 'cascade' }),
+  jpgBase64: text('jpg_base64').notNull(),
+});
+
 /// The LLM breakdown of a food entry into individual items.
 export const foodItems = sqliteTable('food_items', {
   id: integer('id').primaryKey({ autoIncrement: true }),

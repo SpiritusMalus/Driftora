@@ -1,7 +1,7 @@
 import { formatDecimal, formatInt } from '@/lib/core/format';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StyleSheet, Text, View } from 'react-native';
 
@@ -15,6 +15,7 @@ import type { FoodEntry, MoodRow, WorkoutRow } from '@/lib/core/db/schema';
 import { ensureSettings } from '@/lib/core/db/settings';
 import {
   dayBudgetKcal,
+  EATBACK_FRACTION,
   restingPlan,
   stepsEarnedKcal,
   stepsOutsideWorkouts,
@@ -26,6 +27,7 @@ import { shortMealTitle } from '@/lib/core/insights/mealTitle';
 import { formatDayTitle, parseDayKey } from '@/lib/i18n/formatDay';
 import { formatWorkoutLine, formatWorkoutValue } from '@/lib/i18n/formatWorkout';
 import { useTheme } from '@/lib/theme/theme';
+import { typeScale } from '@/lib/theme/typography';
 
 /// One past day: the food log (each entry is TAPPABLE — it opens the normal
 /// /food/[id] edit screen where the meal can be changed or deleted, so «закинул
@@ -44,7 +46,7 @@ export default function HistoryDayScreen() {
   const router = useRouter();
   const db = useDatabase();
   const { date } = useLocalSearchParams<{ date?: string }>();
-  const dayDate = typeof date === 'string' ? parseDayKey(date) : null;
+  const dayDate = useMemo(() => typeof date === 'string' ? parseDayKey(date) : null, [date]);
 
   const [entries, setEntries] = useState<FoodEntry[]>([]);
   const [moods, setMoods] = useState<MoodRow[]>([]);
@@ -114,7 +116,8 @@ export default function HistoryDayScreen() {
           const raw = stepsRow != null ? Number(stepsRow.steps) : 0;
           const inWorkouts = stepsRow != null ? Number(stepsRow.workoutSteps ?? 0) : 0;
           const stepsAdd = stepsEarnedKcal(stepsOutsideWorkouts(raw, inWorkouts), kg);
-          const workoutAdd = dayWorkouts.reduce((sum, w) => sum + (w.kcal ?? 0), 0);
+          const workoutKcal = dayWorkouts.reduce((sum, workout) => sum + (workout.kcal ?? 0), 0);
+          const workoutAdd = Math.round(Math.max(0, workoutKcal) * EATBACK_FRACTION);
           setDayTarget(dayBudgetKcal(base.baseKcal, base.minDayKcal, stepsAdd + workoutAdd));
         } else {
           setDayTarget(null);
@@ -318,8 +321,8 @@ const styles = StyleSheet.create({
   // Day headline: kcal (or protein) big in coral, macros riding quietly under —
   // mirrors the «Вес»/«Шаги» heroes from the redesign wave.
   hero: { marginTop: 8, marginBottom: 0, paddingBottom: 20, borderBottomWidth: StyleSheet.hairlineWidth },
-  heroRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
-  heroNum: { fontSize: 49, lineHeight: 54, letterSpacing: -1.4, fontVariant: ['tabular-nums'] },
+  heroRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', gap: 8 },
+  heroNum: { ...typeScale.calorie },
   heroUnit: { fontSize: 15 },
   heroSub: { fontSize: 13, lineHeight: 18, marginTop: 8 },
   section: { marginTop: 0 },

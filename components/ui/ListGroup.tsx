@@ -22,7 +22,7 @@ export interface RowSpec {
   right?: ReactNode;
 }
 
-/// A list of open icon rows with full-width paper rules on both platforms. This is
+/// Open icon rows with quiet full-width separators on both platforms. This is
 /// the workhorse for the Home feeders, the "More" menu, and settings groups.
 export function ListGroup({ rows }: { rows: RowSpec[] }) {
   const theme = useTheme();
@@ -107,6 +107,7 @@ function Row({ spec, theme, last }: { spec: RowSpec; theme: Theme; last: boolean
   if (spec.onPress) {
     return (
       <Pressable
+        accessibilityRole="button"
         onPress={spec.onPress}
         style={({ pressed }) => [rowStyle, pressed && { opacity: 0.6 }]}
       >
@@ -119,17 +120,17 @@ function Row({ spec, theme, last }: { spec: RowSpec; theme: Theme; last: boolean
 
 const styles = StyleSheet.create({
   iosCard: { borderBottomWidth: StyleSheet.hairlineWidth },
-  iosRow: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14, position: 'relative' },
+  iosRow: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 16, position: 'relative' },
   iosIcon: { width: 24, height: 28, alignItems: 'center', justifyContent: 'center' },
-  iosTitle: { fontSize: 16 },
-  iosSubtitle: { fontSize: 13, marginTop: 4, lineHeight: 18 },
+  iosTitle: { fontSize: 17, lineHeight: 24 },
+  iosSubtitle: { fontSize: 14, marginTop: 4, lineHeight: 20 },
   iosSeparator: { position: 'absolute', left: 0, right: 0, bottom: 0, height: StyleSheet.hairlineWidth },
 
   androidStack: { gap: 0 },
-  androidRow: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: 14 },
+  androidRow: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 14, borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: 16 },
   androidIcon: { width: 24, height: 28, alignItems: 'center', justifyContent: 'center' },
-  androidTitle: { fontSize: 16 },
-  androidSubtitle: { fontSize: 13, marginTop: 4, lineHeight: 18 },
+  androidTitle: { fontSize: 17, lineHeight: 24 },
+  androidSubtitle: { fontSize: 14, marginTop: 4, lineHeight: 20 },
 
   body: { flex: 1 },
 });

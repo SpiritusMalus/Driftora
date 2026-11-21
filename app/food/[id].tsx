@@ -1,7 +1,7 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { ItemCard } from '@/components/food/ItemCard';
 import { MealChips } from '@/components/food/MealChips';
@@ -21,6 +21,7 @@ import {
   repeatFoodEntry,
   updateFoodEntry,
 } from '@/lib/core/db/food';
+import { getFoodPhotoUri } from '@/lib/core/db/foodPhotos';
 import type { FoodEntry } from '@/lib/core/db/schema';
 import { ensureSettings } from '@/lib/core/db/settings';
 import { mealTypeForEntry, type MealType } from '@/lib/core/insights/mealType';
@@ -53,6 +54,7 @@ export default function FoodEntryScreen() {
   const entryId = Number(id);
 
   const [entry, setEntry] = useState<FoodEntry | null>(null);
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [draft, setDraft] = useState<MealDraft | null>(null);
   const [rawText, setRawText] = useState('');
   // Meal-of-day chips: start from the stored pick; old rows without one show
@@ -82,6 +84,7 @@ export default function FoodEntryScreen() {
 
   useEffect(() => {
     let active = true;
+    setPhotoUri(null);
     void (async () => {
       if (!db) return;
       // A malformed deep link (`driftora://food/abc`) must land on the same
@@ -90,7 +93,9 @@ export default function FoodEntryScreen() {
         setMissing(true);
         return;
       }
-      const [detail, settings] = await Promise.all([getFoodEntry(db, entryId), ensureSettings(db)]);
+      const [detail, settings, photo] = await Promise.all([
+        getFoodEntry(db, entryId), ensureSettings(db), getFoodPhotoUri(db, entryId).catch(() => null),
+      ]);
       if (!active) return;
       if (!detail) {
         setMissing(true);
@@ -99,6 +104,7 @@ export default function FoodEntryScreen() {
       const r = resolveRegion(settings.region);
       const d = draftFromStoredEntry(r, detail.items);
       setEntry(detail.entry);
+      setPhotoUri(photo);
       setRawText(detail.entry.rawText);
       setMeal(detail.entry.meal ?? mealTypeForEntry(detail.entry.rawText, detail.entry.ts));
       setDay(localDayKey(detail.entry.ts));
@@ -227,6 +233,7 @@ export default function FoodEntryScreen() {
 
   return (
     <Screen>
+      {photoUri ? <Image source={{ uri: photoUri }} accessibilityLabel={t('food.photoPreview')} style={styles.mealPhoto} resizeMode="cover" onError={() => setPhotoUri(null)} /> : null}
       <Text style={[styles.label, { color: theme.subtle }, theme.font.body]}>{t('food.entryLabel')}</Text>
       <TextField value={rawText} onChangeText={setRawText} placeholder={t('food.untitled')} style={styles.titleInput} />
 
@@ -323,6 +330,7 @@ export default function FoodEntryScreen() {
 }
 
 const styles = StyleSheet.create({
+  mealPhoto: { width: '100%', height: 190, borderRadius: 14, marginBottom: 18 },
   label: { fontSize: 12, marginBottom: 4 },
   titleInput: { marginBottom: 12 },
   // ItemCard spaces itself with its own marginBottom, so no gap here.

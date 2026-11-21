@@ -3,7 +3,7 @@ import { type StyleProp, StyleSheet, TextInput, type TextStyle } from 'react-nat
 
 import { useTheme } from '@/lib/theme/theme';
 
-/// The existing native input in the shared paper/ink treatment. Font size,
+/// The existing native input in the shared matte treatment. Font size,
 /// multiline behavior and platform insets remain unchanged.
 export function TextField({
   style,
@@ -14,6 +14,7 @@ export function TextField({
   return (
     <TextInput
       placeholderTextColor={theme.subtle}
+      selectionColor={theme.primary}
       multiline={multiline}
       style={[
         theme.isIOS ? styles.ios : styles.android,
@@ -34,13 +35,15 @@ export function TextField({
 const styles = StyleSheet.create({
   android: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 6,
-    paddingHorizontal: 12,
+    borderRadius: 12,
+    minHeight: 50,
+    paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 17,
   },
   ios: {
-    borderRadius: 6,
+    borderRadius: 12,
+    minHeight: 50,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 17,

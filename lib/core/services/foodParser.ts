@@ -186,6 +186,9 @@ export interface MealDraft {
 export interface PhotoInput {
   uri: string;
   mimeType: string;
+  /// EXIF-free small JPEG, held only in memory until the user saves this meal.
+  /// Never used by the network parser or included in exports/sync.
+  localThumbnailBase64?: string;
 }
 
 /// A recorded voice clip ready for upload (e.g. m4a from expo-audio).

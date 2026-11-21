@@ -36,6 +36,7 @@ import {
   type SetupStep,
 } from '@/lib/core/insights/bodySetup';
 import { type Theme, useTheme } from '@/lib/theme/theme';
+import { typeScale } from '@/lib/theme/typography';
 
 /// «Настройка тела» — the guided, one-question-per-screen path to the daily
 /// norm. Everything lives in LOCAL state; nothing is persisted until the single
@@ -713,7 +714,7 @@ const styles = StyleSheet.create({
   backText: { fontSize: 14 },
   progress: { fontSize: 13 },
   card: { marginBottom: 6 },
-  stepTitle: { fontSize: 18 },
+  stepTitle: { fontSize: 21, lineHeight: 28 },
   hint: { fontSize: 13, lineHeight: 19, marginTop: 8 },
   control: { marginTop: 14 },
   unitRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
@@ -723,7 +724,8 @@ const styles = StyleSheet.create({
   skip: { fontSize: 14, marginTop: 14, textAlign: 'center', paddingVertical: 4 },
   option: {
     borderWidth: 1,
-    borderRadius: 6,
+    borderRadius: 12,
+    minHeight: 52,
     paddingHorizontal: 14,
     paddingVertical: 12,
     marginBottom: 8,
@@ -732,16 +734,16 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   optionBody: { flex: 1 },
-  optionTitle: { fontSize: 15 },
-  optionDesc: { fontSize: 12, lineHeight: 17, marginTop: 3 },
+  optionTitle: { fontSize: 16, lineHeight: 22 },
+  optionDesc: { fontSize: 13, lineHeight: 19, marginTop: 3 },
   heroLabel: { fontSize: 18, marginBottom: 14 },
-  heroRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
-  heroKcal: { fontSize: 36, lineHeight: 42, letterSpacing: -1 },
+  heroRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', gap: 8 },
+  heroKcal: { ...typeScale.calorie },
   heroUnit: { fontSize: 14 },
   macroRow: { flexDirection: 'row', gap: 10, borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: 17, marginVertical: 18 },
   macroTile: { flex: 1, gap: 3 },
-  macroLabel: { fontSize: 11 },
-  macroValue: { fontSize: 15, marginTop: 2, fontVariant: ['tabular-nums'] },
+  macroLabel: { fontSize: 14, lineHeight: 20 },
+  macroValue: { ...typeScale.macro, marginTop: 2 },
   appliedLine: { fontSize: 13, marginTop: 12 },
   overestimate: { fontSize: 13, lineHeight: 19, marginTop: 8 },
   willRefine: { fontSize: 12, lineHeight: 17, marginTop: 10 },

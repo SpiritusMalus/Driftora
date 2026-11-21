@@ -1,7 +1,7 @@
 import { currentLocale } from '@/lib/i18n';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { useTranslation } from 'react-i18next';
 
@@ -129,6 +129,14 @@ export default function FoodLogScreen() {
   const [parsing, setParsing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [draft, setDraftState] = useState<MealDraft | null>(null);
+  // Only the user's current capture, in memory until this draft is saved.
+  // A batch advance replaces it; quick-pick, clear and a new voice meal drop it.
+  const [reviewPhoto, setReviewPhotoState] = useState<PhotoInput | null>(null);
+  const reviewPhotoRef = useRef<PhotoInput | null>(null);
+  function setReviewPhoto(photo: PhotoInput | null) {
+    reviewPhotoRef.current = photo;
+    setReviewPhotoState(photo);
+  }
   function setDraft(next: Parameters<typeof setDraftState>[0]) {
     captureRevisionRef.current++;
     setDraftState(next);
@@ -322,8 +330,9 @@ export default function FoodLogScreen() {
   // new deep-link from a re-render.
   const consumedVoiceToken = useRef<string | null>(null);
 
-  function setFreshDraft(d: MealDraft | null) {
+  function setFreshDraft(d: MealDraft | null, keepPhoto = false) {
     setDraft(d);
+    if (!keepPhoto) setReviewPhoto(null);
     // Every fresh capture, parse and «очистить» goes through here, so this is
     // the one place that has to remember it: a hand-typed name belonged to the
     // meal being replaced, not to the new one. Sprinkling the reset across the
@@ -594,7 +603,7 @@ export default function FoodLogScreen() {
     // that makes a voice/photo parse visible up top, which used to be written
     // here and only when the field happened to be empty.
     const replace = !preserveOnEmpty || parsed.items.length > 0;
-    if (replace) setFreshDraft(parsed);
+    if (replace) setFreshDraft(parsed, kind === 'photo' || kind === 'text');
     // Nothing was recognised, but the person still said something. On the voice-
     // note path their words only exist in `heard` — the clip was understood on
     // the server — so this is the last chance to put them back on screen. With
@@ -720,7 +729,9 @@ export default function FoodLogScreen() {
       // Screen died mid-parse and the service took over: it writes the entry
       // itself — this (possibly unmounted) closure stands down.
       if (isAdopted(photo.uri)) return;
-      acceptDraft(await applyMemory(parsed), consentNow, 'photo');
+      const remembered = await applyMemory(parsed);
+      if (!mountedRef.current || reviewPhotoRef.current?.uri !== photo.uri) return;
+      acceptDraft(remembered, consentNow, 'photo');
       // Pipeline the batch — but not off the offline/quota stub: every queued
       // parse would fail the same way, burning a request to learn nothing.
       if (!parsed.flags.offline_fallback) prefetchNext(consentNow, photo.uri);
@@ -729,8 +740,8 @@ export default function FoodLogScreen() {
     } finally {
       clearInFlight(photo.uri);
       setParsing(false);
-      // The downscaled JPEG in `prepare()` (photoProvider.ts) was only ever
-      // needed to reach the backend — clean it up on every path (success,
+      // The upload JPEG is only needed to reach the backend. The distinct small
+      // thumbnail stays in memory until save; clear the cache file on every path (success,
       // failure, offline stub) so cache doesn't accumulate one file per photo.
       // An ADOPTED photo is the exception: the service still needs the file
       // for its retry affordance and cleans up after itself.
@@ -875,6 +886,7 @@ export default function FoodLogScreen() {
   // photo resets the same way. Consent-gates before the first photo→AI send.
   function startPhoto(photo: PhotoInput) {
     setFreshDraft(null);
+    setReviewPhoto(photo);
     setText('');
     setMeal(null);
     setParseIssue(null);
@@ -895,7 +907,7 @@ export default function FoodLogScreen() {
     if (parsing || listening) return;
     setPhotoError(null);
     // Gallery allows picking several dishes at once; the camera stays single.
-    const result = await capturePhoto(src, { multiple: src === 'library' });
+    const result = await capturePhoto(src, { multiple: src === 'library', retainThumbnail: true });
     if (result.status === 'cancelled') return;
     if (result.status === 'failed') {
       setPhotoError(t('food.photoError'));
@@ -1151,6 +1163,7 @@ export default function FoodLogScreen() {
         source,
         draft,
         meal: mealChoice,
+        photoBase64: reviewPhoto?.localThumbnailBase64,
         ...(day !== localDayKey(new Date()) ? { ts: tsOnDay(new Date(), day) } : {}),
       });
       // Personal food journal (layer 2): remember this food → per-100g so the
@@ -1700,6 +1713,18 @@ export default function FoodLogScreen() {
               ))}
             </View>
           </View>
+        </View>
+      ) : null}
+
+      {reviewPhoto?.localThumbnailBase64 ? (
+        <View style={{ gap: 8 }}>
+          <Image
+            source={{ uri: `data:image/jpeg;base64,${reviewPhoto.localThumbnailBase64}` }}
+            accessibilityLabel={t('food.photoPreview')}
+            style={{ width: '100%', height: 190, borderRadius: 20, backgroundColor: theme.card }}
+            resizeMode="cover"
+          />
+          <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('food.photoLocalNote')}</Text>
         </View>
       ) : null}
 

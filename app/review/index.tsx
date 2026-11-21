@@ -16,6 +16,7 @@ import { thinkingTrapOfWeek, type ThinkingTrap } from '@/lib/core/insights/disto
 import { pluralKey } from '@/lib/i18n/plural';
 import { stepReference } from '@/lib/core/insights/stepNorms';
 import { useTheme } from '@/lib/theme/theme';
+import { typeScale } from '@/lib/theme/typography';
 
 /// Offline weekly review — this week vs your past self, plus the streak,
 /// north-star and thinking trap. No population comparison, no weight pressure.
@@ -259,8 +260,8 @@ const styles = StyleSheet.create({
   // (mirrors the Wins hero). Bare on the page, no tinted card.
   hero: { marginTop: 8, marginBottom: 4, paddingBottom: 20, borderBottomWidth: StyleSheet.hairlineWidth },
   heroLabel: { fontSize: 18, lineHeight: 24, letterSpacing: -0.25, marginBottom: 10 },
-  heroRow: { flexDirection: 'row', alignItems: 'baseline', gap: 10 },
-  heroNum: { fontSize: 49, lineHeight: 54, letterSpacing: -1.4, fontVariant: ['tabular-nums'] },
+  heroRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', gap: 10 },
+  heroNum: { ...typeScale.calorie },
   heroStreak: { fontSize: 14, lineHeight: 19 },
   reassurance: { fontSize: 12, marginTop: 10, lineHeight: 17 },
   restartBtn: { alignSelf: 'center', paddingVertical: 14, paddingHorizontal: 16, marginTop: 24 },
