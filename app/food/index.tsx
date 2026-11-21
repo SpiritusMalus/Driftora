@@ -1,17 +1,15 @@
 import { formatInt } from '@/lib/core/format';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { AccordionChevron } from '@/components/ui/AccordionChevron';
+import { RecentFoodList } from '@/components/food/RecentFoodList';
+import { FoodTodayWidget } from '@/components/home/FoodTodayWidget';
 import { Card } from '@/components/ui/Card';
-import { Collapsible } from '@/components/ui/Collapsible';
 import { DayNav } from '@/components/ui/DayNav';
 import { FillBar } from '@/components/ui/FillBar';
-import { PrimaryButton } from '@/components/ui/PrimaryButton';
-import { RiseIn } from '@/components/ui/RiseIn';
 import { Screen } from '@/components/ui/Screen';
 import {
   dayBudgetKcal,
@@ -40,6 +38,7 @@ import {
   runningParseEntryIds,
   subscribeBackgroundParses,
 } from '@/lib/core/services/backgroundParses';
+import { loadFoodPhotoUris } from '@/lib/core/db/foodPhotos';
 import { syncDayHealth } from '@/lib/core/db/healthSync';
 import { ensureSettings } from '@/lib/core/db/settings';
 import { typicalSteps } from '@/lib/core/db/steps';
@@ -49,7 +48,6 @@ import { useAppActiveEffect } from '@/lib/core/services/appActive';
 import { getHealthService } from '@/lib/core/services/healthProvider';
 import { fiberTargetG } from '@/lib/core/insights/fiberTarget';
 import { dailyMicroNorms, type MicroRow } from '@/lib/core/insights/microNutrients';
-import { shortMealTitle } from '@/lib/core/insights/mealTitle';
 import { groupEntriesByMeal } from '@/lib/core/insights/mealType';
 import type { FoodEntry, FoodItem } from '@/lib/core/db/schema';
 import type { Sex } from '@/lib/core/insights/bodyMetrics';
@@ -79,8 +77,6 @@ interface DayGoal {
 export default function FoodDayScreen() {
   const { t } = useTranslation();
   const theme = useTheme();
-  const { fontScale } = useWindowDimensions();
-  const timeWidth = Math.ceil(36 * Math.max(1, fontScale));
   const router = useRouter();
   const db = useDatabase();
   // Which day the screen is showing — today by default, walked with the same
@@ -95,16 +91,15 @@ export default function FoodDayScreen() {
   const isToday = day === localDayKey(new Date());
   const [hideCalories, setHideCalories] = useState(false);
   const [entries, setEntries] = useState<FoodEntry[] | null>(null);
-  // Rows already seen on this screen — a row NOT in the set is a fresh insert
-  // and enters with a RiseIn (the LayoutAnimation take was a silent no-op on
-  // Fabric Android). The set fills in an effect AFTER render, so a new row
-  // animates exactly once; the first load marks everything seen, no motion.
-  const seenIds = useRef<Set<FoodEntry['id']> | null>(null);
+  const [photoUris, setPhotoUris] = useState<Record<number, string>>({});
   useEffect(() => {
-    if (entries == null) return;
-    const seen = seenIds.current ?? (seenIds.current = new Set());
-    for (const e of entries) seen.add(e.id);
-  }, [entries]);
+    let active = true;
+    if (!db || !entries) return;
+    void loadFoodPhotoUris(db, entries.map((entry) => entry.id))
+      .then((photos) => { if (active) setPhotoUris(photos); })
+      .catch(() => { if (active) setPhotoUris({}); });
+    return () => { active = false; };
+  }, [db, entries]);
   const [totals, setTotals] = useState<{ kcal: number; proteinG: number; fatG: number; carbG: number } | null>(null);
   const [goal, setGoal] = useState<DayGoal | null>(null);
   const [micros, setMicros] = useState<MicroTotals | null>(null);
@@ -377,53 +372,11 @@ export default function FoodDayScreen() {
     ]);
   }
 
-  return (
-    <Screen>
-      {/* Which day this menu is about. Not today → the whole screen becomes
-          that day's: the list below, ✎/↻/✕ on its rows, and «Добавить» opens
-          the log screen already aimed at the day. */}
-      <DayNav value={day} onChange={setDay} style={styles.dayNav} />
-      {!isToday ? (
-        <Text style={[styles.dayHint, { color: theme.subtle }, theme.font.body]}>
-          {t('food.dayListHint')}
-        </Text>
-      ) : null}
-      <PrimaryButton
-        label={t('food.add')}
-        onPress={() => router.push(isToday ? '/food/log' : `/food/log?day=${day}`)}
-        style={styles.add}
-      />
-      {repeatAck ? (
-        <Text style={[styles.repeatAck, { color: theme.accent }, theme.font.bodyMedium]}>{repeatAck}</Text>
-      ) : null}
-
-      {/* A past day's headline: the eaten facts, plain (the same hero as the
-          history day screen) — the live budget card below is today-only, its
-          target can't be honestly rebuilt for a day already gone. */}
-      {!isToday && totals != null && entries != null && entries.length > 0 ? (
-        <View style={styles.pastHero}>
-          <View style={styles.pastHeroRow}>
-            <Text style={[styles.pastHeroNum, { color: theme.heroAccent }, theme.font.heading]}>
-              {Math.round(hideCalories ? totals.proteinG : totals.kcal)}
-            </Text>
-            <Text style={[styles.pastHeroUnit, { color: theme.subtle }, theme.font.body]}>
-              {hideCalories ? t('units.g') : t('units.kcal')}
-            </Text>
-          </View>
-          <Text style={[styles.pastHeroSub, { color: theme.subtle }, theme.font.body]}>
-            {hideCalories
-              ? t('macros.protein')
-              : t('history.macrosLine', {
-                  prot: Math.round(totals.proteinG),
-                  fat: Math.round(totals.fatG),
-                  carb: Math.round(totals.carbG),
-                })}
-          </Text>
-        </View>
-      ) : null}
-
-      {isToday && goal != null && totals != null ? (
+  function renderDayProgress(detailsOnly = false) {
+    if (!isToday || goal == null || totals == null) return null;
+    return (
         <DayProgress
+          detailsOnly={detailsOnly}
           goal={goal}
           totals={totals}
           workoutKcalRaw={workoutRawKcal}
@@ -436,8 +389,78 @@ export default function FoodDayScreen() {
           fiberG={micros?.fiberG}
           theme={theme}
         />
+    );
+  }
+
+  return (
+    <Screen>
+      <Stack.Screen options={{
+        headerRight: () => (
+          <Pressable accessibilityRole="button" accessibilityLabel={t('food.add')}
+            onPress={() => router.push(isToday ? '/food/log' : `/food/log?day=${day}`)}
+            style={({ pressed }) => [styles.headerAdd, { opacity: pressed ? 0.6 : 1 }]}
+          ><Ionicons name="add" size={27} color={theme.primary} /></Pressable>
+        ),
+      }} />
+      {/* Which day this menu is about. Not today → the whole screen becomes
+          that day's: the list below, ✎/↻/✕ on its rows, and «Добавить» opens
+          the log screen already aimed at the day. */}
+      <DayNav value={day} onChange={setDay} style={styles.dayNav} />
+      {!isToday ? (
+        <Text style={[styles.dayHint, { color: theme.subtle }, theme.font.body]}>
+          {t('food.dayListHint')}
+        </Text>
+      ) : null}
+      {repeatAck ? (
+        <Text style={[styles.repeatAck, { color: theme.accent }, theme.font.bodyMedium]}>{repeatAck}</Text>
       ) : null}
 
+      {(!isToday || goal == null) && totals != null ? (
+        <FoodTodayWidget
+          kcal={totals.kcal} targetKcal={0} hideCalories={hideCalories}
+          prot={totals.proteinG} targetProt={0}
+          fat={totals.fatG} targetFat={0} carb={totals.carbG} targetCarb={0}
+        />
+      ) : null}
+
+      {renderDayProgress()}
+
+      {db == null ? (
+        <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('food.dbUnavailable')}</Text>
+      ) : entries == null ? null : entries.length === 0 ? (
+        <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>
+          {t(isToday ? 'food.emptyDay' : 'history.emptyDay')}
+        </Text>
+      ) : (
+        <>
+          <RecentFoodList
+            entries={entries} photoUris={photoUris} hideCalories={hideCalories}
+            expandedIds={openIds}
+            onOpenEntry={(entry) => {
+              if (entry.parseStatus === 'failed') void onRetryParse(entry.id);
+              else if (entry.parseStatus == null) onToggleRow(entry);
+            }}
+            onEdit={(entry) => router.push(`/food/${entry.id}`)}
+            onRepeat={(entry) => void onRepeat(entry.id)}
+            onDelete={(entry) => onDelete(entry.id)}
+            renderExpanded={(entry) => <EntryItems items={itemsByEntry.get(entry.id) ?? []} theme={theme} hideCalories={hideCalories} />}
+          />
+          <View style={styles.mealTotals}>
+            {groupEntriesByMeal(entries).map((group) => (
+              <View key={group.type} style={[styles.mealHead, { borderBottomColor: theme.separator }]}>
+                <View style={styles.mealHeadTop}>
+                  <Text style={[styles.mealName, { color: theme.text }, theme.font.bodySemiBold]}>{t(`food.meal.${group.type}`)}</Text>
+                  {!hideCalories ? <Text style={[styles.mealSum, { color: theme.subtle }, theme.font.body]}>{formatInt(Math.round(group.entries.reduce((sum, entry) => sum + entry.kcal, 0)))} {t('units.kcal')}</Text> : null}
+                </View>
+                <Text style={[styles.mealMacros, { color: theme.subtle }, theme.font.body]}>
+                  {t('macros.protShort')} {formatInt(Math.round(group.entries.reduce((sum, entry) => sum + entry.proteinG, 0)))} · {t('macros.fatShort')} {formatInt(Math.round(group.entries.reduce((sum, entry) => sum + entry.fatG, 0)))} · {t('macros.carbShort')} {formatInt(Math.round(group.entries.reduce((sum, entry) => sum + entry.carbG, 0)))} {t('units.g')}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </>
+      )}
+      {renderDayProgress(true)}
       {db != null && entries != null && entries.length > 0 && micros != null ? (
         <MicroDay
           micros={micros}
@@ -448,179 +471,6 @@ export default function FoodDayScreen() {
         />
       ) : null}
 
-      {db == null ? (
-        <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('food.dbUnavailable')}</Text>
-      ) : entries == null ? null : entries.length === 0 ? (
-        <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>
-          {t(isToday ? 'food.emptyDay' : 'history.emptyDay')}
-        </Text>
-      ) : (
-        <View style={styles.list}>
-          {groupEntriesByMeal(entries).map((group) => {
-            // Per-meal sums — kcal AND macros, so a meal's protein/fat/carb are
-            // visible without opening each row (device feedback 2026-07-15:
-            // «хочется видеть за приём пищи не только калории, но и БЖУ»).
-            const mealKcal = Math.round(group.entries.reduce((sum, e) => sum + e.kcal, 0));
-            const mealProt = Math.round(group.entries.reduce((sum, e) => sum + e.proteinG, 0));
-            const mealFat = Math.round(group.entries.reduce((sum, e) => sum + e.fatG, 0));
-            const mealCarb = Math.round(group.entries.reduce((sum, e) => sum + e.carbG, 0));
-            return (
-            <View key={group.type} style={styles.group}>
-              {/* A real section header — meal name + the meal's kcal sum + a
-                  second line with the meal's БЖУ — so the day visibly splits into
-                  завтрак/обед/ужин and each meal's macros read at a glance. */}
-              <View style={[styles.mealHead, { borderBottomColor: theme.separator }]}>
-                <View style={styles.mealHeadTop}>
-                  <Text style={[styles.mealName, { color: theme.text }, theme.font.bodySemiBold]}>
-                    {t(`food.meal.${group.type}`)}
-                  </Text>
-                  {!hideCalories ? (
-                    <Text style={[styles.mealSum, { color: theme.subtle }, theme.font.body]}>
-                      {mealKcal} {t('units.kcal')}
-                    </Text>
-                  ) : null}
-                </View>
-                <Text style={[styles.mealMacros, { color: theme.subtle }, theme.font.body]}>
-                  {t('macros.protShort')} {mealProt} · {t('macros.fatShort')} {mealFat} ·{' '}
-                  {t('macros.carbShort')} {mealCarb} {t('units.g')}
-                </Text>
-              </View>
-              {/* The rise is for a row freshly ADDED while looking at today;
-                  a past day shows existing facts — animating the whole list
-                  would read as new data appearing. */}
-              {group.entries.map((e, index) => (
-                <RiseIn key={e.id} enabled={isToday && seenIds.current != null && !seenIds.current.has(e.id)}>
-                {e.parseStatus != null ? (
-                  // Background-parse rows: a pending shot waits quietly; a
-                  // failed one is tap-to-retry (or an honest «снимите заново»
-                  // alert once the photo died with its process).
-                  <Card
-                    variant="section"
-                    style={styles.row}
-                    onPress={e.parseStatus === 'failed' ? () => void onRetryParse(e.id) : undefined}
-                  >
-                    <View style={styles.rowMain}>
-                      <Text style={[styles.rowTime, { width: timeWidth, color: theme.subtle }, theme.font.body]}>{formatTime(e.ts)}</Text>
-                      <View style={styles.rowRail}>
-                        {index < group.entries.length - 1 ? <View style={[styles.rowRule, { backgroundColor: theme.separator }]} /> : null}
-                        <View style={[styles.rowNode, { backgroundColor: theme.subtle }]} />
-                      </View>
-                      <View style={styles.rowBody}>
-                      <View style={styles.rowHead}>
-                      <Ionicons
-                        name={e.parseStatus === 'pending' ? 'hourglass-outline' : 'refresh-outline'}
-                        size={16}
-                        color={e.parseStatus === 'pending' ? theme.subtle : theme.accent}
-                        style={{ marginRight: 6 }}
-                      />
-                      <Text
-                        style={[styles.rowText, { color: e.parseStatus === 'pending' ? theme.subtle : theme.text }, theme.font.body]}
-                        numberOfLines={1}
-                      >
-                        {e.parseStatus === 'pending' ? t('food.bg.parsing') : t('food.bg.failed')}
-                      </Text>
-                      <Pressable
-                        onPress={() => onDelete(e.id)}
-                        hitSlop={10}
-                        accessibilityRole="button"
-                        accessibilityLabel={t('food.delete')}
-                        style={({ pressed }) => [styles.repeatBtn, { opacity: pressed ? 0.5 : 1 }]}
-                      >
-                        <Ionicons name="close" size={18} color={theme.tertiary} />
-                      </Pressable>
-                      </View>
-                      </View>
-                    </View>
-                  </Card>
-                ) : (
-                <Card variant="section" style={styles.row} onPress={() => onToggleRow(e)}>
-                  <View style={styles.rowMain}>
-                    <Text style={[styles.rowTime, { width: timeWidth, color: theme.subtle }, theme.font.body]}>{formatTime(e.ts)}</Text>
-                    <View style={styles.rowRail}>
-                      {index < group.entries.length - 1 ? <View style={[styles.rowRule, { backgroundColor: theme.separator }]} /> : null}
-                      <View style={[styles.rowNode, { backgroundColor: theme.primary }]} />
-                    </View>
-                    <View style={styles.rowBody}>
-                  <View style={[styles.rowHead, fontScale > 1.5 && styles.rowHeadLarge]}>
-                    {/* Open row = the full name, however long (the «выдвижной
-                        тайтл»); folded = the one-line dish summary as before. */}
-                    <Text
-                      style={[styles.rowText, { color: theme.text }, theme.font.bodySemiBold]}
-                      numberOfLines={openIds.has(e.id) ? undefined : 1}
-                    >
-                      {e.rawText
-                        ? openIds.has(e.id)
-                          ? e.rawText
-                          : shortMealTitle(e.rawText)
-                        : t('food.untitled')}
-                    </Text>
-                    {!hideCalories ? (
-                      <View style={[styles.rowEnergy, fontScale > 1.5 && styles.rowEnergyLarge]}>
-                        <Text style={[styles.rowKcal, { color: theme.text }, theme.font.bodyMedium]}>{Math.round(e.kcal)}</Text>
-                        <Text style={[styles.rowKcalUnit, { color: theme.subtle }, theme.font.body]}>{t('units.kcal')}</Text>
-                      </View>
-                    ) : null}
-                  </View>
-                  <View style={styles.rowMacrosLine}>
-                    <Text style={[styles.rowMacros, { color: theme.subtle }, theme.font.body]}>
-                      {!e.confirmed ? (
-                        // Adopted parse the user hasn't looked at yet — unfolding
-                        // the row is the review, so the pill rests on first tap.
-                        <Text style={{ color: theme.accent }}>{t('food.bg.review')} · </Text>
-                      ) : null}
-                      {t('macros.protShort')} {Math.round(e.proteinG)} ·{' '}
-                      {t('macros.fatShort')} {Math.round(e.fatG)} · {t('macros.carbShort')} {Math.round(e.carbG)}{' '}
-                      {t('units.g')}
-                    </Text>
-                    <AccordionChevron expanded={openIds.has(e.id)} color={theme.tertiary} />
-                  </View>
-                  <View style={styles.rowActions}>
-                    {/* ALWAYS-VISIBLE pencil (device feedback 2026-08-17: the
-                        edit link inside the unfolded body was easy to miss) —
-                        editing is one tap from any state, same icon-button
-                        idiom as ↻/✕. Destructive ✕ keeps the last slot. */}
-                    <Pressable
-                      onPress={() => router.push(`/food/${e.id}`)}
-                      hitSlop={10}
-                      accessibilityRole="button"
-                      accessibilityLabel={t('food.items.edit')}
-                      style={({ pressed }) => [styles.repeatBtn, { opacity: pressed ? 0.5 : 1 }]}
-                    >
-                      <Ionicons name="create-outline" size={18} color={theme.primary} />
-                    </Pressable>
-                    <Pressable
-                      onPress={() => void onRepeat(e.id)}
-                      hitSlop={10}
-                      accessibilityRole="button"
-                      accessibilityLabel={t('food.repeat')}
-                      style={({ pressed }) => [styles.repeatBtn, { opacity: pressed ? 0.5 : 1 }]}
-                    >
-                      <Ionicons name="repeat-outline" size={18} color={theme.primary} />
-                    </Pressable>
-                    <Pressable
-                      onPress={() => onDelete(e.id)}
-                      hitSlop={10}
-                      accessibilityRole="button"
-                      accessibilityLabel={t('food.delete')}
-                      style={({ pressed }) => [styles.repeatBtn, { opacity: pressed ? 0.5 : 1 }]}
-                    >
-                      <Ionicons name="close" size={18} color={theme.tertiary} />
-                    </Pressable>
-                  </View>
-                  <Collapsible open={openIds.has(e.id)}>
-                    <EntryItems items={itemsByEntry.get(e.id) ?? []} theme={theme} hideCalories={hideCalories} />
-                  </Collapsible>
-                    </View>
-                  </View>
-                </Card>
-                )}
-                </RiseIn>
-              ))}
-            </View>
-            );
-          })}
-        </View>
-      )}
     </Screen>
   );
 }
@@ -629,6 +479,7 @@ export default function FoodDayScreen() {
 /// «в плане ✓» when under, a neutral sentence when over — never red, and no
 /// kcal row at all under «спрятать калории».
 function DayProgress({
+  detailsOnly = false,
   goal,
   totals,
   workoutKcalRaw,
@@ -641,6 +492,7 @@ function DayProgress({
   fiberG,
   theme,
 }: {
+  detailsOnly?: boolean;
   goal: DayGoal;
   totals: { kcal: number; proteinG: number; fatG: number; carbG: number };
   workoutKcalRaw: number;
@@ -659,9 +511,6 @@ function DayProgress({
 }) {
   const { t } = useTranslation();
   const router = useRouter();
-  const kcalEaten = Math.round(totals.kcal);
-  const { fontScale } = useWindowDimensions();
-  const largeType = fontScale > 1.5;
   // «Base + earned» budget, shown as a transparent sum: the deficit base (what
   // the chosen tempo asks for) plus today's steps and workouts ON TOP — never
   // below the healthy day-minimum. Movement always raises the day and re-opens
@@ -677,11 +526,8 @@ function DayProgress({
   const restingShown = Math.max(goal.baseKcal, goal.minDayKcal);
   // A forecast only makes the target «≈» when it actually moves the number.
   const approx = stepsForecast && stepsAdd > 0;
-  const onPlan = kcalEaten <= target;
   // Hero figure: what's still left of the budget, or — when over — how much
   // above plan. Both stay non-negative; the label switches, never a red number.
-  const remaining = Math.max(0, target - kcalEaten);
-  const overBy = Math.max(0, kcalEaten - target);
   // The visible breakdown: «покой N · шаги +N · тренировки +N». When imported
   // workout windows removed steps from the pricing, the steps part says so —
   // the reduction must be visible, never silent.
@@ -733,78 +579,32 @@ function DayProgress({
   // entries logged before fibre was tracked carry none, and a confident «0 г»
   // under a goal would read as "you ate no fibre" when the truth is "we don't
   // know". Target scales with the budget (docs/nutrition-science.md §5).
-  const macros = [
-    { label: t('macros.protein'), eaten: Math.round(totals.proteinG), target: dayMacros.prot },
-    { label: t('macros.fat'), eaten: Math.round(totals.fatG), target: dayMacros.fat },
-    { label: t('macros.carbs'), eaten: Math.round(totals.carbG), target: dayMacros.carb },
-    ...(fiberG != null && fiberG > 0
-      ? [{ label: t('macros.fiber'), eaten: Math.round(fiberG), target: fiberTargetG(target) }]
-      : []),
-  ];
-  return (
-    <Card variant="section" style={styles.dayCard}>
-      <View style={styles.dayHead}>
-        <Text style={[styles.dayEyebrow, { color: theme.text }, theme.font.heading]}>
-          {t('food.day.title')}
-        </Text>
-        {goal.hideCalories || !onPlan ? null : (
-          <Text style={[styles.dayChip, { color: theme.accent }, theme.font.bodyMedium]}>{t('food.day.onPlan')}</Text>
-        )}
-      </View>
-      {goal.hideCalories ? null : (
-        <>
-          {/* Hero: the answer to «сколько ещё можно» — big and first. Over-plan
-              stays calm (no red): the amber accent, «сверх плана» as the label. */}
-          <View style={[styles.dayHeroRow, largeType && styles.dayHeroRowLarge]}>
-            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75} style={[styles.dayHeroNum, { color: onPlan ? theme.text : theme.accent }, theme.font.display]}>
-              {onPlan ? remaining : overBy}
-            </Text>
-            <Text style={[styles.dayHeroLabel, { color: theme.subtle }, theme.font.body]}>
-              {t(onPlan ? 'food.day.left' : 'food.day.overBy')}
-            </Text>
-          </View>
-          <Bar value={kcalEaten} max={target} color={theme.primary} track={theme.fill} height={5} />
-          {/* Demoted to a quiet second line: съедено/цель (≈ when the steps are a
-              forecast — the one place the ≈ lives now), then the transparent
-              «база · шаги · тренировки» breakdown. */}
-          <Text style={[styles.daySecondary, { color: theme.subtle }, theme.font.body]}>
-            {t(approx ? 'food.day.kcalApprox' : 'food.day.kcal', { eaten: kcalEaten, target })}
+  return detailsOnly ? (
+    <View style={styles.budgetDetails}>
+      {fiberG != null && fiberG > 0 ? <Text style={[styles.dayWorkout, theme.font.body, { color: theme.subtle }]}>{t('macros.fiber')} {formatInt(Math.round(fiberG))}/{formatInt(fiberTargetG(target))} {t('units.g')}</Text> : null}
+      {!goal.hideCalories ? <>
+        <Text style={[styles.dayWorkout, { color: theme.subtle }, theme.font.body]}>{parts.join(' · ')}</Text>
+        {usualProjection != null ? <Text style={[styles.dayWorkout, { color: theme.subtle }, theme.font.body]}>{t('food.day.usualProjection', { steps: formatInt(usualSteps ?? 0), kcal: usualProjection })}</Text> : null}
+        {noMovementYet ? <Pressable accessibilityRole="button" onPress={() => router.push('/workout')} hitSlop={6}>
+          <Text style={[styles.dayWorkout, { color: theme.subtle }, theme.font.body]}>
+            {stepsBelowBase ? t('food.day.stepsBelowBase', { steps }) : t('food.day.noMovement')}{' '}
+            <Text style={[styles.dayMoveLink, { color: theme.primary }]}>{t('food.day.noMovementCta')}</Text>
           </Text>
-          <Text style={[styles.dayWorkout, { color: theme.subtle }, theme.font.body]}>{parts.join(' · ')}</Text>
-          {usualProjection != null ? (
-            <Text style={[styles.dayWorkout, { color: theme.subtle }, theme.font.body]}>
-              {t('food.day.usualProjection', {
-                steps: formatInt(usualSteps ?? 0),
-                kcal: usualProjection,
-              })}
-            </Text>
-          ) : null}
-          {noMovementYet ? (
-            <Pressable onPress={() => router.push('/workout')} hitSlop={6}>
-              <Text style={[styles.dayWorkout, { color: theme.subtle }, theme.font.body]}>
-                {stepsBelowBase ? t('food.day.stepsBelowBase', { steps }) : t('food.day.noMovement')}{' '}
-                <Text style={[styles.dayMoveLink, { color: theme.primary }]}>{t('food.day.noMovementCta')}</Text>
-              </Text>
-            </Pressable>
-          ) : null}
-          <Pressable onPress={() => router.push('/more/how-it-works')} hitSlop={6}>
-            <Text style={[styles.dayHowLink, { color: theme.subtle }, theme.font.body]}>{t('food.day.how')}</Text>
-          </Pressable>
-        </>
-      )}
-      <View style={[styles.macroRow, largeType && styles.macroRowLarge, { borderColor: theme.separator }]}>
-        {macros.map((m) => (
-          <View key={m.label} style={[styles.macroCol, largeType && styles.macroColLarge]}>
-            <Text style={[styles.macroLabel, { color: theme.subtle }, theme.font.body]}>
-              {m.label}
-            </Text>
-            <Text style={[styles.macroValue, { color: theme.text }, theme.font.bodyMedium]}>
-              {m.eaten}<Text style={[styles.macroTarget, { color: theme.subtle }, theme.font.body]}>/{m.target}</Text>
-            </Text>
-          </View>
-        ))}
-      </View>
-    </Card>
+        </Pressable> : null}
+        <Pressable accessibilityRole="button" onPress={() => router.push('/more/how-it-works')} hitSlop={6}>
+          <Text style={[styles.dayHowLink, { color: theme.subtle }, theme.font.body]}>{t('food.day.how')}</Text>
+        </Pressable>
+      </> : null}
+    </View>
+  ) : (
+    <View style={styles.dayCard}>
+      <FoodTodayWidget
+        kcal={totals.kcal} targetKcal={target} targetApprox={approx} hideCalories={goal.hideCalories}
+        prot={totals.proteinG} targetProt={dayMacros.prot}
+        fat={totals.fatG} targetFat={dayMacros.fat}
+        carb={totals.carbG} targetCarb={dayMacros.carb}
+      />
+    </View>
   );
 }
 
@@ -1008,13 +808,10 @@ function Bar({
   );
 }
 
-function formatTime(d: Date): string {
-  const p = (n: number) => String(n).padStart(2, '0');
-  return `${p(d.getHours())}:${p(d.getMinutes())}`;
-}
-
 const styles = StyleSheet.create({
-  dayNav: { marginTop: 4, marginBottom: 10 },
+  dayNav: { marginTop: 0, marginBottom: 14 },
+  headerAdd: { minWidth: 48, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
+  budgetDetails: { paddingBottom: 16 },
   dayHint: { fontSize: 12, lineHeight: 17, marginTop: -4, marginBottom: 10, marginHorizontal: 4 },
   // Past-day headline — mirrors the history day screen's hero.
   pastHero: { marginTop: 2, marginBottom: 16 },
@@ -1026,6 +823,7 @@ const styles = StyleSheet.create({
   repeatAck: { fontSize: 13, textAlign: 'center', marginBottom: 10 },
   hint: { fontSize: 13, textAlign: 'center', marginTop: 20 },
   list: { gap: 26 },
+  mealTotals: { gap: 16, marginBottom: 20 },
   group: { gap: 0 },
   mealHead: {
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -1066,7 +864,7 @@ const styles = StyleSheet.create({
   itemName: { fontSize: 14, lineHeight: 19 },
   itemMacros: { fontSize: 12, lineHeight: 17, marginTop: 1 },
   itemsEmpty: { fontSize: 12, lineHeight: 17 },
-  dayCard: { paddingTop: 8, paddingBottom: 20, marginBottom: 20 },
+  dayCard: { paddingTop: 0, paddingBottom: 0, marginBottom: 0 },
   dayHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   dayTitle: { fontSize: 18, lineHeight: 24 },
   dayEyebrow: { fontSize: 18, lineHeight: 24, letterSpacing: -0.25 },

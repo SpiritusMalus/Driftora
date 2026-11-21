@@ -1,4 +1,5 @@
 import { formatDecimal, formatInt } from '@/lib/core/format';
+import { Ionicons } from '@expo/vector-icons';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -6,13 +7,12 @@ import { Keyboard, KeyboardAvoidingView, PanResponder, Pressable, ScrollView, St
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { FoodTodayWidget } from '@/components/home/FoodTodayWidget';
-import { DayRibbonTimeline } from '@/components/home/DayRibbonTimeline';
+import { RecentFoodList } from '@/components/food/RecentFoodList';
 import { StepsWidget } from '@/components/home/StepsWidget';
 import { WorkoutWidget } from '@/components/home/WorkoutWidget';
 import { SwipeCoach } from '@/components/home/SwipeCoach';
 import { WeightWidget } from '@/components/home/WeightWidget';
 import { Card } from '@/components/ui/Card';
-import { DayTitleLink } from '@/components/ui/DayTitleLink';
 import { FoodBar } from '@/components/ui/FoodBar';
 import { HeaderSectionsLink } from '@/components/ui/HeaderSectionsLink';
 import { PageDots } from '@/components/ui/PageDots';
@@ -20,6 +20,7 @@ import { selfInitiatedLogDays } from '@/lib/core/db/activity';
 import { hasAnyWinOnDay, runAutoWins } from '@/lib/core/db/autoWins';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { listEntriesForDay, sweepStalePendingEntries, todayMacroTotals } from '@/lib/core/db/food';
+import { loadFoodPhotoUris } from '@/lib/core/db/foodPhotos';
 import type { AppSettings, FoodEntry } from '@/lib/core/db/schema';
 import { latestMood } from '@/lib/core/db/mood';
 import { catchUpHealth, syncDayHealth } from '@/lib/core/db/healthSync';
@@ -122,6 +123,7 @@ export default function HomeScreen() {
   // (food summary, weight plan preview). Kept alongside the insight state above.
   const [totals, setTotals] = useState({ kcal: 0, proteinG: 0, fatG: 0, carbG: 0 });
   const [foodEntries, setFoodEntries] = useState<FoodEntry[] | null>(null);
+  const [foodPhotos, setFoodPhotos] = useState<Record<number, string>>({});
   const [settings, setSettings] = useState<AppSettings | null>(null);
   // Raw workout burn today — for the food widget's movement-adjusted target
   // (steps are already loaded above; both feed the same eat-back layer).
@@ -132,6 +134,15 @@ export default function HomeScreen() {
   // One /mood push per left-swipe gesture — releases when Home regains focus.
   const swipeNavLock = useRef(false);
   const reloadSeq = useRef(0);
+
+  useEffect(() => {
+    let active = true;
+    if (!db || !foodEntries) return;
+    void loadFoodPhotoUris(db, foodEntries.map((entry) => entry.id))
+      .then((photos) => { if (active) setFoodPhotos(photos); })
+      .catch(() => { if (active) setFoodPhotos({}); });
+    return () => { active = false; };
+  }, [db, foodEntries]);
 
   const reload = useCallback(async () => {
         if (!db) return;
@@ -510,15 +521,17 @@ export default function HomeScreen() {
         contentInsetAdjustmentBehavior="never"
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.brandRow}>
-          <Text style={[styles.brand, { color: theme.text }, theme.font.bodySemiBold]}>driftora</Text>
-          <HeaderSectionsLink compact />
-        </View>
         <View style={styles.dayHeading}>
-          <DayTitleLink label={t('home.title')} display />
-          <Text style={[styles.date, { color: theme.subtle }, theme.font.body]}>
-            {`${new Date().getDate()} ${t(`history.m${new Date().getMonth() + 1}`)}, ${t(`history.w${new Date().getDay()}`)}`}
-          </Text>
+          <Pressable accessibilityRole="button" onPress={() => router.push('/history')} style={({ pressed }) => [styles.historyLink, { opacity: pressed ? 0.6 : 1 }]}>
+            <View style={styles.titleRow}>
+              <Text style={[styles.dayTitle, theme.font.bodySemiBold, { color: theme.text }]}>{t('home.title')}</Text>
+              <Ionicons name="chevron-down" size={16} color={theme.subtle} />
+            </View>
+            <Text style={[styles.date, { color: theme.subtle }, theme.font.body]}>
+              {`${new Date().getDate()} ${t(`history.m${new Date().getMonth() + 1}`)}, ${t(`history.w${new Date().getDay()}`)}`}
+            </Text>
+          </Pressable>
+          <HeaderSectionsLink compact />
         </View>
 
         {paused ? (
@@ -563,10 +576,10 @@ export default function HomeScreen() {
             — Home is the body-tracking surface; the mind side sits behind one
             row below. */}
         <FoodTodayWidget
+          compact
           kcal={totals.kcal}
           targetKcal={foodTargetKcal}
           targetApprox={foodTargetApprox}
-          movementHint={movementHint}
           hideCalories={settings?.hideCalories ?? false}
           prot={totals.proteinG}
           targetProt={dayMacroTargets?.prot ?? 0}
@@ -576,11 +589,14 @@ export default function HomeScreen() {
           targetCarb={dayMacroTargets?.carb ?? 0}
           onPress={() => router.push('/food')}
         />
-        <DayRibbonTimeline
+        <RecentFoodList
+          compact
           entries={foodEntries}
+          photoUris={foodPhotos}
           hideCalories={settings?.hideCalories ?? false}
           onOpenEntry={(entry) => router.push(entry.parseStatus != null ? '/food' : `/food/${entry.id}`)}
         />
+        {!settings?.hideCalories && movementHint ? <Text style={[styles.movementHint, theme.font.body, { color: theme.subtle }]}>{movementHint}</Text> : null}
         <WeightWidget db={db} subtitle={weightSubtitle} onSaved={reload} />
         <StepsWidget
           db={db}
@@ -691,10 +707,12 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   androidContent: { paddingHorizontal: 24, paddingTop: 4, paddingBottom: 96 },
   iosContent: { paddingHorizontal: 22, paddingTop: 4, paddingBottom: 96 },
-  brandRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 44 },
-  brand: { fontSize: 22, letterSpacing: -0.6 },
-  dayHeading: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', justifyContent: 'space-between', columnGap: 12, rowGap: 4, marginTop: 12, marginBottom: 14 },
-  date: { fontSize: 15, lineHeight: 22, paddingBottom: 4 },
+  dayHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 2, marginBottom: 16 },
+  historyLink: { minHeight: 48, flex: 1, justifyContent: 'center' },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  dayTitle: { fontSize: 27, lineHeight: 33, letterSpacing: -0.6 },
+  date: { fontSize: 14, lineHeight: 21, marginTop: 1 },
+  movementHint: { fontSize: 13, lineHeight: 20, marginBottom: 16 },
   dayDetails: { marginTop: 10, gap: 2 },
   daySummary: { fontSize: 16, lineHeight: 24 },
   weekLink: { alignSelf: 'flex-start', minHeight: 44, justifyContent: 'center' },

@@ -141,7 +141,7 @@ async function applySnapshot(
   const fileBytes = decodeBase64(payload.blobB64);
   const parsed = parseBackupFile(fileBytes);
   const doc: BackupDocument = decryptBackupBody(parsed, master.privateKey);
-  await importAllTables(db, doc);
+  await importAllTables(db, doc, { preserveUnchangedLocalFoodPhotos: true });
 }
 
 /**

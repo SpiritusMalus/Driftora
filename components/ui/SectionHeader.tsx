@@ -20,10 +20,10 @@ export function SectionHeader({ children }: { children: string }) {
 
 const styles = StyleSheet.create({
   heading: {
-    fontSize: 18,
-    lineHeight: 24,
-    letterSpacing: -0.25,
-    marginTop: 26,
-    marginBottom: 10,
+    fontSize: 21,
+    lineHeight: 28,
+    letterSpacing: -0.35,
+    marginTop: 28,
+    marginBottom: 14,
   },
 });

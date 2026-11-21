@@ -6,6 +6,7 @@ import {
   type StyleProp,
   StyleSheet,
   TextInput,
+  useWindowDimensions,
   View,
   type ViewStyle,
 } from 'react-native';
@@ -48,10 +49,8 @@ export function useAndroidKeyboardSpace(scrollRef: RefObject<ScrollView | null>)
   return space;
 }
 
-/// Scrolling screen container. Paints the platform background (cream on Android,
-/// systemGroupedBackground on iOS) and applies the right horizontal rhythm:
-/// 18px gutters on Android (Ember), 16px on iOS (grouped insets). iOS leans on
-/// the native large-title header, so its top padding is tighter.
+/// Shared scrolling rhythm with native keyboard and safe-area handling intact.
+/// Narrow phones keep an 18pt gutter; other phones use the diary's 22pt rhythm.
 export function Screen({
   children,
   contentStyle,
@@ -60,6 +59,7 @@ export function Screen({
   contentStyle?: StyleProp<ViewStyle>;
 }) {
   const theme = useTheme();
+  const { width } = useWindowDimensions();
   const scrollRef = useRef<ScrollView>(null);
   const keyboardSpace = useAndroidKeyboardSpace(scrollRef);
   return (
@@ -68,6 +68,7 @@ export function Screen({
       style={{ backgroundColor: theme.background }}
       contentContainerStyle={[
         theme.isIOS ? styles.iosContent : styles.androidContent,
+        { paddingHorizontal: width < 360 ? 18 : theme.spacing.page },
         contentStyle,
         // Last, so it wins over any contentStyle padding: while the keyboard
         // is open the content needs its height added back (see the hook above).

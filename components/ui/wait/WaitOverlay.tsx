@@ -36,7 +36,7 @@ export function WaitOverlay({ label, onCancel, cancelLabel }: {
       accessibilityLiveRegion="polite"
       accessibilityLabel={label}
     >
-      <View style={[styles.card, { backgroundColor: theme.background, borderColor: theme.separator }]}>
+      <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.separator }]}>
         {/* WaitScene уже несёт сцену, спиннер и подпись. */}
         <WaitScene label={label} />
         {onCancel && cancelLabel ? (
@@ -58,8 +58,8 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     maxWidth: 420,
-    borderRadius: 10,
-    borderWidth: 1,
+    borderRadius: 14,
+    borderWidth: 0,
     paddingHorizontal: 14,
     paddingTop: 4,
     paddingBottom: 14,

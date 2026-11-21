@@ -136,6 +136,16 @@ export const en = {
     },
     foodBar: { placeholder: 'Log food' },
     food: {
+      eaten: 'Eaten',
+      remaining: 'Remaining',
+      dayGoal: 'Daily goal',
+      noGoal: 'No goal set',
+      aboveGoal: '{{value}} {{unit}} above goal',
+      hidden: 'Calories hidden',
+      macroHeading: 'Daily total',
+      recent: 'Recently added',
+      entryCount: 'Entries: {{count}}',
+
       title: 'Food today',
       movementHint: 'Before activity — steps & workouts raise the budget',
       // Steps ARE recorded, just still under the ~3,000-step resting baseline.
@@ -931,6 +941,8 @@ export const en = {
     dbUnavailable: 'Mood is available in a device dev build.',
   },
   food: {
+    photoLocalNote: 'After saving, this photo stays on this device. It is excluded from backup and sync.',
+    photoPreview: 'Your meal photo',
     completeNutritionBeforeSave: 'Add nutrition for every food or remove unresolved foods before saving.',
     // Unified with the home input bar (home.foodBar.placeholder) and the
     // add button — everywhere "Log food".
@@ -944,7 +956,7 @@ export const en = {
     update: 'Save changes',
     delete: 'Delete entry',
     deleteTitle: 'Delete this entry?',
-    deleteConfirm: 'The entry and its items will be removed from this device. This cannot be undone.',
+    deleteConfirm: 'The entry, its items and its attached photo will be removed from this device. This cannot be undone.',
     deleteCancel: 'Keep it',
     untitled: 'Untitled',
     // Unfolded day row: the meal's per-ingredient breakdown (card tap).
@@ -1092,7 +1104,7 @@ export const en = {
       failed: 'Couldn’t parse — tap to retry',
       review: '≈ review',
       reshootTitle: 'Photo not kept',
-      reshoot: 'The parse was interrupted and the shot is already deleted — we don’t store photos. Take the picture again.',
+      reshoot: 'Recognition was interrupted. Take a new photo to try again.',
     },
     // Multi-select photos: each dish its own entry, reviewed one at a time.
     batchProgress: 'Photo {{index}} of {{total}}',
@@ -1663,13 +1675,13 @@ export const en = {
   backup: {
     title: 'Backup',
     openRow: 'Backup & restore',
-    openRowNote: 'An encrypted copy of all your data, saved to your own cloud. Helps if you lose your phone.',
+    openRowNote: 'An encrypted copy of your entries, saved to your own cloud. Meal photos stay on this device and are excluded from backup.',
     // Hero — the privacy anchor (encrypted + honest that without the phrase even
     // we can't open it). Folds in the former `intro` and `safetyNote`.
     heroText: 'The copy is encrypted with your key.',
     heroLead: 'Without your phrase, not even we can open it.',
     backupTitle: 'Create a backup',
-    backupExplainer: 'The Share sheet opens — pick a cloud (iCloud, Google Drive). Nothing is sent to our server.',
+    backupExplainer: 'The Share sheet opens — pick a cloud (iCloud, Google Drive). Nothing is sent to our server. Meal photos are excluded from backup.',
     backupCta: 'Create backup',
     restoreTitle: 'Restore',
     restoreExplainer: 'Pick a backup file you saved — your data is decrypted on this device and comes back.',
@@ -1692,7 +1704,7 @@ export const en = {
       title: 'Sync across devices',
       toggle: 'Sync through our server',
       explainer:
-        'Your data is encrypted on this device with your key, and only then is the encrypted copy sent to our server. We store just the encrypted file and cannot read it — the key stays with you. Sign-in is proven with your key, not a password.',
+        'Your data is encrypted on this device with your key, and only then is the encrypted copy sent to our server. We store just the encrypted file and cannot read it — the key stays with you. Sign-in is proven with your key, not a password. Meal photos stay on this device and do not sync.',
       on: 'Sync is on. An encrypted copy will be sent to the server and downloaded on your other devices.',
       off: 'Off. Until you turn sync on, nothing is sent to the server — your data stays only on this device.',
       limitNote:

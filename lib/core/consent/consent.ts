@@ -35,7 +35,8 @@ import { updateSettings } from '../db/settings';
 /// суточным лимитом вместо повышенного, а бесплатный тариф — конечным числом
 /// разборов на устройство вместо бессрочного дневного. Версию тогда не подняли,
 /// и принявшие 13.08 новой редакции не видели. Поднято здесь.
-export const LEGAL_VERSION = '2026-08-30';
+/// `2026-11-20`: saved food photos are kept locally and excluded from backups.
+export const LEGAL_VERSION = '2026-11-20';
 
 /// Bump when the AI cross-border disclosure materially changes — re-prompts the
 /// just-in-time consent the next time the user triggers an AI parse.

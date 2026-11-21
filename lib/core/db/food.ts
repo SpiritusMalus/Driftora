@@ -15,7 +15,8 @@ import { displayItemName } from '../services/foodChoice';
 import { canSaveMealDraft, recomputeDraft } from '../services/mealDraft';
 import { mealTypeForEntry, type MealType } from '../insights/mealType';
 import type { MicroRow } from '../insights/microNutrients';
-import { foodEntries, foodItems, type FoodEntry, type FoodItem } from './schema';
+import { foodEntries, foodItems, foodEntryPhotos, type FoodEntry, type FoodItem } from './schema';
+import { sameFoodPhotoParent, saveFoodPhoto, type FoodPhotoParentIdentity } from './foodPhotos';
 import { withDbLock, withTx } from './tx';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -141,12 +142,14 @@ export async function saveParsedEntry(
     /// User-picked meal of day (chips on the log screen). Null/omitted = not
     /// chosen; the day view falls back to the keyword/clock heuristic.
     meal?: MealType | null;
+    /// Local-only thumbnail of the photo currently under review, never a URI.
+    photoBase64?: string;
   },
 ): Promise<number> {
   const ts = opts.ts ?? new Date();
   const d = opts.draft;
   if (!canSaveMealDraft(d)) throw new Error('Food nutrition is incomplete');
-  return withTx(db, async () => {
+  const entryId = await withTx(db, async () => {
     const inserted = await db
       .insert(foodEntries)
       .values({
@@ -168,6 +171,11 @@ export async function saveParsedEntry(
     await insertDraftItems(db, entryId, d);
     return entryId;
   }, 'saveParsedEntry');
+  if (opts.photoBase64) await saveFoodPhoto(db, entryId, opts.photoBase64, {
+    ts, source: opts.source, rawText: opts.rawText, kcal: d.totals.kcal,
+    proteinG: d.totals.prot, fatG: d.totals.fat, carbG: d.totals.carb,
+  });
+  return entryId;
 }
 
 /// Insert the draft's item breakdown for an entry (each row holds the SCALED
@@ -300,10 +308,12 @@ export async function savePendingEntry(
 export async function applyDraftToPendingEntry(
   db: AnyDb,
   id: number,
-  opts: { rawText: string; draft: MealDraft },
-): Promise<void> {
+  opts: { rawText: string; draft: MealDraft; expectedParent?: FoodPhotoParentIdentity },
+): Promise<boolean> {
   const d = opts.draft;
-  await withTx(db, async () => {
+  return withTx(db, async () => {
+    const parent = await db.select().from(foodEntries).where(eq(foodEntries.id, id));
+    if (parent.length === 0 || (opts.expectedParent && !sameFoodPhotoParent(parent[0], opts.expectedParent))) return false;
     await db
       .update(foodEntries)
       .set({
@@ -318,6 +328,7 @@ export async function applyDraftToPendingEntry(
       .where(eq(foodEntries.id, id));
     await db.delete(foodItems).where(eq(foodItems.entryId, id));
     await insertDraftItems(db, id, d);
+    return true;
   }, 'applyDraftToPendingEntry');
 }
 
@@ -352,7 +363,7 @@ export async function confirmFoodEntry(db: AnyDb, id: number): Promise<void> {
 }
 
 /// App-start hygiene: a 'pending' row can only finish while its process lives —
-/// the photo is never persisted (privacy §2) — so anything still pending after
+/// the upload/retry photo is not retained across process restarts — so anything still pending after
 /// `maxAgeMin` belongs to a dead process and becomes an honest, retry-visible
 /// 'failed' («снимите заново») instead of spinning forever.
 ///
@@ -387,6 +398,7 @@ export async function sweepStalePendingEntries(
 /// are never orphan `food_items` rows regardless of the FK-cascade pragma.
 export async function deleteFoodEntry(db: AnyDb, id: number): Promise<void> {
   await withTx(db, async () => {
+    await db.delete(foodEntryPhotos).where(eq(foodEntryPhotos.entryId, id));
     await db.delete(foodItems).where(eq(foodItems.entryId, id));
     await db.delete(foodEntries).where(eq(foodEntries.id, id));
   }, 'deleteFoodEntry');

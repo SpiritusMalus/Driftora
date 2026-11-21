@@ -2,6 +2,7 @@ import type * as ImageManipulatorNS from 'expo-image-manipulator';
 import type * as ImagePickerNS from 'expo-image-picker';
 
 import type { PhotoInput } from './foodParser';
+import { isFoodPhotoBase64 } from './foodPhotoThumbnail';
 import { deleteTempFile } from './tempFiles';
 
 /// Max upload dimension on the LONGER edge (BUILD SPEC §5.3) — downscale to keep
@@ -67,7 +68,28 @@ export async function isPhotoCaptureAvailable(): Promise<boolean> {
 async function prepare(
   asset: { uri: string; width?: number; height?: number },
   M: typeof ImageManipulatorNS,
+  retainThumbnail = false,
 ): Promise<PhotoInput> {
+  async function finish(result: ImageManipulatorNS.ImageResult): Promise<PhotoInput> {
+    const photo: PhotoInput = { uri: result.uri, mimeType: 'image/jpeg' };
+    if (!retainThumbnail) return photo;
+    let thumbnail: ImageManipulatorNS.ImageResult | undefined;
+    try {
+      const edge = 320;
+      const actions: ImageManipulatorNS.Action[] = Math.max(result.width, result.height) > edge
+        ? [{ resize: result.height > result.width ? { height: edge } : { width: edge } }]
+        : [];
+      thumbnail = await M.manipulateAsync(result.uri, actions, {
+        compress: 0.55, format: M.SaveFormat.JPEG, base64: true,
+      });
+      if (isFoodPhotoBase64(thumbnail.base64)) photo.localThumbnailBase64 = thumbnail.base64;
+    } catch {
+      // The optional thumbnail must not prevent recognition/nutrition logging.
+    } finally {
+      if (thumbnail?.uri && thumbnail.uri !== result.uri) deleteTempFile(thumbnail.uri);
+    }
+    return photo;
+  }
   const w = asset.width ?? 0;
   const h = asset.height ?? 0;
   if (w === 0 || h === 0) {
@@ -76,14 +98,14 @@ async function prepare(
     // the exact cost the cap exists to bound. Re-encode first (the result
     // reports real dimensions), then cap the longer edge only if it's over.
     const probe = await M.manipulateAsync(asset.uri, [], { compress: 0.7, format: M.SaveFormat.JPEG });
-    if (Math.max(probe.width, probe.height) <= MAX_EDGE) return { uri: probe.uri, mimeType: 'image/jpeg' };
+    if (Math.max(probe.width, probe.height) <= MAX_EDGE) return finish(probe);
     const capped = await M.manipulateAsync(
       probe.uri,
       [{ resize: probe.height > probe.width ? { height: MAX_EDGE } : { width: MAX_EDGE } }],
       { compress: 0.7, format: M.SaveFormat.JPEG },
     );
     deleteTempFile(probe.uri);
-    return { uri: capped.uri, mimeType: 'image/jpeg' };
+    return finish(capped);
   }
   const actions: ImageManipulatorNS.Action[] =
     Math.max(w, h) > MAX_EDGE
@@ -93,7 +115,7 @@ async function prepare(
     compress: 0.7,
     format: M.SaveFormat.JPEG,
   });
-  return { uri: result.uri, mimeType: 'image/jpeg' };
+  return finish(result);
 }
 
 /// Capture ONE food photo (camera) or pick SEVERAL (library multi-select), then
@@ -110,12 +132,21 @@ async function prepare(
 /// screenshot) leaves it off and gets the old single-pick behaviour.
 export async function capturePhoto(
   source: PhotoSource,
-  opts: { multiple?: boolean; limit?: number } = {},
+  opts: { multiple?: boolean; limit?: number; retainThumbnail?: boolean } = {},
 ): Promise<CaptureResult> {
   const { multiple = false, limit = 10 } = opts;
   const ImagePicker = await pickerMod();
   const ImageManipulator = await manipulatorMod();
   if (!ImagePicker || !ImageManipulator) return { status: 'cancelled' };
+  let retainThumbnail = false;
+  if (opts.retainThumbnail) {
+    try {
+      const { getDbDriver } = require('../db/client') as typeof import('../db/client');
+      retainThumbnail = getDbDriver() === 'op-sqlite';
+    } catch {
+      // Recognition remains usable without encrypted local photo retention.
+    }
+  }
 
   // Only the camera needs a runtime permission. The library opens the system
   // picker (PHPicker / Android Photo Picker / GET_CONTENT), which needs none —
@@ -151,7 +182,7 @@ export async function capturePhoto(
   const photos: PhotoInput[] = [];
   for (const asset of result.assets) {
     try {
-      const photo = await prepare(asset, ImageManipulator);
+      const photo = await prepare(asset, ImageManipulator, retainThumbnail);
       // The picker's own cache copy (NOT the gallery original — the picker always
       // copies into the app cache) is spent once re-encoded; don't let one
       // accumulate per photo.

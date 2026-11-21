@@ -25,6 +25,7 @@ import { useAppActiveEffect } from '@/lib/core/services/appActive';
 import { getHealthService } from '@/lib/core/services/healthProvider';
 import { pluralKey } from '@/lib/i18n/plural';
 import { useTheme } from '@/lib/theme/theme';
+import { typeScale } from '@/lib/theme/typography';
 
 type HealthState =
   | 'idle'
@@ -428,8 +429,8 @@ function formatStepCount(n: number): string {
 const styles = StyleSheet.create({
   dayNav: { marginBottom: 12 },
   hero: { marginTop: 8, marginBottom: 20 },
-  heroRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
-  heroNum: { fontSize: 40, lineHeight: 44 },
+  heroRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', gap: 8 },
+  heroNum: { ...typeScale.calorie },
   heroLabel: { fontSize: 15 },
   heroPayoff: { fontSize: 13, lineHeight: 18, marginTop: 6 },
   heroSource: { fontSize: 12, marginTop: 4 },

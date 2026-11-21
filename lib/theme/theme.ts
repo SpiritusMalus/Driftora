@@ -2,9 +2,9 @@ import { Platform, type TextStyle, useColorScheme } from 'react-native';
 
 import { colors } from './colors';
 import { iosSurfaces } from './iosSurfaces';
-import { fonts } from './typography';
+import { fonts, typeScale } from './typography';
 
-/// Shared «Лента дня» color/type roles with the existing platform affordances.
+/// Shared daily-diary color/type roles with existing platform affordances.
 /// The role API is unchanged: this layer recolors and retypes the current
 /// screen tree instead of changing its controls or navigation.
 const brandFont = {
@@ -49,6 +49,11 @@ export interface Theme {
 
   // Surfaces — platform-aware.
   background: string;
+  surface: string;
+  surface2: string;
+  protein: string;
+  fat: string;
+  carb: string;
   card: string;
   /// Card outline: a paper hairline on Android, transparent on iOS (grouped
   /// cards have no border, only inset separators between rows).
@@ -68,6 +73,9 @@ export interface Theme {
   tertiary: string;
 
   font: FontMap;
+  type: typeof typeScale;
+  spacing: { page: number; section: number; row: number; inline: number };
+  radius: { card: number; control: number; input: number };
 }
 
 export function useTheme(): Theme {
@@ -94,7 +102,7 @@ export function resolveTheme(scheme: 'light' | 'dark'): Theme {
     bodyMindGradient: [palette.card, palette.card],
     bodyMindBorder: palette.border,
     bodyMindEyebrow: palette.subtle,
-    primarySoft: light ? '#E0E6F5' : '#283B58',
+    primarySoft: light ? '#E0E6DB' : '#393B31',
     accentSoft: palette.iconBg,
     labelCaps: palette.subtle,
     moodTrack: palette.iconBg,
@@ -102,6 +110,11 @@ export function resolveTheme(scheme: 'light' | 'dark'): Theme {
     glow: 'transparent',
 
     background: isIOS ? sys.background : palette.background,
+    surface: palette.surface,
+    surface2: palette.surface2,
+    protein: palette.protein,
+    fat: palette.fat,
+    carb: palette.carb,
     card: isIOS ? sys.card : palette.card,
     cardBorder: isIOS ? 'transparent' : palette.border,
     separator: isIOS ? sys.separator : palette.border,
@@ -114,5 +127,8 @@ export function resolveTheme(scheme: 'light' | 'dark'): Theme {
     tertiary: isIOS ? sys.tertiary : palette.subtle,
 
     font: brandFont,
+    type: typeScale,
+    spacing: { page: 22, section: 28, row: 16, inline: 10 },
+    radius: { card: 14, control: 13, input: 12 },
   };
 }

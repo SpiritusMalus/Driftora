@@ -56,6 +56,7 @@ export function Chip({
       style={({ pressed }) => [
         styles.base,
         sizeStyles[size],
+        { minHeight: theme.isIOS ? 44 : 48 },
         {
           backgroundColor: selected ? theme.primary : theme.card,
           borderColor: selected ? theme.primary : theme.separator,
@@ -96,7 +97,7 @@ function chipFont(theme: ReturnType<typeof useTheme>, size: ChipSize) {
 }
 
 const styles = StyleSheet.create({
-  base: { borderRadius: 6 },
+  base: { borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   wrapRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   blockRow: { flexDirection: 'row', gap: 8 },
 });
@@ -104,11 +105,11 @@ const styles = StyleSheet.create({
 const sizeStyles = StyleSheet.create({
   sm: { borderWidth: 1, paddingVertical: 7, paddingHorizontal: 12 },
   lg: { borderWidth: 1, paddingVertical: 10, paddingHorizontal: 16 },
-  block: { flex: 1, borderWidth: 1.5, paddingVertical: 9, alignItems: 'center' },
+  block: { flex: 1, borderWidth: 1, paddingVertical: 9, alignItems: 'center' },
 });
 
 const textStyles = StyleSheet.create({
-  sm: { fontSize: 13 },
-  lg: { fontSize: 15 },
-  block: { fontSize: 14 },
+  sm: { fontSize: 15, lineHeight: 21 },
+  lg: { fontSize: 17, lineHeight: 24 },
+  block: { fontSize: 16, lineHeight: 22 },
 });

@@ -200,7 +200,7 @@ function formatDate(d: Date): string {
 const styles = StyleSheet.create({
   date: { fontSize: 12, marginTop: 4, marginBottom: 6 },
   edit: { marginTop: 16 },
-  deleteBtn: { borderWidth: 1.5, borderRadius: 6, paddingVertical: 12, alignItems: 'center', marginTop: 10 },
+  deleteBtn: { borderWidth: 1, borderRadius: 13, minHeight: 48, justifyContent: 'center', paddingVertical: 12, alignItems: 'center', marginTop: 10 },
   deleteText: { fontSize: 15 },
   shiftHero: { alignItems: 'flex-start', paddingBottom: 18, marginBottom: 4, borderBottomWidth: StyleSheet.hairlineWidth },
   shiftRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },

@@ -612,7 +612,7 @@ const styles = StyleSheet.create({
   timeText: { fontSize: 16, fontVariant: ['tabular-nums'] },
   timeAddRow: { flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 12 },
   timeInput: { flex: 1 },
-  timeAddBtn: { borderWidth: 1.5, borderRadius: 6, paddingHorizontal: 18, paddingVertical: 12 },
+  timeAddBtn: { borderWidth: 1, borderRadius: 12, minHeight: 48, justifyContent: 'center', paddingHorizontal: 18, paddingVertical: 12 },
   timeAddText: { fontSize: 14 },
   note: { fontSize: 11, fontStyle: 'italic', marginTop: 8, lineHeight: 16, marginHorizontal: 4 },
   toggleRow: {
@@ -624,8 +624,8 @@ const styles = StyleSheet.create({
   },
   toggleLabel: { fontSize: 16, lineHeight: 22, flex: 1, paddingRight: 12 },
   segment: { flexDirection: 'row', gap: 8 },
-  segmentBtn: { flex: 1, borderWidth: 1.5, borderRadius: 6, paddingVertical: 11, alignItems: 'center' },
-  segmentText: { fontSize: 14 },
+  segmentBtn: { flex: 1, borderWidth: 1, borderRadius: 12, minHeight: 48, justifyContent: 'center', paddingVertical: 11, alignItems: 'center' },
+  segmentText: { fontSize: 16, lineHeight: 22 },
   save: { marginTop: 20 },
   buildInfo: { fontSize: 11, textAlign: 'center', marginTop: 14, marginBottom: 4 },
 });

@@ -39,7 +39,7 @@ export function DayNav({
   const canPrev = value > shiftDayKey(today, -backDays);
 
   return (
-    <View style={[styles.row, { backgroundColor: theme.iconBg }, style]}>
+    <View style={[styles.row, { backgroundColor: theme.surface }, style]}>
       <Pressable
         onPress={() => onChange(shiftDayKey(value, -1))}
         disabled={!canPrev}
@@ -79,8 +79,8 @@ export function DayNav({
 }
 
 const styles = StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', borderRadius: 6, padding: 3 },
-  arrow: { width: 40, height: 34, alignItems: 'center', justifyContent: 'center', borderRadius: 6 },
-  label: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 7 },
-  labelText: { fontSize: 14 },
+  row: { flexDirection: 'row', alignItems: 'center', borderRadius: 12, padding: 2 },
+  arrow: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 12 },
+  label: { flex: 1, minHeight: 48, alignItems: 'center', justifyContent: 'center', paddingVertical: 8 },
+  labelText: { fontSize: 16, lineHeight: 22 },
 });

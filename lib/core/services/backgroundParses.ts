@@ -2,11 +2,13 @@ import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
 import {
   applyDraftToPendingEntry,
+  getFoodEntry,
   markPendingFailed,
   markPendingRetrying,
   savePendingEntry,
 } from '../db/food';
 import { loadRememberedChoices } from '../db/foodChoices';
+import { saveFoodPhoto } from '../db/foodPhotos';
 import { ensureSettings } from '../db/settings';
 import { needsAiConsent } from '../consent/consent';
 import { applyRememberedChoices, displayItemName } from './foodChoice';
@@ -27,8 +29,9 @@ type AnyDb = BaseSQLiteDatabase<any, any, any>;
 /// day list shows «≈ проверьте» until the entry is opened — review is deferred,
 /// never skipped (показываем факты, не магию).
 ///
-/// Module-level on purpose: the work must outlive any screen. Photos stay ONLY
-/// in this process's memory/cache — never persisted (privacy §2) — so a parse
+/// Module-level on purpose: the work must outlive any screen. Upload/retry files
+/// stay only in this process's memory/cache; successful saved meals can retain
+/// their separate, small device-only thumbnail in the encrypted DB. A parse
 /// that outlives the process becomes an honest «снимите заново» via
 /// `sweepStalePendingEntries`, not a silent forever-spinner.
 
@@ -110,6 +113,14 @@ export async function runAdoptedParse(
 ): Promise<void> {
   runningEntries.add(entryId);
   try {
+    const original = (await getFoodEntry(db, entryId))?.entry;
+    if (!original) {
+      void draftPromise.catch(() => undefined);
+      retryMaterial.delete(entryId);
+      adoptedUris.delete(ctx.photo.uri);
+      deleteTempFile(ctx.photo.uri);
+      return;
+    }
     let draft = await draftPromise;
     // Same personal-journal memory as the on-screen path — an adopted parse
     // must not resolve differently from a watched one.
@@ -119,7 +130,13 @@ export async function runAdoptedParse(
       await markPendingFailed(db, entryId); // photo kept for retry
     } else {
       const rawText = draft.items.map((it) => displayItemName(it, ctx.region)).join(', ');
-      await applyDraftToPendingEntry(db, entryId, { rawText, draft });
+      const applied = await applyDraftToPendingEntry(db, entryId, { rawText, draft, expectedParent: original });
+      if (applied && ctx.photo.localThumbnailBase64) {
+        await saveFoodPhoto(db, entryId, ctx.photo.localThumbnailBase64, {
+          ...original, rawText, kcal: draft.totals.kcal, proteinG: draft.totals.prot,
+          fatG: draft.totals.fat, carbG: draft.totals.carb,
+        });
+      }
       retryMaterial.delete(entryId);
       adoptedUris.delete(ctx.photo.uri);
       deleteTempFile(ctx.photo.uri);

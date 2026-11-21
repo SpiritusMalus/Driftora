@@ -1,10 +1,8 @@
-import { LinearGradient } from 'expo-linear-gradient';
 import { Pressable, type StyleProp, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 
 import { useTheme } from '@/lib/theme/theme';
 
-/// The existing primary action, with a flat blue fill on both platforms.
-/// Disabled state dims to 40%; the component geometry and press behavior stay.
+/// One matte action tint, a comfortable native touch target, and scaling text.
 export function PrimaryButton({
   label,
   onPress,
@@ -25,6 +23,8 @@ export function PrimaryButton({
     <Pressable
       onPress={onPress}
       disabled={disabled}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: !!disabled }}
       style={({ pressed }) => [
         styles.wrap,
         { backgroundColor: theme.primary },
@@ -32,30 +32,21 @@ export function PrimaryButton({
         style,
       ]}
     >
-      {theme.isIOS ? (
-        <View style={styles.inner}>{text}</View>
-      ) : (
-        <LinearGradient
-          colors={theme.primaryGradient}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.inner}
-        >
-          {text}
-        </LinearGradient>
-      )}
+      <View style={styles.inner}>{text}</View>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { borderRadius: 6 },
+  wrap: { borderRadius: 13 },
   inner: {
-    borderRadius: 6,
+    borderRadius: 13,
     overflow: 'hidden',
+    minHeight: 52,
+    paddingHorizontal: 16,
     paddingVertical: 15,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  label: { fontSize: 16 },
+  label: { fontSize: 16, lineHeight: 22, textAlign: 'center' },
 });

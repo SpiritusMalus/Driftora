@@ -5,6 +5,7 @@ import { drizzle } from 'drizzle-orm/better-sqlite3';
 
 import {
   backupTableNames,
+  localOnlyTableNames,
   BACKUP_FORMAT_VERSION,
   exportAllTables,
   importAllTables,
@@ -178,8 +179,9 @@ describe('DB backup (exportAllTables / importAllTables)', () => {
       .filter((v): v is Table => is(v, Table))
       .map((t) => getTableName(t))
       .sort();
-    const exported = [...backupTableNames()].sort();
+    const exported = [...backupTableNames(), ...localOnlyTableNames()].sort();
     expect(exported).toEqual(declared);
+    expect(localOnlyTableNames()).toEqual(['food_entry_photos']);
   });
 
   it('rejects a foreign or mis-versioned document', async () => {

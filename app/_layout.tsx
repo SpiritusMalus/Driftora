@@ -13,7 +13,7 @@ import { DatabaseProvider } from '@/lib/core/db/DatabaseProvider';
 import { resolveTheme } from '@/lib/theme/theme';
 import { fontAssets } from '@/lib/theme/typography';
 
-/// Day Ribbon colors and Golos type on the existing native headers. The iOS
+/// Driftora's diary colors and Golos type on the existing native headers. The iOS
 /// large-title/blur treatment and Android app bar keep their original behavior.
 export default function RootLayout() {
   const { t } = useTranslation();

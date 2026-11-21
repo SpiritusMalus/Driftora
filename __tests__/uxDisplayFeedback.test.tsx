@@ -15,15 +15,18 @@ let mockEditId: string | undefined;
 const mockSchedule = jest.fn(async (_spec: unknown) => {});
 const mockCancel = jest.fn(async () => {});
 jest.mock('react-native', () => ({
+  Platform: { OS: 'android' },
   Alert: { alert: jest.fn() }, Linking: { openURL: jest.fn(), openSettings: jest.fn() },
   Pressable: 'Pressable', Text: 'Text', View: 'View', Switch: 'Switch',
   Animated: { Text: 'AnimatedText', Value: class { setValue() {} }, timing: () => ({ start() {}, stop() {} }) },
   useWindowDimensions: () => ({ width: 390, height: 844, fontScale: 1, scale: 3 }),
+  useColorScheme: () => 'light',
   StyleSheet: { create: (s: unknown) => s, hairlineWidth: 1 },
 }));
 jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
 jest.mock('@react-navigation/native', () => ({ usePreventRemove: () => {} }));
 jest.mock('expo-router', () => ({
+  Stack: { Screen: 'StackScreen' },
   useRouter: () => ({ push: jest.fn(), back: jest.fn(), replace: jest.fn(), canGoBack: () => true }),
   useNavigation: () => ({ dispatch: jest.fn() }), useLocalSearchParams: () => mockEditId ? ({ id: mockEditId }) : ({}),
   useFocusEffect: (callback: () => void) => require('react').useEffect(callback, [callback]),
@@ -40,7 +43,14 @@ jest.mock('@/lib/core/services/backgroundParses', () => ({
 }));
 jest.mock('@/lib/core/db/healthSync', () => ({ syncDayHealth: async () => ({ steps: null, workoutSteps: 0 }) }));
 jest.mock('@/lib/core/services/healthProvider', () => ({ getHealthService: () => ({}) }));
-jest.mock('@/lib/theme/theme', () => ({ useTheme: () => ({ scheme: 'light', font: {} }) }));
+jest.mock('@expo-google-fonts/golos-text', () => ({
+  GolosText_400Regular: 1, GolosText_500Medium: 2,
+  GolosText_600SemiBold: 3, GolosText_700Bold: 4,
+}));
+jest.mock('@/lib/theme/theme', () => {
+  const actual = jest.requireActual<typeof import('@/lib/theme/theme')>('@/lib/theme/theme');
+  return { ...actual, useTheme: () => actual.resolveTheme('light') };
+});
 jest.mock('@/lib/theme/motion', () => ({ useReducedMotion: () => true }));
 jest.mock('@/components/consent/ConsentModal', () => ({ ConsentModal: 'ConsentModal' }));
 jest.mock('@/components/legal/LegalReader', () => ({ LegalReader: 'LegalReader' }));
@@ -240,7 +250,7 @@ it('keeps an invalid belief on the thought step instead of entering an optional 
   expect(rows[0].thoughtBelief).toBe(0);
 });
 
-it('uses protein progress in the Home food widget when calories are hidden and restores calorie mode', async () => {
+it('keeps the protein balance in the Home food widget when calories are hidden and restores calorie progress', async () => {
   const props = { kcal: 356, targetKcal: 2223, prot: 24, targetProt: 120, fat: 18, targetFat: 60,
     carb: 29, targetCarb: 250, targetApprox: true, movementHint: 'ENERGY_BUDGET_HINT', onPress: jest.fn() };
   await renderer.act(async () => { tree = renderer.create(<FoodTodayWidget {...props} hideCalories />); });
@@ -249,7 +259,11 @@ it('uses protein progress in the Home food widget when calories are hidden and r
   expect(visibleText()).not.toContain('2223');
   expect(visibleText()).not.toContain('ENERGY_BUDGET_HINT');
   expect(visibleText()).toContain(i18n.t('macros.protein'));
-  expect(tree.root.findByType('FillBar').props).toMatchObject({ value: 24, min: 120 });
+  expect(visibleText()).toContain('24');
+  expect(visibleText()).toContain('96');
+  expect(visibleText()).toContain(i18n.t('home.food.eaten'));
+  expect(visibleText()).toContain(i18n.t('home.food.remaining'));
+  expect(tree.root.findAllByType('FillBar')).toHaveLength(0);
   await renderer.act(async () => { tree.update(<FoodTodayWidget {...props} hideCalories={false} />); });
   expect(visibleText()).toContain(i18n.t('units.kcal'));
   expect(visibleText()).toContain('356');
@@ -270,7 +284,9 @@ it('honors stored calorie privacy for meal headers, food cards, expanded ingredi
   await renderer.act(async () => { tree = renderer.create(<FoodDayScreen />); });
   expect(visibleText()).toContain('Омлет');
   expect(visibleText()).not.toContain(i18n.t('units.kcal'));
-  const row = tree.root.findAllByType('Card').find((n: any) => typeof n.props.onPress === 'function');
+  const row = tree.root.findAllByType('Pressable').find((n: any) =>
+    n.props.accessibilityState?.expanded === false && textContent(n).includes('Омлет'));
+  expect(row).toBeDefined();
   await renderer.act(async () => { row.props.onPress(); });
   expect(visibleText()).toContain('Яйцо');
   expect(visibleText()).toContain('120');

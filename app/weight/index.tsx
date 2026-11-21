@@ -21,6 +21,7 @@ import { bmiCategory, bmiValue } from '@/lib/core/insights/bodyMetrics';
 import { weightValid } from '@/lib/core/insights/bodySetup';
 import { summarizeWeightTrend, type WeightPoint } from '@/lib/core/insights/weightTrend';
 import { type Theme, useTheme } from '@/lib/theme/theme';
+import { typeScale } from '@/lib/theme/typography';
 
 /// «Вес» — ONE object in the app-wide section order (2026-08-22, «в весе прям
 /// нагромождено всё»): hero → input → what it means → history. Everything that
@@ -357,8 +358,8 @@ function formatDay(date: string): string {
 const styles = StyleSheet.create({
   // Hero — current weight big, trend riding under it (mirrors the «Шаги» hero).
   hero: { marginBottom: 24, paddingBottom: 18, borderBottomWidth: StyleSheet.hairlineWidth },
-  heroRow: { flexDirection: 'row', alignItems: 'baseline', gap: 8 },
-  heroNum: { fontSize: 36, lineHeight: 42, letterSpacing: -1 },
+  heroRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'baseline', gap: 8 },
+  heroNum: { ...typeScale.calorie },
   heroUnit: { fontSize: 15 },
   heroTrend: { fontSize: 14, lineHeight: 19, marginTop: 6 },
   heroNote: { fontSize: 12, lineHeight: 17, marginTop: 3 },

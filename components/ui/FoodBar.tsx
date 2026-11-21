@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { useTheme } from '@/lib/theme/theme';
 
-/// Two direct entry points share the pinned blue action bar: text opens the
+/// Two direct entry points share the pinned action bar: text opens the
 /// existing food composer, and the microphone opens that composer for voice.
 export function FoodBar({
   placeholder,
@@ -50,13 +50,13 @@ const styles = StyleSheet.create({
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 72,
-    borderRadius: 16,
+    minHeight: 56,
+    borderRadius: 13,
     overflow: 'hidden',
   },
   textButton: {
     flex: 1,
-    minHeight: 72,
+    minHeight: 56,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
@@ -64,11 +64,11 @@ const styles = StyleSheet.create({
     paddingRight: 12,
     paddingVertical: 12,
   },
-  placeholder: { flex: 1, fontSize: 19, lineHeight: 26 },
+  placeholder: { flex: 1, fontSize: 16, lineHeight: 24 },
   divider: { width: 1, height: 24, opacity: 0.28 },
   micButton: {
-    width: 72,
-    minHeight: 72,
+    width: 56,
+    minHeight: 56,
     alignSelf: 'stretch',
     alignItems: 'center',
     justifyContent: 'center',

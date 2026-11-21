@@ -2,12 +2,12 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, jest 
 import { createElement } from 'react';
 
 import { recomputeDraft, scaleToGrams } from '@/lib/core/services/mealDraft';
-import type { MealDraft, NutritionItem } from '@/lib/core/services/foodParser';
+import type { MealDraft, NutritionItem, PhotoInput } from '@/lib/core/services/foodParser';
 
 // Keep the actual screen handlers/state transitions; only native UI/providers
 // are substituted. No microphone, network, database or consent is exercised.
 jest.mock('react-native', () => ({
-  Pressable: 'Pressable', Text: 'Text', View: 'View',
+  Pressable: 'Pressable', Text: 'Text', View: 'View', Image: 'Image',
   StyleSheet: { create: (value: unknown) => value, hairlineWidth: 1 },
   useWindowDimensions: () => ({ width: 400, height: 800, fontScale: 1 }),
 }));
@@ -23,14 +23,21 @@ jest.mock('@/lib/core/db/food', () => ({
   ...jest.requireActual<typeof import('@/lib/core/db/food')>('@/lib/core/db/food'),
   todayMacroTotals: async () => ({ proteinG: 0 }),
   quickMeals: async () => ({ yesterday: [], favorites: [], recents: [] }), distinctFoodItemsToday: async () => 0,
+  saveParsedEntry: (db: unknown, opts: Record<string, unknown>) => mockSaveEntry(db, opts),
 }));
 jest.mock('@/lib/core/db/foodChoices', () => ({
   listFoodChoices: async () => [], loadRememberedChoices: () => mockLoadChoices(),
+  rememberFoodChoice: async () => {},
 }));
 jest.mock('@/lib/core/consent/consent', () => ({ needsAiConsent: () => false, AI_CONSENT_VERSION: 'test' }));
-jest.mock('@/lib/core/services/backgroundParses', () => ({ isAdopted: () => false, adoptOnUnmount: () => {} }));
+jest.mock('@/lib/core/services/backgroundParses', () => ({
+  isAdopted: () => false, adoptOnUnmount: () => {}, registerInFlight: () => {}, clearInFlight: () => {},
+}));
 jest.mock('@/lib/core/services/tempFiles', () => ({ deleteTempFile: jest.fn() }));
-jest.mock('@/lib/core/services/photoProvider', () => ({ isPhotoCaptureAvailable: async () => true }));
+jest.mock('@/lib/core/services/photoProvider', () => ({
+  isPhotoCaptureAvailable: async () => true,
+  capturePhoto: () => mockCapturePhoto(),
+}));
 jest.mock('@/lib/core/services/speechProvider', () => ({ getSpeechService: () => ({ initialize: async () => true, stop: async () => {}, listen: mockSpeechListen }) }));
 jest.mock('@/lib/core/services/audioRecorder', () => ({
   isAudioRecordingAvailable: () => mockAudioAvailable,
@@ -39,7 +46,7 @@ jest.mock('@/lib/core/services/audioRecorder', () => ({
 }));
 jest.mock('@/lib/core/services/foodParserProvider', () => ({
   resolveRegion: () => 'RU',
-  getFoodParser: () => ({ parse: () => mockParse(), parseAudio: () => mockParseAudio() }),
+  getFoodParser: () => ({ parse: () => mockParse(), parseAudio: () => mockParseAudio(), parsePhoto: (p: PhotoInput) => mockParsePhoto(p) }),
 }));
 jest.mock('@/components/consent/ConsentModal', () => ({ ConsentModal: 'ConsentModal' }));
 jest.mock('@/components/food/ItemCard', () => ({ ItemCard: 'ItemCard' }));
@@ -81,6 +88,9 @@ const previous = draft('Previous meal');
 const replacement = draft('New voice meal');
 const mockParse = jest.fn<() => Promise<MealDraft>>();
 const mockParseAudio = jest.fn<() => Promise<MealDraft>>();
+const mockCapturePhoto = jest.fn<() => Promise<{ status: 'ok'; photos: PhotoInput[] } | { status: 'cancelled' }>>();
+const mockParsePhoto = jest.fn<(photo: PhotoInput) => Promise<MealDraft>>();
+const mockSaveEntry = jest.fn<(db: unknown, opts: Record<string, unknown>) => Promise<number>>();
 let mockDatabase: object | null = null;
 const mockLoadChoices = jest.fn<() => Promise<Map<string, never>>>();
 const mockRecording = {
@@ -130,6 +140,9 @@ beforeEach(() => {
   mockAudioAvailable = true;
   mockParse.mockResolvedValue(previous);
   mockParseAudio.mockResolvedValue(replacement);
+  mockCapturePhoto.mockResolvedValue({ status: 'cancelled' });
+  mockParsePhoto.mockImplementation(async (photo) => draft(photo.uri));
+  mockSaveEntry.mockResolvedValue(1);
   mockStartRecording.mockResolvedValue({ recording: mockRecording });
   mockSpeechListen.mockResolvedValue(undefined);
 });
@@ -138,6 +151,56 @@ afterEach(async () => {
   screen = null;
   jest.clearAllMocks();
   jest.useRealTimers();
+});
+
+describe('photo drafts retain only their own selected photo', () => {
+  const photoA = { uri: 'file:///picked-a.jpg', mimeType: 'image/jpeg', localThumbnailBase64: '/9j/4AACAf/Z' };
+  const photoB = { uri: 'file:///picked-b.jpg', mimeType: 'image/jpeg', localThumbnailBase64: '/9j/4AACAv/Z' };
+
+  async function pick(photos: PhotoInput[]) {
+    mockDatabase = {};
+    mockCapturePhoto.mockResolvedValue({ status: 'ok', photos });
+    await act(async () => { screen = create(createElement(FoodLogScreen)); });
+    await act(async () => { button('food.inputMode.photo').props.onPress(); });
+    await act(async () => { button('food.photoLibrary').props.onPress(); });
+  }
+  async function saveCurrent() {
+    await act(async () => { await screen.root.findByProps({ label: 'food.save' }).props.onPress(); });
+  }
+
+  it('saves the selected photo only when the reviewed single meal is saved', async () => {
+    await pick([photoA]);
+    expect(mockSaveEntry).not.toHaveBeenCalled();
+    expect(screen.root.findByType('Image').props.source.uri).toBe(`data:image/jpeg;base64,${photoA.localThumbnailBase64}`);
+    await saveCurrent();
+    expect(mockSaveEntry).toHaveBeenCalledTimes(1);
+    expect(mockSaveEntry.mock.calls[0][1].photoBase64).toBe(photoA.localThumbnailBase64);
+  });
+
+  it('saves each batch meal with the matching photo, not the previous or prefetched photo', async () => {
+    await pick([photoA, photoB]);
+    await saveCurrent();
+    expect(screen.root.findByType('Image').props.source.uri).toBe(`data:image/jpeg;base64,${photoB.localThumbnailBase64}`);
+    await saveCurrent();
+    expect(mockSaveEntry.mock.calls.map((call) => call[1].photoBase64)).toEqual([photoA.localThumbnailBase64, photoB.localThumbnailBase64]);
+  });
+
+  it('skipping a batch photo never saves its pixels', async () => {
+    await pick([photoA, photoB]);
+    await act(async () => { button('food.batchSkip').props.onPress(); });
+    expect(mockSaveEntry).not.toHaveBeenCalled();
+    await saveCurrent();
+    expect(mockSaveEntry.mock.calls.map((call) => call[1].photoBase64)).toEqual([photoB.localThumbnailBase64]);
+  });
+
+  it('clear and picker cancellation leave no saved photo', async () => {
+    await pick([photoA]);
+    await act(async () => { button('food.clear').props.onPress(); });
+    expect(screen.root.findAllByType('Image')).toHaveLength(0);
+    mockCapturePhoto.mockResolvedValue({ status: 'cancelled' });
+    await act(async () => { button('food.photoLibrary').props.onPress(); });
+    expect(mockSaveEntry).not.toHaveBeenCalled();
+  });
 });
 
 describe('replacing a food draft with a voice recording', () => {
