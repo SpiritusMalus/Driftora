@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { Keyboard, KeyboardAvoidingView, PanResponder, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { consumeBodySetupRequest } from '@/components/Onboarding';
 import { FoodTodayWidget } from '@/components/home/FoodTodayWidget';
 import { RecentFoodList } from '@/components/food/RecentFoodList';
 import { StepsWidget } from '@/components/home/StepsWidget';
@@ -59,16 +60,6 @@ import { useTheme } from '@/lib/theme/theme';
 /// перейду»), and «Разделы» keeps a plain tappable path into the hub. Home
 /// still runs the passive steps/sleep sync so those
 /// signals keep flowing into the insight regardless of which screen shows them.
-/// Один раз ЗА ЗАПУСК приложения, а не за монтирование Главной: сразу после
-/// интро увести в «Настройку тела».
-///
-/// Флаг живёт в модуле намеренно. Внутри компонента (useRef) он сбрасывался
-/// каждый раз, когда Главная пересоздавалась при возврате из мастера, — и
-/// она тут же толкала туда снова. Наружу было не выйти: «Готово» и
-/// аппаратный «Назад» уводили на Главную, а та мгновенно возвращала обратно,
-/// поэтому экран выглядел застывшим. Проверено на эмуляторе.
-let setupNudged = false;
-
 export default function HomeScreen() {
   const { t } = useTranslation();
   const theme = useTheme();
@@ -300,14 +291,12 @@ export default function HomeScreen() {
   // зарегистрированный маршрут — стек снова собирался без Главной внизу.
   useFocusEffect(
     useCallback(() => {
-      if (setupNudged || settings == null) return;
+      if (!settings?.onboardingSeen || !consumeBodySetupRequest()) return;
       const complete =
         (settings.sex === 'male' || settings.sex === 'female') &&
         settings.heightCm >= 100 &&
         settings.heightCm <= 250;
-      if (complete || !settings.onboardingSeen) return;
-      setupNudged = true;
-      router.push('/body-setup');
+      if (!complete) router.push('/body-setup');
     }, [settings, router]),
   );
 
