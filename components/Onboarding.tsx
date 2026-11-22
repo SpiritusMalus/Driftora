@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,6 +26,15 @@ const SLIDES = [
   { icon: 'hand-left-outline', key: 'feed' },
 ] as const;
 
+// Only the intro completed in this process can request the first wizard.
+let bodySetupRequested = false;
+
+export function consumeBodySetupRequest(): boolean {
+  const requested = bodySetupRequested;
+  bodySetupRequested = false;
+  return requested;
+}
+
 export function Onboarding({ children }: { children: ReactNode }) {
   const db = useDatabase();
   const theme = useTheme();
@@ -36,6 +45,7 @@ export function Onboarding({ children }: { children: ReactNode }) {
   const [show, setShow] = useState<boolean | null>(null);
   const [index, setIndex] = useState(0);
   const [finishing, setFinishing] = useState(false);
+  const finishInProgress = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -53,22 +63,18 @@ export function Onboarding({ children }: { children: ReactNode }) {
   }, [db]);
 
   const finish = useCallback(async () => {
+    if (finishInProgress.current) return;
+    finishInProgress.current = true;
     setFinishing(true);
     try {
-      // The handoff after the intro: a fresh install (no body profile yet) goes
-      // STRAIGHT into the body-setup wizard — the «а что дальше?» moment — while
-      // a returning profile lands on Home untouched. The push is deferred a tick
-      // so the Stack below has mounted by the time we navigate.
-      if (db) await updateSettings(db, { onboardingSeen: true });
-      // ПУШ ОТСЮДА УБРАН. Он уходил в `setTimeout(…, 0)` — то есть в тот момент,
-      // когда Stack под этим гейтом только монтируется, — и стек получался
-      // покорёженным: под мастером оказывалась случайная страница, «Готово»
-      // молчало (ни back, ни replace, ни dismissTo не срабатывали), а
-      // аппаратный «Назад» выбрасывал из приложения. Проверено на устройстве.
-      // Теперь в мастер уводит сама Главная, когда она уже смонтирована и
-      // может быть нормальным низом стека — см. app/index.tsx.
+      if (db) {
+        await updateSettings(db, { onboardingSeen: true });
+        // Home takes the request once it is focused below the mounted Stack.
+        bodySetupRequested = true;
+      }
       setShow(false);
     } finally {
+      finishInProgress.current = false;
       setFinishing(false);
     }
   }, [db]);
