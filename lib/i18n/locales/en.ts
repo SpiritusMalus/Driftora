@@ -126,6 +126,7 @@ export const en = {
       later: 'Later',
     },
     swipeHint: 'Mood & diary — swipe left',
+    moodLink: 'Mood',
     paneLink: 'Mood & diary',
     // Mirror gesture on the Mind screen: a right swipe returns to body/food.
     // Serves as the page-dots accessibility label there.

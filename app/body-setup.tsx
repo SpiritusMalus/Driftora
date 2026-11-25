@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -11,6 +11,8 @@ import { Collapsible } from '@/components/ui/Collapsible';
 import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { Screen } from '@/components/ui/Screen';
 import { TextField } from '@/components/ui/TextField';
+import { bodySetupDraft } from '@/lib/core/db/schema';
+import { withDbLock } from '@/lib/core/db/tx';
 import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
 import { latestDeviceBodyFat, latestWeight, upsertWeight } from '@/lib/core/db/weight';
@@ -39,11 +41,25 @@ import { type Theme, useTheme } from '@/lib/theme/theme';
 import { typeScale } from '@/lib/theme/typography';
 
 /// «Настройка тела» — the guided, one-question-per-screen path to the daily
-/// norm. Everything lives in LOCAL state; nothing is persisted until the single
+/// norm. Answers are stored as a local draft until the single
 /// «Рассчитать суточную норму» tap, which saves the profile, logs the weight,
 /// applies the plan as the diary goal and shows the result with its breakdown
 /// («что это за норма и как её бустить»). Reached from: first run (after the
 /// intro slides), the Home setup card, and «Вес» → «Параметры тела» → Изменить.
+type SetupDraft = {
+  index: number;
+  birthYearText: string;
+  sex: '' | Sex;
+  heightText: string;
+  weightText: string;
+  bodyFatText: string;
+  waistText: string;
+  deviceFatDate: string | null;
+  goal: GoalMode | null;
+  goalWeightText: string;
+  tempo: DeficitTempo;
+};
+
 export default function BodySetupScreen() {
   const { t } = useTranslation();
   const theme = useTheme();
@@ -77,6 +93,8 @@ export default function BodySetupScreen() {
   const [tempo, setTempo] = useState<DeficitTempo>('standard');
   const [plan, setPlan] = useState<MacroPlan | null>(null);
   const [saving, setSaving] = useState(false);
+  const [ready, setReady] = useState(false);
+  const savedDraft = useRef<string | null>(null);
   // The result's «Откуда цифра» breakdown is collapsed by default: the hero
   // number + «записали как цель» is the finish; the derivation is on tap.
   const [howOpen, setHowOpen] = useState(false);
@@ -87,30 +105,42 @@ export default function BodySetupScreen() {
     let active = true;
     void (async () => {
       if (!db) return;
-      const [s, w] = await Promise.all([ensureSettings(db), latestWeight(db)]);
-      if (!active) return;
-      if (s.birthYear > 0) setBirthYearText(String(s.birthYear));
-      if (s.sex === 'male' || s.sex === 'female') setSex(s.sex);
-      if (s.heightCm > 0) setHeightText(String(s.heightCm));
-      if (w != null) setWeightText(String(w.weightKg));
-      if (s.bodyFatPct > 0) {
-        setBodyFatText(String(s.bodyFatPct));
-      } else {
-        // No manual value yet — offer the scale's measurement as a prefill,
-        // NAMED as such on the step. Saving still goes through the explicit
-        // «Рассчитать» tap, so nothing feeds BMR silently.
-        const df = await latestDeviceBodyFat(db);
-        if (active && df?.bodyFatPct != null) {
-          setBodyFatText(String(Math.round(df.bodyFatPct * 10) / 10));
-          setDeviceFatDate(df.date);
-        }
-      }
-      if (s.waistCm > 0) setWaistText(String(s.waistCm));
-      setBmrFactor(s.bmrFactor);
-      if (s.goalWeightKg > 0) setGoalWeightText(String(s.goalWeightKg));
-      setTempo(s.deficitTempo);
+      const [s, w, rows] = await Promise.all([
+        ensureSettings(db),
+        latestWeight(db),
+        stepParam ? [] : withDbLock(db, () => db.select().from(bodySetupDraft), 'loadBodySetupDraft'),
+      ]);
       const complete = (s.sex === 'male' || s.sex === 'female') && s.heightCm >= 100 && s.heightCm <= 250;
-      if (complete) setGoal(s.goalMode);
+      const df = s.bodyFatPct > 0 ? null : await latestDeviceBodyFat(db);
+      if (!active) return;
+      const draft: SetupDraft = rows[0] ? JSON.parse(rows[0].payload) : {
+        index: 0,
+        birthYearText: s.birthYear > 0 ? String(s.birthYear) : '',
+        sex: s.sex === 'male' || s.sex === 'female' ? s.sex : '',
+        heightText: s.heightCm > 0 ? String(s.heightCm) : '',
+        weightText: w ? String(w.weightKg) : '',
+        bodyFatText: s.bodyFatPct > 0 ? String(s.bodyFatPct)
+          : df?.bodyFatPct != null ? String(Math.round(df.bodyFatPct * 10) / 10) : '',
+        waistText: s.waistCm > 0 ? String(s.waistCm) : '',
+        deviceFatDate: df?.bodyFatPct != null ? df.date : null,
+        goal: complete ? s.goalMode : null,
+        goalWeightText: s.goalWeightKg > 0 ? String(s.goalWeightKg) : '',
+        tempo: s.deficitTempo,
+      };
+
+      savedDraft.current = JSON.stringify(draft);
+      setIndex(draft.index);
+      setBirthYearText(draft.birthYearText);
+      setSex(draft.sex);
+      setHeightText(draft.heightText);
+      setWeightText(draft.weightText);
+      setBodyFatText(draft.bodyFatText);
+      setWaistText(draft.waistText);
+      setDeviceFatDate(draft.deviceFatDate);
+      setBmrFactor(s.bmrFactor);
+      setGoal(draft.goal);
+      setGoalWeightText(draft.goalWeightText);
+      setTempo(draft.tempo);
       // Land on the deep-linked question, using the goal we just read so the step
       // list matches the one the wizard will actually render.
       if (typeof stepParam === 'string') {
@@ -121,11 +151,30 @@ export default function BodySetupScreen() {
           setIndex(i);
         }
       }
+      setReady(true);
     })();
     return () => {
       active = false;
     };
   }, [db, stepParam]);
+
+  useEffect(() => {
+    if (!db || !ready || stepParam || plan) return;
+    const draft: SetupDraft = {
+      index, birthYearText, sex, heightText, weightText, bodyFatText,
+      waistText, deviceFatDate, goal, goalWeightText, tempo,
+    };
+    const payload = JSON.stringify(draft);
+    if (payload === savedDraft.current) return;
+    savedDraft.current = payload;
+    void withDbLock(db, () => db.insert(bodySetupDraft)
+      .values({ id: 0, payload })
+      .onConflictDoUpdate({ target: bodySetupDraft.id, set: { payload } }), 'saveBodySetupDraft')
+      .catch(() => {
+        if (savedDraft.current === payload) savedDraft.current = null;
+      });
+  }, [db, ready, stepParam, plan, index, birthYearText, sex, heightText, weightText,
+    bodyFatText, waistText, deviceFatDate, goal, goalWeightText, tempo]);
 
   // While no goal is chosen yet, assume the LONG sequence so the goal step's
   // button honestly reads «Далее» — it collapses to «Рассчитать» the moment
@@ -262,6 +311,9 @@ export default function BodySetupScreen() {
           targetsSetAt: Date.now(),
         });
         await upsertWeight(db, new Date(), weightNum);
+        if (!stepParam) {
+          await withDbLock(db, () => db.delete(bodySetupDraft), 'clearBodySetupDraft');
+        }
       }
       setPlan(p);
       setIndex(steps.length - 1);
@@ -278,6 +330,8 @@ export default function BodySetupScreen() {
   })();
 
   const tempoSet = goal === 'gain' ? 'gain' : 'lose';
+
+  if (db && !ready) return <Screen>{null}</Screen>;
 
   return (
     <Screen>

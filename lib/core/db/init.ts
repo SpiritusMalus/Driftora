@@ -6,6 +6,10 @@
 /// on-device. Move to drizzle-kit migrations once the schema first evolves on
 /// shipped devices (CREATE TABLE IF NOT EXISTS cannot ALTER an existing table).
 export const INIT_SQL = `
+CREATE TABLE IF NOT EXISTS body_setup_draft (
+  id INTEGER PRIMARY KEY CHECK (id = 0),
+  payload TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS food_entries (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   ts INTEGER NOT NULL,
