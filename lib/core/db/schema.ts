@@ -402,3 +402,8 @@ export type WeightRow = typeof weights.$inferSelect;
 export type MoodRow = typeof moods.$inferSelect;
 export type SleepRow = typeof sleepDays.$inferSelect;
 export type StepsRow = typeof stepsDays.$inferSelect;
+
+export const bodySetupDraft = sqliteTable('body_setup_draft', {
+  id: integer('id').primaryKey(),
+  payload: text('payload').notNull(),
+});

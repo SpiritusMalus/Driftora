@@ -1,9 +1,10 @@
 import { currentLocale } from '@/lib/i18n';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Image, Keyboard, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 
 import { useTranslation } from 'react-i18next';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ConsentModal } from '@/components/consent/ConsentModal';
 import { ItemCard } from '@/components/food/ItemCard';
@@ -106,6 +107,7 @@ export default function FoodLogScreen() {
   const theme = useTheme();
   const router = useRouter();
   const db = useDatabase();
+  const insets = useSafeAreaInsets();
   const { width, fontScale } = useWindowDimensions();
   const modeColumns = width / fontScale < 180 ? 1 : width / fontScale < 360 ? 2 : 4;
   // The Home mic FAB deep-links here with ?voice=1 to start dictation at once;
@@ -868,6 +870,7 @@ export default function FoodLogScreen() {
 
   async function onParse() {
     if (text.trim().length === 0) return;
+    Keyboard.dismiss();
     // Just-in-time cross-border consent: only when an online parser exists and
     // the user hasn't already consented at the current version.
     if (AI_CONFIGURED && needsAiConsent({ aiFoodParseConsent: aiConsent, aiFoodParseConsentVersion: aiConsentVersion })) {
@@ -1843,26 +1846,6 @@ export default function FoodLogScreen() {
               {t(varietyInsight(varietyCount))}
             </Text>
           ) : null}
-          {savedAck ? (
-            <Text style={[styles.savedAck, { color: theme.accent }, theme.font.bodyMedium]}>
-              {`${savedAck} ✓`}
-            </Text>
-          ) : null}
-          <PrimaryButton
-            label={saving ? t('food.saving') : t('food.save')}
-            onPress={onSave}
-            disabled={saving || parsing || recording || listening || db == null || !canSaveMealDraft(draft)}
-          />
-          {!canSaveMealDraft(draft) ? (
-            <Text style={[styles.parseIssue, { color: theme.subtle }, theme.font.body]}>
-              {t('food.completeNutritionBeforeSave')}
-            </Text>
-          ) : null}
-          {saveIssue ? (
-            <Text style={[styles.parseIssue, { color: theme.primary }, theme.font.bodyMedium]}>
-              {t('food.saveFailed')}
-            </Text>
-          ) : null}
           <Pressable onPress={onClearDraft} disabled={saving || parsing || recording || listening} hitSlop={8} style={styles.clearBtn}>
             <Text style={[styles.clearText, { color: theme.subtle }, theme.font.body]}>{t('food.clear')}</Text>
           </Pressable>
@@ -1897,6 +1880,36 @@ export default function FoodLogScreen() {
         onDecline={onConsentDecline}
       />
     </Screen>
+    {draft != null ? (
+      <View style={[styles.saveFooter, {
+        backgroundColor: theme.background,
+        borderTopColor: theme.separator,
+        paddingHorizontal: width < 360 ? 18 : theme.spacing.page,
+        paddingBottom: 12 + insets.bottom,
+      }]}>
+        {savedAck ? (
+          <Text style={[styles.savedAck, { color: theme.accent }, theme.font.bodyMedium]}>
+            {`${savedAck} ✓`}
+          </Text>
+        ) : (
+          <PrimaryButton
+            label={saving ? t('food.saving') : t('food.save')}
+            onPress={onSave}
+            disabled={saving || parsing || recording || listening || db == null || !canSaveMealDraft(draft)}
+          />
+        )}
+        {!canSaveMealDraft(draft) ? (
+          <Text style={[styles.parseIssue, { color: theme.subtle }, theme.font.body]}>
+            {t('food.completeNutritionBeforeSave')}
+          </Text>
+        ) : null}
+        {saveIssue ? (
+          <Text style={[styles.parseIssue, { color: theme.primary }, theme.font.bodyMedium]}>
+            {t('food.saveFailed')}
+          </Text>
+        ) : null}
+      </View>
+    ) : null}
     {/* Any parse in flight (text / voice clip / photo) → the signal-room scene
         in a centered card, everything else dimmed. One overlay instead of the
         three inline spinners that drowned in the screen's text (owner,
@@ -2010,6 +2023,7 @@ const styles = StyleSheet.create({
   disclaimer: { fontSize: 11, marginTop: 8, lineHeight: 16 },
   proteinNote: { fontSize: 12, marginTop: 4, marginBottom: 8, lineHeight: 17 },
   parseIssue: { fontSize: 13, textAlign: 'center', marginTop: 10, lineHeight: 18 },
+  saveFooter: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 10 },
   savedAck: { fontSize: 13, marginTop: 4, marginBottom: 10, textAlign: 'center', lineHeight: 18 },
   batchBar: {
     flexDirection: 'row',

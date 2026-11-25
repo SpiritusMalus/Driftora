@@ -8,13 +8,15 @@ import type { MealDraft, NutritionItem, PhotoInput } from '@/lib/core/services/f
 // are substituted. No microphone, network, database or consent is exercised.
 jest.mock('react-native', () => ({
   Pressable: 'Pressable', Text: 'Text', View: 'View', Image: 'Image',
+  Keyboard: { dismiss: jest.fn() },
   StyleSheet: { create: (value: unknown) => value, hairlineWidth: 1 },
   useWindowDimensions: () => ({ width: 400, height: 800, fontScale: 1 }),
 }));
+jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ bottom: 0 }) }));
 jest.mock('expo-router', () => ({ useLocalSearchParams: () => ({}), useRouter: () => ({}) }));
 jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 jest.mock('@/lib/i18n', () => ({ currentLocale: () => 'ru' }));
-jest.mock('@/lib/theme/theme', () => ({ useTheme: () => ({ font: {} }) }));
+jest.mock('@/lib/theme/theme', () => ({ useTheme: () => ({ font: {}, spacing: { page: 22 } }) }));
 jest.mock('@/lib/core/db/DatabaseProvider', () => ({ useDatabase: () => mockDatabase }));
 jest.mock('@/lib/core/db/settings', () => ({
   ensureSettings: async () => ({ region: 'RU', targetProteinG: 0, aiFoodParseConsent: true }),

@@ -520,7 +520,18 @@ export default function HomeScreen() {
               {`${new Date().getDate()} ${t(`history.m${new Date().getMonth() + 1}`)}, ${t(`history.w${new Date().getDay()}`)}`}
             </Text>
           </Pressable>
-          <HeaderSectionsLink compact />
+          <View style={styles.dayActions}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.push('/mood')}
+              style={({ pressed }) => [styles.moodLink, { opacity: pressed ? 0.6 : 1 }]}
+            >
+              <Text style={[styles.moodLinkText, theme.font.bodyMedium, { color: theme.primary }]}>
+                {t('home.moodLink')}
+              </Text>
+            </Pressable>
+            <HeaderSectionsLink compact />
+          </View>
         </View>
 
         {paused ? (
@@ -696,6 +707,9 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   androidContent: { paddingHorizontal: 24, paddingTop: 4, paddingBottom: 96 },
   iosContent: { paddingHorizontal: 22, paddingTop: 4, paddingBottom: 96 },
+  dayActions: { flexDirection: 'row', alignItems: 'center', flexShrink: 1 },
+  moodLink: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 6, flexShrink: 1 },
+  moodLinkText: { fontSize: 14 },
   dayHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 2, marginBottom: 16 },
   historyLink: { minHeight: 48, flex: 1, justifyContent: 'center' },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
