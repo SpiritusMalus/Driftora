@@ -527,10 +527,12 @@ function RatingField({ value, onChange, label, unit, error, theme }: {
           accessibilityLabel={label} placeholder="0–100" style={styles.ratingInput} />
         <Text style={[{ color: theme.text }, theme.font.body]}>{unit}</Text>
       </View>
-      <Text style={[styles.ratingHint, { color: error ? theme.accent : theme.subtle }, theme.font.body]}
-        accessibilityRole={error ? 'alert' : undefined} accessibilityLiveRegion="polite">
-        {t('diary.ratingRange')}
-      </Text>
+      {error ? (
+        <Text style={[styles.ratingHint, { color: theme.accent }, theme.font.body]}
+          accessibilityRole="alert" accessibilityLiveRegion="polite">
+          {t('diary.ratingRange')}
+        </Text>
+      ) : null}
     </View>
   );
 }

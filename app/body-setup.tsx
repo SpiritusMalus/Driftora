@@ -211,6 +211,9 @@ export default function BodySetupScreen() {
   const fatNum = toNumber(bodyFatText);
   const waistNum = toNumber(waistText);
   const goalWeightNum = toNumber(goalWeightText);
+  const goalWeightExample = goal === 'gain'
+    ? Math.min(400, Math.ceil(weightNum + 5))
+    : Math.max(20, Math.floor(weightNum - 5));
 
   const stepOk = ((): boolean => {
     switch (step) {
@@ -482,7 +485,9 @@ export default function BodySetupScreen() {
             value={goalWeightText}
             onChange={setGoalWeightText}
             unit={t('weight.unit')}
-            placeholder={t('bodySetup.goalWeight.placeholder')}
+            placeholder={goalWeightValid(goalWeightExample, weightNum, goal ?? 'lose')
+              ? t('bodySetup.goalWeight.placeholder', { kg: goalWeightExample })
+              : undefined}
             onSubmit={next}
           />
           {goalWeightText.trim() !== '' && !stepOk ? (
@@ -692,7 +697,7 @@ function UnitField({
   value: string;
   onChange: (v: string) => void;
   unit: string;
-  placeholder: string;
+  placeholder?: string;
   onSubmit: () => void;
 }) {
   const theme = useTheme();

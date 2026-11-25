@@ -1,4 +1,4 @@
-import { type ComponentProps } from 'react';
+import { type ComponentProps, type Ref } from 'react';
 import { type StyleProp, StyleSheet, TextInput, type TextStyle } from 'react-native';
 
 import { useTheme } from '@/lib/theme/theme';
@@ -8,11 +8,13 @@ import { useTheme } from '@/lib/theme/theme';
 export function TextField({
   style,
   multiline,
+  ref,
   ...props
-}: ComponentProps<typeof TextInput> & { style?: StyleProp<TextStyle> }) {
+}: ComponentProps<typeof TextInput> & { style?: StyleProp<TextStyle>; ref?: Ref<TextInput> }) {
   const theme = useTheme();
   return (
     <TextInput
+      ref={ref}
       placeholderTextColor={theme.subtle}
       selectionColor={theme.primary}
       multiline={multiline}

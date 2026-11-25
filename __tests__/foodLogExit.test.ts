@@ -55,8 +55,8 @@ function navCalls(method: 'push' | 'replace' | 'dismissTo'): { route: string; at
 describe('leaving the food log screen after a save', () => {
   const log = read('app/food/log.tsx');
 
-  it('returns to the day list without stacking a second copy of it', () => {
-    expect(log).toContain("router.dismissTo('/food')");
+  it('returns to the saved day without stacking a second copy of the day list', () => {
+    expect(log).toContain("router.dismissTo({ pathname: '/food', params: { day } })");
   });
 
   it('never replaces its way onto «Еда» — that is the bug itself', () => {

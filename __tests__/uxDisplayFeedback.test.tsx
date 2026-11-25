@@ -14,6 +14,8 @@ import { localDayKey } from '@/lib/i18n/formatDay';
 const renderer = require('react-test-renderer');
 let mockDb: ReturnType<typeof drizzle>;
 let mockEditId: string | undefined;
+let mockRouteDay: string | undefined;
+const mockDayListeners = new Set<() => void>();
 const mockSchedule = jest.fn(async (_spec: unknown) => {});
 const mockCancel = jest.fn(async () => {});
 jest.mock('react-native', () => ({
@@ -29,8 +31,21 @@ jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
 jest.mock('@react-navigation/native', () => ({ usePreventRemove: () => {} }));
 jest.mock('expo-router', () => ({
   Stack: { Screen: 'StackScreen' },
-  useRouter: () => ({ push: jest.fn(), back: jest.fn(), replace: jest.fn(), canGoBack: () => true }),
-  useNavigation: () => ({ dispatch: jest.fn() }), useLocalSearchParams: () => mockEditId ? ({ id: mockEditId }) : ({}),
+  useRouter: () => ({
+    push: jest.fn(), back: jest.fn(), replace: jest.fn(), canGoBack: () => true,
+    setParams: ({ day }: { day: string }) => {
+      mockRouteDay = day;
+      mockDayListeners.forEach((notify) => notify());
+    },
+  }),
+  useNavigation: () => ({ dispatch: jest.fn() }),
+  useLocalSearchParams: () => ({
+    id: mockEditId,
+    day: require('react').useSyncExternalStore((notify: () => void) => {
+      mockDayListeners.add(notify);
+      return () => mockDayListeners.delete(notify);
+    }, () => mockRouteDay),
+  }),
   useFocusEffect: (callback: () => void) => require('react').useEffect(callback, [callback]),
 }));
 jest.mock('@/lib/core/db/client', () => ({ getDbDriver: () => 'op-sqlite' }));
@@ -91,6 +106,7 @@ const action = (label: string) => tree.root.findAllByType('Pressable').find((n: 
 
 beforeEach(async () => {
   mockEditId = undefined;
+  mockRouteDay = undefined;
   sqlite = new BetterSqlite3(':memory:');
   mockDb = drizzle(sqlite, { schema });
   await applySchema((statement) => sqlite.exec(statement));
@@ -243,8 +259,10 @@ it('keeps all previously saved optional answers when an existing entry is edited
 
 it('keeps an invalid belief on the thought step instead of entering an optional path', async () => {
   await basicDiary();
+  expect(visibleText()).not.toContain(i18n.t('diary.ratingRange'));
   await diaryWrite('0–100', '101');
   await diaryAction(i18n.t('diary.optional.meaning'));
+  expect(visibleText()).toContain(i18n.t('diary.ratingRange'));
   expect(field('0–100').props.value).toBe('101');
   expect(visibleText()).toContain(i18n.t('diary.progress', { current: 4, total: 4 }));
   await diaryWrite('0–100', '0');
@@ -356,6 +374,7 @@ it('honors stored calorie privacy for meal headers, food cards, expanded ingredi
   expect(visibleText()).not.toContain(i18n.t('units.kcal'));
   await renderer.act(async () => { tree.unmount(); tree = null; });
   await updateSettings(mockDb, { hideCalories: false });
+  mockRouteDay = undefined;
   await renderer.act(async () => { tree = renderer.create(<FoodDayScreen />); });
   expect(visibleText()).toContain('178');
   expect(visibleText()).toContain(i18n.t('units.kcal'));

@@ -244,7 +244,7 @@ export const en = {
     goalWeight: {
       title: 'Goal weight',
       hint: 'Optional — the plan works without it, you just won’t see the "time to goal" line.',
-      placeholder: 'e.g. 90',
+      placeholder: 'e.g. {{kg}}',
       directionLose: 'To lose weight, the goal must be below your current weight.',
       directionGain: 'To gain, the goal must be above your current weight.',
     },
@@ -950,6 +950,9 @@ export const en = {
     title: 'Log food',
     // "Food today" screen: list of entries + view/edit/delete.
     todayTitle: 'Food today',
+    dayTitle: 'Food · {{day}}',
+    describePhoto: 'Describe the meal',
+    photoUnrecognized: 'Couldn’t recognize the meal in the photo.',
     add: 'Log food',
     entryTitle: 'Entry',
     entryLabel: 'What it was',
