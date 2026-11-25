@@ -176,7 +176,8 @@ export default function FoodEntryScreen() {
         meal,
         ...(day && day !== origDay ? { ts: tsOnDay(entry.ts, day) } : {}),
       });
-      router.back();
+      if (day && day !== origDay) router.dismissTo({ pathname: '/food', params: { day } });
+      else router.back();
     } catch {
       setBusy(false);
       setSaveIssue(true);

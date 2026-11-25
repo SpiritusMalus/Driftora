@@ -80,13 +80,16 @@ export default function PlanScreen() {
   const [usualSteps, setUsualSteps] = useState<number | null>(null);
 
   // Body profile + КБЖУ targets (single app_settings row). Body facts are
-  // display-only here (edited in the wizard); plan levers persist on edit.
+  // display-only here (edited in the wizard); plan levers preview until applied.
   const [heightText, setHeightText] = useState('');
   const [sex, setSex] = useState<'' | Sex>('');
   const [birthYearText, setBirthYearText] = useState('');
   const [goalMode, setGoalMode] = useState<GoalMode>('maintain');
   const [deficitTempo, setDeficitTempo] = useState<DeficitTempo>('standard');
   const [goalWeightText, setGoalWeightText] = useState('');
+  const [appliedLevers, setAppliedLevers] = useState<{
+    goalMode: GoalMode; deficitTempo: DeficitTempo; goalWeightKg: number;
+  } | null>(null);
   const [bodyFatText, setBodyFatText] = useState('');
   // Waist is entered in the body-setup wizard; the plan only needs the stored
   // value so its BMR matches Home / the food day.
@@ -106,6 +109,10 @@ export default function PlanScreen() {
     () => createPlanSettingsSaver(async (patch) => {
       if (!db) throw new Error('Database unavailable');
       await updateSettings(db, patch);
+      const { goalMode, deficitTempo, goalWeightKg } = patch;
+      if (mounted.current && goalMode != null && deficitTempo != null && goalWeightKg != null) {
+        setAppliedLevers({ goalMode, deficitTempo, goalWeightKg });
+      }
     }, (state) => {
       if (mounted.current) setSaveState(state);
     }),
@@ -206,6 +213,9 @@ export default function PlanScreen() {
         setHeightText(s.heightCm > 0 ? String(s.heightCm) : '');
         setSex(s.sex);
         setBirthYearText(s.birthYear > 0 ? String(s.birthYear) : '');
+        setAppliedLevers(s.targetsSetAt != null ? {
+          goalMode: s.goalMode, deficitTempo: s.deficitTempo, goalWeightKg: s.goalWeightKg,
+        } : null);
         setGoalMode(s.goalMode);
         setDeficitTempo(s.deficitTempo);
         setGoalWeightText(s.goalWeightKg > 0 ? String(s.goalWeightKg) : '');
@@ -337,6 +347,9 @@ export default function PlanScreen() {
     plan != null && usualStepsKcal > 0 ? dayBudgetKcal(plan.baseKcal, plan.minDayKcal, usualStepsKcal) : 0;
   const planApplied =
     plan != null &&
+    appliedLevers?.goalMode === goalMode &&
+    appliedLevers.deficitTempo === deficitTempo &&
+    appliedLevers.goalWeightKg === goalWeightKg &&
     toNumber(kcal) === plan.kcal &&
     toNumber(protein) === plan.prot &&
     toNumber(fat) === plan.fat &&
@@ -398,10 +411,7 @@ export default function PlanScreen() {
                   key={m}
                   label={t(`weight.plan.mode.${m}`)}
                   selected={goalMode === m}
-                  onPress={() => {
-                    setGoalMode(m);
-                    void persist({ goalMode: m }, t('weight.targets.savedTick'), 'plan');
-                  }}
+                  onPress={() => setGoalMode(m)}
                 />
               ))}
             </ChipRow>
@@ -422,10 +432,7 @@ export default function PlanScreen() {
                       key={tp}
                       label={t(`weight.plan.${goalMode === 'lose' ? 'tempo' : 'tempoGain'}.${tp}`)}
                       selected={deficitTempo === tp}
-                      onPress={() => {
-                        setDeficitTempo(tp);
-                        void persist({ deficitTempo: tp }, t('weight.targets.savedTick'), 'plan');
-                      }}
+                      onPress={() => setDeficitTempo(tp)}
                     />
                   ))}
                 </ChipRow>
@@ -434,7 +441,7 @@ export default function PlanScreen() {
 
             {/* Goal weight — the deficit's protein basis (жировой массе белок не
                 нужен) and the honest "до цели ≈ …" line. Only for lose/gain:
-                maintain has no destination. Autosaved on end-editing. */}
+                maintain has no destination. Applied together with the daily target. */}
             {goalMode !== 'maintain' ? (
               <View style={styles.heightRow}>
                 <Text style={[styles.fieldLabel, { color: theme.subtle }, theme.font.body]}>
@@ -442,11 +449,7 @@ export default function PlanScreen() {
                 </Text>
                 <TextField
                   value={goalWeightText}
-                  onChangeText={(value) => {
-                    setGoalWeightText(value);
-                    saver.stage({ goalWeightKg: toNumber(value) });
-                  }}
-                  onEndEditing={() => void flushEdits(t('weight.targets.savedTick'), 'plan').catch(() => {})}
+                  onChangeText={setGoalWeightText}
                   editable={!leavingScreen}
                   keyboardType="numeric"
                   style={styles.heightInput}
@@ -541,6 +544,7 @@ export default function PlanScreen() {
                   </Text>
                 ) : (
                   <Pressable
+                    disabled={saveState.saving}
                     onPress={() => {
                       manualValues.current = {
                         targetKcal: String(plan.kcal), targetProteinG: String(plan.prot),
@@ -555,6 +559,9 @@ export default function PlanScreen() {
                       // screen shows day progress only after that.
                       void persist(
                         {
+                          goalMode,
+                          deficitTempo,
+                          goalWeightKg,
                           targetKcal: plan.kcal,
                           targetProteinG: plan.prot,
                           targetFatG: plan.fat,

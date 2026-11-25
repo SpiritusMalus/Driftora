@@ -1,7 +1,7 @@
 import { currentLocale } from '@/lib/i18n';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { Image, Keyboard, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Image, Keyboard, Pressable, StyleSheet, Text, type TextInput, useWindowDimensions, View } from 'react-native';
 
 import { useTranslation } from 'react-i18next';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -124,6 +124,7 @@ export default function FoodLogScreen() {
   // and then changed back to the same value.
   const captureRevisionRef = useRef(0);
   const [text, setTextState] = useState('');
+  const mealInput = useRef<TextInput>(null);
   function setText(next: Parameters<typeof setTextState>[0]) {
     captureRevisionRef.current++;
     setTextState(next);
@@ -1254,7 +1255,7 @@ export default function FoodLogScreen() {
       // `dismissTo` pops back to the existing «Еда» when there is one, and
       // replaces the current screen (exactly the old behavior) when there isn't
       // — the Home mic/text FAB path, which never had a day list behind it.
-      exitTimerRef.current = setTimeout(() => router.dismissTo('/food'), 1100);
+      exitTimerRef.current = setTimeout(() => router.dismissTo({ pathname: '/food', params: { day } }), 1100);
     } catch {
       // Never fail into silence: the write threw, so say so — otherwise the
       // user leaves sure the meal was logged.
@@ -1430,6 +1431,8 @@ export default function FoodLogScreen() {
   // — ИМЯ приёма, то есть часть результата сканирования, а не конкурент ему.
   const scanning = inputMode === 'barcode';
   const hideComposer = scanning && draft == null;
+  const photoNeedsDescription = reviewPhoto != null && source === 'photo' && !parsing &&
+    (draft?.items.length === 0 || (draft == null && parseIssue != null));
 
   return (
     // The wait overlay must cover the WHOLE viewport (scrim over the scroll
@@ -1460,6 +1463,7 @@ export default function FoodLogScreen() {
         </Text>
       ) : null}
       <TextField
+        ref={mealInput}
         value={text}
         onChangeText={(v) => {
           setText(v);
@@ -1639,9 +1643,11 @@ export default function FoodLogScreen() {
           filled in) or that the parse broke — the button above IS the retry. */}
       {parseIssue ? (
         <>
-          <Text style={[styles.parseIssue, { color: theme.subtle }, theme.font.body]}>
-            {t(`food.parseIssue.${parseIssue}`)}
-          </Text>
+          {!photoNeedsDescription ? (
+            <Text style={[styles.parseIssue, { color: theme.subtle }, theme.font.body]}>
+              {t(`food.parseIssue.${parseIssue}`)}
+            </Text>
+          ) : null}
           {/* Only on the quota wall, and only as an offer: the sentence above
               already says the free budget returns tomorrow and that the manual
               paths still work. This is the shortcut for someone who would rather
@@ -1760,7 +1766,7 @@ export default function FoodLogScreen() {
       ) : draft.items.length === 0 ? (
         // An offline outcome already explained the empty result above — a
         // second «не удалось распознать» under it read as gibberish.
-        parseIssue == null ? (
+        parseIssue == null && !photoNeedsDescription ? (
           <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>{t('food.needHelp')}</Text>
         ) : null
       ) : (
@@ -1880,14 +1886,25 @@ export default function FoodLogScreen() {
         onDecline={onConsentDecline}
       />
     </Screen>
-    {draft != null ? (
+    {draft != null || photoNeedsDescription ? (
       <View style={[styles.saveFooter, {
         backgroundColor: theme.background,
         borderTopColor: theme.separator,
         paddingHorizontal: width < 360 ? 18 : theme.spacing.page,
         paddingBottom: 12 + insets.bottom,
       }]}>
-        {savedAck ? (
+        {photoNeedsDescription ? (
+          <>
+            <Text style={[styles.photoRecovery, { color: theme.subtle }, theme.font.body]}
+              accessibilityLiveRegion="polite">
+              {t(parseIssue ? `food.parseIssue.${parseIssue}` : 'food.photoUnrecognized')}
+            </Text>
+            <PrimaryButton label={t('food.describePhoto')} onPress={() => {
+              setInputMode('text');
+              mealInput.current?.focus();
+            }} />
+          </>
+        ) : savedAck ? (
           <Text style={[styles.savedAck, { color: theme.accent }, theme.font.bodyMedium]}>
             {`${savedAck} ✓`}
           </Text>
@@ -1895,10 +1912,10 @@ export default function FoodLogScreen() {
           <PrimaryButton
             label={saving ? t('food.saving') : t('food.save')}
             onPress={onSave}
-            disabled={saving || parsing || recording || listening || db == null || !canSaveMealDraft(draft)}
+            disabled={saving || parsing || recording || listening || db == null || draft == null || !canSaveMealDraft(draft)}
           />
         )}
-        {!canSaveMealDraft(draft) ? (
+        {draft != null && !photoNeedsDescription && !canSaveMealDraft(draft) ? (
           <Text style={[styles.parseIssue, { color: theme.subtle }, theme.font.body]}>
             {t('food.completeNutritionBeforeSave')}
           </Text>
@@ -2023,6 +2040,7 @@ const styles = StyleSheet.create({
   disclaimer: { fontSize: 11, marginTop: 8, lineHeight: 16 },
   proteinNote: { fontSize: 12, marginTop: 4, marginBottom: 8, lineHeight: 17 },
   parseIssue: { fontSize: 13, textAlign: 'center', marginTop: 10, lineHeight: 18 },
+  photoRecovery: { fontSize: 13, lineHeight: 18, marginBottom: 10, textAlign: 'center' },
   saveFooter: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 10 },
   savedAck: { fontSize: 13, marginTop: 4, marginBottom: 10, textAlign: 'center', lineHeight: 18 },
   batchBar: {

@@ -1,6 +1,6 @@
 import { formatInt } from '@/lib/core/format';
 import { Ionicons } from '@expo/vector-icons';
-import { Stack, useFocusEffect, useRouter } from 'expo-router';
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -8,7 +8,7 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { RecentFoodList } from '@/components/food/RecentFoodList';
 import { FoodTodayWidget } from '@/components/home/FoodTodayWidget';
 import { Card } from '@/components/ui/Card';
-import { DayNav } from '@/components/ui/DayNav';
+import { DAY_NAV_BACK_DAYS, DayNav } from '@/components/ui/DayNav';
 import { FillBar } from '@/components/ui/FillBar';
 import { Screen } from '@/components/ui/Screen';
 import {
@@ -51,7 +51,7 @@ import { dailyMicroNorms, type MicroRow } from '@/lib/core/insights/microNutrien
 import { groupEntriesByMeal } from '@/lib/core/insights/mealType';
 import type { FoodEntry, FoodItem } from '@/lib/core/db/schema';
 import type { Sex } from '@/lib/core/insights/bodyMetrics';
-import { localDayKey, parseDayKey, tsOnDay } from '@/lib/i18n/formatDay';
+import { daysAgo, formatDayTitle, localDayKey, parseDayKey, tsOnDay } from '@/lib/i18n/formatDay';
 import { type Theme, useTheme } from '@/lib/theme/theme';
 
 /// The user's daily КБЖУ goal, shown only when it was DELIBERATELY set (the
@@ -87,8 +87,11 @@ export default function FoodDayScreen() {
   // screen already aimed at the day. Only the live budget card steps aside:
   // a past day's target can't be honestly reconstructed, so it shows the
   // day's eaten facts instead.
-  const [day, setDay] = useState(() => localDayKey(new Date()));
-  const isToday = day === localDayKey(new Date());
+  const { day: dayParam } = useLocalSearchParams<{ day?: string }>();
+  const today = localDayKey(new Date());
+  const parsedDay = typeof dayParam === 'string' ? parseDayKey(dayParam) : null;
+  const day = parsedDay && dayParam === localDayKey(parsedDay) && dayParam <= today ? dayParam : today;
+  const isToday = day === today;
   const [hideCalories, setHideCalories] = useState(false);
   const [entries, setEntries] = useState<FoodEntry[] | null>(null);
   const [photoUris, setPhotoUris] = useState<Record<number, string>>({});
@@ -395,6 +398,7 @@ export default function FoodDayScreen() {
   return (
     <Screen>
       <Stack.Screen options={{
+        title: isToday ? t('food.todayTitle') : t('food.dayTitle', { day: formatDayTitle(day, t) }),
         headerRight: () => (
           <Pressable accessibilityRole="button" accessibilityLabel={t('food.add')}
             onPress={() => router.push(isToday ? '/food/log' : `/food/log?day=${day}`)}
@@ -405,7 +409,8 @@ export default function FoodDayScreen() {
       {/* Which day this menu is about. Not today → the whole screen becomes
           that day's: the list below, ✎/↻/✕ on its rows, and «Добавить» opens
           the log screen already aimed at the day. */}
-      <DayNav value={day} onChange={setDay} style={styles.dayNav} />
+      <DayNav value={day} onChange={(day) => router.setParams({ day })}
+        backDays={Math.max(DAY_NAV_BACK_DAYS, daysAgo(day))} style={styles.dayNav} />
       {!isToday ? (
         <Text style={[styles.dayHint, { color: theme.subtle }, theme.font.body]}>
           {t('food.dayListHint')}
