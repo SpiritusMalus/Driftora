@@ -15,6 +15,22 @@ export function normalizeChoiceName(name: string): string {
   return name.toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ').trim();
 }
 
+/// Exact names first, preserving the provider order within either group.
+export function prioritizeExactFoodNames(
+  query: string,
+  candidates: readonly NutritionAlternative[],
+): NutritionAlternative[] {
+  const normalize = (name: string) => normalizeChoiceName(name.normalize('NFKC').replace(/[^\p{L}\p{N}]+/gu, ' '));
+  const match = normalize(query);
+  if (!match) return [...candidates];
+  const exact: NutritionAlternative[] = [];
+  const other: NutritionAlternative[] = [];
+  for (const candidate of candidates) {
+    (normalize(candidate.name) === match ? exact : other).push(candidate);
+  }
+  return [...exact, ...other];
+}
+
 /// The lookup name for a food (region-aware, mirrors the server resolver): US
 /// uses the English name, RU the Russian one, each falling back to the other.
 export function lookupNameForItem(item: Pick<NutritionItem, 'name_ru' | 'name_en'>, region: Region): string {

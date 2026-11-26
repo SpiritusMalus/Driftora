@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ConsentModal } from '@/components/consent/ConsentModal';
 import { ItemCard } from '@/components/food/ItemCard';
+import { MealFooterTotal } from '@/components/food/MealFooterTotal';
 import { MealChips } from '@/components/food/MealChips';
 import { DAY_NAV_BACK_DAYS, DayNav } from '@/components/ui/DayNav';
 import { ApproxBadge, MicroScales, NutrientDetail } from '@/components/food/nutrientViews';
@@ -1912,11 +1913,14 @@ export default function FoodLogScreen() {
             {`${savedAck} ✓`}
           </Text>
         ) : (
-          <PrimaryButton
-            label={saving ? t('food.saving') : t('food.save')}
-            onPress={onSave}
-            disabled={saving || parsing || recording || listening || db == null || draft == null || !canSaveMealDraft(draft)}
-          />
+          <>
+            {draft ? <MealFooterTotal draft={draft} hideCalories={hideCalories} /> : null}
+            <PrimaryButton
+              label={saving ? t('food.saving') : t('food.save')}
+              onPress={onSave}
+              disabled={saving || parsing || recording || listening || db == null || draft == null || !canSaveMealDraft(draft)}
+            />
+          </>
         )}
         {draft != null && !photoNeedsDescription && !canSaveMealDraft(draft) ? (
           <Text style={[styles.parseIssue, { color: theme.subtle }, theme.font.body]}>

@@ -1186,7 +1186,9 @@ export const en = {
     grams: 'Weight',
     // Editing a single dish inside a saved entry.
     removeItem: 'Remove dish',
-    replaceItem: 'Replace with another',
+    replaceItem: 'Replace item',
+    replaceAction: 'Replace',
+    replaceNamedItem: 'Replace {{name}}',
     // The user never named a weight — say honestly this is our guess.
     gramsEstimated: '≈ the weight is our guess at a typical portion. Adjust it if you know better.',
     gramsEstimatedShort: '≈ weight is our guess — adjust it',
@@ -1202,11 +1204,6 @@ export const en = {
       per: '≈ {{grams}} g each',
       minus: 'one piece less',
       plus: 'one piece more',
-    },
-    otherOption: {
-      open: 'Other option',
-      openCount: 'Other option ({{count}})',
-      hide: 'Collapse',
     },
     // Cooking method — neutral, never "healthier/worse".
     estimateNote: 'Items not in our database aren’t counted in the total. Enter their macros to include them.',
@@ -1224,10 +1221,10 @@ export const en = {
         'The database row is for the dry product, but the weight looks like a cooked portion. If you weighed it dry, pick the first option below.',
       checkTitle: 'Check the weight',
       checkBody:
-        'These numbers are for the dry product. If this is the cooked weight, calories are roughly 3× lower — a matching option is below.',
+        'These numbers are for the dry product. If you weighed the cooked food, use Replace to choose the cooked version.',
     },
     refereeMismatch:
-      'This looks like the wrong product: the figures are far from what’s expected for this dish. Pick an option below — an AI estimate is included.',
+      'The figures are far from what’s expected for this dish. Use Replace to review the options.',
     // Vitamins & minerals for the whole dish, as a share of the daily norm (bars).
     microsDish: {
       show: 'Vitamins & minerals for this dish',

@@ -10,6 +10,7 @@ import {
   choiceKey,
   displayItemName,
   normalizeChoiceName,
+  prioritizeExactFoodNames,
 } from '@/lib/core/services/foodChoice';
 import type { MealDraft, NutritionItem, Per100 } from '@/lib/core/services/foodParser';
 
@@ -50,6 +51,28 @@ describe('choice keying', () => {
   it('keys by region + normalized name', () => {
     expect(choiceKey('RU', 'Творог')).toBe('RU::творог');
     expect(choiceKey('US', 'Rice')).toBe('US::rice');
+  });
+});
+
+describe('replacement search order', () => {
+  it('puts the exact anchovy butter first while preserving source labels and other results', () => {
+    const generic = { name: 'Масло', per100: per100(665, 'openfoodfacts') };
+    const exact = { name: 'Анчоусное масло', per100: per100(620, 'ai_estimate') };
+    const candidates = [generic, exact];
+    expect(prioritizeExactFoodNames('анчоусное масло', candidates)).toEqual([exact, generic]);
+    expect(candidates).toEqual([generic, exact]);
+  });
+
+  it('normalizes ё and punctuation and preserves the provider order for ties', () => {
+    const prepared = { name: 'Картофель запечённый с ветчиной', per100: per100(186, 'openfoodfacts') };
+    const exactDb = { name: 'КАРТОФЕЛЬ, ЗАПЕЧЁННЫЙ', per100: per100(93, 'usda') };
+    const distinct = { name: 'Картофель с розмарином', per100: per100(63, 'openfoodfacts') };
+    const exactAi = { name: 'Картофель запеченный', per100: per100(92, 'ai_estimate') };
+    const candidates = [prepared, exactDb, distinct, exactAi];
+    expect(prioritizeExactFoodNames(' картофель  запеченный ', candidates)).toEqual([
+      exactDb, exactAi, prepared, distinct,
+    ]);
+    expect(prioritizeExactFoodNames('печёный батат', candidates)).toEqual(candidates);
   });
 });
 

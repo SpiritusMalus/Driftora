@@ -1,9 +1,11 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ItemCard } from '@/components/food/ItemCard';
+import { MealFooterTotal } from '@/components/food/MealFooterTotal';
 import { MealChips } from '@/components/food/MealChips';
 import { ApproxBadge } from '@/components/food/nutrientViews';
 import { Card } from '@/components/ui/Card';
@@ -38,16 +40,12 @@ import {
 } from '@/lib/core/services/mealDraft';
 import { useTheme } from '@/lib/theme/theme';
 
-/// View one logged food entry and edit it — now with the SAME dish card the log
-/// screen uses (`ItemCard`): the eaten amount is the hero, weight is a one-tap
-/// portion chip (or a custom field), «Другой вариант» opens a manual DB search,
-/// and the × in the card header drops a dish. A stored entry keeps no parse
-/// provenance, so it carries no alternatives — «Другой вариант» is a fresh DB
-/// search rather than a re-run of the auto-match. Grams/replacement reuse the
-/// same recompute math as the log screen.
+/// View and edit a saved meal with the same ingredient cards as a new entry.
 export default function FoodEntryScreen() {
   const { t } = useTranslation();
   const theme = useTheme();
+  const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const db = useDatabase();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -233,104 +231,115 @@ export default function FoodEntryScreen() {
   }
 
   return (
-    <Screen>
-      {photoUri ? <Image source={{ uri: photoUri }} accessibilityLabel={t('food.photoPreview')} style={styles.mealPhoto} resizeMode="cover" onError={() => setPhotoUri(null)} /> : null}
-      <Text style={[styles.label, { color: theme.subtle }, theme.font.body]}>{t('food.entryLabel')}</Text>
-      <TextField value={rawText} onChangeText={setRawText} placeholder={t('food.untitled')} style={styles.titleInput} />
+    <View style={[styles.layout, { backgroundColor: theme.background }]}>
+      <Screen>
+        {photoUri ? <Image source={{ uri: photoUri }} accessibilityLabel={t('food.photoPreview')} style={styles.mealPhoto} resizeMode="cover" onError={() => setPhotoUri(null)} /> : null}
+        <Text style={[styles.label, { color: theme.subtle }, theme.font.body]}>{t('food.entryLabel')}</Text>
+        <TextField value={rawText} onChangeText={setRawText} placeholder={t('food.untitled')} style={styles.titleInput} />
 
-      <View style={styles.results}>
-        {draft.items.length === 0 ? (
-          <Text style={[styles.noItems, { color: theme.subtle }, theme.font.body]}>{t('food.entryNoItems')}</Text>
-        ) : (
-          draft.items.map((item, i) => (
-            <ItemCard
-              key={`${itemsGen}-${i}`}
-              item={item}
-              hideCalories={hideCalories}
-              theme={theme}
-              onGrams={(g) => onGrams(i, g)}
-              onManualMacros={(m) => onManualMacros(i, m)}
-              onSelectAlternative={(altIndex) => onSelectAlternative(i, altIndex)}
-              onSearch={onSearch}
-              onReplace={(alt) => onReplace(i, alt)}
-              onRemove={() => onRemove(i)}
-            />
-          ))
-        )}
-      </View>
+        <View style={styles.results}>
+          {draft.items.length === 0 ? (
+            <Text style={[styles.noItems, { color: theme.subtle }, theme.font.body]}>{t('food.entryNoItems')}</Text>
+          ) : (
+            draft.items.map((item, i) => (
+              <ItemCard
+                key={`${itemsGen}-${i}`}
+                item={item}
+                hideCalories={hideCalories}
+                theme={theme}
+                onGrams={(g) => onGrams(i, g)}
+                onManualMacros={(m) => onManualMacros(i, m)}
+                onSelectAlternative={(altIndex) => onSelectAlternative(i, altIndex)}
+                onSearch={onSearch}
+                onReplace={(alt) => onReplace(i, alt)}
+                onRemove={() => onRemove(i)}
+              />
+            ))
+          )}
+        </View>
 
-      {/* Meal total — the live sum being edited, so it leads big like each dish's
-          eaten amount (mirrors the log screen's total hero). No micro breakdown:
-          a stored entry carries no per-mineral data. */}
-      {draft.items.length > 0 ? (
-        <Card style={[styles.totalCard, { borderColor: theme.separator }]}>
-          <Text style={[styles.totalLabel, { color: theme.subtle }, theme.font.body]}>{t('food.total')}</Text>
-          <View style={styles.totalHeroRow}>
-            <Text style={[styles.totalValue, { color: theme.text }, theme.font.bodySemiBold]}>
-              {hideCalories ? draft.totals.prot : draft.totals.kcal}
-            </Text>
-            <Text style={[styles.totalUnit, { color: theme.subtle }, theme.font.body]}>
-              {hideCalories
-                ? `${t('macros.protein').toLowerCase()} ${t('units.g')}`
-                : `${t('units.kcal')} · ${t('macros.protein')} ${draft.totals.prot} ${t('units.g')} · ${t('macros.fat')} ${draft.totals.fat} · ${t('macros.carbs')} ${draft.totals.carb}`}
-            </Text>
-            {draft.approximate ? <ApproxBadge theme={theme} label={t('food.approx')} /> : null}
+        {/* Meal total — the live sum being edited, so it leads big like each dish's
+            eaten amount (mirrors the log screen's total hero). No micro breakdown:
+            a stored entry carries no per-mineral data. */}
+        {draft.items.length > 0 ? (
+          <Card style={[styles.totalCard, { borderColor: theme.separator }]}>
+            <Text style={[styles.totalLabel, { color: theme.subtle }, theme.font.body]}>{t('food.total')}</Text>
+            <View style={styles.totalHeroRow}>
+              <Text style={[styles.totalValue, { color: theme.text }, theme.font.bodySemiBold]}>
+                {hideCalories ? draft.totals.prot : draft.totals.kcal}
+              </Text>
+              <Text style={[styles.totalUnit, { color: theme.subtle }, theme.font.body]}>
+                {hideCalories
+                  ? `${t('macros.protein').toLowerCase()} ${t('units.g')}`
+                  : `${t('units.kcal')} · ${t('macros.protein')} ${draft.totals.prot} ${t('units.g')} · ${t('macros.fat')} ${draft.totals.fat} · ${t('macros.carbs')} ${draft.totals.carb}`}
+              </Text>
+              {draft.approximate ? <ApproxBadge theme={theme} label={t('food.approx')} /> : null}
+            </View>
+          </Card>
+        ) : null}
+
+        {/* Re-file the entry under another meal — fixes the clock's wrong guess
+            (a late breakfast the day list had filed under «Обед»). */}
+        {meal != null ? (
+          <View style={styles.mealChips}>
+            <MealChips value={meal} onChange={setMeal} />
           </View>
-        </Card>
-      ) : null}
+        ) : null}
 
-      {/* Re-file the entry under another meal — fixes the clock's wrong guess
-          (a late breakfast the day list had filed under «Обед»). */}
-      {meal != null ? (
-        <View style={styles.mealChips}>
-          <MealChips value={meal} onChange={setMeal} />
-        </View>
-      ) : null}
+        {/* …and under another DAY — the other half of re-filing («вчера забыл
+            записать ужин»: log now, move here). The floor widens for an old entry
+            so its own day stays reachable after a stray «›». */}
+        {day && entry != null ? (
+          <View style={styles.dayField}>
+            <Text style={[styles.label, { color: theme.subtle }, theme.font.body]}>{t('food.editDay')}</Text>
+            <DayNav
+              value={day}
+              onChange={setDay}
+              backDays={Math.max(DAY_NAV_BACK_DAYS, daysAgo(localDayKey(entry.ts)))}
+            />
+          </View>
+        ) : null}
 
-      {/* …and under another DAY — the other half of re-filing («вчера забыл
-          записать ужин»: log now, move here). The floor widens for an old entry
-          so its own day stays reachable after a stray «›». */}
-      {day && entry != null ? (
-        <View style={styles.dayField}>
-          <Text style={[styles.label, { color: theme.subtle }, theme.font.body]}>{t('food.editDay')}</Text>
-          <DayNav
-            value={day}
-            onChange={setDay}
-            backDays={Math.max(DAY_NAV_BACK_DAYS, daysAgo(localDayKey(entry.ts)))}
-          />
-        </View>
-      ) : null}
-
-      <PrimaryButton label={t('food.update')} onPress={onUpdate} disabled={busy} style={styles.update} />
-      {saveIssue ? (
-        <Text style={[styles.saveIssue, { color: theme.primary }, theme.font.bodyMedium]}>
-          {t('food.saveFailed')}
-        </Text>
-      ) : null}
-      <Pressable
-        onPress={() => void onRepeat()}
-        disabled={busy}
-        accessibilityRole="button"
-        accessibilityLabel={t('food.repeatNow')}
-        style={({ pressed }) => [styles.repeatBtn, { borderColor: theme.primary, opacity: pressed ? 0.6 : 1 }]}
-      >
-        <Text style={[styles.repeatText, { color: theme.primary }, theme.font.bodySemiBold]}>{t('food.repeatNow')}</Text>
-      </Pressable>
-      {/* Destructive + irreversible → the quietest control on the screen: a
-          hairline outline and taupe text, not the coral it used to share with
-          the primary/repeat actions. */}
-      <Pressable
-        onPress={onDelete}
-        disabled={busy}
-        style={({ pressed }) => [styles.deleteBtn, { borderColor: theme.separator, opacity: pressed ? 0.6 : 1 }]}
-      >
-        <Text style={[styles.deleteText, { color: theme.subtle }, theme.font.body]}>{t('food.delete')}</Text>
-      </Pressable>
-    </Screen>
+        <Pressable
+          onPress={() => void onRepeat()}
+          disabled={busy}
+          accessibilityRole="button"
+          accessibilityLabel={t('food.repeatNow')}
+          style={({ pressed }) => [styles.repeatBtn, { borderColor: theme.primary, opacity: pressed ? 0.6 : 1 }]}
+        >
+          <Text style={[styles.repeatText, { color: theme.primary }, theme.font.bodySemiBold]}>{t('food.repeatNow')}</Text>
+        </Pressable>
+        {/* Destructive + irreversible → the quietest control on the screen: a
+            hairline outline and taupe text, not the coral it used to share with
+            the primary/repeat actions. */}
+        <Pressable
+          onPress={onDelete}
+          disabled={busy}
+          style={({ pressed }) => [styles.deleteBtn, { borderColor: theme.separator, opacity: pressed ? 0.6 : 1 }]}
+        >
+          <Text style={[styles.deleteText, { color: theme.subtle }, theme.font.body]}>{t('food.delete')}</Text>
+        </Pressable>
+      </Screen>
+      <View style={[styles.saveFooter, {
+        borderTopColor: theme.separator,
+        paddingHorizontal: width < 360 ? 18 : theme.spacing.page,
+        paddingBottom: 12 + insets.bottom,
+      }]}>
+        <MealFooterTotal draft={draft} hideCalories={hideCalories} />
+        <PrimaryButton label={t('food.update')} onPress={onUpdate} disabled={busy} />
+        {saveIssue ? (
+          <Text style={[styles.saveIssue, { color: theme.primary }, theme.font.bodyMedium]}>
+            {t('food.saveFailed')}
+          </Text>
+        ) : null}
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  layout: { flex: 1 },
+  saveFooter: { borderTopWidth: StyleSheet.hairlineWidth, paddingTop: 10 },
   mealPhoto: { width: '100%', height: 190, borderRadius: 14, marginBottom: 18 },
   label: { fontSize: 12, marginBottom: 4 },
   titleInput: { marginBottom: 12 },
@@ -344,7 +353,6 @@ const styles = StyleSheet.create({
   totalUnit: { fontSize: 13, flexShrink: 1 },
   mealChips: { marginTop: 14 },
   dayField: { marginTop: 14 },
-  update: { marginTop: 16 },
   saveIssue: { fontSize: 13, marginTop: 8, textAlign: 'center' },
   repeatBtn: { borderWidth: 1.5, borderRadius: 6, paddingVertical: 12, alignItems: 'center', marginTop: 10 },
   repeatText: { fontSize: 15 },
