@@ -72,7 +72,7 @@ export function ItemReplacementDialog({
       <KeyboardAvoidingView
         style={[styles.page, {
           backgroundColor: theme.background,
-          paddingTop: theme.isIOS ? insets.top : 12,
+          paddingTop: insets.top + (theme.isIOS ? 0 : 8),
           paddingBottom: theme.isIOS ? insets.bottom : 0,
         }]}
         enabled={theme.isIOS}
