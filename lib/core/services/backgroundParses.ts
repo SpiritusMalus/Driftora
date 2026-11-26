@@ -128,7 +128,7 @@ export async function runAdoptedParse(
     // Same personal-journal memory as the on-screen path — an adopted parse
     // must not resolve differently from a watched one.
     const remembered = await loadRememberedChoices(db, ctx.region, draft);
-    draft = applyRememberedChoices(draft, ctx.region, remembered);
+    draft = applyRememberedChoices(draft, ctx.region, remembered, 'explicit');
     if (unusable(draft)) {
       await markPendingFailed(db, entryId); // photo kept for retry
     } else {

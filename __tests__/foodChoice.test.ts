@@ -139,6 +139,25 @@ describe('foodChoices persistence (round-trip)', () => {
     expect(applied.items[0]!.per100.kcal).toBe(121);
     sqlite.close();
   });
+
+  it('keeps a new photo match over legacy automatic picks and still recalls a deliberate selection', async () => {
+    const { sqlite, db } = makeDb();
+    await applySchema((stmt) => sqlite.exec(stmt));
+    const fresh = draft([item()]);
+
+    await rememberFoodChoice(db, 'RU', 'творог', { name: 'Старый автоматический выбор', per100: per100(70) });
+    const legacy = await loadRememberedChoices(db, 'RU', fresh);
+    expect(applyRememberedChoices(fresh, 'RU', legacy, 'explicit')).toBe(fresh);
+    expect(applyRememberedChoices(fresh, 'RU', legacy).items[0]!.per100.kcal).toBe(70);
+
+    await rememberFoodChoice(db, 'RU', 'творог', { name: 'Творог 5%', per100: per100(121), explicit: true });
+    await rememberFoodChoice(db, 'RU', 'творог', { name: 'Следующий автоматический выбор', per100: per100(88) });
+    const confirmed = await loadRememberedChoices(db, 'RU', fresh);
+    const applied = applyRememberedChoices(fresh, 'RU', confirmed, 'explicit');
+    expect(applied.items[0]!.per100.kcal).toBe(121);
+    expect(applied.items[0]!.userChosen).toBe(true);
+    sqlite.close();
+  });
 });
 
 describe('listFoodChoices (the «рацион»: pick a known food + type grams)', () => {

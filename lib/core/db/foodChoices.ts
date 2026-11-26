@@ -1,13 +1,19 @@
-import { desc, inArray, like } from 'drizzle-orm';
+import { desc, inArray, like, sql } from 'drizzle-orm';
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
-import { choiceKey, lookupNameForItem, normalizeChoiceName } from '../services/foodChoice';
-import type { MealDraft, NutritionAlternative, Per100, Region } from '../services/foodParser';
+import { choiceKey, lookupNameForItem, normalizeChoiceName, type RememberedChoice } from '../services/foodChoice';
+import type { MealDraft, Per100, Region } from '../services/foodParser';
 import { foodChoices } from './schema';
 import { withDbLock } from './tx';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyDb = BaseSQLiteDatabase<any, any, any>;
+type StoredChoice = Per100 & { explicitChoice?: true };
+
+function decodeChoice(raw: string) {
+  const { explicitChoice, ...per100 } = JSON.parse(raw) as StoredChoice;
+  return { per100, explicitChoice };
+}
 
 /// Persist the user's per-food correction (disambiguation layer 2). Upsert by
 /// key so the latest choice for a food wins; `per100` is stored as JSON text.
@@ -15,10 +21,10 @@ export async function rememberFoodChoice(
   db: AnyDb,
   region: Region,
   foodName: string,
-  choice: NutritionAlternative,
+  choice: RememberedChoice,
 ): Promise<void> {
   const key = choiceKey(region, foodName);
-  const per100 = JSON.stringify(choice.per100);
+  const per100 = JSON.stringify({ ...choice.per100, ...(choice.explicit ? { explicitChoice: true } : {}) });
   const ts = new Date();
   // Queued: corrections are saved from the log screen while a background parse
   // may hold a transaction open — a bare write joins it and dies with its
@@ -29,7 +35,18 @@ export async function rememberFoodChoice(
       db
         .insert(foodChoices)
         .values({ key, name: choice.name, per100, ts })
-        .onConflictDoUpdate({ target: foodChoices.key, set: { name: choice.name, per100, ts } }),
+        .onConflictDoUpdate({
+          target: foodChoices.key,
+          set: { name: choice.name, per100, ts },
+          // A new automatic hit can refresh another automatic hit. It should
+          // not replace an explicit choice if the DB read was skipped or stale.
+          ...(!choice.explicit && choice.per100.source !== 'manual' ? {
+            setWhere: sql`case when json_valid(${foodChoices.per100}) then
+              coalesce(json_extract(${foodChoices.per100}, '$.explicitChoice'), 0) <> 1
+              and coalesce(json_extract(${foodChoices.per100}, '$.source'), '') <> 'manual'
+              else 1 end`,
+          } : {}),
+        }),
     'rememberFoodChoice',
   );
 }
@@ -67,7 +84,7 @@ export async function listFoodChoices(
     const norm = normalizeChoiceName(row.name);
     if (seen.has(norm)) continue;
     try {
-      const per100 = JSON.parse(row.per100) as Per100;
+      const { per100 } = decodeChoice(row.per100);
       if (per100.source === 'history') {
         poisoned.push(row.key);
         continue;
@@ -96,9 +113,9 @@ export async function loadRememberedChoices(
   db: AnyDb,
   region: Region,
   draft: MealDraft,
-): Promise<Map<string, NutritionAlternative>> {
+): Promise<Map<string, RememberedChoice>> {
   const keys = draft.items.map((it) => choiceKey(region, lookupNameForItem(it, region)));
-  const out = new Map<string, NutritionAlternative>();
+  const out = new Map<string, RememberedChoice>();
   if (keys.length === 0) return out;
 
   const rows = (await db.select().from(foodChoices).where(inArray(foodChoices.key, keys))) as {
@@ -108,11 +125,11 @@ export async function loadRememberedChoices(
   }[];
   for (const row of rows) {
     try {
-      const per100 = JSON.parse(row.per100) as Per100;
+      const { per100, explicitChoice } = decodeChoice(row.per100);
       // A poisoned quick-pick row (see [listFoodChoices]) must never "correct"
       // a fresh parse — it would rewrite an honest per-100g with meal totals.
       if (per100.source === 'history') continue;
-      out.set(row.key, { name: row.name, per100 });
+      out.set(row.key, { name: row.name, per100, ...(explicitChoice === true ? { explicit: true } : {}) });
     } catch {
       // corrupt row — ignore
     }
