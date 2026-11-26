@@ -142,6 +142,51 @@ test('DB miss → coarse estimate, flagged not-fact', async () => {
   assert.equal(r.per100.kcal, 150);
 });
 
+test('plain photo ingredients have reference energy even when providers disagree', async () => {
+  const resolver = new Resolver([new UsdaProvider('KEY'), new OpenFoodFactsProvider()]);
+  mockFetch(() => { throw new Error('plain photo references should be local'); });
+  const cases = [
+    ['лосось на гриле', 'grilled salmon', 206],
+    ['куриная голень запечённая', 'roasted chicken drumstick', 155],
+    ['батат запечённый', 'baked sweet potato', 90],
+    ['брокколи запечённая', 'roasted broccoli', 35],
+    ['картофель отварной', 'boiled potatoes', 87],
+    ['соус бешамель', 'béchamel sauce', 147],
+    ['лимон', 'lemon wedge', 29],
+    ['банан', 'banana', 89],
+  ] as const;
+  for (const region of ['US', 'RU'] as const) {
+    for (const [name_ru, name_en, calories] of cases) {
+      const result = await resolver.resolveItem(item({ name_ru, name_en, est_grams: 100 }), region, true);
+      assert.equal(result.per100.source, 'usda', name_ru);
+      assert.equal(result.scaled.kcal, calories, name_ru);
+    }
+  }
+  assert.deepEqual(calls, []);
+});
+
+test('a specified salmon photo rejects chicken even when an ordinary lookup cached it', async () => {
+  const provider = {
+    name: 'usda',
+    regions: ['US'] as const,
+    async search() {
+      calls.push('search');
+      return {
+        name: 'Grilled chicken fillet', confidence: 0.7,
+        per100: coercePer100({ source: 'usda', kcal: 151, prot: 22.3, fat: 5.8, carb: 2.4 }),
+      };
+    },
+  } satisfies NutritionProvider;
+  const resolver = new Resolver([provider]);
+  const specified = item({ name_ru: 'лосось копчёный', name_en: 'grilled smoked salmon' });
+  // Existing menu/text behaviour keeps its own regional cache.
+  assert.equal((await resolver.resolveItem(specified, 'US')).matched_name, 'Grilled chicken fillet');
+  const fromPhoto = await resolver.resolveItem(specified, 'US', true);
+  assert.equal(fromPhoto.per100.source, 'estimate');
+  assert.equal(fromPhoto.matched_name, undefined);
+  assert.equal(calls.length, 2);
+});
+
 test('LRU cache: identical (name, region) hits the network once', async () => {
   mockFetch(() => json(usdaChicken));
   const resolver = new Resolver([new UsdaProvider('KEY')]);

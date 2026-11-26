@@ -28,7 +28,7 @@ import {
   queryCoverage,
 } from './scoring.js';
 import { translationLost, unexplainedSpecifics } from './specificity.js';
-import { SKURIKHIN_TABLE } from './skurikhinData.js';
+import { mealPhotoCandidateFilter, mealPhotoReference } from './photoReference.js';
 
 /**
  * Manual-search result. `sourcesDown` separates «looked everywhere, this food
@@ -73,35 +73,6 @@ interface LookupResult {
   // actually named in. See [backfillMicros].
   donors?: Per100[];
   alternatives: NutritionAlternative[];
-}
-
-const COOKED_WHITE_RICE = SKURIKHIN_TABLE.find((entry) => entry.name === 'рис белый варёный');
-const PLAIN_RICE_WORDS = new Set([
-  'rice', 'white', 'plain', 'cooked', 'boiled', 'steamed',
-  'рис', 'белый', 'обычный', 'простой', 'вареный', 'отварной', 'отваренный', 'приготовленный',
-]);
-const COOKED_RICE_WORDS = new Set(['cooked', 'boiled', 'steamed', 'вареный', 'отварной', 'отваренный', 'приготовленный']);
-
-/** A generic plate of cooked rice needs one reference row in both regions. */
-function plainPhotoRice(item: IdentifiedItem): LookupResult | undefined {
-  if (!COOKED_WHITE_RICE || item.packaged || item.label || item.weight_basis === 'dry') return;
-  const names = [item.name_ru, item.name_en].map<string[]>((name) =>
-    name.toLowerCase().replace(/ё/g, 'е').match(/[\p{L}\p{N}]+/gu) ?? []);
-  const namedFoods = names.filter((words) => words.length > 0);
-  if (namedFoods.length === 0) return;
-  for (const words of namedFoods) {
-    if (!words.includes('rice') && !words.includes('рис')) return;
-    if (words.some((word) => !PLAIN_RICE_WORDS.has(word))) return;
-  }
-  const words = namedFoods.flat();
-  if (item.weight_basis !== 'as_eaten' && !words.some((word) => COOKED_RICE_WORDS.has(word))) return;
-
-  return {
-    name: COOKED_WHITE_RICE.name,
-    per100: { source: COOKED_WHITE_RICE.source ?? 'skurikhin', ...COOKED_WHITE_RICE.per100 },
-    matchConfidence: 0.95,
-    alternatives: [],
-  };
 }
 
 /**
@@ -374,6 +345,7 @@ export class Resolver {
     region: Region,
     nameFor: (p: NutritionProvider) => string,
     userQuery: string,
+    acceptCandidate?: (name: string) => boolean,
   ): Promise<LookupResult | null> {
     let weakFallback: LookupResult | null = null;
     let genericFallback: LookupResult | null = null;
@@ -394,7 +366,8 @@ export class Resolver {
       // rows for a salad query) must not stop the chain or beat the estimate.
       const answered = await this.candidatesFrom(provider, name, region);
       if (answered.unavailable) degraded = true;
-      const candidates = answered.results.filter((c) => c.confidence > 0);
+      const candidates = answered.results.filter((c) =>
+        c.confidence > 0 && (!acceptCandidate || (c.name !== undefined && acceptCandidate(c.name))));
       // Name ranking alone can pick a product the query explicitly negated
       // («без сахара» → sugared row); composition-aware demotion fixes the
       // order and honestly drops confidence when only contradictions exist.
@@ -498,16 +471,17 @@ export class Resolver {
   }
 
   /** Item lookup: providers may be queried by name_ru or name_en (queryLang). */
-  private async lookupItem(item: IdentifiedItem, region: Region): Promise<LookupResult> {
-    const key = cacheKey(`${item.name_ru}|${item.name_en}`, region);
+  private async lookupItem(item: IdentifiedItem, region: Region, fromMealPhoto: boolean): Promise<LookupResult> {
+    const acceptCandidate = fromMealPhoto ? mealPhotoCandidateFilter(item) : undefined;
+    const key = cacheKey(`${acceptCandidate ? 'photo|' : ''}${item.name_ru}|${item.name_en}`, region);
     const cached = this.cache.get(key);
     if (cached) return cached;
 
     // The user-side name (RU in the RU region) is what the chain measures its
     // own answers against — the translation is ours, not the user's question.
-    const found = await this.runChain(region, (p) => this.nameFor(p, item, region), this.nativeName(item, region));
+    const found = await this.runChain(region, (p) => this.nameFor(p, item, region), this.nativeName(item, region), acceptCandidate);
     if (found) {
-      const enriched = await this.backfillMicros(found, item);
+      const enriched = await this.backfillMicros(found, item, acceptCandidate);
       // A источник lay down during this walk, so this answer may be worse than
       // the food deserves («отруби овсяные мистраль» settling for the generic
       // row because Open Food Facts was throttled). Caching it would freeze one
@@ -538,7 +512,11 @@ export class Resolver {
    * itself from USDA — and cached inside the LookupResult, so a hit pays no
    * extra call.
    */
-  private async backfillMicros(found: LookupResult, item: IdentifiedItem): Promise<LookupResult> {
+  private async backfillMicros(
+    found: LookupResult,
+    item: IdentifiedItem,
+    acceptCandidate?: (name: string) => boolean,
+  ): Promise<LookupResult> {
     const per100 = found.per100;
     if (per100.source === 'estimate') return found;
     // Vitamins and fibre are separate gaps, and only one of them used to open
@@ -555,7 +533,7 @@ export class Resolver {
     // USDA-фолбэк по переводу.
     const donor =
       pickDonor(found.donors ?? [], per100, needsMicros, needsFiber) ??
-      (per100.source === 'usda' || item.name_en.trim().length === 0 ? null : await this.usdaMicros(item.name_en));
+      (per100.source === 'usda' || item.name_en.trim().length === 0 ? null : await this.usdaMicros(item.name_en, acceptCandidate));
     if (!donor) return found;
 
     const minerals: Minerals = { ...donor.minerals, ...per100.minerals }; // primary wins on overlap
@@ -573,11 +551,15 @@ export class Resolver {
 
   /** Top USDA candidate's micro block for `nameEn`, or null if none is a good
    *  enough match / it carries no micronutrients worth grafting. */
-  private async usdaMicros(nameEn: string): Promise<{ minerals: Minerals; vitamins?: Vitamins; fiber?: number } | null> {
+  private async usdaMicros(
+    nameEn: string,
+    acceptCandidate?: (name: string) => boolean,
+  ): Promise<{ minerals: Minerals; vitamins?: Vitamins; fiber?: number } | null> {
     if (!this.usda) return null;
     // USDA is English-only; the resolver queries it with name_en in every region.
     const [top] = (await this.candidatesFrom(this.usda, nameEn, 'US')).results;
     if (!top || clamp01(top.confidence) < MICRO_BACKFILL_MIN_CONFIDENCE) return null;
+    if (acceptCandidate && (top.name === undefined || !acceptCandidate(top.name))) return null;
     const p = coercePer100(top.per100);
     const hasMinerals = Object.keys(p.minerals).length > 0;
     const hasFiber = typeof p.fiber === 'number';
@@ -685,8 +667,10 @@ export class Resolver {
     }
 
     const grams = labelWeight ?? estGrams;
-    const photoReference = fromMealPhoto ? plainPhotoRice(item) : undefined;
-    const found = photoReference ?? await this.lookupItem(item, region);
+    const photoReference = fromMealPhoto ? mealPhotoReference(item) : undefined;
+    const found = photoReference
+      ? { ...photoReference, matchConfidence: 0.95, alternatives: [] }
+      : await this.lookupItem(item, region, fromMealPhoto);
     let aiFull = item.estimate ? aiEstimatePer100(item.estimate) : null;
     const prepared = found.prepared === true || item.prepared === true;
     // DB MISS → fall back to the model's own estimate (source 'ai_estimate',
