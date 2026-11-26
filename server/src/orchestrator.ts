@@ -141,7 +141,8 @@ export async function buildMealDraft(
   resolver: Resolver,
   items: IdentifiedItem[],
   region: Region,
+  fromMealPhoto = false,
 ): Promise<MealDraft> {
-  const resolved = await Promise.all(items.map((it) => resolver.resolveItem(it, region)));
+  const resolved = await Promise.all(items.map((it) => resolver.resolveItem(it, region, fromMealPhoto)));
   return assembleMealDraft(region, resolved);
 }

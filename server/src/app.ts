@@ -1196,7 +1196,7 @@ export function createApp(
     route: 'text' | 'photo' | 'audio',
     region: Region,
     // Audio also returns what it HEARD; every other route just returns items.
-    identify: () => Promise<IdentifiedItem[] | { items: IdentifiedItem[]; heard?: string }>,
+    identify: () => Promise<IdentifiedItem[] | { items: IdentifiedItem[]; heard?: string; fromMenu?: true }>,
     locale?: 'ru' | 'en',
   ): Promise<void> {
     const startedAt = Date.now();
@@ -1205,6 +1205,7 @@ export function createApp(
       const answer = await withinProcessingBudget(startedAt, budgetMs, identify);
       const identified = Array.isArray(answer) ? answer : answer.items;
       const heard = Array.isArray(answer) ? undefined : answer.heard;
+      const fromMealPhoto = route === 'photo' && (Array.isArray(answer) || answer.fromMenu !== true);
       // Stage split: everything up to here is model work (identification and,
       // for photos, the label pass); everything after is DB resolution. The
       // per-route total alone can't say which side a slow day comes from.
@@ -1212,7 +1213,7 @@ export function createApp(
       const resolveStart = Date.now();
       const draft: MealDraft =
         identified.length === 0 ? emptyMealDraft(region) : await withinProcessingBudget(
-          startedAt, budgetMs, () => buildMealDraft(resolver, identified, region),
+          startedAt, budgetMs, () => buildMealDraft(resolver, identified, region, fromMealPhoto),
         );
       metrics.recordStage('resolve', Date.now() - resolveStart);
       // Display-only: localize English DB row labels to Russian for RU (behind
@@ -1586,7 +1587,7 @@ export function createApp(
       // человек стал бы печатать сам.
       if (items.length === 0 && menuText) {
         metrics.recordStage('menu', 0);
-        return await identifyFromText(menuText, region);
+        return { items: await identifyFromText(menuText, region), fromMenu: true };
       }
       // SECOND PASS, only for wrappers the first pass flagged: read the printed
       // panel. Exact numbers beat any database average — the tester's turkey ham

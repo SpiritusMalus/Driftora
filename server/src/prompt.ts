@@ -262,6 +262,7 @@ Rules:
 - Split a composite plate into its meaningful COMPONENTS — name every distinct food you can see, including the ones hidden under a sauce or a topping.
 - est_grams comes from the VISIBLE volume — how much of the plate the food covers and how high it is piled. Judge each portion from what you actually see: a modest portion stays modest, and a heaped plate must NOT be rounded down to a "typical serving" — snapping to the canonical portion number instead of the visible amount is the failure mode users report.
 - Never invent foods that are not visible.
+- For plain cooked white rice, use "рис белый варёный" and "cooked white rice". Only name a variety when there is clear evidence for it. Grains clumping together do not by themselves identify glutinous rice.
 - Ignore plain water and unsweetened black coffee/tea (~0 nutrition) — a glass of water in the frame is not an item.
 - If the photo shows a packaged product, name the PRODUCT, brand included when it is legible («Ветчина из грудки индейки Индилайт») — the brand is what lets the database find the right row.
 - packaged: true ONLY when that item is a packaged product whose wrapper carries a PRINTED nutrition panel or net weight — a tub, pack, bottle or bar, whether or not you can read the small print from here. A plate, a bowl, a restaurant dish or loose fruit is false. The app runs a second, dedicated pass to read the panel on anything you mark, so flag it and let that pass do the reading; you do NOT transcribe any numbers here.
