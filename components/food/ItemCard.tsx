@@ -7,7 +7,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Card } from '@/components/ui/Card';
 import { TextField } from '@/components/ui/TextField';
 import { ApproxBadge, NutrientDetail } from '@/components/food/nutrientViews';
-import { searchSourcesDown } from '@/lib/core/services/communityBase';
+import { ItemReplacementDialog } from '@/components/food/ItemReplacementDialog';
 import { normalizeChoiceName } from '@/lib/core/services/foodChoice';
 import type { NutritionAlternative, NutritionItem } from '@/lib/core/services/foodParser';
 import type { ManualMacroInput } from '@/lib/core/services/mealDraft';
@@ -80,10 +80,7 @@ export function ItemCard({
         : null;
 
   const refereeFlagged = alternatives.some((a) => a.per100.source === 'ai_estimate');
-  // ONE «Другой вариант» disclosure unifies the DB alternatives AND manual search
-  // (they both answer «take a different product»). Opens itself when the auto-pick
-  // is shaky (low confidence or a referee flag) so the choice isn't buried.
-  const [otherOpen, setOtherOpen] = useState(item.confidence < 0.5 || refereeFlagged);
+  const [replacementOpen, setReplacementOpen] = useState(false);
   // The per-100g editor is ALWAYS open where the numbers are the user's to
   // supply (a DB miss) or to correct (an AI guess, their own earlier entry).
   // For a DB row it hides behind «Изменить БЖУ»: the row is usually right, but
@@ -91,30 +88,12 @@ export function ItemCard({
   // say so — with the kcal following the macros, not typed beside them.
   const editorAlways = isMiss || item.per100.source === 'manual' || item.per100.source === 'ai_estimate';
   const [editOpen, setEditOpen] = useState(false);
-  const [searchText, setSearchText] = useState('');
-  const [searching, setSearching] = useState(false);
-  const [searchResults, setSearchResults] = useState<NutritionAlternative[] | null>(null);
   const grams = Math.round(item.grams);
   const PORTIONS = [100, 200, 250];
   // Standard per-piece weight (яйцо ≈ 50 г) — null for non-piece foods. Matched
   // on what the USER logged, not the DB row's name (which is under review).
   const pieceUnitGrams = pieceGramsFor(item.name_ru, item.name_en);
 
-  async function runSearch() {
-    const q = searchText.trim();
-    if (q.length === 0) return;
-    setSearching(true);
-    try {
-      setSearchResults(await onSearch(q));
-    } finally {
-      setSearching(false);
-    }
-  }
-
-  // The eaten total is the HERO — it's what the user is logging. Per-100g and the
-  // source drop to a small grey line; the DB match, alternatives and manual search
-  // collapse under one «Другой вариант». Honesty (source, «≈», wrong-product note)
-  // stays, only quieter.
   const sourceInLine =
     item.per100.source === 'ai_estimate' || item.per100.source === 'manual'
       ? '' // already shown as the header badge — no need to repeat
@@ -151,6 +130,20 @@ export function ItemCard({
         ) : null}
       </View>
 
+      <Pressable
+        onPress={() => setReplacementOpen(true)}
+        accessibilityRole="button"
+        accessibilityLabel={t('food.replaceNamedItem', { name: titleName })}
+        style={({ pressed }) => [
+          styles.replaceButton,
+          { borderColor: theme.separator, backgroundColor: theme.fill, opacity: pressed ? 0.65 : 1 },
+        ]}
+      >
+        <Ionicons name="swap-horizontal-outline" size={18} color={theme.primary} />
+        <Text style={[styles.replaceText, { color: theme.primary }, theme.font.bodySemiBold]}>
+          {t('food.replaceAction')}
+        </Text>
+      </Pressable>
       {isMiss ? (
         <Text style={[styles.notInDb, { color: theme.subtle }, theme.font.body]}>{t('food.notInDb')}</Text>
       ) : (
@@ -292,94 +285,17 @@ export function ItemCard({
         <Text style={[styles.gramsUnit, { color: theme.subtle }, theme.font.body]}>{t('units.g')}</Text>
       </View>
 
-      {/* ONE «Другой вариант» — DB alternatives (from the parse) AND manual search
-          in the same disclosure. Opens itself on a shaky auto-pick. */}
-      <View style={styles.altWrap}>
-        <Pressable onPress={() => setOtherOpen((s) => !s)} hitSlop={6}>
-          <Text style={[styles.altToggle, { color: theme.primary }, theme.font.body]}>
-            {otherOpen
-              ? t('food.otherOption.hide')
-              : alternatives.length > 0
-                ? t('food.otherOption.openCount', { count: alternatives.length })
-                : t('food.otherOption.open')}
-          </Text>
-        </Pressable>
-        {otherOpen ? (
-          <View style={styles.altList}>
-            {alternatives.map((alt, j) => (
-              <Pressable
-                key={`a-${alt.name}-${j}`}
-                onPress={() => onSelectAlternative(j)}
-                style={({ pressed }) => [
-                  styles.altRow,
-                  { borderColor: theme.separator, backgroundColor: theme.card, opacity: pressed ? 0.6 : 1 },
-                ]}
-              >
-                <Text style={[styles.altName, { color: theme.text }, theme.font.body]} numberOfLines={2}>
-                  {alt.name}
-                </Text>
-                <Text style={[styles.altMacros, { color: theme.subtle }, theme.font.body]}>
-                  {hideCalories
-                    ? `${t('macros.protein')} ${alt.per100.prot} · ${t(`food.source.${alt.per100.source}`)}`
-                    : `${alt.per100.kcal} ${t('units.kcal')} · ${t('macros.protein')} ${alt.per100.prot} · ${t(`food.source.${alt.per100.source}`)}`}
-                </Text>
-              </Pressable>
-            ))}
-            <View style={styles.searchRow}>
-              <TextField
-                value={searchText}
-                onChangeText={setSearchText}
-                onSubmitEditing={runSearch}
-                placeholder={t('food.manualSearch.placeholder')}
-                style={styles.searchInput}
-              />
-              <Pressable
-                onPress={runSearch}
-                disabled={searching || searchText.trim().length === 0}
-                style={({ pressed }) => [
-                  styles.searchBtn,
-                  { borderColor: theme.separator, backgroundColor: theme.card, opacity: pressed || searching ? 0.6 : 1 },
-                ]}
-              >
-                <Text style={[styles.cookChipText, { color: theme.primary }, theme.font.body]}>
-                  {searching ? t('food.manualSearch.searching') : t('food.manualSearch.action')}
-                </Text>
-              </Pressable>
-            </View>
-            {searchResults != null && searchResults.length === 0 && !searching ? (
-              <Text style={[styles.altMacros, { color: theme.subtle }, theme.font.body]}>
-                {/* Пусто потому, что не нашли, или потому, что база не ответила?
-                    Второе — не повод утверждать, что такой еды нет. */}
-                {t(searchSourcesDown() ? 'food.manualSearch.unavailable' : 'food.manualSearch.empty')}
-              </Text>
-            ) : null}
-            {(searchResults ?? []).map((alt, j) => (
-              <Pressable
-                key={`s-${alt.name}-${j}`}
-                onPress={() => {
-                  onReplace(alt);
-                  setOtherOpen(false);
-                  setSearchResults(null);
-                  setSearchText('');
-                }}
-                style={({ pressed }) => [
-                  styles.altRow,
-                  { borderColor: theme.separator, backgroundColor: theme.card, opacity: pressed ? 0.6 : 1 },
-                ]}
-              >
-                <Text style={[styles.altName, { color: theme.text }, theme.font.body]} numberOfLines={2}>
-                  {alt.name}
-                </Text>
-                <Text style={[styles.altMacros, { color: theme.subtle }, theme.font.body]}>
-                  {hideCalories
-                    ? `${t('macros.protein')} ${alt.per100.prot} · ${t(`food.source.${alt.per100.source}`)}`
-                    : `${alt.per100.kcal} ${t('units.kcal')} · ${t('macros.protein')} ${alt.per100.prot} · ${t(`food.source.${alt.per100.source}`)}`}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        ) : null}
-      </View>
+      {replacementOpen ? (
+        <ItemReplacementDialog
+          name={titleName}
+          alternatives={alternatives}
+          hideCalories={hideCalories}
+          onSearch={onSearch}
+          onSelectAlternative={onSelectAlternative}
+          onReplace={onReplace}
+          onClose={() => setReplacementOpen(false)}
+        />
+      ) : null}
     </Card>
   );
 }
@@ -582,7 +498,6 @@ const styles = StyleSheet.create({
   dryBasisNote: { marginTop: 8, borderWidth: 1, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 },
   basisTitle: { fontSize: 13, lineHeight: 18, marginBottom: 2 },
   dryBasisText: { fontSize: 12, lineHeight: 17 },
-  cookChipText: { fontSize: 12 },
   notInDb: { fontSize: 13, marginBottom: 6, lineHeight: 18 },
   manualWrap: { marginTop: 4, marginBottom: 4 },
   manualLabel: { fontSize: 12, marginBottom: 6 },
@@ -603,16 +518,10 @@ const styles = StyleSheet.create({
   gramsUnit: { fontSize: 12 },
   badge: { borderWidth: 1, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 },
   badgeText: { fontSize: 11 },
-  altWrap: { marginTop: 8 },
-  altToggle: { fontSize: 13 },
-  altList: { gap: 6, marginTop: 6 },
-  // Name on its own line, macros beneath — a side-by-side row let the long
-  // «… ккал · Белок … · по базе FatSecret» string squeeze the name down to
-  // «Rice C…» (device report 2026-07-18). Stacked, the name gets the full width.
-  altRow: { gap: 2, borderWidth: 1, borderRadius: 6, paddingVertical: 8, paddingHorizontal: 10 },
-  altName: { fontSize: 13 },
-  altMacros: { fontSize: 12 },
-  searchRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  searchInput: { flex: 1 },
-  searchBtn: { borderWidth: 1, borderRadius: 6, paddingVertical: 10, paddingHorizontal: 14 },
+  replaceButton: {
+    flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 8,
+    paddingHorizontal: 10, paddingVertical: 6, minHeight: 44, marginBottom: 8,
+    borderRadius: 10, borderWidth: StyleSheet.hairlineWidth,
+  },
+  replaceText: { fontSize: 14 },
 });
