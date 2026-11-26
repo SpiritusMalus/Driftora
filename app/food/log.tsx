@@ -577,12 +577,12 @@ export default function FoodLogScreen() {
   /// online when AI is configured AND consent is true; otherwise it's the stub.
   // Re-apply the user's remembered per-food corrections (disambiguation layer 2)
   // to a freshly parsed draft, so a fix made once sticks on the next log.
-  async function applyMemory(draft: MealDraft): Promise<MealDraft> {
+  async function applyMemory(draft: MealDraft, fromPhoto = false): Promise<MealDraft> {
     if (!db) return draft;
     const deadline = requestDeadline(2_000);
     try {
       const choices = await deadline.wait(loadRememberedChoices(db, region, draft));
-      const applied = applyRememberedChoices(draft, region, choices);
+      const applied = applyRememberedChoices(draft, region, choices, fromPhoto ? 'explicit' : 'all');
       // Remembered corrections are optional: a busy DB must not hide a
       // successfully recognised meal or its original spoken words.
       return draft.heard && !applied.heard ? { ...applied, heard: draft.heard } : applied;
@@ -733,7 +733,7 @@ export default function FoodLogScreen() {
       // Screen died mid-parse and the service took over: it writes the entry
       // itself — this (possibly unmounted) closure stands down.
       if (isAdopted(photo.uri)) return;
-      const remembered = await applyMemory(parsed);
+      const remembered = await applyMemory(parsed, true);
       if (!mountedRef.current || reviewPhotoRef.current?.uri !== photo.uri) return;
       acceptDraft(remembered, consentNow, 'photo');
       // Pipeline the batch — but not off the offline/quota stub: every queued
@@ -1188,13 +1188,15 @@ export default function FoodLogScreen() {
         // кесадильями (device report 2026-08-21) — the meal already lives in
         // the «Быстро» lane, the journal adds nothing here.
         const realSource = src !== 'estimate' && src !== 'ai_estimate' && src !== 'history';
-        const trustworthy = it.userChosen || it.confidence >= REMEMBER_CONFIDENCE_FLOOR;
+        const explicit = it.userChosen || src === 'manual';
+        const trustworthy = explicit || it.confidence >= REMEMBER_CONFIDENCE_FLOOR;
         if (realSource && trustworthy) {
           // Key by the RAW typed name (so the correction sticks to what the user
           // types next time); store the DISPLAY name (real DB row once re-picked).
           await rememberFoodChoice(db, region, lookupNameForItem(it, region), {
             name: displayItemName(it, region, currentLocale()),
             per100: it.per100,
+            ...(explicit ? { explicit: true } : {}),
           });
         }
       }

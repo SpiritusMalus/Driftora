@@ -1,6 +1,10 @@
 import type { MealDraft, NutritionAlternative, NutritionItem, Region } from './foodParser';
 import { recomputeDraft, scaleToGrams } from './mealDraft';
 
+export interface RememberedChoice extends NutritionAlternative {
+  explicit?: true;
+}
+
 /// Remembering the user's per-food correction (disambiguation layer 2). Pure
 /// helpers: keying a food name, and re-applying a remembered per-100g to a fresh
 /// draft so a correction the user made once sticks on the next log of that food.
@@ -50,7 +54,8 @@ export function displayItemName(
 export function applyRememberedChoices(
   draft: MealDraft,
   region: Region,
-  choices: Map<string, NutritionAlternative>,
+  choices: ReadonlyMap<string, RememberedChoice>,
+  mode: 'all' | 'explicit' = 'all',
 ): MealDraft {
   if (choices.size === 0) return draft;
   let changed = false;
@@ -63,12 +68,17 @@ export function applyRememberedChoices(
     if (it.per100.source === 'label') return it;
     const remembered = choices.get(choiceKey(region, lookupNameForItem(it, region)));
     if (!remembered) return it;
+    const explicit = remembered.explicit || remembered.per100.source === 'manual';
+    // A saved automatic lookup could be the incorrect card the new photo
+    // matcher just replaced. Apply the person's own corrections to photos.
+    if (mode === 'explicit' && !explicit) return it;
     changed = true;
     return {
       ...it,
       per100: remembered.per100,
       matched_name: remembered.name, // transparency: whose numbers these are
       confidence: 1, // the user chose this match before — honor it confidently
+      ...(explicit ? { userChosen: true } : {}),
       // The old row's hints don't describe the remembered pick — the same
       // contract as withItemReplacement. Left in place, a dry_basis banner
       // would push the «впишите вес сухой части» fix against per-100g numbers

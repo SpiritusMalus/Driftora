@@ -8,7 +8,6 @@ import { Card } from '@/components/ui/Card';
 import { TextField } from '@/components/ui/TextField';
 import { ApproxBadge, NutrientDetail } from '@/components/food/nutrientViews';
 import { searchSourcesDown } from '@/lib/core/services/communityBase';
-import { energyFromMacros } from '@/lib/core/services/energy';
 import { normalizeChoiceName } from '@/lib/core/services/foodChoice';
 import type { NutritionAlternative, NutritionItem } from '@/lib/core/services/foodParser';
 import type { ManualMacroInput } from '@/lib/core/services/mealDraft';
@@ -475,11 +474,6 @@ function ManualMacros({
   const [fiber, setFiber] = useState(init(item.per100.fiber));
   const [kcal, setKcal] = useState(init(item.per100.kcal));
   const macrosGiven = [prot, fat, carb, fiber].some((v) => toNumber(v) > 0);
-  // The same arithmetic the draft applies (`withItemManualMacros`) — shown
-  // live so the number moves under the person's thumb.
-  const derivedKcal = Math.round(
-    energyFromMacros({ prot: toNumber(prot), fat: toNumber(fat), carb: toNumber(carb), fiber: toNumber(fiber) }),
-  );
 
   function push(next: { prot: string; fat: string; carb: string; fiber: string; kcal: string }) {
     onManualMacros({
@@ -527,9 +521,11 @@ function ManualMacros({
       {hideCalories ? null : macrosGiven ? (
         <View style={styles.kcalDerivedWrap}>
           <Text style={[styles.kcalDerived, { color: theme.text }, theme.font.bodySemiBold]}>
-            {t('food.kcalDerived', { kcal: derivedKcal })}
+            {t('food.kcalDerived', { kcal: item.per100.kcal })}
           </Text>
-          <Text style={[styles.kcalFormula, { color: theme.subtle }, theme.font.body]}>{t('food.kcalFormula')}</Text>
+          {item.per100.source === 'manual' ? (
+            <Text style={[styles.kcalFormula, { color: theme.subtle }, theme.font.body]}>{t('food.kcalFormula')}</Text>
+          ) : null}
         </View>
       ) : (
         <View style={styles.kcalOnlyRow}>
