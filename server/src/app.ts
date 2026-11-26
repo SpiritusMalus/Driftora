@@ -1195,7 +1195,8 @@ export function createApp(
     res: Response,
     route: 'text' | 'photo' | 'audio',
     region: Region,
-    // Audio also returns what it HEARD; every other route just returns items.
+    // Audio can return a transcript. A photo of menu text uses ordinary text
+    // lookup, since the recipe there is explicit.
     identify: () => Promise<IdentifiedItem[] | { items: IdentifiedItem[]; heard?: string; fromMenu?: true }>,
     locale?: 'ru' | 'en',
   ): Promise<void> {
