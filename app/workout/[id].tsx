@@ -74,7 +74,6 @@ export default function WorkoutEntryScreen() {
   // at the fixed MET, and preselecting «средняя» here would silently raise its
   // kcal. No level → no chip lit; tapping a lit chip clears it again.
   const [intensity, setIntensity] = useState<StrengthIntensity | null>(null);
-  const [kcalText, setKcalText] = useState('');
   const [day, setDay] = useState('');
 
   // The kcal math's inputs — same sources as the log card, so a recomputed
@@ -129,7 +128,6 @@ export default function WorkoutEntryScreen() {
       if (w.intensity === 'light' || w.intensity === 'moderate' || w.intensity === 'heavy') {
         setIntensity(w.intensity);
       }
-      setKcalText(String(Math.round(Number(w.kcal))));
       setDay(w.date);
     })();
     return () => {
@@ -142,9 +140,6 @@ export default function WorkoutEntryScreen() {
   // silently overwritten — the row is shown as it is, and only «убрать» (which
   // tombstones the OS record) actually sticks.
   const fromDevice = row?.source === 'device';
-  // «По трекеру»: the number was measured, not modelled — the kcal field
-  // replaces the whole MET form.
-  const measured = row?.source === 'tracker' || fromDevice;
   // Strength is logged «подходами» in the add form — but an AI parse can land a
   // strength row with minutes and no sets («жим 30 минут»). Edit each row in the
   // unit it was actually logged in instead of demanding a set count nobody
@@ -163,11 +158,11 @@ export default function WorkoutEntryScreen() {
     speedKmh: known && supportsSpeed(type as WorkoutType) && num(speed) > 0 ? num(speed) : null,
     intensity: known && supportsIntensity(type as WorkoutType) ? intensity : null,
     date: day || null,
-    kcal: measured && num(kcalText) > 0 ? num(kcalText) : null,
   };
   const preview = row ? editedWorkoutKcal(row, edit, weightKg, restingRate) : 0;
   // Nothing to save without a duration (or a set count, or a measured number).
-  const valid = measured ? num(kcalText) > 0 : edit.minutes > 0;
+  const legacyUntimed = row?.source === 'tracker' && row.minutes <= 0 && edit.minutes <= 0;
+  const valid = fromDevice || legacyUntimed || edit.minutes > 0;
 
   async function onSave() {
     if (!db || !row) return;
@@ -259,26 +254,6 @@ export default function WorkoutEntryScreen() {
         </>
       ) : null}
 
-      {measured ? (
-        <View style={styles.field}>
-          <Text style={[styles.label, { color: theme.subtle }, theme.font.body]}>{t('workouts.editKcal')}</Text>
-          <View style={styles.row}>
-            <TextField
-              value={kcalText}
-              onChangeText={setKcalText}
-              editable={!fromDevice}
-              keyboardType="numeric"
-              placeholder={t('workouts.tracker.kcalPlaceholder')}
-              style={styles.numInput}
-            />
-            <Text style={[styles.unit, { color: theme.subtle }, theme.font.body]}>{t('units.kcal')}</Text>
-          </View>
-          <Text style={[styles.fieldHint, { color: theme.subtle }, theme.font.body]}>
-            {t('workouts.tracker.hint')}
-          </Text>
-        </View>
-      ) : null}
-
       {!fromDevice ? (
         <View style={styles.field}>
           <Text style={[styles.label, { color: theme.subtle }, theme.font.body]}>
@@ -347,7 +322,7 @@ export default function WorkoutEntryScreen() {
 
       {/* What this edit will be worth to the day — the same currency the log
           rows speak: what it ADDS to the budget, not what it burns. */}
-      {!hideCalories ? (
+      {!hideCalories && !legacyUntimed ? (
         <Text style={[styles.preview, { color: theme.subtle }, theme.font.body]}>
           {t('workouts.editResult', { kcal: budgetKcal(preview) })}
         </Text>
@@ -394,7 +369,6 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   numInput: { width: 112 },
   unit: { fontSize: 13 },
-  fieldHint: { fontSize: 12, lineHeight: 16, marginTop: 6 },
   preview: { fontSize: 13, lineHeight: 18, marginTop: 16 },
   save: { marginTop: 10 },
   saveIssue: { fontSize: 13, marginTop: 8, textAlign: 'center' },

@@ -16,8 +16,8 @@ import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
 import { latestWeight } from '@/lib/core/db/weight';
 import {
   addParsedWorkout,
-  addTrackerWorkout,
   addWorkout,
+  creditedWorkoutKcal,
   deleteWorkout,
   listWorkoutsForDay,
   quickWorkoutKcal,
@@ -26,7 +26,6 @@ import {
   type QuickWorkout,
 } from '@/lib/core/db/workouts';
 import {
-  EATBACK_FRACTION,
   POPULATION_RESTING_KCAL_PER_KG_H,
   restingRateForProfile,
   setsToMinutes,
@@ -63,8 +62,8 @@ const AI_CONFIGURED = isWorkoutParserConfigured();
 
 /// The three input paths, shown one at a time via a segmented control instead of
 /// three stacked, equally-loud boxes (they used to overflow the screen). Order =
-/// primary → optional import → free-text. «ai» is hidden when unconfigured.
-const WORKOUT_MODES = ['exact', 'tracker', 'ai'] as const;
+/// manual → free-text. «ai» is hidden when unconfigured.
+const WORKOUT_MODES = ['exact', 'ai'] as const;
 type WorkoutMode = (typeof WORKOUT_MODES)[number];
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -86,7 +85,7 @@ function whenForDay(key: string, now: Date = new Date()): Date {
 
 /// «Тренировки сегодня» — log a workout (type + minutes → kcal via MET, computed
 /// from the latest weight) and see the day's burn. Reports the RAW burned kcal up
-/// to the parent so the food day can show the eat-back-adjusted target (hybrid).
+/// to the parent so the food day can update its target.
 /// Collapsed by default ([initiallyOpen] unfolds it for direct entries, e.g. the
 /// «Тренировки» menu row); never nags — purely additive to the day.
 export function WorkoutSection({
@@ -97,8 +96,6 @@ export function WorkoutSection({
   onDayChange,
   refreshToken,
   highlightedId,
-  onConnectCalories,
-  connectingCalories,
 }: {
   db: Db;
   onChange?: (rawKcal: number) => void;
@@ -109,8 +106,6 @@ export function WorkoutSection({
   onDayChange?: (day: string) => void;
   refreshToken?: number;
   highlightedId?: number;
-  onConnectCalories?: () => void;
-  connectingCalories?: boolean;
 }) {
   const { t } = useTranslation();
   const theme = useTheme();
@@ -149,18 +144,13 @@ export function WorkoutSection({
   // Strength effort → MET (light/moderate/heavy). Defaults to «средняя»: a typical
   // gym session, not the light-isolation floor the flat 3.5 used to assume.
   const [intensity, setIntensity] = useState<StrengthIntensity>('moderate');
-  // «По часам»: a kcal number typed straight off a watch/tracker — stored
-  // verbatim (no MET math of ours), the standalone model's optional import path.
-  // Not a criterion measure: wrist devices miss energy expenditure by >30% MAPE,
-  // so it is shown with «≈» like everything else.
-  const [trackerKcal, setTrackerKcal] = useState('');
   const [open, setOpen] = useState(initiallyOpen);
   const [formOpen, setFormOpen] = useState(false);
   // Which input path is visible (segmented control). Defaults to the primary
-  // manual entry; «tracker»/«ai» are the optional paths.
+  // manual entry with optional description.
   const [mode, setMode] = useState<WorkoutMode>('exact');
   // The honest burn-math note is quiet by default — one line always, the full
-  // explanation (72 %, resting subtraction, «по трекеру») a tap away.
+  // explanation of active calories a tap away.
   const [noteOpen, setNoteOpen] = useState(false);
   // Free-text parse path.
   const [describe, setDescribe] = useState('');
@@ -229,7 +219,7 @@ export function WorkoutSection({
   const isToday = day === todayKey;
 
   function ackBudget(rawKcal: number) {
-    const add = Math.round(Math.max(0, rawKcal) * EATBACK_FRACTION);
+    const add = Math.round(Math.max(0, rawKcal));
     if (add <= 0) return;
     // A past day's entry raised THAT day's budget, not today's — saying
     // «на сегодня» there would be a plain lie about where the calories went.
@@ -280,7 +270,7 @@ export function WorkoutSection({
     );
     // The parent's number is TODAY's burn (it feeds today's budget) — a past
     // day being browsed here must not overwrite it.
-    if (day === localDayKey(new Date())) onChange?.(list.reduce((s2, r) => s2 + Number(r.kcal), 0));
+    if (day === localDayKey(new Date())) onChange?.(list.reduce((s2, r) => s2 + creditedWorkoutKcal(r), 0));
   }, [db, onChange, weightKg, day]);
 
   // On focus, not just on mount: the row-edit screen writes and pops straight
@@ -372,30 +362,6 @@ export function WorkoutSection({
     }
   }
 
-  /// «По часам»: log a measured kcal number typed straight off a tracker/watch.
-  /// Stored verbatim via [addTrackerWorkout] — none of our MET math — and marked
-  /// «по трекеру», like the screenshot path. Still shown with «≈»: a watch's
-  /// calorie figure is an estimate too, and a poorly validated one.
-  async function addTracker() {
-    if (!db || adding) return;
-    const kcal = Number(trackerKcal.replace(',', '.'));
-    if (!(Number.isFinite(kcal) && kcal > 0)) return;
-    setAdding(true);
-    try {
-      ackBudget(
-        await addTrackerWorkout(
-          db,
-          { kcal, minutes: 0, type: 'other', label: t('workouts.fromTracker') },
-          whenForDay(day),
-        ),
-      );
-      setTrackerKcal('');
-      await reload();
-      setFormOpen(false);
-    } finally {
-      setAdding(false);
-    }
-  }
 
   /// Persist a parsed activity list with an honest note. kcal is computed
   /// on-device in `addParsedWorkout` — shared by the text, voice and photo paths.
@@ -522,9 +488,7 @@ export function WorkoutSection({
     }
   }
 
-  /// Tracker screenshot from the gallery. If the tracker printed its own total
-  /// kcal, THAT number is logged verbatim («по трекеру») — the watch measured
-  /// it, we don't out-guess it. Otherwise the activities go the usual MET path.
+  /// Read the activity and duration from a screenshot for the usual estimate.
   async function onScreenshot() {
     if (!db || parsing) return;
     // Same first-tap-teaches rule as the mic — but only while THIS button is
@@ -554,30 +518,6 @@ export function WorkoutSection({
     try {
       const parser = getWorkoutParser(consentNow);
       const parsed = parser ? await parser.parsePhoto(photo) : { workouts: [] };
-      if (parsed.device_kcal != null && parsed.device_kcal > 0) {
-        const names = parsed.workouts.map((w) => w.name_ru).filter(Boolean).join(', ');
-        const single = parsed.workouts.length === 1 ? parsed.workouts[0] : null;
-        const minutes =
-          parsed.device_minutes ?? parsed.workouts.reduce((s, w) => s + Math.max(0, w.minutes), 0);
-        // The toast and the budget ack must speak the STORED number: the db
-        // clamps an OCR misread to a sane band, and «записываем ровно его
-        // цифру» would otherwise show a kcal that was never saved.
-        const storedKcal = await addTrackerWorkout(
-          db,
-          {
-            kcal: parsed.device_kcal,
-            minutes,
-            type: single?.type ?? 'other',
-            label: names ? `${names} · ${t('workouts.fromTracker')}` : t('workouts.fromTracker'),
-            sets: single?.sets ?? null,
-          },
-          whenForDay(day),
-        );
-        setParseNote(t('workouts.trackerAdded'));
-        ackBudget(storedKcal);
-        await reload();
-        return;
-      }
       await saveParsed(parsed.workouts);
     } catch (error) {
       showParseFailure(error);
@@ -619,11 +559,11 @@ export function WorkoutSection({
     ]);
   }
 
-  const totalRaw = rows.reduce((s, r) => s + Number(r.kcal), 0);
-  const counted = Math.round(totalRaw * EATBACK_FRACTION);
+  const totalRaw = rows.reduce((s, r) => s + creditedWorkoutKcal(r), 0);
+  const counted = Math.round(totalRaw);
 
   // Manual entry has something to add. Gates the «Добавить» button the same way
-  // the tracker mode's does — an enabled-looking button whose tap silently does
+  // an enabled-looking button whose tap silently does
   // nothing (the old behaviour on an empty field) reads as a broken tap.
   const rawAmount = supportsSets(type) ? sets : minutes;
   const amount = Number(rawAmount.replace(',', '.'));
@@ -769,9 +709,8 @@ export function WorkoutSection({
               segments were free-floating pills and read as a second row of the
               type chips below (device feedback 2026-07-21: «визуально не
               отделены»). The connected track is what says «это переключатель». */}
-          <View style={[styles.segments, { backgroundColor: theme.iconBg }]}>
+          {AI_CONFIGURED ? <View style={[styles.segments, { backgroundColor: theme.iconBg }]}>
             {WORKOUT_MODES.map((m) => {
-              if (m === 'ai' && !AI_CONFIGURED) return null;
               const active = mode === m;
               return (
                 <Pressable
@@ -808,7 +747,7 @@ export function WorkoutSection({
                 </Pressable>
               );
             })}
-          </View>
+          </View> : null}
 
           {mode === 'exact' ? (
             <View style={styles.modeSection}>
@@ -928,55 +867,6 @@ export function WorkoutSection({
             </View>
           ) : null}
 
-          {/* «По часам» — the optional import path: a measured kcal number from a
-              watch/tracker, stored verbatim (none of our MET math), marked «по трекеру». The
-              app stays standalone; this just lets a measured number in. */}
-          {mode === 'tracker' ? (
-            <View style={styles.modeSection}>
-              {/* What this mode IS — the locale line existed but never rendered,
-                  so the mode read as a bare mystery field (device feedback
-                  2026-07-21: «что имеется в виду „с трекера“»). */}
-              <View style={styles.addRow}>
-                <TextField
-                  value={trackerKcal}
-                  onChangeText={setTrackerKcal}
-                  keyboardType="numeric"
-                  placeholder={t('workouts.tracker.kcalPlaceholder')}
-                  style={styles.minInput}
-                />
-                <Text style={[styles.unit, { color: theme.subtle }, theme.font.body]}>{t('units.kcal')}</Text>
-                <Pressable
-                  onPress={() => void addTracker()}
-                  disabled={adding || !(Number(trackerKcal.replace(',', '.')) > 0)}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('workouts.add')}
-                  style={({ pressed }) => [
-                    styles.addBtn,
-                    {
-                      backgroundColor: theme.primary,
-                      opacity:
-                        adding || !(Number(trackerKcal.replace(',', '.')) > 0) ? 0.5 : pressed ? 0.7 : 1,
-                    },
-                  ]}
-                >
-                  <Text style={[styles.addBtnText, { color: theme.onPrimary }, theme.font.bodySemiBold]}>
-                    {t('workouts.add')}
-                  </Text>
-                </Pressable>
-              </View>
-              <Text style={[styles.setsHint, { color: theme.subtle }, theme.font.body]}>
-                {t('workouts.tracker.hint')}
-              </Text>
-              {onConnectCalories ? (
-                <Pressable accessibilityRole="button" disabled={connectingCalories}
-                  onPress={onConnectCalories} style={styles.connectCalories}>
-                  <Text style={[{ color: theme.primary }, theme.font.bodyMedium]}>
-                    {t(connectingCalories ? 'device.connecting' : 'workouts.health.calories')}
-                  </Text>
-                </Pressable>
-              ) : null}
-            </View>
-          ) : null}
 
           {mode === 'ai' && AI_CONFIGURED ? (
             <View style={styles.modeSection}>
@@ -1075,8 +965,7 @@ export function WorkoutSection({
 
           </> : null}
 
-          {/* Honest burn-math kept but quiet: one line always, the full
-              explanation (72 %, resting subtraction, «по трекеру») a tap away. */}
+          {/* Calculation details are optional. */}
           <Pressable onPress={() => setNoteOpen((v) => !v)} style={styles.noteHead} hitSlop={6}>
             <Text style={[styles.noteToggle, { color: theme.subtle }, theme.font.body]}>{t('workouts.noteToggle')}</Text>
             <Ionicons name={noteOpen ? 'chevron-up' : 'chevron-down'} size={14} color={theme.tertiary} />
@@ -1108,7 +997,6 @@ const styles = StyleSheet.create({
   segment: { flex: 1, paddingVertical: 8, borderRadius: 6, alignItems: 'center' },
   segmentText: { fontSize: 13, textAlign: 'center' },
   formToggle: { marginVertical: 12 },
-  connectCalories: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start' },
   durationLabel: { marginTop: 14 },
   modeSection: { marginTop: 14 },
   exactAddBtn: { marginTop: 14, paddingVertical: 12, borderRadius: 6, alignItems: 'center' },

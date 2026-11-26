@@ -12,8 +12,9 @@ import {
 import { applySchema } from '@/lib/core/db/init';
 import * as schema from '@/lib/core/db/schema';
 import { getStepsRow, setManualSteps, upsertSteps } from '@/lib/core/db/steps';
+import { withTx } from '@/lib/core/db/tx';
 import { upsertWeight } from '@/lib/core/db/weight';
-import { addTrackerWorkout, addWorkout, deleteWorkout, listWorkoutsForDay, updateWorkout } from '@/lib/core/db/workouts';
+import { addTrackerWorkout, addWorkout, deleteWorkout, importDeviceWorkout, listWorkoutsForDay, recalculateLegacyWorkoutEnergy, todayWorkoutKcal, updateWorkout } from '@/lib/core/db/workouts';
 import { workoutKcal } from '@/lib/core/insights/bodyMetrics';
 import type { DeviceWorkoutSession, HealthService } from '@/lib/core/services/health';
 
@@ -32,16 +33,10 @@ function fakeService(opts: {
   sessions?: DeviceWorkoutSession[] | null;
   stepsByWindow?: Record<string, number>;
   stepsPerCall?: number;
-  windowKcal?: number | null;
-  /// Per-interval energy, same key shape as `stepsByWindow` — lets a test give
-  /// each stretch of a day its own burn, which is the only way to observe that
-  /// overlapping sessions are priced on their exclusive parts.
-  kcalByWindow?: Record<string, number>;
   daySteps?: number | null;
-}): HealthService & { stepWindowCalls: string[]; kcalWindowCalls: string[] } {
+}): HealthService & { stepWindowCalls: string[] } {
   const svc = {
     stepWindowCalls: [] as string[],
-    kcalWindowCalls: [] as string[],
     source: 'device' as const,
     async requestPermissions() {
       return true;
@@ -60,12 +55,7 @@ function fakeService(opts: {
       svc.stepWindowCalls.push(key);
       return opts.stepsByWindow?.[key] ?? opts.stepsPerCall ?? 0;
     },
-    async activeKcalInWindow(start: Date, end: Date) {
-      const key = `${start.toISOString()}|${end.toISOString()}`;
-      svc.kcalWindowCalls.push(key);
-      if (opts.kcalByWindow) return opts.kcalByWindow[key] ?? 0;
-      return opts.windowKcal ?? null;
-    },
+
   };
   return svc;
 }
@@ -82,13 +72,12 @@ const session = (
   end: at(endH),
   type,
   title: null,
-  deviceKcal: null,
   origin: 'test',
   ...extra,
 });
 
 describe('syncDayWorkouts', () => {
-  it('imports a session with measured window kcal and per-row window steps', async () => {
+  it('calculates an imported session above rest, ignoring device calories', async () => {
     const { sqlite, db } = makeDb();
     await applySchema((s) => sqlite.exec(s));
     await upsertSteps(db, DAY, 9000, 'device');
@@ -96,9 +85,9 @@ describe('syncDayWorkouts', () => {
     const svc = fakeService({
       sessions: [session('w1', 18, 19)],
       stepsPerCall: 1200,
-      windowKcal: 380,
     });
-    const union = await syncDayWorkouts(db, svc, DAY);
+    const device = { ...svc, activeKcalInWindow: () => { throw new Error('Should not read device calories'); } };
+    const union = await syncDayWorkouts(db, device, DAY);
 
     expect(union).toBe(1200);
     expect((await getStepsRow(db, DAY))?.workoutSteps).toBe(1200);
@@ -109,20 +98,20 @@ describe('syncDayWorkouts', () => {
       externalId: 'w1',
       type: 'run',
       minutes: 60,
-      kcal: 380,
-      kcalFrom: 'device',
+      kcal: workoutKcal('run', 60, 70),
+      kcalFrom: 'met',
       stepsInWindow: 1200,
       date: '2026-07-16',
     });
     sqlite.close();
   });
 
-  it('falls back to the app ≈MET when the store has no energy (marked met)', async () => {
+  it('uses the logged weight for the app estimate', async () => {
     const { sqlite, db } = makeDb();
     await applySchema((s) => sqlite.exec(s));
     await upsertWeight(db, '2026-07-15', 80);
 
-    const svc = fakeService({ sessions: [session('w1', 18, 19, 'run')], windowKcal: null });
+    const svc = fakeService({ sessions: [session('w1', 18, 19, 'run')] });
     await syncDayWorkouts(db, svc, DAY);
 
     const [row] = await listWorkoutsForDay(db, DAY);
@@ -163,19 +152,18 @@ describe('syncDayWorkouts', () => {
     const { sqlite, db } = makeDb();
     await applySchema((s) => sqlite.exec(s));
 
-    const svc1 = fakeService({ sessions: [session('w1', 18, 19)], windowKcal: 300 });
+    const svc1 = fakeService({ sessions: [session('w1', 18, 19)] });
     await syncDayWorkouts(db, svc1, DAY);
-    // Watch data firmed up: longer session, more kcal.
+    // A later record has a longer session.
     const svc2 = fakeService({
       sessions: [{ ...session('w1', 18, 19), end: at(19, 10) }],
-      windowKcal: 340,
     });
     await syncDayWorkouts(db, svc2, DAY);
 
     const rows = await listWorkoutsForDay(db, DAY);
     expect(rows).toHaveLength(1);
     expect(rows[0].minutes).toBe(70);
-    expect(rows[0].kcal).toBe(340);
+    expect(rows[0].kcal).toBe(workoutKcal('run', 70, 70));
     sqlite.close();
   });
 
@@ -202,7 +190,7 @@ describe('syncDayWorkouts', () => {
     expect((await listWorkoutsForDay(db, DAY)).map((row) => row.id)).toEqual([first.id]);
     await updateWorkout(db, first.id, {
       type: first.type, label: first.label, minutes: first.minutes, speedKmh: null,
-      sets: null, intensity: null, kcal: null, date: '2026-07-15',
+      sets: null, intensity: null, date: '2026-07-15',
     }, 70);
     await backfillHealth(db, svc, { workoutsOnly: true, workoutDays: 1 }, DAY);
     expect(await listWorkoutsForDay(db, DAY)).toHaveLength(0);
@@ -215,7 +203,7 @@ describe('syncDayWorkouts', () => {
     await applySchema((s) => sqlite.exec(s));
     await upsertSteps(db, DAY, 9000, 'device');
 
-    const svc = fakeService({ sessions: [session('w1', 18, 19)], stepsPerCall: 1200, windowKcal: 300 });
+    const svc = fakeService({ sessions: [session('w1', 18, 19)], stepsPerCall: 1200 });
     await syncDayWorkouts(db, svc, DAY);
     const [row] = await listWorkoutsForDay(db, DAY);
     await deleteWorkout(db, row.id);
@@ -232,7 +220,7 @@ describe('syncDayWorkouts', () => {
     await applySchema((s) => sqlite.exec(s));
     await addWorkout(db, 'strength', 45, 80, null, DAY);
 
-    const svc = fakeService({ sessions: [session('w1', 18, 19)], windowKcal: 300 });
+    const svc = fakeService({ sessions: [session('w1', 18, 19)] });
     await syncDayWorkouts(db, svc, DAY);
 
     const rows = await listWorkoutsForDay(db, DAY);
@@ -248,7 +236,7 @@ describe('syncDayWorkouts', () => {
     await applySchema((s) => sqlite.exec(s));
     await setManualSteps(db, DAY, 10000);
 
-    const svc = fakeService({ sessions: [session('w1', 18, 19)], stepsPerCall: 900, windowKcal: 300 });
+    const svc = fakeService({ sessions: [session('w1', 18, 19)], stepsPerCall: 900 });
     await syncDayWorkouts(db, svc, DAY);
 
     const row = await getStepsRow(db, DAY);
@@ -271,7 +259,6 @@ describe('syncDayWorkouts', () => {
       end: at(0, 30, 17),
       type: 'run',
       title: null,
-      deviceKcal: null,
       origin: 'test',
     };
     const mkSvc = () =>
@@ -283,7 +270,6 @@ describe('syncDayWorkouts', () => {
           [`${at(23, 30, 16)}|${at(0, 0, 17)}`]: 500,
           [`${at(0, 0, 17)}|${at(0, 30, 17)}`]: 500,
         },
-        windowKcal: 200,
       });
 
     const union16 = await syncDayWorkouts(db, mkSvc(), new Date(2026, 6, 16, 12));
@@ -332,15 +318,24 @@ describe('syncDayWorkouts', () => {
   });
 });
 
+it('recalculates old provider energy without access and preserves untimed history', async () => {
+  const { sqlite, db } = makeDb();
+  await applySchema((s) => sqlite.exec(s));
+  await importDeviceWorkout(db, { externalId: 'old', type: 'run', title: null, start: new Date(at(18)),
+    end: new Date(at(19)), minutes: 60, kcal: 999, kcalFrom: 'device', stepsInWindow: null });
+  await addTrackerWorkout(db, { kcal: 900, minutes: 0 }, DAY);
+  await addTrackerWorkout(db, { kcal: 600, minutes: 30, type: 'run' }, DAY);
+  const old = (await listWorkoutsForDay(db, DAY)).find((w) => w.externalId === 'old')!;
+  await withTx(db, () => recalculateLegacyWorkoutEnergy(db));
+  await withTx(db, () => recalculateLegacyWorkoutEnergy(db));
+  const rows = await listWorkoutsForDay(db, DAY);
+  expect(rows.find((w) => w.externalId === 'old')).toMatchObject({ id: old.id, kcal: workoutKcal('run', 60, 70), kcalFrom: 'met' });
+  expect(rows.find((w) => w.minutes === 0)).toMatchObject({ kcal: 900, source: 'tracker' });
+  expect(await todayWorkoutKcal(db, DAY)).toBe(workoutKcal('run', 60, 70) + workoutKcal('run', 30, 70));
+  sqlite.close();
+});
+
 describe('overlapping sessions are priced on their exclusive stretch', () => {
-  // The watch auto-detects a walk 18:00–19:00 while the user also runs a manual
-  // session 18:30–19:30. Energy flows at a steady 5 kcal/min, so the union
-  // (18:00–19:30, 90 min) really cost 450 — not 600.
-  const kcalByWindow = {
-    [`${at(18)}|${at(19)}`]: 300, // session A, all of it exclusive
-    [`${at(19)}|${at(19, 30)}`]: 150, // session B, only its tail is exclusive
-    [`${at(18, 30)}|${at(19, 30)}`]: 300, // what B's FULL window would have billed
-  };
   const overlapping = [
     session('a', 18, 19),
     session('b', 18, 19, 'run', { start: at(18, 30), end: at(19, 30) }),
@@ -351,15 +346,15 @@ describe('overlapping sessions are priced on their exclusive stretch', () => {
     await applySchema((s) => sqlite.exec(s));
     await upsertSteps(db, DAY, 9000, 'device');
 
-    await syncDayWorkouts(db, fakeService({ sessions: overlapping, kcalByWindow }), DAY);
+    await syncDayWorkouts(db, fakeService({ sessions: overlapping }), DAY);
 
     const rows = await listWorkoutsForDay(db, DAY);
     expect(rows).toHaveLength(2);
     const total = rows.reduce((s, r) => s + Number(r.kcal), 0);
-    expect(total).toBe(450); // was 600 — the shared half hour billed twice
+    expect(total).toBe(workoutKcal('run', 60, 70) + workoutKcal('run', 30, 70));
     // Each row still carries a number that means something on its own.
-    expect(rows.find((r) => r.externalId === 'a')?.kcal).toBe(300);
-    expect(rows.find((r) => r.externalId === 'b')?.kcal).toBe(150);
+    expect(rows.find((r) => r.externalId === 'a')?.kcal).toBe(workoutKcal('run', 60, 70));
+    expect(rows.find((r) => r.externalId === 'b')?.kcal).toBe(workoutKcal('run', 30, 70));
     sqlite.close();
   });
 
@@ -372,23 +367,22 @@ describe('overlapping sessions are priced on their exclusive stretch', () => {
     ];
     await syncDayWorkouts(
       db,
-      fakeService({ sessions: nested, kcalByWindow: { [`${at(18)}|${at(20)}`]: 600 } }),
+      fakeService({ sessions: nested }),
       DAY,
     );
 
     const rows = await listWorkoutsForDay(db, DAY);
-    expect(rows.find((r) => r.externalId === 'outer')?.kcal).toBe(600);
+    expect(rows.find((r) => r.externalId === 'outer')?.kcal).toBe(workoutKcal('run', 120, 70));
     expect(rows.find((r) => r.externalId === 'inner')?.kcal).toBe(0);
     sqlite.close();
   });
 
-  it('the ≈MET fallback is apportioned too — half the window, half the estimate', async () => {
+  it('the app estimates only the exclusive minutes of overlapping sessions', async () => {
     const { sqlite, db } = makeDb();
     await applySchema((s) => sqlite.exec(s));
-    // No measured energy anywhere, so both fall through to the MET path.
     await syncDayWorkouts(
       db,
-      fakeService({ sessions: overlapping, windowKcal: null }),
+      fakeService({ sessions: overlapping }),
       DAY,
     );
 
@@ -396,7 +390,7 @@ describe('overlapping sessions are priced on their exclusive stretch', () => {
     // B overlaps A for 30 of its 60 minutes → it is estimated on 30.
     const a = rows.find((r) => r.externalId === 'a')!;
     const b = rows.find((r) => r.externalId === 'b')!;
-    expect(b.kcal).toBe(Math.round(a.kcal / 2));
+    expect(b.kcal).toBe(workoutKcal('run', 30, 70));
     expect(a.minutes).toBe(60); // the duration shown is still what was done
     expect(b.minutes).toBe(60);
     sqlite.close();
@@ -407,12 +401,12 @@ describe('overlapping sessions are priced on their exclusive stretch', () => {
     await applySchema((s) => sqlite.exec(s));
     await syncDayWorkouts(
       db,
-      fakeService({ sessions: [...overlapping].reverse(), kcalByWindow }),
+      fakeService({ sessions: [...overlapping].reverse() }),
       DAY,
     );
     const rows = await listWorkoutsForDay(db, DAY);
-    expect(rows.find((r) => r.externalId === 'a')?.kcal).toBe(300);
-    expect(rows.find((r) => r.externalId === 'b')?.kcal).toBe(150);
+    expect(rows.find((r) => r.externalId === 'a')?.kcal).toBe(workoutKcal('run', 60, 70));
+    expect(rows.find((r) => r.externalId === 'b')?.kcal).toBe(workoutKcal('run', 30, 70));
     sqlite.close();
   });
 });
@@ -422,7 +416,7 @@ describe('syncDayHealth', () => {
     const { sqlite, db } = makeDb();
     await applySchema((s) => sqlite.exec(s));
 
-    const svc = fakeService({ sessions: [session('w1', 18, 19)], daySteps: 6400, windowKcal: 300 });
+    const svc = fakeService({ sessions: [session('w1', 18, 19)], daySteps: 6400 });
     const res = await syncDayHealth(db, svc, DAY, false);
 
     expect(res.steps).toBe(6400);
@@ -476,7 +470,6 @@ describe('syncDayHealth', () => {
       sessions: [session('w1', 18, 19)],
       daySteps: 6400,
       stepsPerCall: 1100,
-      windowKcal: 300,
     });
     const res = await syncDayHealth(db, svc, DAY, true);
 
@@ -575,12 +568,11 @@ describe('backfillHealth', () => {
       end: at(19, 0, 15),
       type: 'walk',
       title: null,
-      deviceKcal: null,
       origin: 'test',
     };
     const s16 = session('d16', 18, 19, 'run');
     const svc: HealthService = {
-      ...fakeService({ windowKcal: 250 }),
+      ...fakeService({}),
       async workoutSessionsForDay(day: Date) {
         if (day.getDate() === 15) return [s15];
         if (day.getDate() === 16) return [s16];

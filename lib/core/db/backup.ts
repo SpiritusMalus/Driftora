@@ -6,6 +6,7 @@ import { ensureSettings } from './settings';
 import { refreshLocalizedReminders } from '@/lib/i18n/reminders';
 
 import { withDbLock, withTx } from './tx';
+import { recalculateLegacyWorkoutEnergy } from './workouts';
 
 /// Accepts any drizzle SQLite database (op-sqlite async on device,
 /// better-sqlite3 sync in tests). Query builders are awaitable for both.
@@ -154,6 +155,7 @@ export async function importAllTables(
           await insertRow(db, table, row);
         }
       }
+      await recalculateLegacyWorkoutEnergy(db);
     },
     'importAllTables',
   );

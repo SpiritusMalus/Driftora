@@ -1,16 +1,19 @@
-import { and, desc, eq, gt, inArray, lt } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, inArray, lt } from 'drizzle-orm';
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
 import {
   kcalFromMet,
+  restingRateForProfile,
   STRENGTH_INTENSITIES,
   workoutKcal,
   WORKOUT_TYPES,
   type StrengthIntensity,
   type WorkoutType,
 } from '../insights/bodyMetrics';
-import type { TimeWindow } from '../services/workoutWindows';
-import { workoutImportTombstones, workouts, type WorkoutRow } from './schema';
+import { subtractWindows, type TimeWindow } from '../services/workoutWindows';
+import { ensureSettingsUnlocked } from './settings';
+import { latestWeight } from './weight';
+import { workoutImportTombstones, workouts, type AppSettings, type WorkoutRow } from './schema';
 import { dayKey } from './steps';
 import { withDbLock, withTx } from './tx';
 
@@ -18,6 +21,20 @@ import { withDbLock, withTx } from './tx';
 /// better-sqlite3 sync in tests) — mirrors [steps.ts].
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyDb = BaseSQLiteDatabase<any, any, any>;
+
+/// The same weight and resting estimate used by manual and imported workouts.
+export async function getWorkoutEnergyProfile(db: AnyDb, settings: AppSettings) {
+  const weight = await latestWeight(db);
+  const weightKg = weight?.weightKg ?? 70;
+  return { weightKg, restingRate: restingRateForProfile(settings, weightKg) };
+}
+
+export function estimateWorkoutKcal(type: string, minutes: number, weightKg: number, restingRate?: number): number {
+  return (WORKOUT_TYPES as readonly string[]).includes(type)
+    ? workoutKcal(type as WorkoutType, minutes, weightKg, null, null, restingRate)
+    // General conditioning when a provider didn't identify the exercise type.
+    : kcalFromMet(5, minutes, weightKg, restingRate);
+}
 
 /// Log one workout for a day. kcal is computed HERE from the then-current weight
 /// ((MET − the user's resting rate) × kg × hours) and stored, so the number
@@ -187,7 +204,7 @@ export async function addTrackerWorkout(
 }
 
 /// One device session normalized for storage — the sync layer resolves the kcal
-/// (window aggregate → session total → ≈MET) BEFORE calling this.
+/// from the session parameters BEFORE calling this.
 export interface DeviceWorkoutInput {
   externalId: string;
   start: Date;
@@ -470,15 +487,47 @@ export async function listWorkoutsForDay(
     .orderBy(desc(workouts.ts))) as WorkoutRow[];
 }
 
-/// RAW total kcal burned in a day's workouts (before the eat-back fraction). The
-/// eat-back is applied by the plan/food layer via `withWorkoutEnergy`, so the
-/// stored/summed number here stays a plain, honest "calories burned".
+/// A legacy calorie-only entry is kept in history. With no time or sets there
+/// is no workout duration to estimate, so its old tracker number earns nothing.
+export function creditedWorkoutKcal(row: Pick<WorkoutRow, 'source' | 'minutes' | 'kcal'>): number {
+  return row.source === 'tracker' && row.minutes <= 0 ? 0 : Math.max(0, Number(row.kcal));
+}
+
 export async function todayWorkoutKcal(
   db: AnyDb,
   date: Date | string = new Date(),
 ): Promise<number> {
   const rows = await listWorkoutsForDay(db, date);
-  return rows.reduce((sum, r) => sum + Number(r.kcal), 0);
+  return rows.reduce((sum, row) => sum + creditedWorkoutKcal(row), 0);
+}
+
+/// Re-estimates older imports even when their original permissions were revoked.
+/// The original session windows and row IDs stay intact. The caller wraps the
+/// changes in the same transaction as startup or backup restore.
+export async function recalculateLegacyWorkoutEnergy(db: AnyDb): Promise<void> {
+  const rows = (await db.select().from(workouts)
+    .where(inArray(workouts.source, ['device', 'tracker']))
+    .orderBy(asc(workouts.startTs), asc(workouts.endTs), asc(workouts.id))) as WorkoutRow[];
+  const needsEstimate = (row: WorkoutRow) => row.kcalFrom !== 'met' && row.minutes > 0;
+  if (!rows.some(needsEstimate)) return;
+  const { weightKg, restingRate } = await getWorkoutEnergyProfile(db, await ensureSettingsUnlocked(db));
+  let claimed: TimeWindow[] = [];
+  for (const row of rows) {
+    const start = row.startTs?.getTime();
+    const end = row.endTs?.getTime();
+    let minutes = row.minutes;
+    if (row.source === 'device' && start != null && end != null && end > start) {
+      claimed = claimed.filter((w) => w.end > start);
+      const activeMs = subtractWindows({ start, end }, claimed)
+        .reduce((sum, w) => sum + w.end - w.start, 0);
+      claimed.push({ start, end });
+      minutes *= activeMs / (end - start);
+    }
+    if (needsEstimate(row)) {
+      const kcal = estimateWorkoutKcal(row.type, minutes, weightKg, restingRate);
+      await db.update(workouts).set({ kcal, kcalFrom: 'met' }).where(eq(workouts.id, row.id));
+    }
+  }
 }
 
 /// Remove one logged workout by id. Deleting a DEVICE import also tombstones
@@ -515,9 +564,7 @@ export async function getWorkout(db: AnyDb, id: number): Promise<WorkoutRow | nu
 /// What an edit may change about a logged session. Everything the three add
 /// paths could set, plus `date` — «записал не в тот день» is the single most
 /// common thing to fix, and re-logging by hand is a worse answer than moving
-/// the row. `kcal` is honoured ONLY for a MEASURED row («по трекеру» / «с
-/// часов»): its number is the user's own reading, and our MET math must never
-/// silently overwrite it.
+/// the row.
 export interface WorkoutEdit {
   type: string;
   label: string | null;
@@ -526,7 +573,6 @@ export interface WorkoutEdit {
   speedKmh: number | null;
   intensity: StrengthIntensity | null;
   date?: string | null;
-  kcal?: number | null;
 }
 
 /// An unknown ('other', AI-parsed) activity's MET came from the model and was
@@ -565,17 +611,15 @@ export function editedWorkoutKcal(
   restingRate?: number,
 ): number {
   const minutes = Math.round(Math.min(Math.max(0, edit.minutes), 600));
-  const measured = row.source === 'tracker' || row.source === 'device';
-  if (measured) {
-    const raw = edit.kcal != null ? edit.kcal : Number(row.kcal);
-    return Math.round(Math.min(Math.max(0, raw), 5000));
-  }
+  if (row.source === 'device' || (row.source === 'tracker' && minutes <= 0)) return Number(row.kcal);
   const speedKmh = edit.speedKmh != null && edit.speedKmh > 0 ? edit.speedKmh : null;
   const intensity = validIntensity(edit.type, edit.intensity);
   if ((WORKOUT_TYPES as readonly string[]).includes(edit.type)) {
     return workoutKcal(edit.type as WorkoutType, minutes, weightKg, speedKmh, intensity, restingRate);
   }
-  return rescaleKcal(Number(row.kcal), row.minutes, minutes);
+  return row.source === 'tracker' && row.minutes <= 0
+    ? estimateWorkoutKcal(edit.type, minutes, weightKg, restingRate)
+    : rescaleKcal(Number(row.kcal), row.minutes, minutes);
 }
 
 /// Save an edit to a logged workout. Returns the stored kcal (0 when the row is
@@ -611,6 +655,7 @@ export async function updateWorkout(
           type: edit.type,
           minutes,
           kcal,
+          ...(row.source === 'tracker' && minutes > 0 ? { kcalFrom: 'met' as const } : {}),
           speedKmh: edit.speedKmh != null && edit.speedKmh > 0 ? edit.speedKmh : null,
           label: edit.label?.trim() || null,
           sets: edit.sets != null && edit.sets > 0 ? Math.round(edit.sets) : null,

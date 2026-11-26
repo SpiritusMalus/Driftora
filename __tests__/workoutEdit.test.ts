@@ -81,19 +81,15 @@ describe('updateWorkout', () => {
     expect(after.endTs!.getTime()).toBe(after.ts.getTime());
   });
 
-  it('keeps a tracker number verbatim and honours an explicit kcal edit, clamped', async () => {
+  it('keeps a legacy tracker record and estimates energy once a duration is added', async () => {
     const db = await makeDb();
     await addTrackerWorkout(db, { kcal: 300, minutes: 0 }, AT);
     const row = await onlyRow(db);
     const edit = { type: row.type, label: row.label, minutes: 0, sets: null, speedKmh: null, intensity: null };
-    // No kcal in the edit → the stored reading survives an unrelated change.
     await updateWorkout(db, row.id, { ...edit, label: 'утренняя' }, 90);
     expect((await onlyRow(db)).kcal).toBe(300);
-    // An explicit kcal is the user correcting their own reading.
-    await updateWorkout(db, row.id, { ...edit, kcal: 450 }, 90);
-    expect((await onlyRow(db)).kcal).toBe(450);
-    await updateWorkout(db, row.id, { ...edit, kcal: 99_999 }, 90);
-    expect((await onlyRow(db)).kcal).toBe(5000);
+    await updateWorkout(db, row.id, { ...edit, type: 'run', minutes: 30 }, 90);
+    expect(await onlyRow(db)).toMatchObject({ kcal: workoutKcal('run', 30, 90), kcalFrom: 'met' });
   });
 
   it("scales an unknown activity's kcal with its duration (no MET to recompute)", async () => {

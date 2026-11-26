@@ -38,7 +38,7 @@ export const en = {
     },
     workout: {
       title: 'Parse this workout with AI?',
-      body: 'Your workout description — text, voice or a screenshot — goes to OpenRouter (OpenRouter, Inc., USA) via our server to identify the activity type and duration. Calories are computed by the app from your weight; for a tracker screenshot, the printed figure is logged. Your diary, mood and weight are never sent. Write about the workout only. This is a cross-border data transfer; you can withdraw consent in Settings.',
+      body: 'Your workout description — text, voice or a screenshot — goes to OpenRouter (OpenRouter, Inc., USA) via our server to identify the activity type and duration. Calories are computed by the app from your weight. Your diary, mood and weight are never sent. Write about the workout only. This is a cross-border data transfer; you can withdraw consent in Settings.',
       accept: 'Parse',
       decline: 'Don’t send',
       declineCaption: 'You can still add a workout with the buttons — they work offline.',
@@ -317,7 +317,7 @@ export const en = {
     budget: {
       title: 'The day’s budget: base + steps + workouts',
       teaser: 'Resting + steps + workouts',
-      body: 'The plan’s base is a day with no movement at all (and never below the healthy minimum). All movement adds on top the same day:\n\n· steps above ~3,000 — the first ~3,000 are already inside the sedentary base;\n· workouts — 72% of their burn (why not 100% — below).\n\nThe sum shows on Food as the “resting · steps · workouts” line. Move more — eat more: any movement raises the budget on top of the minimum right away.',
+      body: 'The base includes ordinary movement and roughly the first 3,000 steps. Estimated active calories from additional steps and workouts add to that base. Steps within a workout count once.',
     },
     food: {
       title: 'Where food numbers come from',
@@ -326,8 +326,8 @@ export const en = {
     },
     workouts: {
       title: 'How a workout’s burn is worked out',
-      teaser: 'The activity’s cost minus resting, 72% into the budget',
-      body: 'Burn = the activity’s “cost” (MET from a research compendium) × weight × time, minus YOUR resting metabolism: an hour of any activity contains an hour of simply being alive, and your budget’s base already paid for it. We subtract your own resting cost rather than the textbook one — the standard “1 MET” overstates real resting metabolism by about 19%, and by more the heavier you are. For walking, running and cycling your pace refines it. Strength is logged in sets — ≈3 minutes per set, no stopwatch needed; and the effort you pick (light/moderate/hard) shifts the “cost”.\n\nWe add no “afterburn” bonus. Measurements put the elevated burn at roughly half an hour, not a day or two, and for an ordinary session it cannot be sized reliably — adding a number we cannot justify would not be honest.\n\n72% of the estimate enters the budget. That is not a safety margin but a measured figure: in the largest doubly-labelled-water dataset (1,754 adults) only about 72% of the energy spent on activity reaches your daily total — the body offsets the rest by lowering its resting burn. Have exact numbers from a watch? Enter the kcal by hand (“from tracker”) or via a screenshot — saved as-is, the budget takes the same 72%. Every burn figure here, ours and the watch’s alike, is an estimate: wrist trackers miss calorie expenditure by over 30%.',
+      teaser: 'Active calories above rest',
+      body: 'We estimate energy from the activity, duration and weight. Pace and intensity refine the estimate. We subtract the resting energy already included in the day’s base for that time.',
     },
     boost: {
       title: 'How to raise your target',
@@ -461,7 +461,7 @@ export const en = {
     // «Hide calories»: the fact of the workout stays, only the figure goes.
     summaryNoKcal: 'workouts logged: {{count}}',
     // Segmented control: one input path at a time instead of three open blocks.
-    mode: { exact: 'Calculate from time', tracker: 'Enter tracker calories', ai: 'Describe' },
+    mode: { exact: 'Calculate from time', ai: 'Describe' },
     openForm: "Add workout",
     closeForm: "Close form",
     durationLabel: "Duration, min",
@@ -470,7 +470,6 @@ export const en = {
     health: {
       connect: 'Connect workouts',
       restore: 'Restore access',
-      calories: 'Connect device calories',
     },
     minutes: 'e.g. 30',
     min: 'min',
@@ -489,13 +488,6 @@ export const en = {
       light: 'Light',
       moderate: 'Moderate',
       heavy: 'Hard',
-    },
-    // «By tracker» — the optional import: kcal straight off a watch/tracker, kept
-    // verbatim (none of our MET math), marked «by tracker».
-    tracker: {
-      head: 'Kcal your watch or band already counted.',
-      kcalPlaceholder: 'e.g. 300',
-      hint: 'A tracker number is kept as-is, with no recalculation.',
     },
     // One-tap repeat of what's already been logged — no re-typing. Own entries
     // only: a number off a watch measured THAT session, it isn't a template.
@@ -517,7 +509,6 @@ export const en = {
     editDeviceNote: 'This workout came from your watch and updates on sync, so it can’t be edited here — only removed.',
     editLabel: 'Name (optional)',
     editType: 'Activity',
-    editKcal: 'Kcal from tracker',
     editMinutes: 'Duration',
     editSets: 'Sets',
     editSpeed: 'Pace (optional)',
@@ -534,7 +525,7 @@ export const en = {
     describeMedia: 'The button nearby: attach a screenshot from your tracker app.',
     // One-time coach for the glowing buttons: first tap explains, second acts.
     voiceCoach: 'Voice input: say what you did and for how long — “ran 20 minutes, then 50 squats”. Tap the microphone again and recording starts.',
-    shotCoach: 'Tracker screenshot: your watch already counted the workout — attach a shot of the summary and we’ll carry it over as-is. Tap again and pick the image.',
+    shotCoach: 'Attach a summary that shows the activity and its duration. Tap again to pick the image.',
     describeAction: 'Parse',
     parsing: 'Parsing…',
     parseAdded: 'Entries added: {{count}}. Check the time and burn.',
@@ -556,25 +547,20 @@ export const en = {
     voiceSilent: 'The recording came out silent — the microphone delivered no sound. Check it in your phone settings and try again, or type it instead.',
     screenshot: 'Workout screenshot',
     photoFailed: 'Couldn’t open the image. Try another screenshot.',
-    fromTracker: 'from tracker',
     // Auto-imported session tag + the honest line about its steps: they're in
     // the workout's kcal already, so the budget's step earnings exclude them.
     fromDevice: 'from watch',
     stepsInside: '{{steps}} {{stepsWord}} inside — counted in the workout, not in steps',
     // No figure: budgetAck follows with its own, and two different numbers in
     // a row is the very confusion the header was collapsed to avoid.
-    trackerAdded: 'Logged from your tracker.',
     budgetAck: '✓ Workout logged: +{{kcal}} kcal added to today’s budget.',
     budgetAckNoKcal: '✓ Workout logged — today’s budget just grew.',
     // The entry landed on the SELECTED day — «today» here would be a lie.
     budgetAckOtherDay: '✓ Workout logged: +{{kcal}} kcal to that day’s budget.',
     budgetAckOtherDayNoKcal: '✓ Workout logged on the selected day.',
     // The short line is always visible; the full math is a tap away («How we count»).
-    noteShort: 'This is what you may eat — less than you burned: not all activity reaches your daily total.',
     noteToggle: 'How we count',
-    // The eat-back line lives in `noteShort`, which stays visible above this — no
-    // point repeating it word for word one line lower.
-    note: 'Burn is an estimate from type and duration; strength — from sets and effort. There is no afterburn bonus. A tracker number is saved as-is (“from tracker”). The budget takes 72% of the burn. Details — in “How it works”.',
+    note: 'This is estimated energy above rest. Pace and intensity help refine it.',
     type: {
       walk: 'Walking',
       run: 'Running',

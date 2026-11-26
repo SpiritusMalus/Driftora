@@ -11,7 +11,7 @@ import { useDatabase } from '@/lib/core/db/DatabaseProvider';
 import { backfillHealth, syncDayWorkouts } from '@/lib/core/db/healthSync';
 import { ensureSettings, updateSettings } from '@/lib/core/db/settings';
 import { useAppActiveEffect } from '@/lib/core/services/appActive';
-import type { WorkoutGrants, WorkoutReadScope } from '@/lib/core/services/health';
+import type { WorkoutGrants } from '@/lib/core/services/health';
 import { getHealthService } from '@/lib/core/services/healthProvider';
 import { localDayKey, parseDayKey } from '@/lib/i18n/formatDay';
 import { useTheme } from '@/lib/theme/theme';
@@ -79,16 +79,16 @@ export default function WorkoutScreen() {
     if (focused) void refresh().catch(() => {});
   });
 
-  async function connect(scope: WorkoutReadScope) {
+  async function connect() {
     if (!db || !service.requestWorkoutPermission || requesting.current) return;
     requesting.current = true;
     checkVersion.current++;
     setBusy(true);
     try {
-      await service.requestWorkoutPermission(scope);
+      await service.requestWorkoutPermission();
       const current = await service.workoutGrants?.() ?? null;
       setGrants(current);
-      if (scope === 'exercise') setRecoverInSettings(connectedBefore && current?.exercise === false);
+      setRecoverInSettings(connectedBefore && current?.exercise === false);
       if (current?.exercise) {
         await updateSettings(db, { healthImportWorkouts: true });
         setConnectedBefore(true);
@@ -96,7 +96,7 @@ export default function WorkoutScreen() {
         setSyncTick((value) => value + 1);
       }
     } catch {
-      if (scope === 'exercise' && connectedBefore) setRecoverInSettings(true);
+      if (connectedBefore) setRecoverInSettings(true);
     } finally {
       requesting.current = false;
       setBusy(false);
@@ -105,7 +105,7 @@ export default function WorkoutScreen() {
 
   function connectExercise() {
     if (recoverInSettings && service.openHealthSettings) service.openHealthSettings();
-    else void connect('exercise');
+    else void connect();
   }
 
   return (
@@ -113,9 +113,7 @@ export default function WorkoutScreen() {
       {db ? (
         <>
           <WorkoutSection db={db} initiallyOpen day={day} refreshToken={syncTick}
-            highlightedId={highlighted} onDayChange={(day) => setParams({ day, highlight: '' })}
-            onConnectCalories={android && grants?.exercise && !grants.calories ? () => void connect('calories') : undefined}
-            connectingCalories={busy} />
+            highlightedId={highlighted} onDayChange={(day) => setParams({ day, highlight: '' })} />
           {android ? (
             grants?.exercise === false ? (
               <Pressable accessibilityRole="button" disabled={busy} onPress={connectExercise} style={styles.link}>

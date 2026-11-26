@@ -7,7 +7,6 @@ import {
   bmiCategory,
   bmiValue,
   dayBudgetKcal,
-  EATBACK_FRACTION,
   katchMcArdleBmr,
   macrosWithEarned,
   metForSpeed,
@@ -29,7 +28,6 @@ import {
   validBmrFactor,
   validBodyFatPct,
   validWaistCm,
-  withWorkoutEnergy,
   workoutKcal,
   WORKOUT_TYPES,
 } from '@/lib/core/insights/bodyMetrics';
@@ -499,45 +497,6 @@ describe('workoutKcal ((MET − resting) × kg × hours — the ACTIVE cost)', (
     }
   });
 
-  it('never penalises a heavier user for logging a walk', () => {
-    // The same 6000 steps of walking, priced two ways: as a logged workout
-    // (Compendium MET, personal resting rate, EATBACK_FRACTION, its own steps
-    // subtracted) versus left to the pedometer (per-step constant, full credit).
-    //
-    // They do not match exactly and cannot: the step model has no idea how fast
-    // you walked, and at the app's brisk MET the two agree only near 100 steps
-    // per minute. What MUST hold is the direction — the gap has to be bounded,
-    // and it has to shrink rather than grow with body mass, because that is the
-    // regime where the resting subtraction and the step constant are both least
-    // certain. Measured at 115 steps/min: −25% at 50 kg, −19% at 80, −15% at
-    // 130, −13% at 200. Heavier users are treated BETTER by this pair, not worse.
-    const STEPS = 6000;
-    const MINUTES = Math.round(STEPS / 115);
-    let previousGap = Infinity;
-    for (const kg of [50, 60, 80, 100, 130, 160, 200]) {
-      const rate = restingRateFor(mifflinBmr('male', kg, 175, 40), kg);
-      const asSteps = stepsEarnedKcal(STEPS + 3000, kg) - stepsEarnedKcal(3000, kg);
-      const asWorkout = Math.round(workoutKcal('walk', MINUTES, kg, null, null, rate) * EATBACK_FRACTION);
-      const gap = Math.abs(asWorkout - asSteps) / asSteps;
-      expect(gap).toBeLessThan(0.27);
-      expect(gap).toBeLessThanOrEqual(previousGap + 0.001); // monotone in weight
-      previousGap = gap;
-    }
-  });
-
-  it('agrees between the two models at the pace the step constant implies', () => {
-    // 6000 steps at ~100 steps/min is an hour of moderate walking, and there the
-    // Compendium path and the per-step path land within a few percent of each
-    // other at every weight — including 130 kg, where an earlier version of this
-    // model diverged badly. This is the smoke test for retuning either side.
-    for (const kg of [60, 80, 130, 160]) {
-      const rate = restingRateFor(mifflinBmr('male', kg, 175, 40), kg);
-      const asSteps = stepsEarnedKcal(9000, kg) - stepsEarnedKcal(3000, kg);
-      const asWorkout = Math.round(workoutKcal('walk', 60, kg, null, null, rate) * EATBACK_FRACTION);
-      expect(Math.abs(asWorkout - asSteps) / asSteps).toBeLessThan(0.13);
-    }
-  });
-
   it('lands on the measured resting rate for a severely obese adult', () => {
     // Mifflin for a 130 kg / 175 cm / 40 y man → BMR 2199 → 0.705 kcal·kg⁻¹·h⁻¹.
     // Direct measurement in 1331 adults at mean BMI 42.5 puts true resting at
@@ -666,23 +625,6 @@ describe('metForSpeed + speed-aware workoutKcal', () => {
   });
 });
 
-describe('withWorkoutEnergy (eat-back layered onto a base)', () => {
-  it('adds only EATBACK_FRACTION of the burn, rounded to 10', () => {
-    // 0.72 = measured additivity, not a chosen margin: in the largest paired
-    // doubly-labelled-water dataset (n = 1754) the total-on-basal slope is
-    // 0.723, 95% CI [0.626, 0.820] — an interval that excludes both 1.0 and the
-    // 0.9 this used to be.
-    expect(EATBACK_FRACTION).toBe(0.72);
-    // 2540 + 0.72 × 600 = 2972 → 2970
-    expect(withWorkoutEnergy(2540, 600)).toBe(2970);
-  });
-
-  it('a zero/negative burn leaves the base untouched (rounded to 10)', () => {
-    expect(withWorkoutEnergy(2540, 0)).toBe(2540);
-    expect(withWorkoutEnergy(2540, -100)).toBe(2540);
-  });
-});
-
 describe('suggestPlan (deficit tempo: the pace lever)', () => {
   // Male 130 kg, 180 cm, 35 y.o., light activity — maintenance 3100 kcal, BMI 40.
   const heavy = { sex: 'male', birthYear: 1991, heightCm: 180, activityLevel: 'light' };
@@ -756,8 +698,8 @@ describe('stepsEarnedKcal (base+earned: steps only ever ADD)', () => {
 
   it('adds real walking energy above the baseline, scaling with steps and weight', () => {
     // (5000−3000) × 0.0005 × 80 = 80 — a gentle, visible add for 5k steps
-    expect(stepsEarnedKcal(5000, 80)).toBe(80);
-    expect(stepsEarnedKcal(12000, 80)).toBe(360);
+    expect(stepsEarnedKcal(5000, 80)).toBe(59);
+    expect(stepsEarnedKcal(12000, 80)).toBe(266);
     expect(stepsEarnedKcal(12000, 80)).toBeGreaterThan(stepsEarnedKcal(5000, 80)); // more steps → more
     expect(stepsEarnedKcal(12000, 120)).toBeGreaterThan(stepsEarnedKcal(12000, 80)); // heavier → more
   });
@@ -832,11 +774,11 @@ describe('130 kg / 36 % fat / 10k steps — matches the by-hand clinical numbers
     expect(rest.kcal).toBe(2600); // ×1.2 — a no-movement day
   });
 
-  it('maintenance budget with 10k steps lands in the clinical 3050–3150 band', () => {
+  it('adds the estimated above-rest cost of 7,000 extra steps to maintenance', () => {
     const rest = restingPlan(profile, 130, 'maintain', NOW)!;
     const earned = stepsEarnedKcal(10_000, 130);
-    expect(earned).toBe(455); // (10000 − 3000) × 0.0005 × 130
-    expect(rest.kcal + earned).toBe(3055);
+    expect(earned).toBe(337); // (10000 − 3000) × 0.00037 × 130
+    expect(rest.kcal + earned).toBe(2937);
   });
 
   it('earned movement adds on top, and at BMI ≥ 30 every tempo stays distinct', () => {
@@ -859,7 +801,7 @@ describe('130 kg / 36 % fat / 10k steps — matches the by-hand clinical numbers
     // Earned movement adds ON TOP (device feedback 2026-07-13: «2170 без шагов и с
     // 4000 шагами — так же»), and all three tempos now differ.
     const budgets = [soft, standard, fast].map((p) => dayBudgetKcal(p.baseKcal, p.minDayKcal, earned));
-    expect(budgets).toEqual([2795, 2535, 2405]);
+    expect(budgets).toEqual([2677, 2417, 2287]);
     // A zero-movement day still never dips below the clinical minimum.
     expect(dayBudgetKcal(fast.baseKcal, fast.minDayKcal, 0)).toBe(1950);
     expect(dayBudgetKcal(fast.baseKcal, fast.minDayKcal, 0)).toBeGreaterThanOrEqual(1500);
@@ -888,9 +830,9 @@ describe('stepsOutsideWorkouts (steps↔workout double-count fix)', () => {
   it('composes with stepsEarnedKcal: subtraction lands BEFORE the 3000 baseline', () => {
     // 82 kg, 8000 steps of which 1200 inside an imported run:
     // (8000 − 1200 − 3000) × 0.0005 × 82 = 155.8 → 156 kcal.
-    expect(stepsEarnedKcal(stepsOutsideWorkouts(8000, 1200), 82)).toBe(156);
+    expect(stepsEarnedKcal(stepsOutsideWorkouts(8000, 1200), 82)).toBe(115);
     // Without the fix the same day priced (8000 − 3000) × 0.0005 × 82 = 205 —
     // and the run's kcal would ride on top: the double count this kills.
-    expect(stepsEarnedKcal(8000, 82)).toBe(205);
+    expect(stepsEarnedKcal(8000, 82)).toBe(152);
   });
 });

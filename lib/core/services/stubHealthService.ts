@@ -78,7 +78,6 @@ export class StubHealthService implements HealthService {
         end: at(day, 18, 40),
         type: types[Math.floor(day.getDate() / 3) % 3],
         title: null,
-        deviceKcal: null,
         origin: 'stub',
       },
     ];
@@ -92,13 +91,6 @@ export class StubHealthService implements HealthService {
     return Math.round(minutes * (80 + (seed % 9) * 10));
   }
 
-  /// Measured window energy on EVEN days only — odd days exercise the honest
-  /// «≈MET» fallback path end-to-end.
-  async activeKcalInWindow(start: Date, end: Date): Promise<number | null> {
-    if (start.getDate() % 2 !== 0) return null;
-    const minutes = Math.max(0, (end.getTime() - start.getTime()) / 60000);
-    return Math.round(minutes * 8);
-  }
 
   /// Deterministic night signals in plausible bands; SpO₂ only every second
   /// day and VO₂max only every fifth — exercising the partial-null rendering.

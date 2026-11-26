@@ -35,6 +35,8 @@ export function DatabaseProvider({ children }: { children: ReactNode }) {
         ]);
         const opened = await openDatabase();
         const settings = await ensureSettings(opened);
+        const [{ recalculateLegacyWorkoutEnergy }, { withTx }] = await Promise.all([import('./workouts'), import('./tx')]);
+        await withTx(opened, () => recalculateLegacyWorkoutEnergy(opened), 'recalculateLegacyWorkoutEnergy');
         if (!mounted) return;
         await i18n.changeLanguage(settings.locale === 'en' ? 'en' : defaultLocale);
         // Fire-and-forget: the AI-quota meter id must never block (or fail) DB

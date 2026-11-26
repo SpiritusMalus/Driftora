@@ -1,20 +1,13 @@
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
-import {
-  kcalFromMet,
-  restingRateForProfile,
-  workoutKcal,
-  WORKOUT_TYPES,
-  type WorkoutType,
-} from '../insights/bodyMetrics';
 import { ensureSettings } from './settings';
 import type { DeviceWorkoutSession, HealthService } from '../services/health';
 import { mergedDayWindows, subtractWindows, type TimeWindow } from '../services/workoutWindows';
 import { upsertHealthDay } from './healthDays';
 import { getStepsRow, dayKey, setWorkoutSteps, syncDaySteps } from './steps';
 import { syncDaySleep } from './sleep';
-import { latestWeight, syncWeighIns } from './weight';
-import { importDeviceWorkout, tombstonedIds, workoutWindowsForDay } from './workouts';
+import { syncWeighIns } from './weight';
+import { estimateWorkoutKcal, getWorkoutEnergyProfile, importDeviceWorkout, tombstonedIds, workoutWindowsForDay } from './workouts';
 
 /// Accepts any drizzle SQLite database (op-sqlite async on device,
 /// better-sqlite3 sync in tests) — mirrors [steps.ts].
@@ -22,15 +15,6 @@ import { importDeviceWorkout, tombstonedIds, workoutWindowsForDay } from './work
 type AnyDb = BaseSQLiteDatabase<any, any, any>;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-/// MET for a session whose type we couldn't map ('other') and whose energy the
-/// store didn't measure — Compendium "conditioning exercise, general" band.
-/// Shown with «≈»; crediting 0 would hide real movement.
-const UNKNOWN_SESSION_MET = 5.0;
-
-/// Fallback weight for the MET path when no weigh-in exists yet — mirrors
-/// WorkoutSection's visible 70-kg caveat.
-const FALLBACK_WEIGHT_KG = 70;
 
 export interface DayHealthResult {
   steps: number | null;
@@ -183,22 +167,7 @@ async function importDeviceSessions(
   sessions: DeviceWorkoutSession[],
 ): Promise<void> {
   const dead = await tombstonedIds(db, sessions.map((s) => s.externalId));
-  const weightKg = (await latestWeight(db))?.weightKg ?? FALLBACK_WEIGHT_KG;
-  // The ≈MET fallback must subtract the same resting cost a hand-logged session
-  // would, or the two paths disagree about the same activity.
-  const s = await ensureSettings(db);
-  const restingRate = restingRateForProfile(
-    {
-      sex: s.sex,
-      birthYear: s.birthYear,
-      heightCm: s.heightCm,
-      activityLevel: s.activityLevel,
-      bodyFatPct: s.bodyFatPct,
-      waistCm: s.waistCm,
-      bmrFactor: s.bmrFactor,
-    },
-    weightKg,
-  );
+  const { weightKg, restingRate } = await getWorkoutEnergyProfile(db, await ensureSettings(db));
   const usable = sessions
     .filter((s) => !dead.has(s.externalId))
     .map((s) => ({ s, start: new Date(s.start).getTime(), end: new Date(s.end).getTime() }))
@@ -214,15 +183,8 @@ async function importDeviceSessions(
     // Minutes stay the session's FULL duration — that's what the user actually
     // did, and it's what the row shows. Only the energy is apportioned.
     const minutes = Math.max(1, Math.round((endMs - startMs) / 60000));
-    const resolved = await resolveSessionKcal(
-      service,
-      session,
-      exclusive,
-      endMs - startMs,
-      minutes,
-      weightKg,
-      restingRate,
-    );
+    const activeMs = exclusive.reduce((sum, w) => sum + w.end - w.start, 0);
+    const kcal = estimateWorkoutKcal(session.type, minutes * activeMs / (endMs - startMs), weightKg, restingRate);
     await importDeviceWorkout(db, {
       externalId: session.externalId,
       start: new Date(startMs),
@@ -230,8 +192,8 @@ async function importDeviceSessions(
       type: session.type,
       title: session.title,
       minutes,
-      kcal: resolved.kcal,
-      kcalFrom: resolved.from,
+      kcal,
+      kcalFrom: 'met',
       stepsInWindow: service.stepsInWindow
         ? await service.stepsInWindow(new Date(startMs), new Date(endMs))
         : null,
@@ -268,54 +230,12 @@ export async function recomputeWorkoutSteps(
   let unionSteps = 0;
   for (const w of mergedDayWindows(windows, dayStart, dayEnd)) {
     const n = await service.stepsInWindow(new Date(w.start), new Date(w.end));
-    if (n != null && Number.isFinite(n)) unionSteps += Math.max(0, n);
+    if (n == null || !Number.isFinite(n)) return (await getStepsRow(db, day))?.workoutSteps ?? 0;
+    unionSteps += Math.max(0, n);
   }
   unionSteps = Math.round(unionSteps);
   await setWorkoutSteps(db, day, unionSteps);
   return unionSteps;
-}
-
-/// kcal priority for a session: (1) the OS-deduplicated energy aggregate inside
-/// the window — the measured burn; (2) the session's own stored total (iOS);
-/// (3) the app's ≈MET estimate — same math as an identical manual log, marked
-/// with «≈» in the UI via kcalFrom='met'.
-///
-/// All three are priced on [exclusive] — the stretches this session doesn't
-/// share with an earlier one (see [importDeviceSessions]). The measured path
-/// asks the OS per exclusive piece, which is exact; the two estimate paths have
-/// no per-interval source to ask, so they scale by the exclusive share of the
-/// session. A session fully covered by an earlier one earns 0 rather than a
-/// second copy of the same energy.
-async function resolveSessionKcal(
-  service: HealthService,
-  session: DeviceWorkoutSession,
-  exclusive: TimeWindow[],
-  windowMs: number,
-  minutes: number,
-  weightKg: number,
-  restingRate?: number,
-): Promise<{ kcal: number; from: 'device' | 'met' }> {
-  const exclusiveMs = exclusive.reduce((s, w) => s + (w.end - w.start), 0);
-  if (exclusiveMs <= 0) return { kcal: 0, from: 'device' };
-  const share = windowMs > 0 ? Math.min(1, exclusiveMs / windowMs) : 1;
-
-  if (service.activeKcalInWindow) {
-    let measured = 0;
-    for (const w of exclusive) {
-      const n = await service.activeKcalInWindow(new Date(w.start), new Date(w.end));
-      if (n != null && Number.isFinite(n)) measured += Math.max(0, n);
-    }
-    if (measured > 0) return { kcal: measured, from: 'device' };
-  }
-  if (session.deviceKcal != null && session.deviceKcal > 0) {
-    return { kcal: session.deviceKcal * share, from: 'device' };
-  }
-  const known = (WORKOUT_TYPES as readonly string[]).includes(session.type);
-  const activeMinutes = minutes * share;
-  const kcal = known
-    ? workoutKcal(session.type as WorkoutType, activeMinutes, weightKg, null, null, restingRate)
-    : kcalFromMet(UNKNOWN_SESSION_MET, activeMinutes, weightKg, restingRate);
-  return { kcal, from: 'met' };
 }
 
 /// Fire-and-forget history pull after the user first connects extended import:

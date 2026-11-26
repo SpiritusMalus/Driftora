@@ -50,9 +50,6 @@ export class NullHealthService implements HealthService {
     return null;
   }
 
-  async activeKcalInWindow(): Promise<null> {
-    return null;
-  }
 
   async bodySignalsForDay(): Promise<null> {
     return null;

@@ -13,7 +13,6 @@ import { FillBar } from '@/components/ui/FillBar';
 import { Screen } from '@/components/ui/Screen';
 import {
   dayBudgetKcal,
-  EATBACK_FRACTION,
   macrosWithEarned,
   restingPlan,
   stepsEarnedKcal,
@@ -108,7 +107,7 @@ export default function FoodDayScreen() {
   const [micros, setMicros] = useState<MicroTotals | null>(null);
   const [sex, setSex] = useState<'' | Sex>('');
   const [openMicros, setOpenMicros] = useState(false);
-  // RAW calories burned in today's logged workouts (before the eat-back share) —
+  // Active calories in today's logged workouts —
   // read straight from the DB; the workout log itself lives on «Активность» now.
   const [workoutRawKcal, setWorkoutRawKcal] = useState(0);
   // «Base + earned»: today's step count and the kcal it EARNED (added on top of
@@ -522,7 +521,7 @@ function DayProgress({
   // below the healthy day-minimum. Movement always raises the day and re-opens
   // the chosen deficit; only a zero-movement day rests at the minimum.
   const stepsAdd = Math.max(0, stepsEarned);
-  const workoutAdd = Math.round(Math.max(0, workoutKcalRaw) * EATBACK_FRACTION);
+  const workoutAdd = Math.round(Math.max(0, workoutKcalRaw));
   const target = dayBudgetKcal(goal.baseKcal, goal.minDayKcal, stepsAdd + workoutAdd);
   // The resting number the day starts from: the deficit base, floored at the
   // healthy day-minimum. Earned movement is shown adding ON TOP of it, so the

@@ -88,7 +88,7 @@ export const stepsDays = sqliteTable('steps_days', {
 
 /// One logged workout for a day — type + minutes → kcal (MET × weight × hours,
 /// computed at log time from the then-current weight). Feeds the daily active-
-/// energy add-on (eat-back, 75%) and the plan's with/without-workouts scenarios.
+/// active energy in the daily budget.
 export const workouts = sqliteTable('workouts', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   ts: integer('ts', { mode: 'timestamp' }).notNull(),
@@ -125,8 +125,8 @@ export const workouts = sqliteTable('workouts', {
   // union), never a sum of these: overlapping sessions would double-subtract.
   stepsInWindow: integer('steps_in_window'),
   // Where a device row's kcal came from: 'device' = the OS store's measured
-  // energy (shown verbatim), 'met' = our MET fallback (shown with «≈»). Null
-  // for user-logged rows (their display rules predate this column).
+  // energy stored by older builds, 'met' = a Driftora estimate. Null for
+  // ordinary manual entries.
   kcalFrom: text('kcal_from', { enum: ['device', 'met'] }),
 });
 export type WorkoutRow = typeof workouts.$inferSelect;
