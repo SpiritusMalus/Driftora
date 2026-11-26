@@ -451,7 +451,7 @@ export const en = {
     title: 'Workouts today',
     // Card header once the arrows point at another day — say WHOSE list it is.
     titleForDay: 'Workouts · {{day}}',
-    summaryEmpty: 'none — add one',
+    summaryEmpty: "no entries",
     // ONE number, not two — see the Russian note: two figures side by side
     // read as two independent facts rather than a number and its share.
     summary: '+{{kcal}} kcal to eat today',
@@ -461,7 +461,17 @@ export const en = {
     // «Hide calories»: the fact of the workout stays, only the figure goes.
     summaryNoKcal: 'workouts logged: {{count}}',
     // Segmented control: one input path at a time instead of three open blocks.
-    mode: { exact: 'Exact', tracker: 'From tracker', ai: 'Describe' },
+    mode: { exact: 'Calculate from time', tracker: 'Enter tracker calories', ai: 'Describe' },
+    openForm: "Add workout",
+    closeForm: "Close form",
+    durationLabel: "Duration, min",
+    invalidDuration: "Enter a duration greater than 0 minutes.",
+    invalidSets: "Enter at least one set.",
+    health: {
+      connect: 'Connect workouts',
+      restore: 'Restore access',
+      calories: 'Connect device calories',
+    },
     minutes: 'e.g. 30',
     min: 'min',
     kmh: 'km/h',

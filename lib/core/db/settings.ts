@@ -77,6 +77,7 @@ export interface SettingsPatch {
   // Opt-in extended device import (weight/%жира/workouts/vitals) — gates every
   // extended read and the extended OS permission request. See schema.ts.
   healthImportExtended?: boolean;
+  healthImportWorkouts?: boolean;
   // The base steps+sleep OS grant happened at least once — see schema.ts. Set
   // true on a successful connect tap; reconciled with the real granted list on
   // Android (revoking in Health Connect flips it back to false).
@@ -142,6 +143,7 @@ export async function updateSettings(
   if (patch.showPopulationStats != null) set.showPopulationStats = patch.showPopulationStats;
   if (patch.communityFoodShare != null) set.communityFoodShare = patch.communityFoodShare;
   if (patch.healthImportExtended != null) set.healthImportExtended = patch.healthImportExtended;
+  if (patch.healthImportWorkouts != null) set.healthImportWorkouts = patch.healthImportWorkouts;
   if (patch.healthConnected != null) set.healthConnected = patch.healthConnected;
   if (patch.locale === 'ru' || patch.locale === 'en') set.locale = patch.locale;
   if (patch.region != null) set.region = patch.region;

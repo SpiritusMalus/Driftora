@@ -30,6 +30,9 @@ export interface DeviceWorkoutSession {
 
 /// Reads activity from the OS health store (HealthKit / Health Connect).
 /// Implemented in M2 over react-native-health + react-native-health-connect.
+export type WorkoutReadScope = 'exercise' | 'calories';
+export type WorkoutGrants = Record<WorkoutReadScope, boolean>;
+
 export interface HealthService {
   /// Provenance of the counts this service reports, used to tag stored steps.
   /// 'device' = real OS health store; 'stub' = offline deterministic fill
@@ -51,6 +54,9 @@ export interface HealthService {
   /// like null. Lets the steps screen reconcile its persisted "connected" flag
   /// with reality instead of trusting a stale bit after a revoke.
   hasStepsGrant?(): Promise<boolean | null>;
+  workoutGrants?(): Promise<WorkoutGrants | null>;
+  requestWorkoutPermission?(scope: WorkoutReadScope): Promise<void>;
+  openHealthSettings?(): void;
 
   /// Total steps for the given local day, or null if unavailable.
   stepsForDay(day: Date): Promise<number | null>;

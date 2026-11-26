@@ -241,8 +241,14 @@ async function importDeviceWorkoutUnlocked(db: AnyDb, input: DeviceWorkoutInput)
     .select()
     .from(workouts)
     .where(eq(workouts.externalId, input.externalId))) as WorkoutRow[];
-  if (existing.length > 0) {
-    await db.update(workouts).set(values).where(eq(workouts.id, existing[0].id));
+  const row = existing[0];
+  if (row) {
+    // A user can file an imported workout under a different day without
+    // changing the provider's original window used to price steps and calories.
+    const moved = row.startTs != null && row.date !== dayKey(row.startTs);
+    await db.update(workouts)
+      .set(moved ? { ...values, ts: row.ts, date: row.date } : values)
+      .where(eq(workouts.id, row.id));
   } else {
     await db.insert(workouts).values(values);
   }

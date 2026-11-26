@@ -7,7 +7,8 @@ import { Alert, Animated, Easing, Pressable, StyleSheet, Text, View } from 'reac
 import { ConsentModal } from '@/components/consent/ConsentModal';
 import { Card } from '@/components/ui/Card';
 import { Chip, ChipRow } from '@/components/ui/Chip';
-import { DayNav } from '@/components/ui/DayNav';
+import { DAY_NAV_BACK_DAYS, DayNav } from '@/components/ui/DayNav';
+import { PrimaryButton } from '@/components/ui/PrimaryButton';
 import { TextField } from '@/components/ui/TextField';
 import { AI_CONSENT_VERSION, grantAiConsent, needsAiConsent } from '@/lib/core/consent/consent';
 import type { WorkoutRow } from '@/lib/core/db/schema';
@@ -52,7 +53,7 @@ import {
   WorkoutParseError,
   type ParsedWorkout,
 } from '@/lib/core/services/workoutParser';
-import { formatDayTitle, localDayKey, parseDayKey } from '@/lib/i18n/formatDay';
+import { daysAgo, formatDayTitle, localDayKey, parseDayKey } from '@/lib/i18n/formatDay';
 import { budgetKcal, formatWorkoutLine, formatWorkoutValue } from '@/lib/i18n/formatWorkout';
 import { pluralKey } from '@/lib/i18n/plural';
 import { type Theme, useTheme } from '@/lib/theme/theme';
@@ -94,6 +95,10 @@ export function WorkoutSection({
   initiallyOpen = false,
   day: dayProp,
   onDayChange,
+  refreshToken,
+  highlightedId,
+  onConnectCalories,
+  connectingCalories,
 }: {
   db: Db;
   onChange?: (rawKcal: number) => void;
@@ -102,6 +107,10 @@ export function WorkoutSection({
   /// owns it so its sync-driven remounts don't snap the card back to today.
   day?: string;
   onDayChange?: (day: string) => void;
+  refreshToken?: number;
+  highlightedId?: number;
+  onConnectCalories?: () => void;
+  connectingCalories?: boolean;
 }) {
   const { t } = useTranslation();
   const theme = useTheme();
@@ -146,6 +155,7 @@ export function WorkoutSection({
   // so it is shown with «≈» like everything else.
   const [trackerKcal, setTrackerKcal] = useState('');
   const [open, setOpen] = useState(initiallyOpen);
+  const [formOpen, setFormOpen] = useState(false);
   // Which input path is visible (segmented control). Defaults to the primary
   // manual entry; «tracker»/«ai» are the optional paths.
   const [mode, setMode] = useState<WorkoutMode>('exact');
@@ -235,14 +245,17 @@ export function WorkoutSection({
     budgetAckTimer.current = setTimeout(() => setBudgetAck(null), 6000);
   }
 
+  const loadRequest = useRef(0);
   const reload = useCallback(async () => {
     if (!db) return;
+    const request = ++loadRequest.current;
     const [list, w, repeats, s] = await Promise.all([
       listWorkoutsForDay(db, day),
       latestWeight(db),
       quickWorkouts(db),
       ensureSettings(db),
     ]);
+    if (request !== loadRequest.current) return;
     setRows(list);
     setQuick(repeats);
     const weighed = w != null && w.weightKg > 0;
@@ -275,7 +288,8 @@ export function WorkoutSection({
   useFocusEffect(
     useCallback(() => {
       void reload();
-    }, [reload]),
+      return () => { loadRequest.current++; };
+    }, [reload, refreshToken]),
   );
 
   // Settings this card reacts to: the calorie-visibility switch (always), and
@@ -322,6 +336,7 @@ export function WorkoutSection({
     try {
       ackBudget(await repeatWorkout(db, q, weightKg, whenForDay(day), restingRate));
       await reload();
+      setFormOpen(false);
     } finally {
       setRepeating(false);
     }
@@ -351,6 +366,7 @@ export function WorkoutSection({
         setSpeed('');
       }
       await reload();
+      setFormOpen(false);
     } finally {
       setAdding(false);
     }
@@ -375,6 +391,7 @@ export function WorkoutSection({
       );
       setTrackerKcal('');
       await reload();
+      setFormOpen(false);
     } finally {
       setAdding(false);
     }
@@ -608,9 +625,9 @@ export function WorkoutSection({
   // Manual entry has something to add. Gates the «Добавить» button the same way
   // the tracker mode's does — an enabled-looking button whose tap silently does
   // nothing (the old behaviour on an empty field) reads as a broken tap.
-  const exactValid = supportsSets(type)
-    ? Number(sets.replace(',', '.')) > 0
-    : Number(minutes.replace(',', '.')) > 0;
+  const rawAmount = supportsSets(type) ? sets : minutes;
+  const amount = Number(rawAmount.replace(',', '.'));
+  const exactValid = Number.isFinite(amount) && (supportsSets(type) ? setsToMinutes(amount) > 0 : amount > 0);
 
   return (
     <Card variant="section" style={styles.card}>
@@ -624,7 +641,7 @@ export function WorkoutSection({
           {isToday ? t('workouts.title') : t('workouts.titleForDay', { day: formatDayTitle(day, t) })}
         </Text>
         <Text style={[styles.summary, { color: theme.subtle }, theme.font.body]}>
-          {totalRaw <= 0
+          {rows.length === 0
             ? t('workouts.summaryEmpty')
             : hideCalories
               ? t('workouts.summaryNoKcal', { count: rows.length })
@@ -638,15 +655,65 @@ export function WorkoutSection({
           {/* The day this card is about, first thing in the body: everything
               below — the list, «Повторить», all three input paths — reads and
               writes THIS day. */}
-          <DayNav value={day} onChange={setDay} style={styles.dayNav} />
-          {!isToday ? (
-            <Text style={[styles.dayHint, { color: theme.subtle }, theme.font.body]}>
-              {t('workouts.otherDayHint')}
-            </Text>
-          ) : null}
+          <DayNav value={day} onChange={setDay} style={styles.dayNav}
+            backDays={Math.max(DAY_NAV_BACK_DAYS, daysAgo(day))} />
           {budgetAck ? (
             <Text style={[styles.budgetAck, { color: theme.accent }, theme.font.bodyMedium]}>{budgetAck}</Text>
           ) : null}
+          {rows.length > 0 ? (
+            <View style={styles.list}>
+              {rows.map((r) => (
+                <View key={r.id} style={[styles.entry, {
+                  borderColor: theme.separator,
+                  backgroundColor: r.id === highlightedId ? theme.primarySoft : undefined,
+                }]}>
+                  {/* The whole row opens the edit screen, with an always-visible
+                      pencil saying so — a logged session could only be DELETED
+                      before, so «30 минут вместо 40» meant deleting and typing
+                      the whole thing again. Same icon idiom as the food day
+                      (✎ then the destructive ✕ in the last slot). */}
+                  <Pressable
+                    onPress={() => router.push(`/workout/${r.id}`)}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('workouts.edit')}
+                    style={({ pressed }) => [styles.item, { opacity: pressed ? 0.6 : 1 }]}
+                  >
+                    <Text style={[styles.itemName, { color: theme.text }, theme.font.body]} numberOfLines={1}>
+                      {describeWorkout(r)}
+                    </Text>
+                    {hideCalories ? null : (
+                      <Text style={[styles.itemKcal, { color: theme.subtle }, theme.font.body]}>
+                        {formatWorkoutValue(r, t, false)}
+                      </Text>
+                    )}
+                    <Ionicons name="create-outline" size={16} color={theme.primary} />
+                    <Pressable
+                      onPress={() => confirmRemove(r.id)}
+                      hitSlop={8}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('workouts.remove')}
+                    >
+                      <Ionicons name="close" size={16} color={theme.tertiary} />
+                    </Pressable>
+                  </Pressable>
+                  {/* The double-count fix, said out loud: these steps moved into
+                      the workout's kcal and left the step earnings. */}
+                  {r.source === 'device' && r.stepsInWindow != null && r.stepsInWindow > 0 ? (
+                    <Text style={[styles.itemSub, { color: theme.subtle }, theme.font.body]}>
+                      {t('workouts.stepsInside', {
+                        steps: r.stepsInWindow,
+                        stepsWord: t(pluralKey('steps.unit', r.stepsInWindow)),
+                      })}
+                    </Text>
+                  ) : null}
+                </View>
+              ))}
+            </View>
+          ) : null}
+
+          <PrimaryButton label={t(formOpen ? 'workouts.closeForm' : 'workouts.openForm')}
+            onPress={() => setFormOpen((value) => !value)} style={styles.formToggle} />
+          {formOpen ? <>
           {/* «Повторить» — the fast path, above the form: what's already been
               logged goes in with one tap instead of being re-entered. Its own
               uppercase label (the food log's «Быстро» idiom) keeps it from
@@ -730,9 +797,6 @@ export function WorkoutSection({
                   {/* Тот же закон, что и у режимов ввода еды: подпись в равной
                       доле ряда ужимается, но не рвётся посреди слова. */}
                   <Text
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.8}
                     style={[
                       styles.segmentText,
                       { color: active ? theme.onPrimary : m === 'ai' && coaching ? theme.primary : theme.subtle },
@@ -759,6 +823,11 @@ export function WorkoutSection({
                 ))}
               </ChipRow>
 
+              {!supportsSets(type) ? (
+                <Text style={[styles.intensityLabel, styles.durationLabel, { color: theme.text }, theme.font.bodyMedium]}>
+                  {t('workouts.durationLabel')}
+                </Text>
+              ) : null}
               <View style={styles.addRow}>
                 {supportsSets(type) ? (
                   <>
@@ -774,6 +843,7 @@ export function WorkoutSection({
                 ) : (
                   <>
                     <TextField
+                      accessibilityLabel={t('workouts.durationLabel')}
                       value={minutes}
                       onChangeText={setMinutes}
                       keyboardType="numeric"
@@ -784,6 +854,13 @@ export function WorkoutSection({
                   </>
                 )}
               </View>
+
+              {rawAmount.trim() !== '' && !exactValid ? (
+                <Text style={[styles.setsHint, { color: theme.text }, theme.font.body]}
+                  accessibilityLiveRegion="polite">
+                  {t(supportsSets(type) ? 'workouts.invalidSets' : 'workouts.invalidDuration')}
+                </Text>
+              ) : null}
 
               {supportsIntensity(type) ? (
                 <View style={styles.intensityRow}>
@@ -859,9 +936,6 @@ export function WorkoutSection({
               {/* What this mode IS — the locale line existed but never rendered,
                   so the mode read as a bare mystery field (device feedback
                   2026-07-21: «что имеется в виду „с трекера“»). */}
-              <Text style={[styles.trackerHead, { color: theme.subtle }, theme.font.body]}>
-                {t('workouts.tracker.head')}
-              </Text>
               <View style={styles.addRow}>
                 <TextField
                   value={trackerKcal}
@@ -893,6 +967,14 @@ export function WorkoutSection({
               <Text style={[styles.setsHint, { color: theme.subtle }, theme.font.body]}>
                 {t('workouts.tracker.hint')}
               </Text>
+              {onConnectCalories ? (
+                <Pressable accessibilityRole="button" disabled={connectingCalories}
+                  onPress={onConnectCalories} style={styles.connectCalories}>
+                  <Text style={[{ color: theme.primary }, theme.font.bodyMedium]}>
+                    {t(connectingCalories ? 'device.connecting' : 'workouts.health.calories')}
+                  </Text>
+                </Pressable>
+              ) : null}
             </View>
           ) : null}
 
@@ -991,58 +1073,11 @@ export function WorkoutSection({
             </View>
           ) : null}
 
-          {rows.length > 0 ? (
-            <View style={styles.list}>
-              {rows.map((r) => (
-                <View key={r.id} style={[styles.entry, { borderColor: theme.separator }]}>
-                  {/* The whole row opens the edit screen, with an always-visible
-                      pencil saying so — a logged session could only be DELETED
-                      before, so «30 минут вместо 40» meant deleting and typing
-                      the whole thing again. Same icon idiom as the food day
-                      (✎ then the destructive ✕ in the last slot). */}
-                  <Pressable
-                    onPress={() => router.push(`/workout/${r.id}`)}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('workouts.edit')}
-                    style={({ pressed }) => [styles.item, { opacity: pressed ? 0.6 : 1 }]}
-                  >
-                    <Text style={[styles.itemName, { color: theme.text }, theme.font.body]} numberOfLines={1}>
-                      {describeWorkout(r)}
-                    </Text>
-                    {hideCalories ? null : (
-                      <Text style={[styles.itemKcal, { color: theme.subtle }, theme.font.body]}>
-                        {formatWorkoutValue(r, t, false)}
-                      </Text>
-                    )}
-                    <Ionicons name="create-outline" size={16} color={theme.primary} />
-                    <Pressable
-                      onPress={() => confirmRemove(r.id)}
-                      hitSlop={8}
-                      accessibilityRole="button"
-                      accessibilityLabel={t('workouts.remove')}
-                    >
-                      <Ionicons name="close" size={16} color={theme.tertiary} />
-                    </Pressable>
-                  </Pressable>
-                  {/* The double-count fix, said out loud: these steps moved into
-                      the workout's kcal and left the step earnings. */}
-                  {r.source === 'device' && r.stepsInWindow != null && r.stepsInWindow > 0 ? (
-                    <Text style={[styles.itemSub, { color: theme.subtle }, theme.font.body]}>
-                      {t('workouts.stepsInside', {
-                        steps: r.stepsInWindow,
-                        stepsWord: t(pluralKey('steps.unit', r.stepsInWindow)),
-                      })}
-                    </Text>
-                  ) : null}
-                </View>
-              ))}
-            </View>
-          ) : null}
+          </> : null}
 
           {/* Honest burn-math kept but quiet: one line always, the full
               explanation (72 %, resting subtraction, «по трекеру») a tap away. */}
           <Pressable onPress={() => setNoteOpen((v) => !v)} style={styles.noteHead} hitSlop={6}>
-            <Text style={[styles.noteShort, { color: theme.subtle }, theme.font.body]}>{t('workouts.noteShort')}</Text>
             <Text style={[styles.noteToggle, { color: theme.subtle }, theme.font.body]}>{t('workouts.noteToggle')}</Text>
             <Ionicons name={noteOpen ? 'chevron-up' : 'chevron-down'} size={14} color={theme.tertiary} />
           </Pressable>
@@ -1071,17 +1106,18 @@ const styles = StyleSheet.create({
   head: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   segments: { flexDirection: 'row', gap: 3, padding: 3, borderRadius: 6 },
   segment: { flex: 1, paddingVertical: 8, borderRadius: 6, alignItems: 'center' },
-  segmentText: { fontSize: 13 },
+  segmentText: { fontSize: 13, textAlign: 'center' },
+  formToggle: { marginVertical: 12 },
+  connectCalories: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start' },
+  durationLabel: { marginTop: 14 },
   modeSection: { marginTop: 14 },
   exactAddBtn: { marginTop: 14, paddingVertical: 12, borderRadius: 6, alignItems: 'center' },
   noteHead: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 12 },
-  noteShort: { fontSize: 12, lineHeight: 17, flex: 1 },
   noteToggle: { fontSize: 12 },
   title: { fontSize: 18, flexShrink: 1 },
   summary: { fontSize: 13, flex: 1, textAlign: 'right' },
   body: { marginTop: 24 },
   dayNav: { marginBottom: 10 },
-  dayHint: { fontSize: 12, lineHeight: 16, marginBottom: 10 },
   budgetAck: { fontSize: 13, lineHeight: 18, marginBottom: 10 },
   repeat: { marginBottom: 14 },
   repeatLabel: { fontSize: 14, marginBottom: 8 },
@@ -1097,7 +1133,6 @@ const styles = StyleSheet.create({
   speedRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
   setsHint: { fontSize: 12, lineHeight: 16, marginTop: 6 },
   minInput: { width: 112 },
-  trackerHead: { fontSize: 13, lineHeight: 18 },
   unit: { fontSize: 13 },
   speedOptional: { fontSize: 12, flex: 1, lineHeight: 16 },
   addBtn: { marginLeft: 'auto', paddingVertical: 9, paddingHorizontal: 16, borderRadius: 6 },
@@ -1107,7 +1142,7 @@ const styles = StyleSheet.create({
   describeBtn: { alignSelf: 'flex-start', paddingVertical: 9, paddingHorizontal: 16, borderRadius: 6 },
   iconBtn: { width: 38, height: 38, borderRadius: 8, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   parseNote: { fontSize: 12, lineHeight: 17 },
-  list: { marginTop: 24 },
+  list: { marginTop: 4 },
   entry: { borderBottomWidth: StyleSheet.hairlineWidth, paddingVertical: 12 },
   item: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   itemName: { fontSize: 14, flex: 1 },

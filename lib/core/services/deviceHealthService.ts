@@ -428,6 +428,29 @@ class AndroidHealthService implements HealthService {
     }
   }
 
+  async workoutGrants() {
+    if (!(await this.ensure())) return null;
+    try {
+      const permissions: unknown = await this.hc.getGrantedPermissions();
+      if (!Array.isArray(permissions)) return null;
+      const hasRead = (type: string) => permissions.some((p) => p?.accessType === 'read' && p?.recordType === type);
+      return { exercise: hasRead('ExerciseSession'), calories: hasRead('ActiveCaloriesBurned') };
+    } catch {
+      return null;
+    }
+  }
+
+  async requestWorkoutPermission(scope: 'exercise' | 'calories'): Promise<void> {
+    if (await this.ensure()) {
+      const recordType = scope === 'exercise' ? 'ExerciseSession' : 'ActiveCaloriesBurned';
+      await this.hc.requestPermission([{ accessType: 'read', recordType }]);
+    }
+  }
+
+  openHealthSettings(): void {
+    this.hc.openHealthConnectSettings();
+  }
+
   /// The extended read set (weight/body-fat/workouts/vitals) on top of the base
   /// steps+sleep. Health Connect grants are per-record-type, so a partial grant
   /// is fine — each read below degrades to null on its own.
