@@ -21,7 +21,7 @@ import {
 } from '@/lib/core/insights/bodyMetrics';
 import { getStepsRow } from '@/lib/core/db/steps';
 import { getWeightForDay } from '@/lib/core/db/weight';
-import { listWorkoutsForDay } from '@/lib/core/db/workouts';
+import { creditedWorkoutKcal, listWorkoutsForDay } from '@/lib/core/db/workouts';
 import { shortMealTitle } from '@/lib/core/insights/mealTitle';
 import { formatDayTitle, parseDayKey } from '@/lib/i18n/formatDay';
 import { formatWorkoutLine, formatWorkoutValue } from '@/lib/i18n/formatWorkout';
@@ -115,7 +115,7 @@ export default function HistoryDayScreen() {
           const raw = stepsRow != null ? Number(stepsRow.steps) : 0;
           const inWorkouts = stepsRow != null ? Number(stepsRow.workoutSteps ?? 0) : 0;
           const stepsAdd = stepsEarnedKcal(stepsOutsideWorkouts(raw, inWorkouts), kg);
-          const workoutKcal = dayWorkouts.reduce((sum, workout) => sum + (workout.kcal ?? 0), 0);
+          const workoutKcal = dayWorkouts.reduce((sum, workout) => sum + creditedWorkoutKcal(workout), 0);
           const workoutAdd = Math.round(Math.max(0, workoutKcal));
           setDayTarget(dayBudgetKcal(base.baseKcal, base.minDayKcal, stepsAdd + workoutAdd));
         } else {
@@ -203,12 +203,14 @@ export default function HistoryDayScreen() {
   // Недобор/перебор за день. Округляем ОБА числа перед вычитанием, чтобы
   // подпись сходилась с показанным съеденным: иначе 1849.6 против 2100 даёт
   // «недобор 250» рядом с числом «1850».
+  const hasFood = entries.length > 0;
   const eatenRounded = Math.round(totals.kcal);
   const balanceLine =
     hideCalories || dayTarget == null
       ? null
       : (() => {
           const target = Math.round(dayTarget);
+          if (!hasFood) return `${t('home.food.dayGoal')} ${formatInt(target)} ${t('units.kcal')}`;
           const diff = eatenRounded - target;
           if (diff === 0) return t('history.balanceExact', { target });
           return diff < 0
@@ -216,7 +218,6 @@ export default function HistoryDayScreen() {
             : t('history.balanceOver', { target, diff });
         })();
 
-  const hasFood = entries.length > 0;
   const emptyDay =
     loaded &&
     entries.length === 0 &&
@@ -233,12 +234,18 @@ export default function HistoryDayScreen() {
         <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>
           {t('history.dbUnavailable')}
         </Text>
-      ) : emptyDay ? (
-        <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>
-          {t('history.emptyDay')}
-        </Text>
       ) : (
         <>
+          {!hasFood && balanceLine != null ? (
+            <Text style={[styles.bodyLine, { color: theme.text }, theme.font.bodySemiBold]}>
+              {balanceLine}
+            </Text>
+          ) : null}
+          {emptyDay ? (
+            <Text style={[styles.hint, { color: theme.subtle }, theme.font.body]}>
+              {t('history.emptyDay')}
+            </Text>
+          ) : null}
           {hasFood ? (
             <View style={[styles.hero, { borderColor: theme.separator }]}>
               <View style={styles.heroRow}>
@@ -261,9 +268,11 @@ export default function HistoryDayScreen() {
               {/* Норма этого дня и расхождение с ней. Прячется под «скрыть
                   калории» — там весь экран живёт без цифр ккал — и когда нормы
                   нет: сравнивать не с чем, а выдуманная норма хуже её отсутствия. */}
-              <Text style={[styles.heroSub, { color: theme.subtle }, theme.font.body]}>
-                {balanceLine ?? ''}
-              </Text>
+              {balanceLine != null ? (
+                <Text style={[styles.heroSub, { color: theme.subtle }, theme.font.body]}>
+                  {balanceLine}
+                </Text>
+              ) : null}
             </View>
           ) : null}
           {hasFood ? (
