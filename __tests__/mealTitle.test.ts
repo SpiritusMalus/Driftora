@@ -57,6 +57,11 @@ describe('mealTitle', () => {
     expect(mealTitle([item()], 'US')).toBe('Borscht');
   });
 
+  it('uses the requested display language independently of the nutrition region', () => {
+    expect(mealTitle([item()], 'US', 'ru')).toBe('Борщ');
+    expect(mealTitle([item()], 'RU', 'en')).toBe('Borscht');
+  });
+
   it('returns nothing for an empty meal so the caller can decide the fallback', () => {
     expect(mealTitle([], 'RU')).toBe('');
     // A blank name must not become a title made of a comma.

@@ -82,6 +82,17 @@ describe('background parse entries (db lifecycle)', () => {
     expect(detail!.entry.kcal).toBe(0);
   });
 
+  it('saves a Russian photo title even when searching US nutrition sources', async () => {
+    const { sqlite, db } = makeDb();
+    await applySchema((stmt) => sqlite.exec(stmt));
+    const id = await savePendingEntry(db, { source: 'photo' });
+    const draft = withItemManualMacros(await new StubFoodParser().parse('яблоко', 'US'), 0, {
+      kcal: 52, prot: 0.3, fat: 0.2, carb: 14,
+    });
+    await runAdoptedParse(db, id, Promise.resolve(draft), { region: 'US', photo });
+    expect((await getFoodEntry(db, id))?.entry.rawText).toBe('Яблоко');
+  });
+
   it('adopted parse that throws: failed, never a forever-spinner', async () => {
     const { sqlite, db } = makeDb();
     await applySchema((stmt) => sqlite.exec(stmt));

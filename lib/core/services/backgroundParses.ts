@@ -1,5 +1,7 @@
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
+import { currentLocale } from '@/lib/i18n';
+
 import {
   applyDraftToPendingEntry,
   getFoodEntry,
@@ -11,7 +13,8 @@ import { loadRememberedChoices } from '../db/foodChoices';
 import { saveFoodPhoto } from '../db/foodPhotos';
 import { ensureSettings } from '../db/settings';
 import { needsAiConsent } from '../consent/consent';
-import { applyRememberedChoices, displayItemName } from './foodChoice';
+import { mealTitle } from '../insights/mealTitle';
+import { applyRememberedChoices } from './foodChoice';
 import type { MealDraft, PhotoInput, Region } from './foodParser';
 import { getFoodParser } from './foodParserProvider';
 import { deleteTempFile } from './tempFiles';
@@ -129,7 +132,7 @@ export async function runAdoptedParse(
     if (unusable(draft)) {
       await markPendingFailed(db, entryId); // photo kept for retry
     } else {
-      const rawText = draft.items.map((it) => displayItemName(it, ctx.region)).join(', ');
+      const rawText = mealTitle(draft.items, ctx.region, currentLocale());
       const applied = await applyDraftToPendingEntry(db, entryId, { rawText, draft, expectedParent: original });
       if (applied && ctx.photo.localThumbnailBase64) {
         await saveFoodPhoto(db, entryId, ctx.photo.localThumbnailBase64, {

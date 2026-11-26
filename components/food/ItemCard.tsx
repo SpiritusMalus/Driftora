@@ -243,15 +243,12 @@ export function ItemCard({
         />
       ) : null}
 
-      {/* WEIGHT — the main thing users adjust. When the weight was GUESSED (not
-          given), say so prominently right above the chips: the assumed grams
-          drive the whole number, and a 10px italic footnote was too easy to miss
-          (device report 2026-07-15). Tapping a chip / editing confirms the
-          weight → grams_source flips to 'confirmed' and this note disappears. */}
+      {/* The server treats even a weight from typed text as unconfirmed.
+          Invite a correction without claiming the user omitted the weight. */}
       {item.grams_source === 'estimated' ? (
         <View style={[styles.gramsGuessNote, { borderColor: theme.primary, backgroundColor: theme.card }]}>
           <Text style={[styles.gramsGuessText, { color: theme.text }, theme.font.body]}>
-            {t('food.gramsGuessed', { grams })}
+            {t('food.reviewPortion')}
           </Text>
         </View>
       ) : null}

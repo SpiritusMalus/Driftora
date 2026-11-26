@@ -1,3 +1,5 @@
+import type { AppLocale } from '@/lib/i18n';
+
 import { displayItemName } from '../services/foodChoice';
 import type { NutritionItem, Region } from '../services/foodParser';
 
@@ -43,11 +45,12 @@ function capitalizeFirst(s: string): string {
 export function mealTitle(
   items: readonly Pick<NutritionItem, 'name_ru' | 'name_en' | 'matched_name' | 'userChosen'>[],
   region: Region,
+  locale?: AppLocale,
 ): string {
   const seen = new Set<string>();
   const names: string[] = [];
   for (const item of items) {
-    const name = displayItemName(item, region).trim();
+    const name = displayItemName(item, region, locale).trim();
     if (name.length === 0) continue;
     const key = name.toLowerCase();
     if (seen.has(key)) continue;
