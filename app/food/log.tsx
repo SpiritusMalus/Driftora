@@ -316,6 +316,7 @@ export default function FoodLogScreen() {
   const meterUnsubRef = useRef<(() => void) | null>(null);
   // Origin of the current draft, so the saved entry's `source` is honest.
   const [source, setSource] = useState<'text' | 'voice' | 'photo'>('text');
+  const photoTitleLocale = source === 'photo' ? currentLocale() : undefined;
   // Which capture method the segmented control shows. The text field stays
   // visible in every mode — it's the shared surface where voice/photo echo what
   // they understood — so this only swaps the secondary control row (mic/photo).
@@ -363,10 +364,10 @@ export default function FoodLogScreen() {
     if (titleTouched) return;
     const items = draft?.items ?? [];
     if (items.length === 0) return;
-    const derived = mealTitle(items, region);
+    const derived = mealTitle(items, region, photoTitleLocale);
     if (derived.length === 0) return;
     setText((prev) => (prev === derived ? prev : derived));
-  }, [draft, region, titleTouched]);
+  }, [draft, region, titleTouched, photoTitleLocale]);
 
   // Probe the on-device recognizer once; off-device this stays false and the
   // mic button never shows (text entry is the fallback). Stop on unmount.

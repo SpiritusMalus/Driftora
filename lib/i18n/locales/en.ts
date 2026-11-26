@@ -1192,7 +1192,7 @@ export const en = {
     gramsEstimatedShort: '≈ weight is our guess — adjust it',
     // Prominent note above the chips: no weight given, show the assumed one and
     // invite a fix (the weight drives the whole number).
-    gramsGuessed: 'No weight given — assumed {{grams}} g. Adjust if your portion differs.',
+    reviewPortion: 'Adjust the weight if your portion differs.',
     forGrams: 'for {{grams}} g',
     // Piece-based entry for foods with a standard unit size (eggs, fruit,
     // dumplings): the counter multiplies the visible per-piece weight — grams
