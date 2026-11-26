@@ -18,7 +18,7 @@
 /// water-weight spike doesn't swing it. Below the gates we return null (say «not
 /// enough data yet»), never a confident wrong number.
 
-import { ACTIVITY_FACTORS, EATBACK_FRACTION, stepsEarnedKcal, stepsOutsideWorkouts } from './bodyMetrics';
+import { ACTIVITY_FACTORS, stepsEarnedKcal, stepsOutsideWorkouts } from './bodyMetrics';
 
 /// ≈7,700 kcal stored per kg of body-mass change (the same constant the pace
 /// math uses in bodyMetrics — kept local so this module stays self-contained).
@@ -198,7 +198,7 @@ export interface EarnedDay {
 }
 
 /// Average earned kcal/day over the given days — the same «шаги +N» + workout
-/// eat-back the daily budget adds, so subtracting it from the measured TDEE
+/// active calories the daily budget adds, so subtracting it from the measured TDEE
 /// leaves a clean resting figure. Averaged over the days actually provided
 /// (caller passes the window's recorded days), so partial step-logging doesn't
 /// dilute it with phantom zero days. Returns 0 for an empty list (a user with no
@@ -209,7 +209,7 @@ export function averageEarnedKcal(days: EarnedDay[], weightKg: number): number {
     (s, d) =>
       s +
       stepsEarnedKcal(stepsOutsideWorkouts(d.steps, d.workoutSteps), weightKg) +
-      Math.round(Math.max(0, d.workoutKcal) * EATBACK_FRACTION),
+      Math.round(Math.max(0, d.workoutKcal)),
     0,
   );
   return total / days.length;

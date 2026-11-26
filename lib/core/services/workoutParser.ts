@@ -2,11 +2,8 @@
  * Online workout parser — POSTs to the backend `/workout/parse*` family and
  * returns structured activities. Symmetric to the food parser, but far simpler:
  * there is NO nutrition resolution and NO offline stub. The model only maps
- * input → activities (type / minutes / sets / pace); the app computes kcal
- * on-device from the user's weight (MET × kg × h), so no energy numbers cross
- * the wire — with ONE exception: a fitness-tracker screenshot may carry the
- * tracker's own printed total (`device_kcal`), which is the device's
- * measurement transcribed, not model arithmetic.
+ * input → activities (type / minutes / sets / pace); Driftora estimates active
+ * calories on-device from those inputs and the user's weight.
  *
  * Empty results mean a successful request found no activities. Transport and
  * service failures are typed separately so the UI can explain a retry without
@@ -41,15 +38,8 @@ export interface ParsedWorkout {
   confidence: number;
 }
 
-/**
- * A tracker-screenshot parse: activities plus the tracker's own printed totals.
- * When `device_kcal` is present the caller logs THAT burn («по трекеру»)
- * instead of re-deriving one — the watch measured it, we don't out-guess it.
- */
 export interface ParsedWorkoutPhoto {
   workouts: ParsedWorkout[];
-  device_kcal?: number;
-  device_minutes?: number;
 }
 
 const DEFAULT_TIMEOUT_MS = 12_000;
@@ -151,11 +141,9 @@ export class HttpWorkoutParser implements WorkoutParser {
     const form = new FormData();
     form.append('image', { uri: photo.uri, name: 'workout.jpg', type: photo.mimeType } as unknown as Blob);
     const data = await this.post(this.photoEndpoint, { form, timeoutMs: UPLOAD_TIMEOUT_MS });
-    const out: ParsedWorkoutPhoto = { workouts: workoutsOf(data) };
-    const d = data as { device_kcal?: unknown; device_minutes?: unknown } | null;
-    if (typeof d?.device_kcal === 'number' && d.device_kcal > 0) out.device_kcal = Math.round(d.device_kcal);
-    if (typeof d?.device_minutes === 'number' && d.device_minutes > 0) out.device_minutes = Math.round(d.device_minutes);
-    return out;
+    // Older server responses can include tracker totals. Only activity inputs
+    // are used by the app, exactly as with text and audio.
+    return { workouts: workoutsOf(data) };
   }
 
   /** Preserve the difference between an empty parse and an unavailable service. */

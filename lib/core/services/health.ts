@@ -13,25 +13,19 @@ export interface HealthSample {
 }
 
 /// One device-recorded workout session, already normalized to the app's
-/// vocabulary (see exerciseTypeMap.ts). `deviceKcal` is the session's OWN
-/// energy total when the store carried one (HealthKit does; Health Connect
-/// sessions don't — their energy comes from an ActiveCaloriesBurned window
-/// aggregate at sync time). `type` is imported as a string to avoid coupling
-/// this seam to the insights layer; values are WorkoutType keys or 'other'.
+/// vocabulary (see exerciseTypeMap.ts). Energy is estimated in Driftora.
 export interface DeviceWorkoutSession {
   externalId: string;
   start: string; // ISO-8601
   end: string; // ISO-8601
   type: string;
   title: string | null;
-  deviceKcal: number | null;
   origin: string | null; // writing app (sourceName / dataOrigin package)
 }
 
 /// Reads activity from the OS health store (HealthKit / Health Connect).
 /// Implemented in M2 over react-native-health + react-native-health-connect.
-export type WorkoutReadScope = 'exercise' | 'calories';
-export type WorkoutGrants = Record<WorkoutReadScope, boolean>;
+export interface WorkoutGrants { exercise: boolean }
 
 export interface HealthService {
   /// Provenance of the counts this service reports, used to tag stored steps.
@@ -55,7 +49,7 @@ export interface HealthService {
   /// with reality instead of trusting a stale bit after a revoke.
   hasStepsGrant?(): Promise<boolean | null>;
   workoutGrants?(): Promise<WorkoutGrants | null>;
-  requestWorkoutPermission?(scope: WorkoutReadScope): Promise<void>;
+  requestWorkoutPermission?(): Promise<void>;
   openHealthSettings?(): void;
 
   /// Total steps for the given local day, or null if unavailable.
@@ -93,10 +87,6 @@ export interface HealthService {
   /// MUST use statistics/aggregate APIs (HealthKit statistics collection,
   /// Health Connect aggregate) — raw samples double-count watch+phone.
   stepsInWindow?(start: Date, end: Date): Promise<number | null>;
-
-  /// OS-deduplicated active energy (kcal) inside a window — the measured burn
-  /// of a session, preferred over any MET estimate.
-  activeKcalInWindow?(start: Date, end: Date): Promise<number | null>;
 
   /// Informational body/night signals for the day: resting HR (that calendar
   /// day), HRV / SpO₂ / respiratory rate averaged over the night ending on the

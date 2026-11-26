@@ -13,6 +13,7 @@ import {
   stepsOutsideWorkouts,
 } from '../insights/bodyMetrics';
 import { diaryEntries, foodEntries, stepsDays, wins, workouts } from './schema';
+import { creditedWorkoutKcal } from './workouts';
 import { dayKey } from './steps';
 
 /// Accepts any drizzle SQLite database (op-sqlite async on device,
@@ -123,12 +124,13 @@ async function statsForWindow(db: AnyDb, start: Date, end: Date): Promise<WeekSt
   // workout surface groups by, and for a device import it holds the SESSION
   // START day — so a session that crosses midnight lands in exactly one week.
   const workoutRows = (await db
-    .select({ date: workouts.date, minutes: workouts.minutes, kcal: workouts.kcal })
+    .select({ date: workouts.date, minutes: workouts.minutes, kcal: workouts.kcal, source: workouts.source })
     .from(workouts)
     .where(and(gte(workouts.date, startKey), lt(workouts.date, endKey)))) as {
     date: string;
     minutes: number;
-    kcal: number | null;
+    kcal: number;
+    source: typeof workouts.$inferSelect.source;
   }[];
   const workoutDays = new Set(workoutRows.map((w) => w.date));
   const workoutMinutes = workoutRows.reduce((a, w) => a + Number(w.minutes), 0);
@@ -167,7 +169,7 @@ async function statsForWindow(db: AnyDb, start: Date, end: Date): Promise<WeekSt
     const stepsByDay = new Map(steps.map((r) => [r.date, r]));
     const workoutKcalByDay = new Map<string, number>();
     for (const w of workoutRows) {
-      workoutKcalByDay.set(w.date, (workoutKcalByDay.get(w.date) ?? 0) + (w.kcal ?? 0));
+      workoutKcalByDay.set(w.date, (workoutKcalByDay.get(w.date) ?? 0) + creditedWorkoutKcal(w));
     }
     let diffSum = 0;
     for (const day of foodDays) {

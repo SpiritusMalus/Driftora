@@ -350,8 +350,7 @@ export function setsToMinutes(sets: number): number {
 ///    short-rest circuit work: shorter rests raise EPOC precisely by lowering
 ///    in-session expenditure, while the MET table assumes continuous work.
 /// The honest magnitude left over is tens of kcal — smaller than this model's
-/// own error bars and far smaller than [EATBACK_FRACTION]'s correction. Adding a
-/// number that the evidence cannot size is theatre, so it is gone.
+/// own error bars. It is not part of the workout estimate.
 
 /// The body's resting cost in the units the MET model works in (kcal per kg per
 /// hour). The Compendium's convention is 1 MET = 3.5 ml O₂·kg⁻¹·min⁻¹ ≈ 1
@@ -468,52 +467,6 @@ export function workoutKcal(
   return kcalFromMet(met, minutes, weightKg, restingRate);
 }
 
-/// Share of a workout's burn added back to the day's eating budget.
-///
-/// 0.72 is not a safety margin picked for feel — it is the measured ADDITIVITY
-/// of activity energy. In the largest paired doubly-labelled-water dataset
-/// (Careau 2021, n = 1754 adults, 692 men / 1062 women, 18–96 y, BMI 12.5–61.7)
-/// only ~72% of the energy burned in extra activity shows up as extra total
-/// daily expenditure; the rest is offset by a fall in basal expenditure. The
-/// regression of total on basal expenditure, adjusted for age, sex, fat-free and
-/// fat mass, gives a slope of 0.723 ± 0.049, 95% CI [0.626, 0.820] — an interval
-/// that excludes 1, and whose upper bound sits below the 0.9 this used to be.
-/// The same compensation shows up WITHIN people: in 68 adults measured twice
-/// about seven years apart, activity and basal expenditure correlated r = −0.58.
-///
-/// Three honesty notes, because this number is less settled than it looks:
-///  - the literature disagrees. A 2025 DLW study spanning sedentary adults to
-///    ultraendurance runners (n = 75) found activity related to total expenditure
-///    LINEARLY with no plateau and explicitly rejected the compensated model;
-///  - a 24-week RCT (n = 29, BMI 34, DLW) found compensation is BIMODAL, not a
-///    uniform discount: 48% of participants came in 308 ± 158 kcal/day below the
-///    additive prediction while the rest came in 94 ± 124 above, with no way to
-///    tell in advance who is which. A single coefficient is wrong for everyone
-///    individually and right only on average;
-///  - compensation scales with adiposity (29.7% at the 10th BMI percentile,
-///    45.7% at the 90th), which is a real gradient — a user at the top of it
-///    nets only ~54%, not 72%. It is deliberately NOT indexed here anyway: the
-///    same dataset leaves the direction of causality unresolved (does fat drive
-///    compensation, or compensation drive fat?), and the RCT above found no
-///    difference in BMI between compensators and non-compensators at all. A
-///    gradient you cannot attribute is not a coefficient you can key on.
-///
-/// What it is NOT: a claim that MET tables overstate expenditure. That was the
-/// old justification here and no source supports it — the measured bias of the
-/// MET approach is about 209 kcal per WEEK (~30/day) in the worst subgroup. The
-/// correction belongs to additivity, which acts on the DAY, not on the session.
-export const EATBACK_FRACTION = 0.72;
-
-/// Layer a day's raw workout burn onto a base kcal figure (maintenance or a
-/// target), counting EATBACK_FRACTION of it. Rounded to 10 kcal like the plan.
-export function withWorkoutEnergy(
-  baseKcal: number,
-  workoutKcalRaw: number,
-  fraction: number = EATBACK_FRACTION,
-): number {
-  return Math.round((baseKcal + Math.max(0, workoutKcalRaw) * fraction) / 10) * 10;
-}
-
 /// Suggest the lifestyle activity level from an average daily step count, so the
 /// user picks the right multiplier instead of guessing. Steps stand in for NEAT
 /// (everyday movement); structured workouts are logged separately ON TOP, so
@@ -529,45 +482,11 @@ export function suggestActivityLevel(avgStepsPerDay: number): ActivityLevel {
 /// sedentary day still involves a few thousand incidental steps, so «earned»
 /// walking energy is counted only ABOVE this — no double count with the base.
 const STEP_REST_BASELINE = 3000;
-/// Real walking energy per step per kg (~0.035 kcal/step at 70 kg) — the honest
-/// cost of a step, kept transparent (shown as-is in the day's «шаги +N» line).
-/// KNOWN-WEAK, and no better constant exists — the MODEL SHAPE is what's wrong.
-/// A controlled validation (n=100, treadmill, five fixed cadences, metabolic-cart
-/// reference) found a pedometer's step→kcal conversion missed at EVERY cadence
-/// and, worse, flipped sign: it underestimated at 80 steps/min and overestimated
-/// at 90, 100, 110 and 120. The authors traced the error to the conversion model
-/// itself, not to step detection or stride length — so a per-step constant is
-/// falsified as a cadence-invariant model, and tuning this number cannot fix it.
-/// Two further cracks: step COUNTING itself was unreliable below 100 steps/min
-/// (slow walkers — older and heavier users — feed a biased count in), and the
-/// energy cost of walking is U-shaped in speed with a minimum near 4 km/h, which
-/// a per-step figure ignores entirely. Cadence also maps to intensity differently
-/// by sex, so «per step, scaled only by mass» cannot be universal.
-///
-/// The one part that IS validated is scaling by body mass. Measured by indirect
-/// calorimetry in 205 adults spanning BMI 17.5–43.2 and 3.0–52.8% body fat, the
-/// NET cost of walking per kg per metre is statistically independent of fatness,
-/// BMI and sex: 2.23 / 2.18 / 2.26 J·kg⁻¹·m⁻¹ for normal weight / overweight /
-/// obese (p = 0.54). A 120 kg person and a 60 kg person really do cost the same
-/// joules per kg per metre, so the linear-in-mass form is sound even though the
-/// per-STEP form is not.
-///
-/// AND IT IS A GROSS FIGURE, which is the live inconsistency in this file. The
-/// same n=205 calorimetry study measured walking at 1.34 m/s as 3.18 J·kg⁻¹·m⁻¹
-/// gross against 2.22 J·kg⁻¹·m⁻¹ net — net is ~70% of gross. Converted at a
-/// typical 0.65–0.75 m stride, 0.0005 kcal·step⁻¹·kg⁻¹ works out to 2.79–3.22
-/// J·kg⁻¹·m⁻¹: it brackets the measured GROSS cost and sits 26–45% ABOVE the
-/// measured NET one. At 70 kg that is 0.035 kcal/step here versus 0.026 measured
-/// net. So steps enter the budget as a resting-inclusive number while workouts
-/// now enter as an above-resting one — the very split [POPULATION_RESTING_KCAL_PER_KG_H]
-/// exists to fix, still open on this side. The net-consistent value would be
-/// ~0.00037; changing it cuts every user's step credit by about a quarter, so it
-/// is left as an owner decision rather than slipped in here.
-///
-/// This also explains the residual gap between the two paths: the step model is
-/// gross, the MET model is net, and the tests in bodyMetrics.test.ts bound that
-/// gap at ~25% rather than asserting agreement.
-const KCAL_PER_STEP_PER_KG = 0.0005;
+/// Approximate walking cost above rest from step count alone. Indirect calorimetry
+/// measured 2.22 J/kg/m net at 1.34 m/s in 205 adults (doi:10.14814/phy2.16023).
+/// A 0.70 m step gives about 0.00037 kcal/kg/step. This assumes typical level
+/// walking because the count alone does not tell us pace, distance or incline.
+const KCAL_PER_STEP_PER_KG = 0.00037;
 
 /// «Base + earned» model: kcal EARNED by today's steps above the resting baseline,
 /// added to a resting-level budget. Always ≥ 0 — walking only ever adds to the
@@ -593,7 +512,7 @@ export function stepsOutsideWorkouts(daySteps: number, workoutWindowSteps: numbe
 
 /// The day's assembled eating target under «база + заработал»: the deficit base
 /// (floored at the healthy day-minimum) plus today's earned activity (steps above
-/// the baseline + the workout eat-back) ON TOP. Earned movement ALWAYS adds to
+/// the baseline + active workout calories) ON TOP. Earned movement ALWAYS adds to
 /// the number — it never first «pays back» a deficit that the clinical floor was
 /// already overriding (device feedback 2026-07-13: «2170 без шагов и с 4000
 /// шагами — так же»; the old `max(base+earned, min)` absorbed earned kcal into

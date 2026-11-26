@@ -32,7 +32,6 @@ import { latestWeight } from '@/lib/core/db/weight';
 import { listWorkoutsForDay, todayWorkoutKcal } from '@/lib/core/db/workouts';
 import {
   dayBudgetKcal,
-  EATBACK_FRACTION,
   macrosWithEarned,
   restingPlan,
   stepsEarnedKcal,
@@ -117,7 +116,7 @@ export default function HomeScreen() {
   const [foodPhotos, setFoodPhotos] = useState<Record<number, string>>({});
   const [settings, setSettings] = useState<AppSettings | null>(null);
   // Raw workout burn today — for the food widget's movement-adjusted target
-  // (steps are already loaded above; both feed the same eat-back layer).
+  // (steps are already loaded above; both feed the active energy total).
   const [workoutRawKcal, setWorkoutRawKcal] = useState(0);
   // Steps inside today's device-imported workout windows (merged union) — the
   // eating budget prices steps MINUS these; display/goals keep the raw count.
@@ -397,7 +396,7 @@ export default function HomeScreen() {
   // hides the goal otherwise). Without one, the widget shows just what was eaten.
   const hasGoal = settings != null && settings.targetsSetAt != null && !settings.paused && settings.targetKcal > 0;
   // «Base + earned» — the SAME budget the food day shows: the tempo's deficit
-  // base plus the eat-back share of today's earned activity, never below the
+  // base plus today's active calories, never below the
   // healthy day-minimum ([dayBudgetKcal]). Until today's steps are entered the
   // earned part stands on the median of recent days («как обычно») and the
   // number reads as ≈. Falls back to the frozen target when the profile can't
@@ -427,7 +426,7 @@ export default function HomeScreen() {
   const budgetSteps =
     steps != null ? stepsOutsideWorkouts(steps, workoutSteps) : (usualSteps ?? 0);
   const stepsEarnedAdd = stepsEarnedKcal(budgetSteps, weightRow?.weightKg ?? 0);
-  const earnedAdd = stepsEarnedAdd + Math.round(Math.max(0, workoutRawKcal) * EATBACK_FRACTION);
+  const earnedAdd = stepsEarnedAdd + Math.round(Math.max(0, workoutRawKcal));
   const foodTargetKcal = hasGoal
     ? dayBase != null
       ? dayBudgetKcal(dayBase.baseKcal, dayBase.minDayKcal, earnedAdd)
@@ -605,7 +604,7 @@ export default function HomeScreen() {
           onSaved={reload}
         />
         <WorkoutWidget
-          countedKcal={Math.round(Math.max(0, workoutRawKcal) * EATBACK_FRACTION)}
+          countedKcal={Math.round(Math.max(0, workoutRawKcal))}
           hideCalories={settings?.hideCalories ?? false}
         />
         {/* Steps already have their own row. Keep only the additional day facts

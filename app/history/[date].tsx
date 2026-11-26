@@ -15,7 +15,6 @@ import type { FoodEntry, MoodRow, WorkoutRow } from '@/lib/core/db/schema';
 import { ensureSettings } from '@/lib/core/db/settings';
 import {
   dayBudgetKcal,
-  EATBACK_FRACTION,
   restingPlan,
   stepsEarnedKcal,
   stepsOutsideWorkouts,
@@ -117,7 +116,7 @@ export default function HistoryDayScreen() {
           const inWorkouts = stepsRow != null ? Number(stepsRow.workoutSteps ?? 0) : 0;
           const stepsAdd = stepsEarnedKcal(stepsOutsideWorkouts(raw, inWorkouts), kg);
           const workoutKcal = dayWorkouts.reduce((sum, workout) => sum + (workout.kcal ?? 0), 0);
-          const workoutAdd = Math.round(Math.max(0, workoutKcal) * EATBACK_FRACTION);
+          const workoutAdd = Math.round(Math.max(0, workoutKcal));
           setDayTarget(dayBudgetKcal(base.baseKcal, base.minDayKcal, stepsAdd + workoutAdd));
         } else {
           setDayTarget(null);

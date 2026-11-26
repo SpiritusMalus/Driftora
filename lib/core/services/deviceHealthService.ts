@@ -84,10 +84,6 @@ interface AppleHealthKit {
     opts: { startDate: string; endDate: string; period?: number; includeManuallyAdded?: boolean },
     cb: (err: string | null, res: HkSample[]) => void,
   ): void;
-  getActiveEnergyBurned(
-    opts: { startDate: string; endDate: string; period?: number },
-    cb: (err: string | null, res: HkSample[]) => void,
-  ): void;
   Constants: { Permissions: Record<string, string> };
 }
 
@@ -130,7 +126,6 @@ class IosHealthService implements HealthService {
           P.Weight,
           P.BodyFatPercentage,
           P.Workout,
-          P.ActiveEnergyBurned,
           P.RestingHeartRate,
           P.HeartRateVariability,
           P.OxygenSaturation,
@@ -230,7 +225,6 @@ class IosHealthService implements HealthService {
               end: w.end,
               type: workoutTypeFromHkActivity(w.activityName),
               title: w.activityName || null,
-              deviceKcal: Number.isFinite(w.calories) && w.calories > 0 ? Math.round(w.calories) : null,
               origin: w.sourceName ?? null,
             });
           }
@@ -255,21 +249,6 @@ class IosHealthService implements HealthService {
           period: minutes,
           includeManuallyAdded: false,
         },
-        (err, buckets) => {
-          if (err || !Array.isArray(buckets)) return resolve(null);
-          const total = buckets.reduce((sum, b) => sum + (Number.isFinite(b?.value) ? b.value : 0), 0);
-          resolve(Math.max(0, Math.round(total)));
-        },
-      );
-    });
-  }
-
-  async activeKcalInWindow(start: Date, end: Date): Promise<number | null> {
-    if (!(await this.ensureFull())) return null;
-    const minutes = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / 60000));
-    return new Promise((resolve) => {
-      this.hk.getActiveEnergyBurned(
-        { startDate: start.toISOString(), endDate: end.toISOString(), period: minutes },
         (err, buckets) => {
           if (err || !Array.isArray(buckets)) return resolve(null);
           const total = buckets.reduce((sum, b) => sum + (Number.isFinite(b?.value) ? b.value : 0), 0);
@@ -434,16 +413,15 @@ class AndroidHealthService implements HealthService {
       const permissions: unknown = await this.hc.getGrantedPermissions();
       if (!Array.isArray(permissions)) return null;
       const hasRead = (type: string) => permissions.some((p) => p?.accessType === 'read' && p?.recordType === type);
-      return { exercise: hasRead('ExerciseSession'), calories: hasRead('ActiveCaloriesBurned') };
+      return { exercise: hasRead('ExerciseSession') };
     } catch {
       return null;
     }
   }
 
-  async requestWorkoutPermission(scope: 'exercise' | 'calories'): Promise<void> {
+  async requestWorkoutPermission(): Promise<void> {
     if (await this.ensure()) {
-      const recordType = scope === 'exercise' ? 'ExerciseSession' : 'ActiveCaloriesBurned';
-      await this.hc.requestPermission([{ accessType: 'read', recordType }]);
+      await this.hc.requestPermission([{ accessType: 'read', recordType: 'ExerciseSession' }]);
     }
   }
 
@@ -463,7 +441,6 @@ class AndroidHealthService implements HealthService {
         { accessType: 'read', recordType: 'Weight' },
         { accessType: 'read', recordType: 'BodyFat' },
         { accessType: 'read', recordType: 'ExerciseSession' },
-        { accessType: 'read', recordType: 'ActiveCaloriesBurned' },
         { accessType: 'read', recordType: 'RestingHeartRate' },
         { accessType: 'read', recordType: 'HeartRateVariabilityRmssd' },
         { accessType: 'read', recordType: 'OxygenSaturation' },
@@ -550,9 +527,6 @@ class AndroidHealthService implements HealthService {
           end: rec.endTime,
           type: workoutTypeFromHcExerciseType(Number(rec.exerciseType ?? -1)),
           title: rec.title?.trim() || null,
-          // HC sessions carry no energy of their own — the window aggregate
-          // (activeKcalInWindow) supplies the measured burn at sync time.
-          deviceKcal: null,
           origin: rec.metadata.dataOrigin ?? null,
         });
       }
@@ -577,23 +551,6 @@ class AndroidHealthService implements HealthService {
     // Raw-record fallback can overcount (watch+phone both writing) — for a
     // SUBTRACTION that only shrinks the eating budget, the safe direction.
     return this.readSum('Steps', start, end, (r) => Number((r as { count?: number }).count ?? 0));
-  }
-
-  async activeKcalInWindow(start: Date, end: Date): Promise<number | null> {
-    if (!(await this.ensure())) return null;
-    try {
-      const res = await this.hc.aggregateRecord({
-        recordType: 'ActiveCaloriesBurned',
-        timeRangeFilter: { operator: 'between', startTime: start.toISOString(), endTime: end.toISOString() },
-      });
-      const kcal = Number(res?.ACTIVE_CALORIES_TOTAL?.inKilocalories ?? NaN);
-      if (Number.isFinite(kcal)) return Math.max(0, Math.round(kcal));
-      return null;
-    } catch {
-      // No raw fallback here: raw energy records double-count writers badly.
-      // Null lets the sync fall back to the honest ≈MET estimate instead.
-      return null;
-    }
   }
 
   async bodySignalsForDay(day: Date): Promise<import('./health').DeviceBodySignals | null> {
