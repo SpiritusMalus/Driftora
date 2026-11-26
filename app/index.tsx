@@ -154,14 +154,14 @@ export default function HomeScreen() {
         // as 0 (no steps → no steps win). Sleep is synced inside too: it stays
         // on Home (the app's entry) so the sleep↔mood insight keeps its data
         // even though sleep is DISPLAYED on the mood screen only.
-        const health = await syncDayHealth(db, svc, new Date(), settingsRow.healthImportExtended);
+        const health = await syncDayHealth(db, svc, new Date(), settingsRow.healthImportExtended, settingsRow.healthImportWorkouts);
         const stepCount = health.steps;
         // Then fill in whatever days the app wasn't opened on. Home is the entry
         // point, so this is where a gap gets closed — today's numbers are already
         // in hand above, and the catch-up only touches PAST days, so it runs
         // unawaited rather than holding the first paint. On a daily user it is a
         // handful of keyed reads and stops.
-        void catchUpHealth(db, svc, settingsRow.healthImportExtended).catch(() => {});
+        void catchUpHealth(db, svc, settingsRow.healthImportExtended, new Date(), settingsRow.healthImportWorkouts).catch(() => {});
         // The workout table is read twice on purpose: `todayWorkoutKcal` stays
         // the single source of the budget's burn, while the win rule only asks
         // «была ли сегодня тренировка» — re-summing kcal here would fork that

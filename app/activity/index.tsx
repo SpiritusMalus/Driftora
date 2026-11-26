@@ -94,7 +94,7 @@ export default function ActivityScreen() {
     }
     setConnectedFlag(connected);
     setStepsGoal(s.stepsGoal);
-    await syncDayHealth(db, svc, new Date(), s.healthImportExtended);
+    await syncDayHealth(db, svc, new Date(), s.healthImportExtended, s.healthImportWorkouts);
     return listStepsDays(db, 30);
   }, [db]);
 

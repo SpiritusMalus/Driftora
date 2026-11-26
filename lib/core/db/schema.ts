@@ -356,6 +356,7 @@ export const appSettings = sqliteTable('app_settings', {
   healthImportExtended: integer('health_import_extended', { mode: 'boolean' })
     .notNull()
     .default(false),
+  healthImportWorkouts: integer('health_import_workouts', { mode: 'boolean' }).notNull().default(false),
   // The BASE steps+sleep permission was granted at least once (the «Подключить»
   // tap succeeded). The steps screen used to infer "auto counting works" from
   // today's row having source='device' — but right after connecting the OS

@@ -175,7 +175,11 @@ export default function WorkoutEntryScreen() {
     setSaveIssue(false);
     try {
       await updateWorkout(db, workoutId, edit, weightKg, restingRate);
-      router.back();
+      if (day && day !== row.date) {
+        router.dismissTo({ pathname: '/workout', params: { day, highlight: String(workoutId) } });
+      } else {
+        router.back();
+      }
     } catch {
       setBusy(false);
       setSaveIssue(true);

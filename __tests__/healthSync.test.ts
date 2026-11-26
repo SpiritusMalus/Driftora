@@ -13,7 +13,7 @@ import { applySchema } from '@/lib/core/db/init';
 import * as schema from '@/lib/core/db/schema';
 import { getStepsRow, setManualSteps, upsertSteps } from '@/lib/core/db/steps';
 import { upsertWeight } from '@/lib/core/db/weight';
-import { addTrackerWorkout, addWorkout, deleteWorkout, listWorkoutsForDay } from '@/lib/core/db/workouts';
+import { addTrackerWorkout, addWorkout, deleteWorkout, listWorkoutsForDay, updateWorkout } from '@/lib/core/db/workouts';
 import { workoutKcal } from '@/lib/core/insights/bodyMetrics';
 import type { DeviceWorkoutSession, HealthService } from '@/lib/core/services/health';
 
@@ -176,6 +176,37 @@ describe('syncDayWorkouts', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].minutes).toBe(70);
     expect(rows[0].kcal).toBe(340);
+    sqlite.close();
+  });
+
+  it('keeps one workout across a scoped connect, revoked read and scoped reconnect', async () => {
+    const { sqlite, db } = makeDb();
+    await applySchema((statement) => sqlite.exec(statement));
+    const svc: HealthService = {
+      ...fakeService({ sessions: [session('scoped-run', 7, 8)] }),
+      async weightSamplesForRange() {
+        throw new Error('Workout permission must not trigger weight import');
+      },
+      async bodySignalsForDay() {
+        throw new Error('Workout permission must not trigger vitals import');
+      },
+    };
+    await syncDayHealth(db, svc, DAY, false, true);
+    const [first] = await listWorkoutsForDay(db, DAY);
+    expect(first.externalId).toBe('scoped-run');
+
+    await syncDayHealth(db, fakeService({ sessions: null }), DAY, false, true);
+    expect((await listWorkoutsForDay(db, DAY)).map((row) => row.id)).toEqual([first.id]);
+
+    await backfillHealth(db, svc, { workoutsOnly: true, workoutDays: 1 }, DAY);
+    expect((await listWorkoutsForDay(db, DAY)).map((row) => row.id)).toEqual([first.id]);
+    await updateWorkout(db, first.id, {
+      type: first.type, label: first.label, minutes: first.minutes, speedKmh: null,
+      sets: null, intensity: null, kcal: null, date: '2026-07-15',
+    }, 70);
+    await backfillHealth(db, svc, { workoutsOnly: true, workoutDays: 1 }, DAY);
+    expect(await listWorkoutsForDay(db, DAY)).toHaveLength(0);
+    expect((await listWorkoutsForDay(db, '2026-07-15')).map((row) => row.id)).toEqual([first.id]);
     sqlite.close();
   });
 

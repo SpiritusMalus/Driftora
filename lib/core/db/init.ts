@@ -153,6 +153,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
   show_population_stats INTEGER NOT NULL DEFAULT 0,
   community_food_share INTEGER NOT NULL DEFAULT 0,
   health_import_extended INTEGER NOT NULL DEFAULT 0,
+  health_import_workouts INTEGER NOT NULL DEFAULT 0,
   health_connected INTEGER NOT NULL DEFAULT 0,
   locale TEXT NOT NULL DEFAULT 'ru',
   region TEXT NOT NULL DEFAULT 'auto',
@@ -269,6 +270,7 @@ export const MIGRATIONS: string[] = [
   // behaves byte-for-byte as before — and no extended OS permission is ever
   // requested outside the explicit connect tap.
   `ALTER TABLE app_settings ADD COLUMN health_import_extended INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE app_settings ADD COLUMN health_import_workouts INTEGER NOT NULL DEFAULT 0`,
   // 2026-07-17: device workout import (stage 2). Provenance for every workout
   // row (old rows were all user-initiated → 'manual'), the OS record id as the
   // re-sync dedup key, the session's real time window, the steps counted

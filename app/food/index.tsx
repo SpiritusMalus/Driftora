@@ -196,7 +196,7 @@ export default function FoodDayScreen() {
     // old row would be swept back to 'failed' mid-upload otherwise).
     await sweepStalePendingEntries(db, undefined, runningParseEntryIds());
     const settings = await ensureSettings(db);
-    const health = await syncDayHealth(db, getHealthService(), new Date(), settings.healthImportExtended);
+    const health = await syncDayHealth(db, getHealthService(), new Date(), settings.healthImportExtended, settings.healthImportWorkouts);
     const todaySteps = health.steps;
     const [list, tot, mic, usualSteps, weightRow, workoutKcal] = await Promise.all([
       listEntriesForDay(db),

@@ -61,9 +61,8 @@ function daysBefore(now: Date, n: number): Date {
 export const CATCHUP_DAYS = 14;
 
 /// ONE passive sync for a day. Steps, sleep and the workout-step subtraction
-/// always run; the extended IMPORTS — pulling device workout sessions, and scale
-/// weigh-ins — run ONLY when the user enabled extended import
-/// (`app_settings.health_import_extended`). Callers on the budget screens MUST
+/// always run. Device workouts can be enabled independently of weight and
+/// overnight signals. Callers on the budget screens MUST
 /// run this BEFORE reading todayWorkoutKcal, or the day's freshly imported
 /// sessions miss the number they're about to show.
 ///
@@ -77,15 +76,17 @@ export async function syncDayHealth(
   service: HealthService,
   day: Date = new Date(),
   extended = false,
+  workouts = extended,
 ): Promise<DayHealthResult> {
   const steps = await syncDaySteps(db, service, day);
   await syncDaySleep(db, service, day);
-  if (!extended) {
-    return { steps, workoutSteps: await recomputeWorkoutSteps(db, service, day) };
+  const workoutSteps = extended || workouts
+    ? await syncDayWorkouts(db, service, day)
+    : await recomputeWorkoutSteps(db, service, day);
+  if (extended) {
+    await syncWeighIns(db, service, 1, day);
+    await syncDayBodySignals(db, service, day);
   }
-  const workoutSteps = await syncDayWorkouts(db, service, day);
-  await syncWeighIns(db, service, 1, day);
-  await syncDayBodySignals(db, service, day);
   return { steps, workoutSteps };
 }
 
@@ -113,6 +114,7 @@ export async function catchUpHealth(
   service: HealthService,
   extended = false,
   now: Date = new Date(),
+  workouts = extended,
 ): Promise<number> {
   let filled = 0;
   let misses = 0;
@@ -125,7 +127,7 @@ export async function catchUpHealth(
       misses = 0;
       continue;
     }
-    const res = await syncDayHealth(db, service, day, extended);
+    const res = await syncDayHealth(db, service, day, extended, workouts);
     if (res.steps == null) {
       if (++misses >= CATCHUP_MISS_LIMIT) break;
       continue;
@@ -324,13 +326,13 @@ async function resolveSessionKcal(
 export async function backfillHealth(
   db: AnyDb,
   service: HealthService,
-  opts: { weightDays?: number; workoutDays?: number; signalDays?: number } = {},
+  opts: { weightDays?: number; workoutDays?: number; signalDays?: number; workoutsOnly?: boolean } = {},
   now: Date = new Date(),
 ): Promise<void> {
   const weightDays = opts.weightDays ?? 30;
   const workoutDays = opts.workoutDays ?? 14;
   const signalDays = opts.signalDays ?? 14;
-  await syncWeighIns(db, service, weightDays, now);
+  if (!opts.workoutsOnly) await syncWeighIns(db, service, weightDays, now);
   for (let back = workoutDays - 1; back >= 0; back--) {
     const day = daysBefore(now, back);
     // Steps first: a workout's step subtraction is an UPDATE on steps_days, so
@@ -339,9 +341,10 @@ export async function backfillHealth(
     // skip steps entirely, which left exactly that hole across the whole
     // imported fortnight.
     await syncDaySteps(db, service, day);
-    await syncDaySleep(db, service, day);
+    if (!opts.workoutsOnly) await syncDaySleep(db, service, day);
     await syncDayWorkouts(db, service, day);
   }
+  if (opts.workoutsOnly) return;
   for (let back = signalDays - 1; back >= 0; back--) {
     await syncDayBodySignals(db, service, daysBefore(now, back));
   }
