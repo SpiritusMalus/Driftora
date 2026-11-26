@@ -87,6 +87,52 @@ test('region routing: USDA serves RU as the EN-name fallback', async () => {
   assert.ok(calls[0]!.includes('query=chicken+breast'), 'RU item is queried by its English name');
 });
 
+test('only generic cooked rice from a meal photo uses the fixed reference', async () => {
+  const provider = {
+    name: 'usda',
+    regions: ['RU', 'US'] as const,
+    async search(name: string) {
+      calls.push(name);
+      return {
+        name,
+        confidence: 0.95,
+        per100: coercePer100({ source: 'usda', kcal: 96, prot: 2, fat: 0.2, carb: 21 }),
+      };
+    },
+  } satisfies NutritionProvider;
+  const resolver = new Resolver([provider]);
+  const rice = item({ name_ru: 'рис отварной', name_en: 'cooked white rice', est_grams: 160, weight_basis: 'as_eaten' });
+  for (const region of ['RU', 'US'] as const) {
+    const result = await resolver.resolveItem(rice, region, true);
+    assert.equal(result.matched_name, 'рис белый варёный');
+    assert.equal(result.per100.source, 'usda');
+    assert.equal(result.per100.kcal, 130);
+    assert.equal(result.scaled.kcal, 208);
+    assert.equal(result.grams_source, 'estimated');
+  }
+  assert.deepEqual(calls, []);
+
+  // Warm the regional lookup cache on a dry photo, then keep the plain cooked
+  // result independent of its contents.
+  for (const distinct of [
+    { ...rice, weight_basis: 'dry' as const },
+    { ...rice, name_en: 'glutinous rice', name_ru: 'рис отварной' },
+    { ...rice, name_ru: 'рис с маслом' },
+    { ...rice, name_en: 'boiled white rice', packaged: true },
+  ]) {
+    const result = await resolver.resolveItem(distinct, 'US', true);
+    assert.notEqual(result.matched_name, 'рис белый варёный');
+  }
+  assert.equal(calls.length, 4);
+  assert.equal((await resolver.resolveItem(rice, 'US')).per100.kcal, 96);
+  assert.equal((await resolver.resolveItem(rice, 'US', true)).scaled.kcal, 208);
+  const labeled = await resolver.resolveItem({
+    ...rice, packaged: true, label: { kcal_100g: 115, prot_100g: 2, fat_100g: 1, carb_100g: 24 },
+  }, 'US', true);
+  assert.equal(labeled.per100.source, 'label');
+  assert.equal(labeled.scaled.kcal, 184);
+});
+
 test('DB miss → coarse estimate, flagged not-fact', async () => {
   mockFetch(() => json({ foods: [] }));
   const resolver = new Resolver([new UsdaProvider('KEY')]);

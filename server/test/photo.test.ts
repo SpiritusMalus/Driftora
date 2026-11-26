@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import type { AddressInfo } from 'node:net';
 import { afterEach, beforeEach, test } from 'node:test';
+import type { MealDraft } from '../src/types.js';
 
 const realFetch = globalThis.fetch;
 
@@ -33,6 +34,7 @@ const usdaHit = {
 };
 
 let lastLlmBody: any = null;
+let recognized: unknown[];
 
 async function startApp(): Promise<{ base: string; stop: () => Promise<void> }> {
   const server = createApp().listen(0);
@@ -46,12 +48,13 @@ async function startApp(): Promise<{ base: string; stop: () => Promise<void> }> 
 
 beforeEach(() => {
   lastLlmBody = null;
+  recognized = [{ name_ru: 'яичница', name_en: 'fried eggs', est_grams: 120, confidence: 0.7 }];
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString();
     if (url.includes('127.0.0.1')) return realFetch(input as never, init);
     if (url.includes('openrouter.ai')) {
       lastLlmBody = JSON.parse(String(init?.body ?? '{}'));
-      return llmReply([{ name_ru: 'яичница', name_en: 'fried eggs', est_grams: 120, confidence: 0.7 }]);
+      return llmReply(recognized);
     }
     if (url.includes('api.nal.usda.gov')) {
       // Echo the queried name — a realistic USDA hit (the resolver now drops
@@ -115,6 +118,31 @@ test('POST /food/parse-photo relabels a mislabeled upload from its magic bytes',
     const userMsg = lastLlmBody.messages.find((m: any) => m.role === 'user');
     const imgPart = userMsg.content.find((p: any) => p.type === 'image_url');
     assert.ok(imgPart.image_url.url.startsWith('data:image/png;base64,'), 'expected the sniffed png type');
+  } finally {
+    await stop();
+  }
+});
+
+test('POST /food/parse-photo uses the same rice reference across regions and generic names', async () => {
+  const { base, stop } = await startApp();
+  try {
+    for (const [region, nameRu, nameEn] of [
+      ['US', 'рис отварной', 'cooked white rice'],
+      ['RU', 'рис белый варёный', 'plain boiled white rice'],
+      ['US', 'рис', 'white rice'],
+    ]) {
+      recognized = [{
+        name_ru: nameRu, name_en: nameEn, est_grams: 160, weight_basis: 'as_eaten', confidence: 0.9,
+      }];
+      const res = await realFetch(`${base}/food/parse-photo`, {
+        method: 'POST', body: photoForm(new Uint8Array([1, 2, 3]), region!),
+      });
+      assert.equal(res.status, 200);
+      const draft = await res.json() as MealDraft;
+      assert.equal(draft.items[0]?.matched_name, 'рис белый варёный');
+      assert.equal(draft.items[0]?.per100.kcal, 130);
+      assert.equal(draft.totals.kcal, 208);
+    }
   } finally {
     await stop();
   }
