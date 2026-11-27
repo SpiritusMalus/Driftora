@@ -161,6 +161,21 @@ const DIFFERENT_FORMS = [
   /\b(?:gelatin|jelly|jellied|aspic)\b|желе|заливн/u,
 ];
 
+const STORED_FORMS = [
+  /\bfrozen\b|(?:^| )(?:замороженн|мороженн)\p{L}*(?: |$)/u,
+  /\b(?:dry mix|dried mix|dehydrated mix|concentrate|powder mix)\b|сух\p{L}* смесь|концентрат/u,
+];
+
+const MEAT_SPECIES = [
+  /\bbeef\b|говядин|говяж/u,
+  /\bveal\b|телятин|теляч/u,
+  /\bpork\b|свинин|свин\p{L}*/u,
+  /\bchicken\b|цыплен|курин|куриц/u,
+  /\bturkey\b|индюш|индейк/u,
+  /\b(?:lamb|mutton)\b|баранин|барань|ягнен/u,
+];
+const MEAT = /\b(?:meats?|bolognese)\b|(?:^| )мяс\p{L}*(?: |$)|болоньезе/u;
+
 function isWholeSalad(name: string, identity: RegExp): boolean {
   const title = identity.exec(name);
   return title !== null && !SALAD_ADD_ON.test(name.slice(title[0].length));
@@ -176,8 +191,13 @@ export function mealPhotoCandidateFilter(item: IdentifiedItem): ((candidate: str
   const genericFish = names.length > 0 && names.every(isGenericFish);
   const vegetableSalad = names.some((name) => VEGETABLE_SALAD.test(name)) && names.every((name) => !FRUIT_SALAD.test(name));
   const mixedRice = names.some((name) => RICE.test(name) && RICE_BLEND.test(name));
-  if (!plainFish && !vegetableSalad && salads.length === 0 && identities.length === 0) return;
-  const forbiddenForms = DIFFERENT_FORMS.filter((form) => names.every((name) => !form.test(name)));
+  const served = item.prepared === true || item.weight_basis === 'as_eaten';
+  const species = MEAT_SPECIES.filter((pattern) => names.some((name) => pattern.test(name)));
+  const hasMeat = species.length === 0 && names.some((name) => MEAT.test(name));
+  if (!served && !plainFish && !vegetableSalad && !hasMeat && species.length === 0 &&
+      salads.length === 0 && identities.length === 0) return;
+  const forms = served ? [...DIFFERENT_FORMS, ...STORED_FORMS] : DIFFERENT_FORMS;
+  const forbiddenForms = forms.filter((form) => names.every((name) => !form.test(name)));
   return (candidate) => {
     const name = normalizeName(candidate);
     return salads.every((identity) => isWholeSalad(name, identity)) &&
@@ -185,6 +205,8 @@ export function mealPhotoCandidateFilter(item: IdentifiedItem): ((candidate: str
       (!genericFish || isGenericFish(name)) &&
       (!vegetableSalad || !FRUIT_SALAD.test(name)) &&
       (!mixedRice || RICE_BLEND.test(name)) &&
+      species.every((pattern) => pattern.test(name)) &&
+      (!hasMeat || MEAT.test(name) || MEAT_SPECIES.some((pattern) => pattern.test(name))) &&
       identities.every(({ identity }) => identity.test(name)) &&
       forbiddenForms.every((form) => !form.test(name));
   };

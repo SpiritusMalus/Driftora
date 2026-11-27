@@ -264,6 +264,32 @@ test('an avocado dressing can still match its own recipe on a photo', async () =
   assert.equal(result.per100.kcal, 427);
 });
 
+test('prepared meals require the named protein and compatible serving state', async () => {
+  const cases = [
+    ['рагу из говядины', 'beef stew', 'Vegetable stew', undefined],
+    ['рагу из говядины', 'beef stew', 'Pork stew', undefined],
+    ['рагу из говядины', 'beef stew', 'Beef stew', 'Beef stew'],
+    ['куриный суп', 'chicken soup', 'Chicken soup concentrate', undefined],
+    ['запеканка с мясом', 'meat casserole', 'Frozen meat casserole', undefined],
+    ['запеканка с мясом', 'meat casserole', 'Vegetable casserole', undefined],
+    ['запеканка с мясом', 'meat casserole', 'Pork casserole', 'Pork casserole'],
+    ['замороженная запеканка с мясом', 'frozen meat casserole', 'Frozen meat casserole', 'Frozen meat casserole'],
+  ] as const;
+  for (const [name_ru, name_en, name, expected] of cases) {
+    const provider = {
+      name: 'usda',
+      regions: ['US'] as const,
+      async search() {
+        return { name, confidence: 0.95, per100: coercePer100({ source: 'usda', kcal: 157 }) };
+      },
+    } satisfies NutritionProvider;
+    const result = await new Resolver([provider]).resolveItem(item({
+      name_ru, name_en, prepared: true, weight_basis: 'as_eaten',
+    }), 'US', true);
+    assert.equal(result.matched_name, expected, name);
+  }
+});
+
 test('Greek salad on a meal photo only accepts a card for the whole dish', async () => {
   const meal = item({ name_ru: 'Салат Греческий', name_en: 'Greek salad', est_grams: 100 });
   for (const name of ['сыр для греческого салата', 'Greek salad dressing', 'Greek salad cheese']) {

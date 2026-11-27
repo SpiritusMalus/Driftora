@@ -274,6 +274,8 @@ export interface IdentifiedItem {
   // as-is (soup, stew, salad, ready meal). Only `true` is carried — absence
   // means "no signal", and the curated-table flag can still set it downstream.
   prepared?: boolean;
+  // A visible food outside the serving the photographer intends to log.
+  photo_scope?: 'background';
   // Photo path only: numbers read off the product's own label, when visible.
   // The resolver prefers these over a name-based DB lookup (source: 'label').
   // The identification pass saw a wrapper with printed numbers on it. Only a
@@ -680,6 +682,7 @@ export function normalizeIdentified(payload: unknown): IdentifiedItem[] {
     // Strictly boolean true — "false"/1/garbage from a loose model stays off.
     if (r.prepared === true) item.prepared = true;
     if (r.packaged === true) item.packaged = true;
+    if (r.photo_scope === 'background') item.photo_scope = 'background';
     // Only the two contract values; anything else is "no signal", never a guess.
     if (r.weight_basis === 'dry' || r.weight_basis === 'as_eaten') item.weight_basis = r.weight_basis;
     // Photo label read-out: the model's structured guess, reconciled against the
