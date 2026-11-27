@@ -33,13 +33,11 @@ import {
 import {
   listFoodChoices,
   loadRememberedChoices,
-  rememberFoodChoice,
   type RememberedFood,
 } from '@/lib/core/db/foodChoices';
 import {
   applyRememberedChoices,
   displayItemName,
-  lookupNameForItem,
 } from '@/lib/core/services/foodChoice';
 import { communityBaseAvailable, searchSourcesDown } from '@/lib/core/services/communityBase';
 import { contributableFoods } from '@/lib/core/services/communityShare';
@@ -1172,35 +1170,6 @@ export default function FoodLogScreen() {
         photoBase64: reviewPhoto?.localThumbnailBase64,
         ...(day !== localDayKey(new Date()) ? { ts: tsOnDay(new Date(), day) } : {}),
       });
-      // Personal food journal (layer 2): remember this food → per-100g so the
-      // same name resolves to it next time, on-device only. We remember:
-      //   • anything the user explicitly chose/edited (userChosen), OR
-      //   • a confident real-source auto-match (a solid DB/label hit).
-      // We do NOT cement: DB-miss placeholders, RAW AI estimates (a guess must
-      // not become "my truth" until the user touches it — editing flips it to
-      // 'manual'), or shaky low-confidence matches (incl. referee-demoted ones
-      // like the skyr→«яблоко» mismatch), which would otherwise stick.
-      const REMEMBER_CONFIDENCE_FLOOR = 0.5;
-      for (const it of draft.items) {
-        const src = it.per100.source;
-        // 'history' is a MEAL echo, not a food: its per-100g is derived from a
-        // whole-portion total (or IS the total for gramless legacy entries).
-        // Remembering it poisoned «Из моего рациона» with «900 ккал/100 г»
-        // кесадильями (device report 2026-08-21) — the meal already lives in
-        // the «Быстро» lane, the journal adds nothing here.
-        const realSource = src !== 'estimate' && src !== 'ai_estimate' && src !== 'history';
-        const explicit = it.userChosen || src === 'manual';
-        const trustworthy = explicit || it.confidence >= REMEMBER_CONFIDENCE_FLOOR;
-        if (realSource && trustworthy) {
-          // Key by the RAW typed name (so the correction sticks to what the user
-          // types next time); store the DISPLAY name (real DB row once re-picked).
-          await rememberFoodChoice(db, region, lookupNameForItem(it, region), {
-            name: displayItemName(it, region, currentLocale()),
-            per100: it.per100,
-            ...(explicit ? { explicit: true } : {}),
-          });
-        }
-      }
       // Offer the dishes the user typed the numbers for to the SHARED base, so
       // the next person who logs «шаурма» finds them instead of typing them
       // again. Fire-and-forget on purpose: the meal is already saved, the send

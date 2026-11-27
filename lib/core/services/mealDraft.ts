@@ -195,6 +195,8 @@ export function withItemManualMacros(draft: MealDraft, index: number, macros: Ma
       ...it,
       per100,
       matched_name: undefined,
+      userChosen: true,
+      choiceFromMemory: undefined,
       dry_basis: undefined,
       dry_weight: undefined,
       basis_adjusted: undefined,
@@ -267,7 +269,8 @@ export function withItemReplacement(
       per100: replacement.per100,
       matched_name: replacement.name, // transparency: the new row's own name
       confidence: 1, // the user confirmed the match by hand
-      userChosen: true, // → "remember my choice" on save
+      userChosen: true,
+      choiceFromMemory: undefined,
       // The old row's hints don't describe the new pick; the user is now in
       // control of the match, so drop them rather than mislabel the swap.
       dry_basis: undefined,

@@ -127,9 +127,12 @@ export interface NutritionItem {
   // record because the primary source (curated RU / OFF) carries none. They're
   // an approximate proxy — the card says so. Cleared on manual/replace.
   micros_estimated?: boolean;
-  // Client-only: the user explicitly picked this match (an alternative, a manual
-  // search result, or a remembered choice). Drives "remember my choice" on save.
+  // Client-only: show the chosen match's name instead of the original label.
   userChosen?: boolean;
+  // Reapplying an earlier choice must not overwrite a newer choice on save.
+  choiceFromMemory?: boolean;
+  // Keep the recognition name when reopening a saved item with a new title.
+  originalLookupName?: string;
 }
 
 /// A parsed meal awaiting the user's grams confirmation, then saved.
