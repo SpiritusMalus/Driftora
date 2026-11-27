@@ -323,7 +323,7 @@ export const IDENTIFY_PHOTO_SCHEMA = {
   required: ['items'],
 } as const;
 
-export const PHOTO_FISH_SPECIES_PROMPT = `A meal photo shows a cooked fish whose species was left unspecified. Inspect the fish itself, including visible head shape, fins, body shape and skin markings. Is there convincing visual evidence that this is a trout or a salmon? Use "unknown" for another species, several fish that could differ, or an unclear image. Consider the whole combination of visible features. Color, seasoning, portion size and accompanying foods cannot establish a species on their own. Identify only the species. Do not estimate weight, preparation or nutrition.`;
+export const PHOTO_FISH_SPECIES_PROMPT = `Report the most likely common menu name of the cooked fish on this plate. Compare the body outline, head and eyes, size and position of the fins, and skin. Return "trout" if trout seems most likely from the fish itself, or "salmon" if salmon seems most likely. Return "unknown" if another fish seems more likely, several fish could differ, or you cannot tell. A generic name is less helpful when the visible features support an identification. Do not use garnish or color alone. Identify only the species and leave the portion and preparation to the first pass.`;
 
 export const PHOTO_FISH_SPECIES_SCHEMA = {
   type: 'object',
