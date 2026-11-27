@@ -24,6 +24,11 @@ CREATE TABLE IF NOT EXISTS food_entries (
   meal TEXT,
   parse_status TEXT
 );
+CREATE TABLE IF NOT EXISTS food_photo_analyses (
+  key TEXT PRIMARY KEY NOT NULL,
+  draft TEXT NOT NULL,
+  stored_at INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS food_items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   entry_id INTEGER NOT NULL REFERENCES food_entries(id) ON DELETE CASCADE,

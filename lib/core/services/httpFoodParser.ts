@@ -229,6 +229,18 @@ export interface HttpFoodParserOptions {
   installId?: () => string | null | Promise<string | null>;
   /** Override the photo/audio upload timeout (defaults to `UPLOAD_TIMEOUT_MS`). */
   uploadTimeoutMs?: number;
+  photoCache?: PhotoAnalysisCache;
+}
+
+export interface PhotoAnalysisCache {
+  key(photo: PhotoInput, region: Region, locale: string): Promise<string>;
+  get(key: string): Promise<unknown>;
+  put(key: string, draft: MealDraft): Promise<void>;
+}
+
+function reusablePhotoDraft(draft: unknown, region: Region): draft is MealDraft {
+  return isMealDraft(draft) && draft.region === region && !draft.flags.offline_fallback &&
+    draft.items.length > 0 && draft.items.every((item) => item.per100.source !== 'estimate');
 }
 
 export class HttpFoodParser implements FoodParser {
@@ -243,6 +255,8 @@ export class HttpFoodParser implements FoodParser {
   private readonly installId?: () => string | null | Promise<string | null>;
   /** Longer timeout for the slow multipart uploads (photo/audio). */
   private readonly uploadTimeoutMs: number;
+  private readonly photoCache?: PhotoAnalysisCache;
+  private readonly photoRequests = new Map<string, Promise<MealDraft>>();
 
   constructor(
     private readonly endpoint: string,
@@ -258,13 +272,14 @@ export class HttpFoodParser implements FoodParser {
     this.authHeaders = opts.token ? { Authorization: `Bearer ${opts.token}` } : {};
     this.installId = opts.installId;
     this.uploadTimeoutMs = opts.uploadTimeoutMs ?? UPLOAD_TIMEOUT_MS;
+    this.photoCache = opts.photoCache;
   }
 
   /** Per-request headers: static auth + the install id, waiting for the mint if
    *  it is still in flight (the getter caps its own wait). */
-  private async headers(): Promise<Record<string, string>> {
+  private async headers(locale = currentLocale()): Promise<Record<string, string>> {
     const id = await this.installId?.();
-    return { ...this.authHeaders, 'Accept-Language': currentLocale(), ...(id ? { 'X-Install-Id': id } : {}) };
+    return { ...this.authHeaders, 'Accept-Language': locale, ...(id ? { 'X-Install-Id': id } : {}) };
   }
 
   /**
@@ -433,6 +448,33 @@ export class HttpFoodParser implements FoodParser {
    * falls back to the offline parser (which, for photos, yields an empty draft).
    */
   async parsePhoto(photo: PhotoInput, region: Region): Promise<MealDraft> {
+    const locale = currentLocale();
+    const cache = this.photoCache;
+    const key = await cache?.key(photo, region, locale).catch(() => undefined);
+    if (!cache || !key) return this.uploadPhoto(photo, region, locale);
+
+    const pending = this.photoRequests.get(key);
+    if (pending) return pending;
+
+    const request = (async () => {
+      const cached = await cache.get(key).catch(() => undefined);
+      if (reusablePhotoDraft(cached, region)) return cached;
+
+      const draft = await this.uploadPhoto(photo, region, locale);
+      if (reusablePhotoDraft(draft, region)) {
+        await cache.put(key, draft).catch(() => undefined);
+      }
+      return draft;
+    })();
+    this.photoRequests.set(key, request);
+    try {
+      return await request;
+    } finally {
+      this.photoRequests.delete(key);
+    }
+  }
+
+  private async uploadPhoto(photo: PhotoInput, region: Region, locale: ReturnType<typeof currentLocale>): Promise<MealDraft> {
     const deadline = requestDeadline(this.uploadTimeoutMs);
     try {
       const form = new FormData();
@@ -446,7 +488,7 @@ export class HttpFoodParser implements FoodParser {
 
       const res = await deadline.wait(fetch(this.photoEndpoint, {
         method: 'POST',
-        headers: await deadline.wait(this.headers()),
+        headers: await deadline.wait(this.headers(locale)),
         body: form,
         signal: deadline.signal,
       }));

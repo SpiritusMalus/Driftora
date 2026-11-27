@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 
 import type { FoodParser, MealDraft, PhotoInput } from '@/lib/core/services/foodParser';
-import { HttpFoodParser } from '@/lib/core/services/httpFoodParser';
+import { HttpFoodParser, type PhotoAnalysisCache } from '@/lib/core/services/httpFoodParser';
 
 const ENDPOINT = 'https://api.example.com/food/parse';
 const PHOTO_ENDPOINT = 'https://api.example.com/food/parse-photo';
@@ -176,6 +176,51 @@ describe('HttpFoodParser', () => {
     expect(fallback.photoCalls).toBe(0);
     expect(captured.url).toBe(PHOTO_ENDPOINT);
     expect(captured.isForm).toBe(true);
+  });
+
+  it('reuses the first successful photo analysis across simultaneous requests and new parsers', async () => {
+    const analyzed: MealDraft = {
+      ...VALID,
+      items: VALID.items.map((item) => ({ ...item, per100: { ...item.per100, source: 'ai_estimate' } })),
+    };
+    const drafts = new Map<string, MealDraft>();
+    const cache: PhotoAnalysisCache = {
+      key: async (_photo, region, locale) => `same-bytes:${region}:${locale}`,
+      get: async (key) => drafts.get(key),
+      put: async (key, draft) => { drafts.set(key, draft); },
+    };
+    const anotherUri = { ...PHOTO, uri: 'file:///tmp/copy.jpg' };
+    mockFetch(async () => ({ ok: true, json: async () => analyzed }));
+
+    const parser = new HttpFoodParser(ENDPOINT, new SpyFallback(), undefined, { photoCache: cache });
+    const simultaneous = await Promise.all([parser.parsePhoto(PHOTO, 'US'), parser.parsePhoto(anotherUri, 'US')]);
+    expect(simultaneous).toEqual([analyzed, analyzed]);
+
+    const reopened = new HttpFoodParser(ENDPOINT, new SpyFallback(), undefined, { photoCache: cache });
+    expect(await reopened.parsePhoto(anotherUri, 'US')).toEqual(analyzed);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not pin offline or placeholder photo results', async () => {
+    const placeholder: MealDraft = {
+      ...VALID,
+      items: VALID.items.map((item) => ({ ...item, per100: { ...item.per100, source: 'estimate' } })),
+    };
+    const cache: PhotoAnalysisCache = {
+      key: async () => 'photo', get: async () => undefined, put: jest.fn(async () => {}),
+    };
+    const parser = new HttpFoodParser(ENDPOINT, new SpyFallback(), undefined, { photoCache: cache });
+    let attempt = 0;
+    mockFetch(async () => {
+      if (++attempt === 1) throw new Error('offline');
+      return { ok: true, json: async () => attempt === 2 ? placeholder : VALID };
+    });
+
+    expect(await parser.parsePhoto(PHOTO, 'US')).toEqual(OFFLINE_SENTINEL);
+    expect(await parser.parsePhoto(PHOTO, 'US')).toEqual(placeholder);
+    expect(await parser.parsePhoto(PHOTO, 'US')).toEqual(VALID);
+    expect(cache.put).toHaveBeenCalledTimes(1);
+    expect(cache.put).toHaveBeenCalledWith('photo', VALID);
   });
 
   it('parsePhoto falls back to the offline photo path on a non-2xx — as a server error', async () => {

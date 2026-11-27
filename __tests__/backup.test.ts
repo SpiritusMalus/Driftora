@@ -181,7 +181,7 @@ describe('DB backup (exportAllTables / importAllTables)', () => {
       .sort();
     const exported = [...backupTableNames(), ...localOnlyTableNames()].sort();
     expect(exported).toEqual(declared);
-    expect(localOnlyTableNames()).toEqual(['food_entry_photos', 'body_setup_draft']);
+    expect(localOnlyTableNames()).toEqual(['food_entry_photos', 'food_photo_analyses', 'body_setup_draft']);
   });
 
   it('rejects a foreign or mis-versioned document', async () => {

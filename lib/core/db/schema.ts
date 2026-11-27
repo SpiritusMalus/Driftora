@@ -34,6 +34,13 @@ export const foodEntryPhotos = sqliteTable('food_entry_photos', {
   jpgBase64: text('jpg_base64').notNull(),
 });
 
+/// First successful analysis of the exact uploaded bytes. Device-only, no pixels.
+export const foodPhotoAnalyses = sqliteTable('food_photo_analyses', {
+  key: text('key').primaryKey(),
+  draft: text('draft').notNull(),
+  storedAt: integer('stored_at').notNull(),
+});
+
 /// The LLM breakdown of a food entry into individual items.
 export const foodItems = sqliteTable('food_items', {
   id: integer('id').primaryKey({ autoIncrement: true }),

@@ -23,9 +23,9 @@ const APP_ID = 'driftora';
 /// over the raw SQLCipher file — portable across devices and driver versions, and
 /// independent of the device-bound encryption key. Kept in sync with `schema.ts`
 /// / `init.ts`; `__tests__/backup.test.ts` asserts coverage against the live DDL.
-/// Meal thumbnails and unfinished body setup are device-only and excluded from both
-/// portable backups and the sync snapshots built from this same document.
-const LOCAL_ONLY_TABLES = ['food_entry_photos', 'body_setup_draft'] as const;
+/// Meal thumbnails, photo analyses and unfinished body setup are device-only
+/// and excluded from portable backups and sync snapshots.
+const LOCAL_ONLY_TABLES = ['food_entry_photos', 'food_photo_analyses', 'body_setup_draft'] as const;
 const EXPORT_TABLES = [
   'food_entries',
   'food_items',
@@ -139,6 +139,7 @@ export async function importAllTables(
       // Sync must not discard an unfinished wizard on this device.
       if (!opts.preserveUnchangedLocalFoodPhotos) {
         await db.run(sql`DELETE FROM body_setup_draft`);
+        await db.run(sql`DELETE FROM food_photo_analyses`);
       }
       // Delete children before parents to respect the FK (reverse insert order),
       // then insert parents before children.

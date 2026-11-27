@@ -3,6 +3,7 @@ import * as Localization from 'expo-localization';
 import type { FoodParser, Region } from './foodParser';
 import { HttpFoodParser } from './httpFoodParser';
 import { whenInstallId } from './installId';
+import { photoAnalysisCache } from './photoAnalysisCache';
 import { pickRegion } from './region';
 import { StubFoodParser } from './stubFoodParser';
 
@@ -39,6 +40,7 @@ export function getFoodParser(aiConsent: boolean): FoodParser {
     // the server's shared per-address bucket, which is exactly what the id
     // exists to avoid. `whenInstallId` caps its own wait.
     installId: whenInstallId,
+    photoCache: photoAnalysisCache,
   }));
 }
 
