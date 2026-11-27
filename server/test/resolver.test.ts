@@ -154,6 +154,8 @@ test('plain photo ingredients have reference energy even when providers disagree
     ['соус бешамель', 'béchamel sauce', 147],
     ['лимон', 'lemon wedge', 29],
     ['банан', 'banana', 89],
+    ['авокадо', 'avocado', 160],
+    ['ломтики авокадо', 'sliced avocado', 160],
     ['клубника', 'strawberries', 32],
     ['свежая клубника', 'fresh strawberries', 32],
     ['ягоды клубники', 'sliced strawberries', 32],
@@ -226,6 +228,8 @@ test('Shirazi and plain whole fish reject unrelated recipes and ingredient cards
     ['рыба жареная целая', 'whole fried fish', 'Grilled fish sandwich'],
     ['рыба жареная целая', 'whole fried fish', 'Grilled salmon'],
     ['салат из свежих овощей', 'fresh vegetable salad', 'Fresh fruit salad'],
+    ['салат из свежих овощей', 'fresh vegetable salad', 'Vegetables in gelatin salad'],
+    ['авокадо с лаймом', 'avocado with lime', 'Avocado dressing'],
     ['смесь риса варёная', 'cooked mixed white and red rice', 'Cooked white rice'],
   ] as const;
   for (const [name_ru, name_en, name] of cases) {
@@ -242,6 +246,22 @@ test('Shirazi and plain whole fish reject unrelated recipes and ingredient cards
     assert.equal(result.per100.source, 'ai_estimate', name);
     assert.equal(result.matched_name, undefined, name);
   }
+});
+
+test('an avocado dressing can still match its own recipe on a photo', async () => {
+  const recipe = 'Avocado dressing';
+  const provider = {
+    name: 'usda',
+    regions: ['US'] as const,
+    async search() {
+      return { name: recipe, confidence: 0.95, per100: coercePer100({ source: 'usda', kcal: 427 }) };
+    },
+  } satisfies NutritionProvider;
+  const result = await new Resolver([provider]).resolveItem(item({
+    name_ru: 'заправка из авокадо', name_en: recipe,
+  }), 'US', true);
+  assert.equal(result.matched_name, recipe);
+  assert.equal(result.per100.kcal, 427);
 });
 
 test('Greek salad on a meal photo only accepts a card for the whole dish', async () => {
