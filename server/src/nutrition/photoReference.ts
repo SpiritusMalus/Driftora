@@ -55,6 +55,7 @@ const GREEK_SALAD = /^(?:(?:classic|traditional|fresh|классическ\p{L}*
 const SHIRAZI_SALAD = /^(?:(?:classic|traditional|fresh|иранск\p{L}*|персидск\p{L}*) )?(?:shirazi salad|salad shirazi|салат ширази|ширази)(?: |$)/u;
 const SALAD_ADD_ON = /^(?:cheese\b|feta\b|dressing\b|sauce\b|seasoning\b|topping\b|сыр|фета|заправк|соус|приправа)/u;
 const BANANA = /\bbanana\b|(?:^| )банан(?: |$)/u;
+const AVOCADO = /\bavocados?\b|(?:^| )авокадо(?: |$)/u;
 const LEMON = /\blemon\b|(?:^| )лимон\p{L}*(?: |$)/u;
 
 interface PhotoRule {
@@ -106,6 +107,8 @@ const RULES: readonly PhotoRule[] = [
     words: /^(strawberr(?:y|ies)|raw|fresh|ripe|whole|sliced|berries|клубник\p{L}*|земляник\p{L}*|свеж\p{L}*|сыр(?:ая|ую|ые|ой|ых|ого|ом|ым)|спел\p{L}*|цельн\p{L}*|цела\p{L}*|нарезан\p{L}*|ягод\p{L}*|садов\p{L}*)$/u },
   { identity: BANANA, reference: tableReference('банан'),
     words: /^(banana|raw|fresh|ripe|peeled|банан|сырой|свежий|спелый|очищенный)$/u },
+  { identity: AVOCADO, reference: tableReference('авокадо'),
+    words: /^(avocados?|raw|fresh|ripe|peeled|sliced|slices?|wedges?|diced|pieces?|halves|half|of|авокадо|свеж\p{L}*|спел\p{L}*|нарезан\p{L}*|ломтик\p{L}*|дольк\p{L}*|кус(?:ок|ки|очек)|половин\p{L}*)$/u },
   { identity: LEMON, reference: tableReference('лимон'),
     words: /^(lemon|raw|fresh|slice|sliced|wedge|лимон\p{L}*|ломтик|долька|свежий)$/u },
 ];
@@ -148,6 +151,8 @@ const DIFFERENT_FORMS = [
   /(?:^| )(?:кожур\p{L}*|potato skins?)(?: |$)/u,
   /(?:^| )(?:в панировке|breaded|battered)(?: |$)/u,
   /(?:^| )(?:шарики?|balls?|nuggets?|наггетс\p{L}*)(?: |$)/u,
+  /\b(?:dressings?|guacamole|spreads?|dips?)\b|заправк|намазк|гуакамоле/u,
+  /\b(?:gelatin|jelly|jellied|aspic)\b|желе|заливн/u,
 ];
 
 function isWholeSalad(name: string, identity: RegExp): boolean {
