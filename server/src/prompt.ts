@@ -255,11 +255,13 @@ For each distinct food or drink visible, output:
 - est_grams: your best estimate of the eaten weight in grams, from the visible portion.
 - confidence: 0..1, how sure you are about the food identity and portion.
 - prepared: true when the item is an already-prepared dish eaten as-is (soup, stew, salad, casserole, ready meal); false for ingredients and simple products.
+- photo_scope: "serving" for food intended to be logged, "background" for incidental food behind or outside that serving.
 - packaged: true only for a packaged product whose wrapper carries a printed nutrition panel — see the rule below.
 - weight_basis: WHICH STATE est_grams refers to. "dry" when the number is the weight of the UNCOOKED product — typically the net weight printed on a pack of noodles, groats, pasta or powder that has not been cooked yet. "as_eaten" when it is the weight of the food as it is actually eaten — anything on a plate or in a bowl, a ready dish, bread, fruit, and any packaged food eaten straight from its wrapper. When in doubt, "as_eaten".
 
 Rules:
-- Split a composite plate into its meaningful COMPONENTS — name every distinct food you can see, including the ones hidden under a sauce or a topping.
+- Find the serving the camera is aimed at. Include its visible, distinct foods, sides and sauces, including several containers when they are clearly framed as a single meal. Exclude incidental food in the background, shared containers or someone else's plate. If you list an incidental food, mark it "background" so its nutrition is excluded.
+- Recognize a composed dish as a whole when its ingredients are already mixed, layered or cooked together. Log any separate sides independently. Preserve an identifiable animal protein or preparation in both names. Only describe a plated dish as frozen, dried or concentrated when the image provides evidence of that state.
 - est_grams comes from the VISIBLE volume — how much of the plate the food covers and how high it is piled. Judge each portion from what you actually see: a modest portion stays modest, and a heaped plate must NOT be rounded down to a "typical serving" — snapping to the canonical portion number instead of the visible amount is the failure mode users report.
 - Never invent foods that are not visible.
 - Distinguish look-alike salads by their visible ingredients and cut. Shirazi salad ("салат ширази", "Shirazi salad") is a fine dice of cucumber, tomato and onion, often with herbs and a thin citrus dressing. Cucumber is a distinguishing ingredient from pico de gallo (mostly tomato, onion, cilantro and chili). Greek salad usually has larger cuts, feta and/or olives. If the style is unclear, name the visible ingredients as a chopped salad.
@@ -299,6 +301,7 @@ export const IDENTIFY_PHOTO_SCHEMA = {
           est_grams: { type: 'number' },
           confidence: { type: 'number' },
           prepared: { type: 'boolean' },
+          photo_scope: { type: 'string', enum: ['serving', 'background'] },
           packaged: {
             type: 'boolean',
             description:
@@ -311,7 +314,7 @@ export const IDENTIFY_PHOTO_SCHEMA = {
               'Which state est_grams refers to: "dry" for the weight of the uncooked product (a pack of noodles/groats/pasta not cooked yet), "as_eaten" for the weight of the food as eaten. When in doubt, "as_eaten".',
           },
         },
-        required: ['name_ru', 'name_en', 'est_grams', 'confidence', 'prepared', 'weight_basis'],
+        required: ['name_ru', 'name_en', 'est_grams', 'confidence', 'prepared', 'weight_basis', 'photo_scope'],
       },
     },
     menu_text: {

@@ -885,11 +885,12 @@ export async function identifyFromPhoto(
   const menuText = rawMenu.length > MAX_MENU_CHARS ? '' : rawMenu;
   // The prompt says «food wins», but a model that returns both must not make the
   // app parse the menu instead of the plate in front of it.
-  const unspecifiedFish = out.items.filter(isUnspecifiedCookedFish);
+  const items = out.items.filter((item) => item.photo_scope !== 'background');
+  const unspecifiedFish = items.filter(isUnspecifiedCookedFish);
   if (unspecifiedFish.length === 1 && unspecifiedFish[0]) {
     await refinePhotoFish(unspecifiedFish[0], base64, mimeType);
   }
-  return { items: out.items, menuText: out.items.length > 0 ? '' : menuText };
+  return { items, menuText: items.length > 0 ? '' : menuText };
 }
 
 /** A short, model-only confirmation keeps the first result when evidence is scarce. */

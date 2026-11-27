@@ -114,3 +114,17 @@ test('an already named species or a packaged item does not incur a second vision
   assert.equal(calls, 1);
   assert.equal(items[0]?.name_ru, 'форель на гриле');
 });
+
+test('photo identification keeps the serving and excludes incidental foods regardless of their name', async () => {
+  const food = (name_ru: string, name_en: string, photo_scope: string) => ({
+    ...wholeFish, name_ru, name_en, photo_scope,
+  });
+  globalThis.fetch = async () => completion({ items: [
+    food('ломтик хлеба', 'slice of bread', 'serving'),
+    food('сыр', 'cheese', 'background'),
+    food('томатный суп', 'tomato soup', 'serving'),
+    food('лимон', 'lemon', 'background'),
+  ] });
+  const { items } = await identifyFromPhoto('AAAA', 'image/jpeg', 'RU');
+  assert.deepEqual(items.map(({ name_en }) => name_en), ['slice of bread', 'tomato soup']);
+});
