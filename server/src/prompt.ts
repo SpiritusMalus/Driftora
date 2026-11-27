@@ -323,6 +323,14 @@ export const IDENTIFY_PHOTO_SCHEMA = {
   required: ['items'],
 } as const;
 
+export const PHOTO_FISH_SPECIES_PROMPT = `Report the most likely common menu name of the cooked fish on this plate. Compare the body outline, head and eyes, size and position of the fins, and skin. Return "trout" if trout seems most likely from the fish itself, or "salmon" if salmon seems most likely. Return "unknown" if another fish seems more likely, several fish could differ, or you cannot tell. A generic name is less helpful when the visible features support an identification. Do not use garnish or color alone. Identify only the species and leave the portion and preparation to the first pass.`;
+
+export const PHOTO_FISH_SPECIES_SCHEMA = {
+  type: 'object',
+  properties: { species: { type: 'string', enum: ['trout', 'salmon', 'unknown'] } },
+  required: ['species'],
+} as const;
+
 /**
  * DEDICATED LABEL PASS. Runs only when the identification pass flagged a
  * `packaged` item, so a plate of soup never pays for it — and, having one job,

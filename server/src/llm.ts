@@ -1,6 +1,7 @@
 import { TIMEOUT_MS } from './httpTimeout.js';
 import { metrics } from './metrics.js';
 import { energyFromMacros, energyInconsistent } from './nutrition/energy.js';
+import { isUnspecifiedCookedFish } from './nutrition/photoReference.js';
 import {
   ESTIMATE_SEARCH_SCHEMA,
   ESTIMATE_SEARCH_SYSTEM_PROMPT,
@@ -9,6 +10,8 @@ import {
   userTranslateLabelsInstruction,
   IDENTIFY_PHOTO_SCHEMA,
   IDENTIFY_PHOTO_SYSTEM_PROMPT,
+  PHOTO_FISH_SPECIES_PROMPT,
+  PHOTO_FISH_SPECIES_SCHEMA,
   READ_LABEL_SCHEMA,
   READ_LABEL_SYSTEM_PROMPT,
   userReadLabelInstruction,
@@ -882,7 +885,32 @@ export async function identifyFromPhoto(
   const menuText = rawMenu.length > MAX_MENU_CHARS ? '' : rawMenu;
   // The prompt says «food wins», but a model that returns both must not make the
   // app parse the menu instead of the plate in front of it.
+  const unspecifiedFish = out.items.filter(isUnspecifiedCookedFish);
+  if (unspecifiedFish.length === 1 && unspecifiedFish[0]) {
+    await refinePhotoFish(unspecifiedFish[0], base64, mimeType);
+  }
   return { items: out.items, menuText: out.items.length > 0 ? '' : menuText };
+}
+
+/** A short, model-only confirmation keeps the first result when evidence is scarce. */
+async function refinePhotoFish(item: IdentifiedItem, base64: string, mimeType: string): Promise<void> {
+  let data: unknown;
+  try {
+    data = await complete([
+      { role: 'system', content: PHOTO_FISH_SPECIES_PROMPT },
+      { role: 'user', content: [{ type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}` } }] },
+    ], MODEL, PHOTO_FISH_SPECIES_SCHEMA, 0, 8_000, REASONING_EFFORT_MEDIA, undefined, 'check_photo_fish');
+  } catch {
+    return;
+  }
+  const payload = responsePayload(data) as { species?: unknown } | null;
+  const species = payload?.species;
+  if (species !== 'trout' && species !== 'salmon') return;
+
+  const grilled = /грил|\bgrilled\b/iu.test(`${item.name_ru} ${item.name_en}`);
+  const [name, cooked] = species === 'trout' ? ['форель', 'приготовленная'] : ['лосось', 'приготовленный'];
+  item.name_ru = `${name} ${grilled ? 'на гриле' : cooked}`;
+  item.name_en = `${grilled ? 'grilled' : 'cooked'} ${species}`;
 }
 
 /**
