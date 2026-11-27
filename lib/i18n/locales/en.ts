@@ -1187,6 +1187,7 @@ export const en = {
     // Editing a single dish inside a saved entry.
     removeItem: 'Remove dish',
     replaceItem: 'Replace item',
+    restoreOriginal: 'Restore original',
     replaceAction: 'Replace',
     replaceNamedItem: 'Replace {{name}}',
     // The user never named a weight — say honestly this is our guess.

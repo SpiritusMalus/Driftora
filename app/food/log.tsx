@@ -77,6 +77,7 @@ import {
   withItemGrams,
   withItemManualMacros,
   withItemReplacement,
+  withOriginalItemMatch,
 } from '@/lib/core/services/mealDraft';
 import { mergeReparsedDraft } from '@/lib/core/services/reparseMerge';
 import { capturePhoto, isPhotoCaptureAvailable, type PhotoSource } from '@/lib/core/services/photoProvider';
@@ -578,7 +579,7 @@ export default function FoodLogScreen() {
   // to a freshly parsed draft, so a fix made once sticks on the next log.
   async function applyMemory(draft: MealDraft, fromPhoto = false): Promise<MealDraft> {
     if (!db) return draft;
-    const deadline = requestDeadline(2_000);
+    const deadline = requestDeadline(fromPhoto ? 8_000 : 2_000);
     try {
       const choices = await deadline.wait(loadRememberedChoices(db, region, draft));
       const applied = applyRememberedChoices(draft, region, choices, fromPhoto ? 'explicit' : 'all');
@@ -1755,6 +1756,7 @@ export default function FoodLogScreen() {
               onSelectAlternative={(altIndex) => onItemSelectAlternative(i, altIndex)}
               onSearch={onItemSearch}
               onReplace={(alt) => onItemReplace(i, alt)}
+              onRestoreOriginal={() => setDraft((prev) => prev ? withOriginalItemMatch(prev, i) : prev)}
               onRemove={() => onItemRemove(i)}
             />
           ))}

@@ -22,6 +22,7 @@ export function ItemReplacementDialog({
   onSearch,
   onSelectAlternative,
   onReplace,
+  onRestoreOriginal,
   onClose,
 }: {
   name: string;
@@ -30,6 +31,7 @@ export function ItemReplacementDialog({
   onSearch: (query: string) => Promise<NutritionAlternative[]>;
   onSelectAlternative: (index: number) => void;
   onReplace: (replacement: NutritionAlternative) => void;
+  onRestoreOriginal?: () => void;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
@@ -110,6 +112,21 @@ export function ItemReplacementDialog({
             disabled={loading || !query.trim()}
           />
         </View>
+        {onRestoreOriginal ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => {
+              if (closing.current) return;
+              close();
+              onRestoreOriginal();
+            }}
+            style={[styles.result, { borderColor: theme.separator, backgroundColor: theme.card, marginBottom: 8 }]}
+          >
+            <Text style={[styles.name, { color: theme.primary }, theme.font.bodySemiBold]}>
+              {t('food.restoreOriginal')}
+            </Text>
+          </Pressable>
+        ) : null}
         <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.results}>
           {search?.kind === 'empty' || search?.kind === 'unavailable' ? (
             <Text accessibilityLiveRegion="polite" style={[styles.meta, { color: theme.subtle }, theme.font.body]}>

@@ -14,7 +14,7 @@ import {
   prioritizeExactFoodNames,
 } from '@/lib/core/services/foodChoice';
 import type { MealDraft, NutritionItem, Per100 } from '@/lib/core/services/foodParser';
-import { recomputeDraft, withItemReplacement } from '@/lib/core/services/mealDraft';
+import { recomputeDraft, scaleToGrams, withItemGrams, withItemReplacement, withOriginalItemMatch } from '@/lib/core/services/mealDraft';
 
 function per100(kcal: number, source: Per100['source'] = 'fatsecret'): Per100 {
   return { kcal, prot: 10, fat: 1, carb: 2, minerals: {}, source };
@@ -224,7 +224,7 @@ describe('foodChoices persistence (round-trip)', () => {
     const rawText = 'картофель отварной';
     const initial = legacy ? fresh : withItemReplacement(fresh, 0, { name: 'Картофель в мундире', per100: per100(90) });
     const id = await saveParsedEntry(db, { rawText, source: 'photo', draft: initial });
-    if (legacy) await db.update(schema.foodItems).set({ lookupName: null, name: rawText });
+    if (legacy) await db.update(schema.foodItems).set({ lookupName: null, matchContext: null, name: rawText });
     const before = (await getFoodEntry(db, id))!;
     const reopened = draftFromStoredEntry('US', before.items);
     expect(reopened.items[0]?.originalLookupName).toBe(legacy ? undefined : 'boiled potatoes');
@@ -237,6 +237,69 @@ describe('foodChoices persistence (round-trip)', () => {
     const recalled = applyRememberedChoices(fresh, 'US', await loadRememberedChoices(db, 'US', fresh), 'explicit');
     expect(recalled.items[0]).toMatchObject({ grams: 200, matched_name: replacement.name, per100: replacement.per100 });
     expect(recalled.totals.kcal).toBe(186);
+    sqlite.close();
+  });
+
+  it('finds the saved photo choice across recognition names and clears the whole choice only on save', async () => {
+    const { sqlite, db } = makeDb();
+    await applySchema((stmt) => sqlite.exec(stmt));
+    const reference = per100(32, 'usda');
+    const initial = item({
+      name_ru: 'клубника', name_en: 'strawberry', matched_name: 'Клубника',
+      confidence: 0.95, grams: 100, per100: reference, scaled: scaleToGrams(reference, 100),
+    });
+    const fresh = recomputeDraft('US', [initial]);
+    const frozen = { name: 'Клубника замороженная', per100: per100(37, 'openfoodfacts') };
+    const save = (d: MealDraft) => saveParsedEntry(db, { rawText: 'Клубника', source: 'photo', draft: d });
+    const replay = recomputeDraft('US', [{ ...initial, name_ru: 'свежая клубника', name_en: 'fresh strawberries' }]);
+    const sameRussian = recomputeDraft('US', [{ ...initial, name_en: 'raw strawberries', matched_name: undefined }]);
+    const resolve = async (d: MealDraft) =>
+      applyRememberedChoices(d, 'US', await loadRememberedChoices(db, 'US', d), 'explicit');
+
+    await save(withItemReplacement(fresh, 0, frozen));
+    expect((await resolve(sameRussian)).totals.kcal).toBe(37);
+    const corrected = await resolve(replay);
+    expect(corrected.totals.kcal).toBe(37);
+    const reset = withOriginalItemMatch(withItemGrams(corrected, 0, 125), 0);
+    expect(reset.items[0]).toMatchObject({ grams: 125, grams_source: 'confirmed', per100: reference });
+    expect(reset.totals.kcal).toBe(40);
+    expect((await resolve(fresh)).totals.kcal).toBe(37);
+    await save(reset);
+    expect((await resolve(fresh)).totals.kcal).toBe(32);
+    expect((await resolve(sameRussian)).totals.kcal).toBe(32);
+    sqlite.close();
+  });
+
+  it('restores the original after repeated swaps and reopening, while weight-only edits preserve a newer choice', async () => {
+    const { sqlite, db } = makeDb();
+    await applySchema((stmt) => sqlite.exec(stmt));
+    const original = per100(147, 'usda');
+    const itemAt25Grams = item({
+      name_ru: 'соус бешамель', name_en: 'béchamel sauce', matched_name: 'белый соус домашний',
+      grams: 25, per100: original, scaled: scaleToGrams(original, 25), confidence: 0.95,
+    });
+    const fresh = recomputeDraft('RU', [itemAt25Grams]);
+    const anchovy = { name: 'Анчоусное масло', per100: per100(630, 'ai_estimate') };
+    const tomato = { name: 'Томатный соус', per100: per100(29, 'ai_estimate') };
+    const options = { rawText: 'Соус', source: 'photo' as const };
+    const first = withItemReplacement(fresh, 0, anchovy);
+    const second = withItemReplacement(first, 0, tomato);
+    const id = await saveParsedEntry(db, { ...options, draft: second });
+    const newer = await saveParsedEntry(db, { ...options, draft: first });
+    const stored = (await getFoodEntry(db, id))!;
+    const reopened = draftFromStoredEntry('RU', stored.items);
+    expect(reopened.items[0]?.per100).toEqual(tomato.per100);
+    const adjusted = withItemGrams(reopened, 0, 100);
+    await updateFoodEntry(db, id, { ...options, draft: adjusted });
+    const load = async () =>
+      applyRememberedChoices(fresh, 'RU', await loadRememberedChoices(db, 'RU', fresh), 'explicit');
+    expect((await load()).items[0]?.per100).toEqual(anchovy.per100);
+    const reset = withOriginalItemMatch(adjusted, 0);
+    expect(reset.items[0]).toMatchObject({ grams: 100, per100: original, matched_name: itemAt25Grams.matched_name });
+    expect(reset.totals.kcal).toBe(147);
+    await updateFoodEntry(db, id, { ...options, draft: reset });
+    expect((await load()).items[0]?.per100).toEqual(original);
+    expect((await getFoodEntry(db, newer))?.entry.kcal).toBe(158);
     sqlite.close();
   });
 });

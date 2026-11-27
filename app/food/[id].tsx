@@ -37,6 +37,7 @@ import {
   withItemGrams,
   withItemManualMacros,
   withItemReplacement,
+  withOriginalItemMatch,
 } from '@/lib/core/services/mealDraft';
 import { useTheme } from '@/lib/theme/theme';
 
@@ -252,6 +253,7 @@ export default function FoodEntryScreen() {
                 onSelectAlternative={(altIndex) => onSelectAlternative(i, altIndex)}
                 onSearch={onSearch}
                 onReplace={(alt) => onReplace(i, alt)}
+                onRestoreOriginal={() => setDraft((prev) => prev ? withOriginalItemMatch(prev, i) : prev)}
                 onRemove={() => onRemove(i)}
               />
             ))
