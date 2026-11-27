@@ -66,3 +66,51 @@ test('когда в кадре и еда, и меню — выигрывает �
   assert.equal(items.length, 1);
   assert.equal(menuText, '', 'иначе приложение разберёт меню вместо тарелки перед человеком');
 });
+
+const wholeFish = { name_ru: 'рыба на гриле', name_en: 'grilled whole fish', est_grams: 220,
+  confidence: 0.9, prepared: false, weight_basis: 'as_eaten' };
+
+function completion(content: object): Promise<Response> {
+  return json(JSON.stringify({ choices: [{ finish_reason: 'stop', message: { content: JSON.stringify(content) } }] }));
+}
+
+test('generic cooked fish gets a focused check without changing its portion or side dishes', async () => {
+  let calls = 0;
+  const side = { ...wholeFish, name_ru: 'овощной салат', name_en: 'vegetable salad', est_grams: 150 };
+  globalThis.fetch = async () => ++calls === 1
+    ? completion({ items: [wholeFish, side] }) : completion({ species: 'trout' });
+
+  const { items } = await identifyFromPhoto('AAAA', 'image/jpeg', 'RU');
+  assert.equal(calls, 2);
+  assert.deepEqual(items.map(({ name_ru, name_en, est_grams }) => [name_ru, name_en, est_grams]), [
+    ['форель на гриле', 'grilled trout', 220], ['овощной салат', 'vegetable salad', 150],
+  ]);
+});
+
+test('a weak or unavailable species check keeps the generic photo result', async () => {
+  for (const fail of [false, true]) {
+    let calls = 0;
+    globalThis.fetch = async () => {
+      if (++calls === 1) return completion({ items: [wholeFish] });
+      if (fail) throw new Error('offline');
+      return completion({ species: 'unknown' });
+    };
+    const { items } = await identifyFromPhoto('AAAA', 'image/jpeg', 'RU');
+    assert.equal(calls, 2);
+    assert.equal(items[0]?.name_ru, wholeFish.name_ru);
+  }
+});
+
+test('an already named species or a packaged item does not incur a second vision call', async () => {
+  let calls = 0;
+  globalThis.fetch = async () => {
+    ++calls;
+    return completion({ items: [
+      { ...wholeFish, name_ru: 'форель на гриле', name_en: 'grilled trout' },
+      { ...wholeFish, packaged: true },
+    ] });
+  };
+  const { items } = await identifyFromPhoto('AAAA', 'image/jpeg', 'RU');
+  assert.equal(calls, 1);
+  assert.equal(items[0]?.name_ru, 'форель на гриле');
+});

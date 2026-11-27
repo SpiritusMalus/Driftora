@@ -68,7 +68,7 @@ interface PhotoRule {
 
 const COOKED = /\b(?:cooked|boiled|steamed)\b|варен|отвар|приготовлен|на пару/u;
 const DRY_HEAT = /\b(?:roasted|grilled|baked|seared|cooked|fried|broiled)\b|запечен|печен|грил|жарен|сковород/u;
-const PROTEIN_PORTION = /^(?:plain|whole|fillets?|filets?|steaks?|pieces?|cuts?|of|pan|oven|roasted|grilled|baked|seared|cooked|fried|broiled|филе|стейк\p{L}*|кус(?:ок|ки|очек)|целиком|цел\p{L}*|запечен\p{L}*|печен\p{L}*|жарен\p{L}*|обжарен\p{L}*|на|в|из|гриле|гриль|духовке|сковороде)$/u;
+const PROTEIN_PORTION = /^(?:plain|whole|fillets?|filets?|steaks?|pieces?|cuts?|of|pan|oven|roasted|grilled|baked|seared|cooked|fried|broiled|филе|стейк\p{L}*|кус(?:ок|ки|очек)|целиком|цел\p{L}*|запечен\p{L}*|печен\p{L}*|жарен\p{L}*|обжарен\p{L}*|приготовлен\p{L}*|на|в|из|гриле|гриль|духовке|сковороде)$/u;
 const RICE_WORDS = /^(?:rice|plain|cooked|boiled|steamed|рис|обычный|простой|вареный|отварной|отваренный|приготовленный|на|пару)$/u;
 const FISH = /\b(?:fish|salmon|trout)\b|(?:^| )(?:рыб[аыу]|лосось|лосося|семг[аи]|форел[ьи])(?: |$)/u;
 const COMPOSITE_FISH = /\b(?:sandwich\w*|burgers?|wraps?|soups?|salads?|sauces?|pates?|spreads?|sticks?|cakes?)\b|сэндвич|сендвич|бутерброд|бургер|ролл|суп|салат|соус|паштет|котлет|палочк/u;
@@ -115,6 +115,12 @@ const RULES: readonly PhotoRule[] = [
 
 function photoNames(item: IdentifiedItem): string[] {
   return [normalizeName(item.name_ru), normalizeName(item.name_en)].filter(Boolean);
+}
+
+export function isUnspecifiedCookedFish(item: IdentifiedItem): boolean {
+  if (item.packaged || item.label || item.weight_basis === 'dry') return false;
+  const names = photoNames(item);
+  return names.every(isGenericFish) && names.some((name) => DRY_HEAT.test(name));
 }
 
 /** Use a stable row only for a plain food with compatible labels in both languages. */

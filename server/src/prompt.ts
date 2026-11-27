@@ -323,6 +323,14 @@ export const IDENTIFY_PHOTO_SCHEMA = {
   required: ['items'],
 } as const;
 
+export const PHOTO_FISH_SPECIES_PROMPT = `A meal photo shows a cooked fish whose species was left unspecified. Inspect the fish itself, including visible head shape, fins, body shape and skin markings. Is there convincing visual evidence that this is a trout or a salmon? Use "unknown" for another species, several fish that could differ, or an unclear image. Consider the whole combination of visible features. Color, seasoning, portion size and accompanying foods cannot establish a species on their own. Identify only the species. Do not estimate weight, preparation or nutrition.`;
+
+export const PHOTO_FISH_SPECIES_SCHEMA = {
+  type: 'object',
+  properties: { species: { type: 'string', enum: ['trout', 'salmon', 'unknown'] } },
+  required: ['species'],
+} as const;
+
 /**
  * DEDICATED LABEL PASS. Runs only when the identification pass flagged a
  * `packaged` item, so a plate of soup never pays for it — and, having one job,
