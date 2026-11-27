@@ -173,6 +173,7 @@ test('independent descriptions of the same prepared food share a catalog referen
   const cases = [
     [['лосось на гриле', 'grilled salmon'], ['стейк из лосося жареный', 'pan-fried salmon steak'], 'лосось запечённый', 206],
     [['форель на гриле', 'grilled trout'], ['запечённая форель целиком', 'whole baked rainbow trout'], 'форель запечённая', 168],
+    [['форель на гриле', 'grilled trout'], ['рыба запечённая', 'baked trout'], 'форель запечённая', 168],
     [['куриная голень на гриле', 'grilled chicken drumstick'], ['голени куриные запечённые', 'oven-roasted chicken drumsticks'], 'куриная голень запечённая', 155],
     [['рис варёный', 'steamed rice'], ['рис белый на пару', 'plain cooked white rice'], 'рис белый варёный', 130],
     [['коричневый рис', 'brown rice'], ['рис бурый варёный', 'cooked brown rice'], 'рис бурый варёный', 123],
@@ -188,6 +189,17 @@ test('independent descriptions of the same prepared food share a catalog referen
     assert.deepEqual(a.per100, b.per100);
     assert.equal(a.scaled.kcal, b.scaled.kcal);
   }
+});
+
+test('a specific fish name survives a generic translation without overwriting an uncertain species', async () => {
+  const resolver = new Resolver([]);
+  const trout = item({ name_ru: 'рыба запечённая', name_en: 'baked trout', confidence: 0.85 });
+  const recognized = await resolver.resolveItem(trout, 'RU', true);
+  assert.equal(recognized.name_ru, 'форель запечённая');
+  assert.equal(recognized.matched_name, 'форель запечённая');
+  const uncertain = await resolver.resolveItem({ ...trout, confidence: 0.7 }, 'RU', true);
+  assert.equal(uncertain.name_ru, 'рыба запечённая');
+  assert.equal(uncertain.matched_name, undefined);
 });
 
 test('a plain reference does not absorb different species, cuts, or preparations', async () => {
@@ -213,6 +225,8 @@ test('Shirazi and plain whole fish reject unrelated recipes and ingredient cards
     ['салат ширази', 'Shirazi salad', 'Shirazi salad dressing'],
     ['рыба жареная целая', 'whole fried fish', 'Grilled fish sandwich'],
     ['рыба жареная целая', 'whole fried fish', 'Grilled salmon'],
+    ['салат из свежих овощей', 'fresh vegetable salad', 'Fresh fruit salad'],
+    ['смесь риса варёная', 'cooked mixed white and red rice', 'Cooked white rice'],
   ] as const;
   for (const [name_ru, name_en, name] of cases) {
     const provider = {

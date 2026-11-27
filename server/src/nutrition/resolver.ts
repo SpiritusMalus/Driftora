@@ -668,6 +668,9 @@ export class Resolver {
 
     const grams = labelWeight ?? estGrams;
     const photoReference = fromMealPhoto ? mealPhotoReference(item) : undefined;
+    if (photoReference?.name_ru || photoReference?.name_en) {
+      item = { ...item, name_ru: photoReference.name_ru ?? item.name_ru, name_en: photoReference.name_en ?? item.name_en };
+    }
     const found = photoReference
       ? { ...photoReference, matchConfidence: 0.95, alternatives: [] }
       : await this.lookupItem(item, region, fromMealPhoto);

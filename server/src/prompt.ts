@@ -251,7 +251,7 @@ export const IDENTIFY_PHOTO_SYSTEM_PROMPT = `You identify the component foods in
 
 For each distinct food or drink visible, output:
 - name_ru: a short, normalized Russian food name ("куриная грудка", "макароны отварные").
-- name_en: the same food as a short, normalized English name suitable for a USDA database search.
+- name_en: the same food as a short, normalized English name suitable for a USDA database search. Use the same species, cut and cooking method in both names.
 - est_grams: your best estimate of the eaten weight in grams, from the visible portion.
 - confidence: 0..1, how sure you are about the food identity and portion.
 - prepared: true when the item is an already-prepared dish eaten as-is (soup, stew, salad, casserole, ready meal); false for ingredients and simple products.

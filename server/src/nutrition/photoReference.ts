@@ -7,6 +7,11 @@ interface Reference {
   per100: Per100;
 }
 
+interface PhotoReference extends Reference {
+  name_ru?: string;
+  name_en?: string;
+}
+
 // FoodData Central SR Legacy. These entries supplement the existing local table.
 const cookedBroccoli: Reference = { // FDC 169967
   name: 'брокколи приготовленная',
@@ -42,6 +47,7 @@ const POTATO = /(?<!sweet )\bpotato(?:es)?\b|(?<!сладкий )(?<!\p{L})ка�
 const WHITE_SAUCE = /\b(?:b[eé]chamel|white sauce|cream sauce)\b|(?:^| )бешамель(?: |$)|(?:белый|сливочный) соус/u;
 const RICE = /\brice\b|(?:^| )рис(?: |$)/u;
 const BROWN_RICE = /\bbrown rice\b|(?:бурый|коричневый) рис|рис (?:бурый|коричневый)/u;
+const RICE_BLEND = /\b(?:mixed|blend|mixture)\b|(?:^| )(?:смес[ьи]|микс)(?: |$)/u;
 const STRAWBERRY = /\bstrawberr(?:y|ies)\b|(?:^| )(?:клубник\p{L}*|земляник\p{L}*)(?: |$)/u;
 // Ingredient products use the same words in their titles: "cheese for Greek
 // salad" and "Greek salad dressing" still describe only part of the dish.
@@ -66,6 +72,13 @@ const RICE_WORDS = /^(?:rice|white|plain|cooked|boiled|steamed|рис|белый
 const FISH = /\b(?:fish|salmon|trout)\b|(?:^| )(?:рыб[аыу]|лосось|лосося|семг[аи]|форел[ьи])(?: |$)/u;
 const COMPOSITE_FISH = /\b(?:sandwich\w*|burgers?|wraps?|soups?|salads?|sauces?|pates?|spreads?|sticks?|cakes?)\b|сэндвич|сендвич|бутерброд|бургер|ролл|суп|салат|соус|паштет|котлет|палочк/u;
 const GENERIC_FISH_WORD = /^(?:fish|white|рыба|рыбы|белая)$/u;
+const VEGETABLE_SALAD = /\bvegetable salad\b|салат (?:из )?(?:свежих )?овощ|овощн\p{L}* салат/u;
+const FRUIT_SALAD = /\bfruit salads?\b|фруктов\p{L}* салат|салат из фрукт/u;
+
+function isGenericFish(name: string): boolean {
+  return FISH.test(name) && name.split(' ').every((word) =>
+    GENERIC_FISH_WORD.test(word) || PROTEIN_PORTION.test(word));
+}
 
 const RULES: readonly PhotoRule[] = [
   { identity: SALMON, cooking: DRY_HEAT, reference: tableReference('лосось запечённый'),
@@ -101,16 +114,33 @@ function photoNames(item: IdentifiedItem): string[] {
 }
 
 /** Use a stable row only for a plain food with compatible labels in both languages. */
-export function mealPhotoReference(item: IdentifiedItem): Reference | undefined {
+export function mealPhotoReference(item: IdentifiedItem): PhotoReference | undefined {
   if (item.packaged || item.label || item.weight_basis === 'dry') return;
   const names = photoNames(item);
   if (names.length === 0) return;
-  return RULES.find(({ identity, words, cooking, portionWords }) =>
+  const exact = RULES.find(({ identity, words, cooking, portionWords }) =>
     names.every((name) => identity.test(name) && name.split(' ').every((word) =>
       words.test(word) || portionWords?.test(word))) &&
     (cooking ? names.some((name) => cooking.test(name)) :
       ![RICE, BROWN_RICE].includes(identity) || item.weight_basis === 'as_eaten' || names.some((name) => COOKED.test(name)))
   )?.reference;
+  if (exact || item.confidence < 0.85) return exact;
+
+  // A bilingual response sometimes translates a specific fish as just “fish”.
+  // An unnamed side can inherit the species only from an unambiguous plain cut.
+  const [ru, en] = names;
+  if (!ru || !en) return;
+  const genericRu = isGenericFish(ru);
+  const genericEn = isGenericFish(en);
+  if (genericRu === genericEn || !names.some((name) => DRY_HEAT.test(name))) return;
+  const specific = genericRu ? en : ru;
+  const namedFish = RULES.find(({ identity, words }) =>
+    (identity === SALMON || identity === TROUT) && identity.test(specific) &&
+    specific.split(' ').every((word) => words.test(word) || PROTEIN_PORTION.test(word)));
+  if (!namedFish?.reference) return;
+  const english = namedFish.identity === SALMON ? 'cooked salmon' : 'cooked trout';
+  return genericRu ? { ...namedFish.reference, name_ru: namedFish.reference.name } :
+    { ...namedFish.reference, name_en: english };
 }
 
 const DIFFERENT_FORMS = [
@@ -131,16 +161,18 @@ export function mealPhotoCandidateFilter(item: IdentifiedItem): ((candidate: str
   const identities = RULES.filter(({ identity }) => names.some((name) => identity.test(name)));
   const salads = [GREEK_SALAD, SHIRAZI_SALAD].filter((identity) => names.some((name) => isWholeSalad(name, identity)));
   const plainFish = names.some((name) => FISH.test(name)) && names.every((name) => !COMPOSITE_FISH.test(name));
-  const genericFish = plainFish && names.every((name) => name.split(' ').every((word) =>
-    GENERIC_FISH_WORD.test(word) || PROTEIN_PORTION.test(word)));
-  if (!plainFish && salads.length === 0 && identities.length === 0) return;
+  const genericFish = names.length > 0 && names.every(isGenericFish);
+  const vegetableSalad = names.some((name) => VEGETABLE_SALAD.test(name)) && names.every((name) => !FRUIT_SALAD.test(name));
+  const mixedRice = names.some((name) => RICE.test(name) && RICE_BLEND.test(name));
+  if (!plainFish && !vegetableSalad && salads.length === 0 && identities.length === 0) return;
   const forbiddenForms = DIFFERENT_FORMS.filter((form) => names.every((name) => !form.test(name)));
   return (candidate) => {
     const name = normalizeName(candidate);
     return salads.every((identity) => isWholeSalad(name, identity)) &&
       (!plainFish || !COMPOSITE_FISH.test(name)) &&
-      (!genericFish || (FISH.test(name) && name.split(' ').every((word) =>
-        GENERIC_FISH_WORD.test(word) || PROTEIN_PORTION.test(word)))) &&
+      (!genericFish || isGenericFish(name)) &&
+      (!vegetableSalad || !FRUIT_SALAD.test(name)) &&
+      (!mixedRice || RICE_BLEND.test(name)) &&
       identities.every(({ identity }) => identity.test(name)) &&
       forbiddenForms.every((form) => !form.test(name));
   };
