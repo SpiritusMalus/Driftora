@@ -11,7 +11,8 @@ import type {
   Region,
   Vitamins,
 } from '../services/foodParser';
-import { displayItemName } from '../services/foodChoice';
+import { displayItemName, lookupNameForItem } from '../services/foodChoice';
+import { rememberDraftChoicesInTransaction } from './foodChoices';
 import { canSaveMealDraft, recomputeDraft } from '../services/mealDraft';
 import { mealTypeForEntry, type MealType } from '../insights/mealType';
 import type { MicroRow } from '../insights/microNutrients';
@@ -169,6 +170,7 @@ export async function saveParsedEntry(
     const entryId = inserted[0].id as number;
 
     await insertDraftItems(db, entryId, d);
+    await rememberDraftChoicesInTransaction(db, d, 'confirmed');
     return entryId;
   }, 'saveParsedEntry');
   if (opts.photoBase64) await saveFoodPhoto(db, entryId, opts.photoBase64, {
@@ -192,6 +194,7 @@ async function insertDraftItems(db: AnyDb, entryId: number, d: MealDraft): Promi
       entryId,
       // Real DB name once the user re-picked a match; their own words otherwise.
       name: displayItemName(it, d.region, currentLocale()),
+      lookupName: it.originalLookupName ?? lookupNameForItem(it, d.region),
       qtyG: it.grams,
       kcal: it.scaled.kcal,
       proteinG: it.scaled.prot,
@@ -259,6 +262,7 @@ export async function updateFoodEntry(
     // cascade) so no `food_items` are orphaned even if PRAGMA foreign_keys is off.
     await db.delete(foodItems).where(eq(foodItems.entryId, id));
     await insertDraftItems(db, id, d);
+    await rememberDraftChoicesInTransaction(db, d, 'explicit');
   }, 'updateFoodEntry');
 }
 
@@ -447,6 +451,7 @@ export async function repeatFoodEntry(db: AnyDb, id: number, ts: Date = new Date
         detail.items.map((it) => ({
           entryId: newId,
           name: it.name,
+          lookupName: it.lookupName,
           qtyG: it.qtyG,
           kcal: it.kcal,
           proteinG: it.proteinG,
@@ -489,6 +494,7 @@ export function draftFromStoredEntry(region: Region, items: FoodItem[]): MealDra
     return {
       name_ru: it.name,
       name_en: it.name,
+      ...(it.lookupName ? { originalLookupName: it.lookupName } : {}),
       grams,
       grams_source: 'confirmed',
       confidence: 1,

@@ -1,7 +1,9 @@
 import { desc, inArray, like, sql } from 'drizzle-orm';
 import type { BaseSQLiteDatabase } from 'drizzle-orm/sqlite-core';
 
-import { choiceKey, lookupNameForItem, normalizeChoiceName, type RememberedChoice } from '../services/foodChoice';
+import { currentLocale } from '@/lib/i18n';
+
+import { choiceKey, displayItemName, itemChoiceKeys, normalizeChoiceName, type RememberedChoice } from '../services/foodChoice';
 import type { MealDraft, Per100, Region } from '../services/foodParser';
 import { foodChoices } from './schema';
 import { withDbLock } from './tx';
@@ -15,40 +17,58 @@ function decodeChoice(raw: string) {
   return { per100, explicitChoice };
 }
 
-/// Persist the user's per-food correction (disambiguation layer 2). Upsert by
-/// key so the latest choice for a food wins; `per100` is stored as JSON text.
+function writeFoodChoice(db: AnyDb, key: string, choice: RememberedChoice) {
+  const per100 = JSON.stringify({ ...choice.per100, ...(choice.explicit ? { explicitChoice: true } : {}) });
+  const ts = new Date();
+  return db
+    .insert(foodChoices)
+    .values({ key, name: choice.name, per100, ts })
+    .onConflictDoUpdate({
+      target: foodChoices.key,
+      set: { name: choice.name, per100, ts },
+      // An automatic hit may refresh another automatic hit, even if a prior
+      // read was skipped. An explicit correction always wins over that write.
+      ...(!choice.explicit && choice.per100.source !== 'manual' ? {
+        setWhere: sql`case when json_valid(${foodChoices.per100}) then
+          coalesce(json_extract(${foodChoices.per100}, '$.explicitChoice'), 0) <> 1
+          and coalesce(json_extract(${foodChoices.per100}, '$.source'), '') <> 'manual'
+          else 1 end`,
+      } : {}),
+    });
+}
+
+/// Serialize standalone writes so they cannot join another meal's transaction.
 export async function rememberFoodChoice(
   db: AnyDb,
   region: Region,
   foodName: string,
   choice: RememberedChoice,
 ): Promise<void> {
-  const key = choiceKey(region, foodName);
-  const per100 = JSON.stringify({ ...choice.per100, ...(choice.explicit ? { explicitChoice: true } : {}) });
-  const ts = new Date();
-  // Queued: corrections are saved from the log screen while a background parse
-  // may hold a transaction open — a bare write joins it and dies with its
-  // rollback, and the user's correction is silently forgotten.
-  await withDbLock(
-    db,
-    () =>
-      db
-        .insert(foodChoices)
-        .values({ key, name: choice.name, per100, ts })
-        .onConflictDoUpdate({
-          target: foodChoices.key,
-          set: { name: choice.name, per100, ts },
-          // A new automatic hit can refresh another automatic hit. It should
-          // not replace an explicit choice if the DB read was skipped or stale.
-          ...(!choice.explicit && choice.per100.source !== 'manual' ? {
-            setWhere: sql`case when json_valid(${foodChoices.per100}) then
-              coalesce(json_extract(${foodChoices.per100}, '$.explicitChoice'), 0) <> 1
-              and coalesce(json_extract(${foodChoices.per100}, '$.source'), '') <> 'manual'
-              else 1 end`,
-          } : {}),
-        }),
-    'rememberFoodChoice',
-  );
+  await withDbLock(db, async () => {
+    await writeFoodChoice(db, choiceKey(region, foodName), choice);
+  }, 'rememberFoodChoice');
+}
+
+/// Called within the transaction that saves the meal and its item rows.
+export async function rememberDraftChoicesInTransaction(
+  db: AnyDb,
+  draft: MealDraft,
+  mode: 'confirmed' | 'explicit',
+): Promise<void> {
+  for (const item of draft.items) {
+    const source = item.per100.source;
+    if (item.choiceFromMemory || source === 'estimate' || source === 'history') continue;
+    const explicit = item.userChosen === true || (mode === 'confirmed' && source === 'manual');
+    const automatic = mode === 'confirmed' && source !== 'ai_estimate' && item.confidence >= 0.5;
+    if (!explicit && !automatic) continue;
+    const [key] = itemChoiceKeys(item, draft.region);
+    if (!key) continue;
+    await writeFoodChoice(db, key, {
+      name: displayItemName(item, draft.region, currentLocale()),
+      per100: item.per100,
+      ...(explicit ? { explicit: true } : {}),
+    });
+  }
 }
 
 /// One remembered food, ready to re-log: its display name + exact per-100g.
@@ -114,7 +134,7 @@ export async function loadRememberedChoices(
   region: Region,
   draft: MealDraft,
 ): Promise<Map<string, RememberedChoice>> {
-  const keys = draft.items.map((it) => choiceKey(region, lookupNameForItem(it, region)));
+  const keys = [...new Set(draft.items.flatMap((item) => itemChoiceKeys(item, region)))];
   const out = new Map<string, RememberedChoice>();
   if (keys.length === 0) return out;
 
@@ -122,6 +142,7 @@ export async function loadRememberedChoices(
     key: string;
     name: string;
     per100: string;
+    ts: Date;
   }[];
   for (const row of rows) {
     try {
@@ -129,7 +150,10 @@ export async function loadRememberedChoices(
       // A poisoned quick-pick row (see [listFoodChoices]) must never "correct"
       // a fresh parse — it would rewrite an honest per-100g with meal totals.
       if (per100.source === 'history') continue;
-      out.set(row.key, { name: row.name, per100, ...(explicitChoice === true ? { explicit: true } : {}) });
+      out.set(row.key, {
+        name: row.name, per100, rememberedAt: row.ts.getTime(),
+        ...(explicitChoice === true ? { explicit: true } : {}),
+      });
     } catch {
       // corrupt row — ignore
     }

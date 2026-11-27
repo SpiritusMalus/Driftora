@@ -3,6 +3,7 @@ import { recomputeDraft, scaleToGrams } from './mealDraft';
 
 export interface RememberedChoice extends NutritionAlternative {
   explicit?: true;
+  rememberedAt?: number;
 }
 
 /// Remembering the user's per-food correction (disambiguation layer 2). Pure
@@ -41,6 +42,16 @@ export function lookupNameForItem(item: Pick<NutritionItem, 'name_ru' | 'name_en
 /// The choice key: region + normalized lookup name. Same food, same key.
 export function choiceKey(region: Region, name: string): string {
   return `${region}::${normalizeChoiceName(name)}`;
+}
+
+/// The first key is the usual region-specific name. Older stored diary items
+/// only have the displayed label, so explicit choices under either language
+/// can still be recovered when the other name was used for recognition.
+export function itemChoiceKeys(item: NutritionItem, region: Region): string[] {
+  const original = item.originalLookupName ?? lookupNameForItem(item, region);
+  return [...new Set([original, item.name_ru, item.name_en]
+    .filter((name) => name.trim().length > 0)
+    .map((name) => choiceKey(region, name)))];
 }
 
 /// The name to DISPLAY / PERSIST for an item. Once the user has explicitly picked
@@ -82,19 +93,21 @@ export function applyRememberedChoices(
     // же словом: «творог» в памяти ≠ творог в руках). Штрихкод-путь память не
     // применяет по той же причине.
     if (it.per100.source === 'label') return it;
-    const remembered = choices.get(choiceKey(region, lookupNameForItem(it, region)));
+    const matches = itemChoiceKeys(it, region).map((key) => choices.get(key));
+    const explicit = matches
+      .filter((choice): choice is RememberedChoice =>
+        !!choice && (choice.explicit === true || choice.per100.source === 'manual'))
+      .sort((a, b) => (b.rememberedAt ?? 0) - (a.rememberedAt ?? 0))[0];
+    // Photo references take priority over remembered automatic database hits.
+    const remembered = explicit ?? (mode === 'all' ? matches[0] : undefined);
     if (!remembered) return it;
-    const explicit = remembered.explicit || remembered.per100.source === 'manual';
-    // A saved automatic lookup could be the incorrect card the new photo
-    // matcher just replaced. Apply the person's own corrections to photos.
-    if (mode === 'explicit' && !explicit) return it;
     changed = true;
     return {
       ...it,
       per100: remembered.per100,
       matched_name: remembered.name, // transparency: whose numbers these are
       confidence: 1, // the user chose this match before — honor it confidently
-      ...(explicit ? { userChosen: true } : {}),
+      ...(explicit ? { userChosen: true, choiceFromMemory: true } : {}),
       // The old row's hints don't describe the remembered pick — the same
       // contract as withItemReplacement. Left in place, a dry_basis banner
       // would push the «впишите вес сухой части» fix against per-100g numbers
