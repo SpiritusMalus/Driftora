@@ -68,7 +68,7 @@ interface PhotoRule {
 const COOKED = /\b(?:cooked|boiled|steamed)\b|варен|отвар|приготовлен|на пару/u;
 const DRY_HEAT = /\b(?:roasted|grilled|baked|seared|cooked|fried|broiled)\b|запечен|печен|грил|жарен|сковород/u;
 const PROTEIN_PORTION = /^(?:plain|whole|fillets?|filets?|steaks?|pieces?|cuts?|of|pan|oven|roasted|grilled|baked|seared|cooked|fried|broiled|филе|стейк\p{L}*|кус(?:ок|ки|очек)|целиком|цел\p{L}*|запечен\p{L}*|печен\p{L}*|жарен\p{L}*|обжарен\p{L}*|на|в|из|гриле|гриль|духовке|сковороде)$/u;
-const RICE_WORDS = /^(?:rice|white|plain|cooked|boiled|steamed|рис|белый|обычный|простой|вареный|отварной|отваренный|приготовленный|на|пару)$/u;
+const RICE_WORDS = /^(?:rice|plain|cooked|boiled|steamed|рис|обычный|простой|вареный|отварной|отваренный|приготовленный|на|пару)$/u;
 const FISH = /\b(?:fish|salmon|trout)\b|(?:^| )(?:рыб[аыу]|лосось|лосося|семг[аи]|форел[ьи])(?: |$)/u;
 const COMPOSITE_FISH = /\b(?:sandwich\w*|burgers?|wraps?|soups?|salads?|sauces?|pates?|spreads?|sticks?|cakes?)\b|сэндвич|сендвич|бутерброд|бургер|ролл|суп|салат|соус|паштет|котлет|палочк/u;
 const GENERIC_FISH_WORD = /^(?:fish|white|рыба|рыбы|белая)$/u;
@@ -100,7 +100,8 @@ const RULES: readonly PhotoRule[] = [
     words: /^(b[eé]chamel|white|cream|sauce|соус|бешамель|белый|сливочный)$/u },
   { identity: BROWN_RICE, reference: tableReference('рис бурый варёный'),
     words: /^(brown|бурый|коричневый)$/u, portionWords: RICE_WORDS },
-  { identity: RICE, reference: tableReference('рис белый варёный'), words: RICE_WORDS },
+  { identity: RICE, reference: tableReference('рис белый варёный'),
+    words: /^(white|белый)$/u, portionWords: RICE_WORDS },
   { identity: STRAWBERRY, reference: tableReference('клубника'),
     words: /^(strawberr(?:y|ies)|raw|fresh|ripe|whole|sliced|berries|клубник\p{L}*|земляник\p{L}*|свеж\p{L}*|сыр(?:ая|ую|ые|ой|ых|ого|ом|ым)|спел\p{L}*|цельн\p{L}*|цела\p{L}*|нарезан\p{L}*|ягод\p{L}*|садов\p{L}*)$/u },
   { identity: BANANA, reference: tableReference('банан'),
