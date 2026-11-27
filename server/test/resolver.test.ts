@@ -154,6 +154,9 @@ test('plain photo ingredients have reference energy even when providers disagree
     ['соус бешамель', 'béchamel sauce', 147],
     ['лимон', 'lemon wedge', 29],
     ['банан', 'banana', 89],
+    ['клубника', 'strawberries', 32],
+    ['свежая клубника', 'fresh strawberries', 32],
+    ['ягоды клубники', 'sliced strawberries', 32],
   ] as const;
   for (const region of ['US', 'RU'] as const) {
     for (const [name_ru, name_en, calories] of cases) {
@@ -163,6 +166,56 @@ test('plain photo ingredients have reference energy even when providers disagree
     }
   }
   assert.deepEqual(calls, []);
+});
+
+test('Greek salad on a meal photo only accepts a card for the whole dish', async () => {
+  const meal = item({ name_ru: 'Салат Греческий', name_en: 'Greek salad', est_grams: 100 });
+  for (const name of ['сыр для греческого салата', 'Greek salad dressing', 'Greek salad cheese']) {
+    const provider = {
+      name: 'openfoodfacts',
+      regions: ['RU', 'US'] as const,
+      async search() {
+        return { name, confidence: 0.9, per100: coercePer100({ source: 'openfoodfacts', kcal: 242 }) };
+      },
+    } satisfies NutritionProvider;
+    for (const region of ['US', 'RU'] as const) {
+      const resolver = new Resolver([provider]);
+      assert.equal((await resolver.resolveItem(meal, region)).matched_name, name);
+      const photo = await resolver.resolveItem({
+        ...meal, estimate: { kcal_100g: 118, prot_100g: 3.5, fat_100g: 9.5, carb_100g: 4.5 },
+      }, region, true);
+      assert.equal(photo.per100.source, 'ai_estimate');
+      assert.equal(photo.scaled.kcal, 118);
+      assert.equal(photo.matched_name, undefined);
+    }
+  }
+  const valid = {
+    name: 'usda',
+    regions: ['US'] as const,
+    async search() {
+      return {
+        name: 'Greek salad with feta', confidence: 0.9,
+        per100: coercePer100({ source: 'usda', kcal: 128, prot: 4, fat: 10, carb: 5 }),
+      };
+    },
+  } satisfies NutritionProvider;
+  assert.equal((await new Resolver([valid]).resolveItem(meal, 'US', true)).matched_name, 'Greek salad with feta');
+});
+
+test('strawberry preparations and labels keep their own calories', async () => {
+  const provider = {
+    name: 'usda',
+    regions: ['US'] as const,
+    async search(name: string) {
+      return { name, confidence: 0.95, per100: coercePer100({ source: 'usda', kcal: 85 }) };
+    },
+  } satisfies NutritionProvider;
+  const resolver = new Resolver([provider]);
+  const sweetened = item({ name_ru: 'клубника с сахаром', name_en: 'sweetened strawberries', est_grams: 100 });
+  assert.equal((await resolver.resolveItem(sweetened, 'US', true)).scaled.kcal, 85);
+  const packed = item({ name_ru: 'клубника', name_en: 'strawberries', est_grams: 100, packaged: true,
+    label: { kcal_100g: 64, prot_100g: 1, fat_100g: 0, carb_100g: 15 } });
+  assert.equal((await resolver.resolveItem(packed, 'US', true)).scaled.kcal, 64);
 });
 
 test('a specified salmon photo rejects chicken even when an ordinary lookup cached it', async () => {
