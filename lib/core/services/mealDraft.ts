@@ -4,6 +4,7 @@ import type {
   NutritionAlternative,
   NutrientValues,
   NutritionItem,
+  OriginalFoodMatch,
   Per100,
   Region,
   Vitamins,
@@ -193,10 +194,12 @@ export function withItemManualMacros(draft: MealDraft, index: number, macros: Ma
     // dry-basis / estimated-micros hints tied to that row) would misattribute them.
     return {
       ...it,
+      originalMatch: it.originalMatch ?? snapshotFoodMatch(it),
       per100,
       matched_name: undefined,
       userChosen: true,
       choiceFromMemory: undefined,
+      resetRememberedChoice: undefined,
       dry_basis: undefined,
       dry_weight: undefined,
       basis_adjusted: undefined,
@@ -266,11 +269,13 @@ export function withItemReplacement(
     };
     return {
       ...it,
+      originalMatch: it.originalMatch ?? snapshotFoodMatch(it),
       per100: replacement.per100,
       matched_name: replacement.name, // transparency: the new row's own name
       confidence: 1, // the user confirmed the match by hand
       userChosen: true,
       choiceFromMemory: undefined,
+      resetRememberedChoice: undefined,
       // The old row's hints don't describe the new pick; the user is now in
       // control of the match, so drop them rather than mislabel the swap.
       dry_basis: undefined,
@@ -281,6 +286,38 @@ export function withItemReplacement(
       scaled: scaleToGrams(replacement.per100, it.grams),
     };
   });
+  return recomputeDraft(draft.region, items);
+}
+
+export function snapshotFoodMatch(item: OriginalFoodMatch): OriginalFoodMatch {
+  return {
+    name_ru: item.name_ru,
+    name_en: item.name_en,
+    matched_name: item.matched_name,
+    confidence: item.confidence,
+    per100: item.per100,
+    prepared: item.prepared,
+    alternatives: item.alternatives,
+    dry_basis: item.dry_basis,
+    dry_weight: item.dry_weight,
+    basis_adjusted: item.basis_adjusted,
+    micros_estimated: item.micros_estimated,
+  };
+}
+
+export function withOriginalItemMatch(draft: MealDraft, index: number): MealDraft {
+  const item = draft.items[index];
+  if (!item?.originalMatch || !item.userChosen) return draft;
+  const original = snapshotFoodMatch(item.originalMatch);
+  const items = draft.items.map((value, i) => i === index ? {
+    ...value,
+    ...original,
+    userChosen: undefined,
+    choiceFromMemory: undefined,
+    resetRememberedChoice: true,
+    approximate: value.grams_source === 'estimated' || original.per100.source === 'ai_estimate',
+    scaled: scaleToGrams(original.per100, value.grams),
+  } : value);
   return recomputeDraft(draft.region, items);
 }
 

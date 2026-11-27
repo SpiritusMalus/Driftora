@@ -251,6 +251,7 @@ export const MIGRATIONS: string[] = [
   // don't know where their numbers came from.
   `ALTER TABLE food_items ADD COLUMN source TEXT`,
   `ALTER TABLE food_items ADD COLUMN lookup_name TEXT`,
+  `ALTER TABLE food_items ADD COLUMN match_context TEXT`,
   // 2026-07-12: the Home mood row became a left-swipe gesture. Shown-once
   // interactive coach flag + how many times the swipe actually opened the mood
   // screen (the subtle Home hint retires after 3).

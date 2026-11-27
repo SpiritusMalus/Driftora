@@ -1,9 +1,10 @@
 import type { MealDraft, NutritionAlternative, NutritionItem, Region } from './foodParser';
-import { recomputeDraft, scaleToGrams } from './mealDraft';
+import { recomputeDraft, scaleToGrams, snapshotFoodMatch } from './mealDraft';
 
 export interface RememberedChoice extends NutritionAlternative {
   explicit?: true;
   rememberedAt?: number;
+  aliases?: string[];
 }
 
 /// Remembering the user's per-food correction (disambiguation layer 2). Pure
@@ -48,10 +49,22 @@ export function choiceKey(region: Region, name: string): string {
 /// only have the displayed label, so explicit choices under either language
 /// can still be recovered when the other name was used for recognition.
 export function itemChoiceKeys(item: NutritionItem, region: Region): string[] {
-  const original = item.originalLookupName ?? lookupNameForItem(item, region);
-  return [...new Set([original, item.name_ru, item.name_en]
-    .filter((name) => name.trim().length > 0)
-    .map((name) => choiceKey(region, name)))];
+  const original = item.originalMatch ?? item;
+  const primary = item.originalLookupName ?? lookupNameForItem(original, region);
+  // Older diary rows kept the displayed replacement as their only name.
+  // Avoid treating that name as an alias for the food it replaced.
+  const names = item.originalLookupName && original.name_ru === original.name_en
+    ? [primary] : [primary, original.name_ru, original.name_en];
+  const keys = names.filter((name) => name.trim()).map((name) => choiceKey(region, name));
+  const { per100, matched_name, confidence, basis_adjusted } = original;
+  if (matched_name && confidence >= 0.85 && !basis_adjusted &&
+      (per100.source === 'usda' || per100.source === 'skurikhin')) {
+    // A precise match to the same reference survives changes in the wording
+    // of both recognition names. Preserve preparation and nutrition identity.
+    const reference = [matched_name, per100.kcal, per100.prot, per100.fat, per100.carb];
+    keys.push(choiceKey(region, `@reference:${per100.source}:${JSON.stringify(reference)}`));
+  }
+  return [...new Set(keys)];
 }
 
 /// The name to DISPLAY / PERSIST for an item. Once the user has explicitly picked
@@ -104,6 +117,7 @@ export function applyRememberedChoices(
     changed = true;
     return {
       ...it,
+      ...(explicit ? { originalMatch: it.originalMatch ?? snapshotFoodMatch(it) } : {}),
       per100: remembered.per100,
       matched_name: remembered.name, // transparency: whose numbers these are
       confidence: 1, // the user chose this match before — honor it confidently

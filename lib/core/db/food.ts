@@ -7,13 +7,14 @@ import type {
   Minerals,
   NutrientValues,
   NutritionItem,
+  OriginalFoodMatch,
   Per100,
   Region,
   Vitamins,
 } from '../services/foodParser';
 import { displayItemName, lookupNameForItem } from '../services/foodChoice';
 import { rememberDraftChoicesInTransaction } from './foodChoices';
-import { canSaveMealDraft, recomputeDraft } from '../services/mealDraft';
+import { canSaveMealDraft, recomputeDraft, snapshotFoodMatch } from '../services/mealDraft';
 import { mealTypeForEntry, type MealType } from '../insights/mealType';
 import type { MicroRow } from '../insights/microNutrients';
 import { foodEntries, foodItems, foodEntryPhotos, type FoodEntry, type FoodItem } from './schema';
@@ -195,6 +196,10 @@ async function insertDraftItems(db: AnyDb, entryId: number, d: MealDraft): Promi
       // Real DB name once the user re-picked a match; their own words otherwise.
       name: displayItemName(it, d.region, currentLocale()),
       lookupName: it.originalLookupName ?? lookupNameForItem(it, d.region),
+      matchContext: JSON.stringify({
+        original: it.originalMatch ?? snapshotFoodMatch(it),
+        ...(it.userChosen ? { replacement: snapshotFoodMatch(it) } : {}),
+      } satisfies StoredFoodMatch),
       qtyG: it.grams,
       kcal: it.scaled.kcal,
       proteinG: it.scaled.prot,
@@ -452,6 +457,7 @@ export async function repeatFoodEntry(db: AnyDb, id: number, ts: Date = new Date
           entryId: newId,
           name: it.name,
           lookupName: it.lookupName,
+          matchContext: it.matchContext,
           qtyG: it.qtyG,
           kcal: it.kcal,
           proteinG: it.proteinG,
@@ -470,6 +476,18 @@ export async function repeatFoodEntry(db: AnyDb, id: number, ts: Date = new Date
 /// each item's per-100g is *derived back* from `scaled / grams` purely to let
 /// grams edits rescale; the initially-shown `scaled` stays the exact stored
 /// fact. Pure — no db access.
+type StoredFoodMatch = { original: OriginalFoodMatch; replacement?: OriginalFoodMatch };
+
+function readStoredFoodMatch(value: string | null): StoredFoodMatch | undefined {
+  if (!value) return;
+  try {
+    const match = JSON.parse(value) as StoredFoodMatch;
+    return match?.original?.per100 ? match : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function draftFromStoredEntry(region: Region, items: FoodItem[]): MealDraft {
   const nItems: NutritionItem[] = items.map((it) => {
     const grams = it.qtyG && it.qtyG > 0 ? it.qtyG : 100;
@@ -491,6 +509,7 @@ export function draftFromStoredEntry(region: Region, items: FoodItem[]): MealDra
       minerals: {},
       source,
     };
+    const match = stored ? readStoredFoodMatch(it.matchContext) : undefined;
     return {
       name_ru: it.name,
       name_en: it.name,
@@ -499,6 +518,11 @@ export function draftFromStoredEntry(region: Region, items: FoodItem[]): MealDra
       grams_source: 'confirmed',
       confidence: 1,
       per100,
+      ...(match ? {
+        ...(match.replacement ?? match.original),
+        originalMatch: match.original,
+        ...(match.replacement ? { userChosen: true, choiceFromMemory: true } : {}),
+      } : {}),
       // Keep the exact stored totals for the initial render (lossless until edited).
       scaled: { kcal: it.kcal, prot: it.proteinG, fat: it.fatG, carb: it.carbG, minerals: {} },
       // Веc человек подтвердил, а вот СОСТАВ модели остаётся оценкой — «≈» на

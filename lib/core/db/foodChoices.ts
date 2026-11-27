@@ -10,16 +10,19 @@ import { withDbLock } from './tx';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyDb = BaseSQLiteDatabase<any, any, any>;
-type StoredChoice = Per100 & { explicitChoice?: true };
+type StoredChoice = Per100 & { explicitChoice?: true; choiceAliases?: string[] };
 
 function decodeChoice(raw: string) {
-  const { explicitChoice, ...per100 } = JSON.parse(raw) as StoredChoice;
-  return { per100, explicitChoice };
+  const { explicitChoice, choiceAliases, ...per100 } = JSON.parse(raw) as StoredChoice;
+  return { per100, explicitChoice, choiceAliases };
 }
 
 function writeFoodChoice(db: AnyDb, key: string, choice: RememberedChoice) {
-  const per100 = JSON.stringify({ ...choice.per100, ...(choice.explicit ? { explicitChoice: true } : {}) });
-  const ts = new Date();
+  const per100 = JSON.stringify({
+    ...choice.per100,
+    ...(choice.explicit ? { explicitChoice: true, choiceAliases: choice.aliases } : {}),
+  });
+  const ts = choice.rememberedAt === undefined ? new Date() : new Date(choice.rememberedAt);
   return db
     .insert(foodChoices)
     .values({ key, name: choice.name, per100, ts })
@@ -49,6 +52,23 @@ export async function rememberFoodChoice(
   }, 'rememberFoodChoice');
 }
 
+async function linkedChoiceKeys(db: AnyDb, region: Region, keys: string[]): Promise<string[]> {
+  const related = new Set(keys);
+  const rows = await db.select({ per100: foodChoices.per100 }).from(foodChoices).where(inArray(foodChoices.key, keys));
+  for (const row of rows) {
+    try {
+      const { choiceAliases } = decodeChoice(row.per100);
+      if (!Array.isArray(choiceAliases)) continue;
+      for (const alias of choiceAliases) {
+        if (typeof alias === 'string' && alias.startsWith(`${region}::`)) related.add(alias);
+      }
+    } catch {
+      // A damaged remembered row can still be overwritten or cleared by key.
+    }
+  }
+  return [...related];
+}
+
 /// Called within the transaction that saves the meal and its item rows.
 export async function rememberDraftChoicesInTransaction(
   db: AnyDb,
@@ -56,18 +76,27 @@ export async function rememberDraftChoicesInTransaction(
   mode: 'confirmed' | 'explicit',
 ): Promise<void> {
   for (const item of draft.items) {
+    if (item.resetRememberedChoice) {
+      const keys = itemChoiceKeys(item, draft.region);
+      if (keys.length > 0) {
+        await db.delete(foodChoices).where(inArray(foodChoices.key, await linkedChoiceKeys(db, draft.region, keys)));
+      }
+      continue;
+    }
     const source = item.per100.source;
     if (item.choiceFromMemory || source === 'estimate' || source === 'history') continue;
     const explicit = item.userChosen === true || (mode === 'confirmed' && source === 'manual');
     const automatic = mode === 'confirmed' && source !== 'ai_estimate' && item.confidence >= 0.5;
     if (!explicit && !automatic) continue;
-    const [key] = itemChoiceKeys(item, draft.region);
-    if (!key) continue;
-    await writeFoodChoice(db, key, {
+    const keys = itemChoiceKeys(item, draft.region);
+    if (keys.length === 0) continue;
+    const aliases = explicit ? await linkedChoiceKeys(db, draft.region, keys) : keys.slice(0, 1);
+    const choice: RememberedChoice = {
       name: displayItemName(item, draft.region, currentLocale()),
       per100: item.per100,
-      ...(explicit ? { explicit: true } : {}),
-    });
+      ...(explicit ? { explicit: true, aliases, rememberedAt: Date.now() } : {}),
+    };
+    for (const key of aliases) await writeFoodChoice(db, key, choice);
   }
 }
 

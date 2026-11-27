@@ -54,6 +54,7 @@ export const foodItems = sqliteTable('food_items', {
   // действительно неизвестен, и врать о нём мы не будем).
   source: text('source'),
   lookupName: text('lookup_name'), // Original ingredient name, before an explicit replacement.
+  matchContext: text('match_context'), // Original and selected nutrition matches.
 });
 
 /// A per-food match the user explicitly chose (disambiguation layer 2). Keyed by

@@ -133,7 +133,15 @@ export interface NutritionItem {
   choiceFromMemory?: boolean;
   // Keep the recognition name when reopening a saved item with a new title.
   originalLookupName?: string;
+  // The recognition result before any local change. Weight belongs to the draft.
+  originalMatch?: OriginalFoodMatch;
+  resetRememberedChoice?: boolean;
 }
+
+export type OriginalFoodMatch = Pick<NutritionItem,
+  'name_ru' | 'name_en' | 'matched_name' | 'confidence' | 'per100' | 'prepared' |
+  'alternatives' | 'dry_basis' | 'dry_weight' | 'basis_adjusted' | 'micros_estimated'
+>;
 
 /// A parsed meal awaiting the user's grams confirmation, then saved.
 export interface MealDraft {

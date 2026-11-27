@@ -23,6 +23,7 @@ export function ItemCard({
   onSelectAlternative,
   onSearch,
   onReplace,
+  onRestoreOriginal,
   onRemove,
 }: {
   item: NutritionItem;
@@ -33,6 +34,7 @@ export function ItemCard({
   onSelectAlternative: (altIndex: number) => void;
   onSearch: (query: string) => Promise<NutritionAlternative[]>;
   onReplace: (replacement: NutritionAlternative) => void;
+  onRestoreOriginal: () => void;
   // Drop this dish: on the edit screen — from the saved entry; on the log
   // screen — from the fresh parse draft (device feedback 2026-07-20:
   // «добавил лишнее и удалить нельзя»). The × shows only when passed.
@@ -88,6 +90,12 @@ export function ItemCard({
   // say so — with the kcal following the macros, not typed beside them.
   const editorAlways = isMiss || item.per100.source === 'manual' || item.per100.source === 'ai_estimate';
   const [editOpen, setEditOpen] = useState(false);
+  const [matchVersion, setMatchVersion] = useState(0);
+  function changeMatch(apply: () => void) {
+    setEditOpen(false);
+    setMatchVersion((version) => version + 1);
+    apply();
+  }
   const grams = Math.round(item.grams);
   const PORTIONS = [100, 200, 250];
   // Standard per-piece weight (яйцо ≈ 50 г) — null for non-piece foods. Matched
@@ -227,6 +235,7 @@ export function ItemCard({
           the typed strings survive the source flip mid-edit. */}
       {editorAlways || editOpen ? (
         <ManualMacros
+          key={matchVersion}
           item={item}
           isMiss={isMiss}
           hideCalories={hideCalories}
@@ -291,8 +300,9 @@ export function ItemCard({
           alternatives={alternatives}
           hideCalories={hideCalories}
           onSearch={onSearch}
-          onSelectAlternative={onSelectAlternative}
-          onReplace={onReplace}
+          onSelectAlternative={(index) => changeMatch(() => onSelectAlternative(index))}
+          onReplace={(replacement) => changeMatch(() => onReplace(replacement))}
+          onRestoreOriginal={item.originalMatch && item.userChosen ? () => changeMatch(onRestoreOriginal) : undefined}
           onClose={() => setReplacementOpen(false)}
         />
       ) : null}
