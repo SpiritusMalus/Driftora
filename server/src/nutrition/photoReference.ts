@@ -39,6 +39,11 @@ const SWEET_POTATO = /\bsweet potato(?:es)?\b|(?:^| )батат\p{L}*(?: |$)|с�
 const POTATO = /(?<!sweet )\bpotato(?:es)?\b|(?<!сладкий )(?<!\p{L})картофел\p{L}*(?: |$)|(?:^| )картошк\p{L}*(?: |$)/u;
 const WHITE_SAUCE = /\b(?:b[eé]chamel|white sauce|cream sauce)\b|(?:^| )бешамель(?: |$)|(?:белый|сливочный) соус/u;
 const RICE = /\brice\b|(?:^| )рис(?: |$)/u;
+const STRAWBERRY = /\bstrawberr(?:y|ies)\b|(?:^| )(?:клубник\p{L}*|земляник\p{L}*)(?: |$)/u;
+// Ingredient products use the same words in their titles: "cheese for Greek
+// salad" and "Greek salad dressing" still describe only part of the dish.
+const GREEK_SALAD = /^(?:(?:classic|traditional|fresh|классическ\p{L}*|традиционн\p{L}*) )?(?:greek (?:style )?salad|salad greek|салат греческ\p{L}*|греческ\p{L}* салат|horiatiki|хориатики)(?: |$)/u;
+const SALAD_ADD_ON = /^(?:cheese\b|feta\b|dressing\b|sauce\b|seasoning\b|topping\b|сыр|фета|заправк|соус|приправа)/u;
 const BANANA = /\bbanana\b|(?:^| )банан(?: |$)/u;
 const LEMON = /\blemon\b|(?:^| )лимон\p{L}*(?: |$)/u;
 
@@ -68,6 +73,8 @@ const RULES: readonly PhotoRule[] = [
     words: /^(b[eé]chamel|white|cream|sauce|соус|бешамель|белый|сливочный)$/u },
   { identity: RICE, reference: tableReference('рис белый варёный'),
     words: /^(rice|white|plain|cooked|boiled|steamed|рис|белый|обычный|простой|вареный|отварной|отваренный|приготовленный)$/u },
+  { identity: STRAWBERRY, reference: tableReference('клубника'),
+    words: /^(strawberr(?:y|ies)|raw|fresh|ripe|whole|sliced|berries|клубник\p{L}*|земляник\p{L}*|свеж\p{L}*|сыр(?:ая|ую|ые|ой|ых|ого|ом|ым)|спел\p{L}*|цельн\p{L}*|цела\p{L}*|нарезан\p{L}*|ягод\p{L}*|садов\p{L}*)$/u },
   { identity: BANANA, reference: tableReference('банан'),
     words: /^(banana|raw|fresh|ripe|peeled|банан|сырой|свежий|спелый|очищенный)$/u },
   { identity: LEMON, reference: tableReference('лимон'),
@@ -96,15 +103,23 @@ const DIFFERENT_FORMS = [
   /(?:^| )(?:шарики?|balls?|nuggets?|наггетс\p{L}*)(?: |$)/u,
 ];
 
+function isGreekSalad(name: string): boolean {
+  const title = GREEK_SALAD.exec(name);
+  return title !== null && !SALAD_ADD_ON.test(name.slice(title[0].length));
+}
+
 /** Strong food identities survive both provider ranking and weak-match fallback. */
 export function mealPhotoCandidateFilter(item: IdentifiedItem): ((candidate: string) => boolean) | undefined {
   if (item.packaged || item.label) return;
   const names = photoNames(item);
   const identities = RULES.filter(({ identity }) => names.some((name) => identity.test(name)));
-  if (identities.length === 0) return;
+  const greekSalad = names.some(isGreekSalad);
+  if (!greekSalad && identities.length === 0) return;
   const forbiddenForms = DIFFERENT_FORMS.filter((form) => names.every((name) => !form.test(name)));
   return (candidate) => {
     const name = normalizeName(candidate);
-    return identities.every(({ identity }) => identity.test(name)) && forbiddenForms.every((form) => !form.test(name));
+    return (!greekSalad || isGreekSalad(name)) &&
+      identities.every(({ identity }) => identity.test(name)) &&
+      forbiddenForms.every((form) => !form.test(name));
   };
 }
