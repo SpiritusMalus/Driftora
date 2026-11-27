@@ -168,6 +168,68 @@ test('plain photo ingredients have reference energy even when providers disagree
   assert.deepEqual(calls, []);
 });
 
+test('independent descriptions of the same prepared food share a catalog reference', async () => {
+  const resolver = new Resolver([]);
+  const cases = [
+    [['лосось на гриле', 'grilled salmon'], ['стейк из лосося жареный', 'pan-fried salmon steak'], 'лосось запечённый', 206],
+    [['форель на гриле', 'grilled trout'], ['запечённая форель целиком', 'whole baked rainbow trout'], 'форель запечённая', 168],
+    [['куриная голень на гриле', 'grilled chicken drumstick'], ['голени куриные запечённые', 'oven-roasted chicken drumsticks'], 'куриная голень запечённая', 155],
+    [['рис варёный', 'steamed rice'], ['рис белый на пару', 'plain cooked white rice'], 'рис белый варёный', 130],
+    [['коричневый рис', 'brown rice'], ['рис бурый варёный', 'cooked brown rice'], 'рис бурый варёный', 123],
+  ] as const;
+  for (const [first, second, reference, kcal] of cases) {
+    const fromPhoto = ([name_ru, name_en]: readonly [string, string]) => resolver.resolveItem(
+      item({ name_ru, name_en, est_grams: 160, weight_basis: 'as_eaten' }), 'US', true,
+    );
+    const [a, b] = await Promise.all([fromPhoto(first), fromPhoto(second)]);
+    assert.equal(a.matched_name, reference);
+    assert.equal(b.matched_name, reference);
+    assert.equal(a.per100.kcal, kcal);
+    assert.deepEqual(a.per100, b.per100);
+    assert.equal(a.scaled.kcal, b.scaled.kcal);
+  }
+});
+
+test('a plain reference does not absorb different species, cuts, or preparations', async () => {
+  const resolver = new Resolver([]);
+  const cases = [
+    ['лосось копчёный', 'smoked salmon', 'лосось запечённый'],
+    ['форель жареная', 'fried salmon', 'лосось запечённый'],
+    ['лосось в панировке', 'breaded fried salmon', 'лосось запечённый'],
+    ['куриная грудка на гриле', 'grilled chicken breast', 'куриная голень запечённая'],
+    ['форель на гриле', 'grilled trout', 'лосось запечённый'],
+    ['рис бурый', 'cooked brown rice', 'рис белый варёный'],
+  ] as const;
+  for (const [name_ru, name_en, wrong] of cases) {
+    const result = await resolver.resolveItem(item({ name_ru, name_en }), 'US', true);
+    assert.notEqual(result.matched_name, wrong, name_ru);
+  }
+});
+
+test('Shirazi and plain whole fish reject unrelated recipes and ingredient cards', async () => {
+  const cases = [
+    ['салат ширази', 'Shirazi salad', 'Pico de gallo'],
+    ['салат ширази', 'Shirazi salad', 'Greek salad'],
+    ['салат ширази', 'Shirazi salad', 'Shirazi salad dressing'],
+    ['рыба жареная целая', 'whole fried fish', 'Grilled fish sandwich'],
+    ['рыба жареная целая', 'whole fried fish', 'Grilled salmon'],
+  ] as const;
+  for (const [name_ru, name_en, name] of cases) {
+    const provider = {
+      name: 'usda',
+      regions: ['US'] as const,
+      async search() {
+        return { name, confidence: 0.95, per100: coercePer100({ source: 'usda', kcal: 182 }) };
+      },
+    } satisfies NutritionProvider;
+    const result = await new Resolver([provider]).resolveItem(item({ name_ru, name_en,
+      est_grams: 100, estimate: { kcal_100g: 35, prot_100g: 1, fat_100g: 0.5, carb_100g: 6 },
+    }), 'US', true);
+    assert.equal(result.per100.source, 'ai_estimate', name);
+    assert.equal(result.matched_name, undefined, name);
+  }
+});
+
 test('Greek salad on a meal photo only accepts a card for the whole dish', async () => {
   const meal = item({ name_ru: 'Салат Греческий', name_en: 'Greek salad', est_grams: 100 });
   for (const name of ['сыр для греческого салата', 'Greek salad dressing', 'Greek salad cheese']) {
