@@ -47,7 +47,8 @@ export function useAndroidKeyboardSpace(scrollRef: RefObject<ScrollView | null>)
           }
           // The responder compares a content-relative field with a screen-relative
           // keyboard. Android window measurement also excludes the top system inset.
-          scroll.getScrollResponder().scrollResponderScrollNativeHandleToKeyboard(input, top + topInset + 24, true);
+          // Leave room for the card to reflow when the typed weight is confirmed.
+          scroll.getScrollResponder().scrollResponderScrollNativeHandleToKeyboard(input, top + topInset + 48, true);
         });
       }
     });
