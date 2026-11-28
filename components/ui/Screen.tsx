@@ -10,6 +10,7 @@ import {
   View,
   type ViewStyle,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTheme } from '@/lib/theme/theme';
 
@@ -28,16 +29,27 @@ import { useTheme } from '@/lib/theme/theme';
 /// — there `automaticallyAdjustKeyboardInsets` already owns the job.
 export function useAndroidKeyboardSpace(scrollRef: RefObject<ScrollView | null>): number {
   const [space, setSpace] = useState(0);
+  const { top: topInset } = useSafeAreaInsets();
   useEffect(() => {
     if (Platform.OS === 'ios') return;
     const show = Keyboard.addListener('keyboardDidShow', (e) => {
       setSpace(e.endCoordinates.height);
-      // The extra offset keeps a line of breathing room between the field's
-      // bottom edge and the keyboard, so the caret is never flush with it.
       const input = TextInput.State.currentlyFocusedInput();
       const scroll = scrollRef.current;
       if (input != null && scroll != null) {
-        scroll.getScrollResponder().scrollResponderScrollNativeHandleToKeyboard(input, 24, true);
+        scroll.getNativeScrollRef()?.measureInWindow((_x, top) => {
+          if (
+            scrollRef.current !== scroll ||
+            !Keyboard.isVisible() ||
+            TextInput.State.currentlyFocusedInput() !== input
+          ) {
+            return;
+          }
+          // The responder compares a content-relative field with a screen-relative
+          // keyboard. Android window measurement also excludes the top system inset.
+          // Leave room for the card to reflow when the typed weight is confirmed.
+          scroll.getScrollResponder().scrollResponderScrollNativeHandleToKeyboard(input, top + topInset + 48, true);
+        });
       }
     });
     const hide = Keyboard.addListener('keyboardDidHide', () => setSpace(0));
@@ -45,7 +57,7 @@ export function useAndroidKeyboardSpace(scrollRef: RefObject<ScrollView | null>)
       show.remove();
       hide.remove();
     };
-  }, [scrollRef]);
+  }, [scrollRef, topInset]);
   return space;
 }
 
