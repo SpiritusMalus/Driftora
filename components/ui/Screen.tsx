@@ -10,6 +10,7 @@ import {
   View,
   type ViewStyle,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTheme } from '@/lib/theme/theme';
 
@@ -28,6 +29,7 @@ import { useTheme } from '@/lib/theme/theme';
 /// — there `automaticallyAdjustKeyboardInsets` already owns the job.
 export function useAndroidKeyboardSpace(scrollRef: RefObject<ScrollView | null>): number {
   const [space, setSpace] = useState(0);
+  const { top: topInset } = useSafeAreaInsets();
   useEffect(() => {
     if (Platform.OS === 'ios') return;
     const show = Keyboard.addListener('keyboardDidShow', (e) => {
@@ -43,9 +45,9 @@ export function useAndroidKeyboardSpace(scrollRef: RefObject<ScrollView | null>)
           ) {
             return;
           }
-          // The responder measures the field from the scroll content and the
-          // keyboard from the window. Include the header above the scroll view.
-          scroll.getScrollResponder().scrollResponderScrollNativeHandleToKeyboard(input, top + 24, true);
+          // The responder compares a content-relative field with a screen-relative
+          // keyboard. Android window measurement also excludes the top system inset.
+          scroll.getScrollResponder().scrollResponderScrollNativeHandleToKeyboard(input, top + topInset + 24, true);
         });
       }
     });
@@ -54,7 +56,7 @@ export function useAndroidKeyboardSpace(scrollRef: RefObject<ScrollView | null>)
       show.remove();
       hide.remove();
     };
-  }, [scrollRef]);
+  }, [scrollRef, topInset]);
   return space;
 }
 
