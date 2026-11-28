@@ -32,12 +32,21 @@ export function useAndroidKeyboardSpace(scrollRef: RefObject<ScrollView | null>)
     if (Platform.OS === 'ios') return;
     const show = Keyboard.addListener('keyboardDidShow', (e) => {
       setSpace(e.endCoordinates.height);
-      // The extra offset keeps a line of breathing room between the field's
-      // bottom edge and the keyboard, so the caret is never flush with it.
       const input = TextInput.State.currentlyFocusedInput();
       const scroll = scrollRef.current;
       if (input != null && scroll != null) {
-        scroll.getScrollResponder().scrollResponderScrollNativeHandleToKeyboard(input, 24, true);
+        scroll.getNativeScrollRef()?.measureInWindow((_x, top) => {
+          if (
+            scrollRef.current !== scroll ||
+            !Keyboard.isVisible() ||
+            TextInput.State.currentlyFocusedInput() !== input
+          ) {
+            return;
+          }
+          // The responder measures the field from the scroll content and the
+          // keyboard from the window. Include the header above the scroll view.
+          scroll.getScrollResponder().scrollResponderScrollNativeHandleToKeyboard(input, top + 24, true);
+        });
       }
     });
     const hide = Keyboard.addListener('keyboardDidHide', () => setSpace(0));
